@@ -1,0 +1,280 @@
+/*
+ * Design tokens ported from the QML frontend's Theme singleton, resolved for
+ * its dark "blue" scheme. Names track the original tokens one-for-one so a
+ * QML rule and its CSS counterpart stay recognisably the same rule.
+ */
+
+:root {
+  --primary: #42a5f5;
+  --primary-text: #000000;
+  --primary-container: #0d47a1;
+  --secondary: #8ab4f8;
+
+  --surface: #101418;
+  --surface-text: #e0e2e8;
+  --surface-variant: #42474e;
+  --surface-variant-text: #c2c7cf;
+
+  --surface-container-lowest: #0c1014;
+  --surface-container-low: #191c20;
+  --surface-container: #1d2024;
+  --surface-container-high: #272a2f;
+  --surface-container-highest: #32353a;
+
+  --outline: #8c9199;
+  --outline-light: rgba(140, 145, 153, 0.075);
+  --outline-medium: rgba(140, 145, 153, 0.12);
+  --outline-strong: rgba(140, 145, 153, 0.18);
+
+  --primary-hover-light: rgba(66, 165, 245, 0.08);
+  --primary-hover: rgba(66, 165, 245, 0.12);
+  --primary-pressed: rgba(66, 165, 245, 0.16);
+  --primary-selected: rgba(66, 165, 245, 0.3);
+  --surface-hover: rgba(66, 71, 78, 0.08);
+  --surface-pressed: rgba(66, 71, 78, 0.12);
+  --surface-selected: rgba(66, 71, 78, 0.15);
+
+  --error: #f2b8b5;
+  --warning: #ff9800;
+  --info: #2196f3;
+  --success: #4caf50;
+
+  --spacing-xxs: 2px;
+  --spacing-xs: 4px;
+  --spacing-s: 8px;
+  --spacing-m: 12px;
+  --spacing-l: 16px;
+  --spacing-xl: 24px;
+
+  --font-size-small: 12px;
+  --font-size-medium: 14px;
+  --font-size-large: 16px;
+  --font-size-xlarge: 20px;
+
+  --icon-size: 24px;
+  --icon-size-small: 16px;
+  --icon-size-large: 32px;
+
+  --corner-radius: 12px;
+  --corner-radius-small: 8px;
+
+  --font-family: 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Fira Code', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Fixed chrome dimensions, from the original layout. */
+  --titlebar-height: 44px;
+  --sidebar-width: 220px;
+  --nicklist-width: 180px;
+  --settings-rail-width: 130px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: var(--surface);
+  color: var(--surface-text);
+  font-family: var(--font-family);
+  font-size: var(--font-size-medium);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+/* Message bodies and inputs are the only things worth selecting. */
+.selectable,
+input,
+textarea {
+  user-select: text;
+  cursor: auto;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* --- Material Symbols ------------------------------------------------- */
+/* Bundled locally; the app must never reach out to a font CDN at runtime. */
+
+@font-face {
+  font-family: 'Material Symbols Rounded';
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: block;
+  src: url('./assets/material-symbols-rounded.woff2') format('woff2');
+}
+
+.icon {
+  font-family: 'Material Symbols Rounded';
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 400,
+    'GRAD' 0,
+    'opsz' 24;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  flex: none;
+}
+
+/* --- Scrollbars ------------------------------------------------------- */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--outline-strong);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(140, 145, 153, 0.35);
+}
+
+/* --- Shared primitives ------------------------------------------------ */
+
+.divider-v {
+  width: 1px;
+  flex: none;
+  background: var(--outline-strong);
+}
+
+.divider-h {
+  height: 1px;
+  flex: none;
+  background: var(--outline-medium);
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--corner-radius-small);
+  color: var(--surface-variant-text);
+  flex: none;
+}
+
+.icon-button:hover {
+  background: var(--primary-hover-light);
+  color: var(--surface-text);
+}
+
+.icon-button:active {
+  background: var(--primary-pressed);
+}
+
+.icon-button[disabled] {
+  opacity: 0.38;
+  pointer-events: none;
+}
+
+.text-field {
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  padding: 6px var(--spacing-s);
+  outline: none;
+  width: 100%;
+}
+
+.text-field:focus {
+  border-color: var(--primary);
+}
+
+.text-field::placeholder {
+  color: var(--surface-variant-text);
+  opacity: 0.7;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 6px var(--spacing-m);
+  border-radius: var(--corner-radius-small);
+  background: var(--primary);
+  color: var(--primary-text);
+  font-weight: 500;
+}
+
+.button:hover {
+  filter: brightness(1.1);
+}
+
+.button[disabled] {
+  opacity: 0.38;
+  pointer-events: none;
+}
+
+.button.subtle {
+  background: var(--surface-container-high);
+  color: var(--surface-text);
+}
+
+.button.danger {
+  background: transparent;
+  color: var(--error);
+  border: 1px solid var(--outline-medium);
+}
+
+.muted {
+  color: var(--surface-variant-text);
+}
+
+.small {
+  font-size: var(--font-size-small);
+}
+
+.ellipsis {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
