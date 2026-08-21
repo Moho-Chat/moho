@@ -10,7 +10,7 @@ import { app } from 'electron'
  *
  * Everything here is a pure display/notification preference the daemon has no
  * business knowing about (pins, mutes, collapse state, read markers) - account
- * and protocol config lives in chatd's own accounts.toml instead.
+ * and protocol config lives in nobilis's own accounts.toml instead.
  */
 
 export const PREF_DEFAULTS: Record<string, unknown> = {

@@ -6,7 +6,7 @@ import { useCallback, useSyncExternalStore } from 'react'
  * preference, which defaults on despite the trade-off:
  *
  * this is a plain HTTP request straight from the renderer, not routed through
- * chatd or (for Sneedchat) its embedded Tor client. It reveals a connection to
+ * nobilis or (for Sneedchat) its embedded Tor client. It reveals a connection to
  * whatever was linked the moment a message arrives, whether or not the link is
  * ever clicked. Users who care turn it off in Settings.
  *

@@ -44,18 +44,27 @@ export function ContextMenu({ x, y, entries, onClose }: Props): JSX.Element {
   }, [x, y, entries.length])
 
   useEffect(() => {
-    const dismiss = (): void => onClose()
+    // Presses inside the menu must not dismiss it. This listener runs in the
+    // capture phase (so a press anywhere else closes the menu even if that
+    // handler stops propagation), which means it fires *before* the menu
+    // item's own handler - dismissing unconditionally unmounts the item
+    // between mousedown and click, and the click then lands on nothing.
+    // Stopping propagation on the menu's own mousedown can't help: that runs
+    // in the bubble phase, long after this has already fired.
+    const onMouseDown = (e: MouseEvent): void => {
+      if (ref.current?.contains(e.target as Node)) return
+      onClose()
+    }
+    const onResize = (): void => onClose()
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onClose()
     }
-    // `capture` so a click that also lands on some other handler still closes
-    // this first, rather than leaving two menus stacked.
-    window.addEventListener('mousedown', dismiss, true)
-    window.addEventListener('resize', dismiss)
+    window.addEventListener('mousedown', onMouseDown, true)
+    window.addEventListener('resize', onResize)
     window.addEventListener('keydown', onKey)
     return () => {
-      window.removeEventListener('mousedown', dismiss, true)
-      window.removeEventListener('resize', dismiss)
+      window.removeEventListener('mousedown', onMouseDown, true)
+      window.removeEventListener('resize', onResize)
       window.removeEventListener('keydown', onKey)
     }
   }, [onClose])
@@ -65,7 +74,6 @@ export function ContextMenu({ x, y, entries, onClose }: Props): JSX.Element {
       ref={ref}
       className="context-menu"
       style={{ left: pos.x, top: pos.y }}
-      onMouseDown={(e) => e.stopPropagation()}
     >
       {entries.map((entry, i) =>
         entry.separator ? (

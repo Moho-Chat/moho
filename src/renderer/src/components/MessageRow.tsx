@@ -23,6 +23,7 @@ import {
   formatFullTime,
   formatRelativeTime,
   formatTime,
+  isChatKind,
   nickColor,
   resolveMediaUrl
 } from '../lib/util'
@@ -72,10 +73,7 @@ export function MessageRow({
   const canEditDelete =
     !!message.isOwn && (service === 'discord' || service === 'sockchat' || service === 'matrix')
   const canReact = service === 'discord' || service === 'matrix'
-  // chatd tags an ordinary message "chat"; everything else (server notices,
-  // joins, parts, topic and mode changes) reads as a log line rather than
-  // something a person said.
-  const isSystem = message.kind !== 'chat'
+  const isSystem = !isChatKind(message.kind)
 
   // The extraction passes each walk the same normalised body independently,
   // matching how the original structured this - one do-everything function

@@ -29,7 +29,7 @@ interface Props {
 /**
  * Every cdn.discordapp.com / media.discordapp.net link Discord hands out is
  * signed with an ex=/is=/hm= query string that lapses roughly 24h after issue.
- * chatd has no way to silently re-sign one (Discord's refresh-urls endpoint
+ * nobilis has no way to silently re-sign one (Discord's refresh-urls endpoint
  * rejects user-token requests outright), so once expired the only real fix is
  * opening the actual message in a real Discord session.
  */

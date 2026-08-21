@@ -128,7 +128,7 @@ function DisplaySettings(): JSX.Element {
 }
 
 /**
- * Message-kind filters plus connection defaults. chatd always emits and
+ * Message-kind filters plus connection defaults. nobilis always emits and
  * persists every message regardless of kind - which to render is purely a
  * client decision, so toggling one takes effect immediately without any
  * reconnect or replay.
@@ -186,7 +186,7 @@ function useSockchatAccount(): Account | undefined {
 /**
  * Unlike the IRC panel (pure local preferences), this edits an existing
  * account's live backend config - which rooms it stays connected to - so it
- * writes through chatd rather than the preference store.
+ * writes through nobilis rather than the preference store.
  */
 function SneedchatSettings(): JSX.Element {
   const store = useStore()
@@ -332,7 +332,7 @@ function MatrixSettings(): JSX.Element {
   return (
     <SettingsSection
       title="Membership announcements"
-      description="Shown as chat messages in the room they happened in. chatd records them regardless of these toggles, so turning one on retroactively reveals events that already happened while it was off."
+      description="Shown as chat messages in the room they happened in. nobilis records them regardless of these toggles, so turning one on retroactively reveals events that already happened while it was off."
     >
       <ToggleSetting settingKey="matrix.showJoinMessages" label="Show join messages" description='"X joined the room"' defaultValue={true} />
       <ToggleSetting settingKey="matrix.showInviteMessages" label="Show invite messages" description='"X was invited by Y"' defaultValue={true} />
@@ -358,7 +358,7 @@ function DaemonSettings(): JSX.Element {
 
   return (
     <SettingsSection
-      title="chatd"
+      title="nobilis"
       description="The background daemon that actually speaks each protocol. It keeps connections, Tor circuits and Matrix sync alive while this window is closed."
     >
       <div className="setting-row">
@@ -376,14 +376,14 @@ function DaemonSettings(): JSX.Element {
         className="button subtle"
         onClick={() => {
           void window.moho.restartDaemon()
-          store.toast('info', 'Restarting chatd…')
+          store.toast('info', 'Restarting nobilis…')
         }}
       >
         Restart daemon
       </button>
       {status && !status.available && (
         <p className="small" style={{ color: 'var(--warning)' }}>
-          The chatd binary wasn&apos;t found. Run <code>cargo build --release</code>, or start chatd
+          The nobilis binary wasn&apos;t found. Run <code>cargo build --release</code>, or start nobilis
           yourself.
         </p>
       )}

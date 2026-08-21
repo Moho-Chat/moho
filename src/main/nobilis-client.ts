@@ -2,11 +2,11 @@ import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
-import type { ChatdEvent } from '../shared/wire'
+import type { NobilisEvent } from '../shared/wire'
 
 /**
- * Newline-delimited JSON-RPC client for chatd's Unix socket (see
- * chatd/src/rpc/mod.rs). One socket serves both consumers - the renderer's
+ * Newline-delimited JSON-RPC client for nobilis's Unix socket (see
+ * nobilis/src/rpc/mod.rs). One socket serves both consumers - the renderer's
  * chat UI and main's own notification/tray bookkeeping - because `subscribe`
  * state is per-connection and the renderer subscribes to every buffer anyway,
  * so a second connection would only duplicate the same event stream.
@@ -14,7 +14,7 @@ import type { ChatdEvent } from '../shared/wire'
 
 export function defaultSocketPath(): string {
   const runtimeDir = process.env.XDG_RUNTIME_DIR || os.tmpdir()
-  return path.join(runtimeDir, 'moho', 'chatd.sock')
+  return path.join(runtimeDir, 'nobilis', 'nobilis.sock')
 }
 
 interface Pending {
@@ -25,12 +25,12 @@ interface Pending {
 const RECONNECT_MIN_MS = 250
 const RECONNECT_MAX_MS = 5000
 
-export declare interface ChatdClient {
-  on(event: 'push', listener: (frame: ChatdEvent) => void): this
+export declare interface NobilisClient {
+  on(event: 'push', listener: (frame: NobilisEvent) => void): this
   on(event: 'link', listener: (up: boolean) => void): this
 }
 
-export class ChatdClient extends EventEmitter {
+export class NobilisClient extends EventEmitter {
   private socket: net.Socket | null = null
   private buffer = ''
   private nextId = 1
@@ -89,7 +89,7 @@ export class ChatdClient extends EventEmitter {
       // than hang forever - the caller can retry against the new link.
       const inFlight = [...this.pending.values()]
       this.pending.clear()
-      for (const p of inFlight) p.reject(new Error('chatd connection lost'))
+      for (const p of inFlight) p.reject(new Error('nobilis connection lost'))
       this.scheduleReconnect()
     })
   }
@@ -120,7 +120,7 @@ export class ChatdClient extends EventEmitter {
       try {
         msg = JSON.parse(line)
       } catch {
-        console.warn('[chatd] unparseable line:', line.slice(0, 200))
+        console.warn('[nobilis] unparseable line:', line.slice(0, 200))
         continue
       }
       this.dispatch(msg)
@@ -129,7 +129,7 @@ export class ChatdClient extends EventEmitter {
 
   private dispatch(msg: any): void {
     if (msg.event) {
-      this.emit('push', msg as ChatdEvent)
+      this.emit('push', msg as NobilisEvent)
       return
     }
     const pending = this.pending.get(msg.id)

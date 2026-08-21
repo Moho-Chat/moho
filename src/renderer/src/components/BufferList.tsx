@@ -229,7 +229,7 @@ function AccountBuffers(props: AccountBuffersProps): JSX.Element {
   const isDiscord = account.service === 'discord'
 
   // Server buffer first, then everything else by most recent activity - the
-  // sort chatd's own lastActivityTs exists to make possible without the client
+  // sort nobilis's own lastActivityTs exists to make possible without the client
   // having to query history itself.
   const sorted = useMemo(() => {
     const copy = [...buffers]

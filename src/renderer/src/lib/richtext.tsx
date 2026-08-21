@@ -167,7 +167,7 @@ function classNameOf(el: Element): string | undefined {
 }
 
 /**
- * Smilies are bundled local files and chatd's cached media are local paths;
+ * Smilies are bundled local files and nobilis's cached media are local paths;
  * both go through the guarded moho-media scheme. Remote https images are
  * allowed too (Discord CDN avatars and the like). Everything else is dropped.
  */

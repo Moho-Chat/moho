@@ -75,6 +75,9 @@
   background: var(--surface-container);
   display: flex;
   min-height: 0;
+  /* A long unbreakable buffer name (Matrix rooms are titled in prose) would
+     otherwise paint straight over the message list. */
+  overflow: hidden;
 }
 
 .nicklist-pane {
@@ -83,6 +86,7 @@
   background: var(--surface-container);
   display: flex;
   min-height: 0;
+  overflow: hidden;
 }
 
 .main-column {
@@ -128,6 +132,10 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  /* Without this a flex item's automatic minimum size is its content's
+     min-content width, so a long name makes the whole list wider than the
+     sidebar instead of ellipsising inside it. */
+  min-width: 0;
 }
 
 .bufferlist-scroll {
@@ -403,6 +411,12 @@
   opacity: 0.8;
 }
 
+/* Matrix reply fallbacks quote the whole original message, so without this the
+   preview runs off the edge of the window rather than ellipsising. */
+.reply-preview .ellipsis {
+  min-width: 0;
+}
+
 .reply-from {
   font-weight: 600;
   flex: none;
@@ -548,6 +562,7 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  min-width: 0;
 }
 
 .nicklist-header {

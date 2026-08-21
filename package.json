@@ -3,14 +3,17 @@
   "version": "0.1.0",
   "description": "Unified desktop chat client for IRC, Discord, Sneedchat and Matrix",
   "author": "Salastil",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
+  "homepage": "https://git.salastil.com/Salastil/moho",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "pack": "npm run build && electron-builder --linux AppImage"
+    "pack": "npm run build && electron-builder --linux AppImage",
+    "pack:dir": "npm run build && electron-builder --linux dir",
+    "daemon": "cargo build --release --manifest-path nobilis/Cargo.toml"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
@@ -37,7 +40,7 @@
     ],
     "extraResources": [
       {
-        "from": "resources/sockchat-smilies",
+        "from": "nobilis/resources/sockchat-smilies",
         "to": "sockchat-smilies"
       },
       {
@@ -45,15 +48,20 @@
         "to": "icons"
       },
       {
-        "from": "target/release/chatd",
-        "to": "chatd"
+        "from": "nobilis/target/release/nobilis",
+        "to": "nobilis"
       }
     ],
     "linux": {
       "target": [
         "AppImage"
       ],
-      "category": "Network"
+      "category": "Network",
+      "icon": "resources/icons/moho.png",
+      "desktop": {
+        "Name": "moho",
+        "Comment": "Unified chat client for IRC, Discord, Sneedchat and Matrix"
+      }
     }
   },
   "allowScripts": {

@@ -26,7 +26,7 @@ export function TitleBar(): JSX.Element {
         <Icon name="chat" size={20} color="var(--primary)" />
         <span className="titlebar-title">moho</span>
         {!linkUp && (
-          <span className="titlebar-status" title="Not connected to the chatd daemon">
+          <span className="titlebar-status" title="Not connected to the nobilis daemon">
             <Icon name="cloud_off" size={14} />
             disconnected
           </span>

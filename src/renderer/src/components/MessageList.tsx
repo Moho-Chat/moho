@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { MessageRow } from './MessageRow'
 import { useChat, usePref, useStore } from '../state/hooks'
+import { isChatKind } from '../lib/util'
 import type { ChatMessage } from '../state/store'
 
 /**
@@ -40,7 +41,7 @@ export function MessageList(): JSX.Element {
   const dividerTs = dividerTsByBuffer[bufferId] || 0
   const isLoadingMore = !!loadingMore[bufferId]
 
-  // Message-kind filters. chatd always emits and persists every message
+  // Message-kind filters. nobilis always emits and persists every message
   // regardless of kind, so which to render is purely a client decision and
   // toggling one takes effect immediately - no reconnect, no replay.
   const [showJoin] = usePref<boolean>('irc.showJoinMessages', true)
@@ -72,7 +73,7 @@ export function MessageList(): JSX.Element {
     return all.filter((m) => {
       if (accountId && blockedNicks.includes(`${accountId}|${m.from}`)) return false
       const kind = m.kind || 'chat'
-      if (kind === 'chat' || kind === 'system') return true
+      if (isChatKind(kind) || kind === 'system') return true
       return allowed[kind] !== false
     })
   }, [
@@ -205,8 +206,8 @@ function isGrouped(messages: ChatMessage[], index: number): boolean {
     prev.from === cur.from &&
     !cur.isAction &&
     !prev.isAction &&
-    cur.kind === 'chat' &&
-    prev.kind === 'chat' &&
+    isChatKind(cur.kind) &&
+    isChatKind(prev.kind) &&
     cur.ts - prev.ts < GROUP_WINDOW_SECS
   )
 }

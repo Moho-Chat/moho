@@ -17,7 +17,7 @@ export function AccountsPanel(): JSX.Element {
       <div className="panel-section">
         {accounts.length === 0 && (
           <p className="muted">
-            No accounts yet. Pick a service below to connect one — chatd keeps the connection alive
+            No accounts yet. Pick a service below to connect one — nobilis keeps the connection alive
             in the background, so it survives closing this window.
           </p>
         )}
@@ -359,10 +359,14 @@ function MatrixForm(): JSX.Element {
       </label>
       <div className="field-row">
         <label className="field">
-          <span className="small muted">User ID</span>
+          <span className="small muted">Username</span>
           <input
             className="text-field"
-            placeholder="@you:matrix.org"
+            // Just the localpart. nobilis sends this as an m.id.user identifier,
+            // which the homeserver resolves against itself, and the login
+            // response hands back the full MXID - so there's nothing for the
+            // user to type twice.
+            placeholder="you"
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
           />
@@ -383,7 +387,13 @@ function MatrixForm(): JSX.Element {
         disabled={!userId || !password}
         onClick={() =>
           void window.moho
-            .rpc('addMatrixAccount', { homeserverUrl, userId, password })
+            .rpc('addMatrixAccount', {
+              homeserverUrl,
+              // Tolerate a pasted full MXID as well as a bare username: strip
+              // the leading @ and anything from the first ':' onward.
+              userId: userId.replace(/^@/, '').split(':')[0],
+              password
+            })
             .then(() => store.setMatrixLoginStatus('Logging in…'))
             .catch((e: Error) => store.toast('error', e.message))
         }

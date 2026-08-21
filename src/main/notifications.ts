@@ -11,8 +11,8 @@ import type { Buffer as ChatBuffer } from '../shared/wire'
  *
  * This lives in main rather than the renderer deliberately: it has to stay
  * accurate while the window is closed, which is the whole point of a tray
- * alert. chatd only emits "notification" for an inbound DM or a highlighted
- * mention (never plain traffic - see chatd/src/runtime.rs's record_message),
+ * alert. nobilis only emits "notification" for an inbound DM or a highlighted
+ * mention (never plain traffic - see nobilis/src/runtime.rs's record_message),
  * so this event stream is already the right granularity to count.
  */
 
@@ -27,7 +27,7 @@ export interface NotificationPayload {
 export class Notifier {
   /** Every bufferId holding an un-acknowledged DM/mention. */
   private unread = new Set<string>()
-  /** Mirror of chatd's buffer list, for resolving an account's server buffer. */
+  /** Mirror of nobilis's buffer list, for resolving an account's server buffer. */
   private buffers = new Map<string, ChatBuffer>()
   private avatarFetchInFlight = false
   private avatarSeq = 0

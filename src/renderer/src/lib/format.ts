@@ -274,9 +274,9 @@ export function extractMedia(
   // against an unrecognised BBCode tag ("...webp[/url]") would otherwise be
   // swallowed whole, corrupting the extension check.
   //
-  // `file://` alongside `https?://` - chatd rewrites a Kiwi Farms attachment
+  // `file://` alongside `https?://` - nobilis rewrites a Kiwi Farms attachment
   // link into a local cached path once it's fetched through Tor. That only
-  // ever originates from chatd's own substitution, never from a remote
+  // ever originates from nobilis's own substitution, never from a remote
   // message's raw text.
   const urls = text.match(/(?:https?|file):\/\/[^\s<[\]]+/g) || []
   const result: MediaItem[] = []
@@ -303,7 +303,7 @@ export function extractMedia(
       result.push({ url, kind: 'image' })
     } else if (opts.contentSniffing && /^https?:\/\//i.test(url)) {
       // Nothing else could classify this. Not for file:// URLs: those are
-      // always chatd's own already-classified attachment paths.
+      // always nobilis's own already-classified attachment paths.
       const sniffed = opts.sniffed?.[url]
       if (sniffed === 'image' || sniffed === 'video') {
         seen.add(url)

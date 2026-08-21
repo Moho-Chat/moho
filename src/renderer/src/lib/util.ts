@@ -66,6 +66,19 @@ export function serviceLabel(service: string): string {
   }
 }
 
+/**
+ * Whether a message kind represents something a person actually said, as
+ * opposed to a log line (a join, a topic change, a server notice).
+ *
+ * The backends disagree on the label: IRC, Discord and Sneedchat record an
+ * ordinary message as "chat", Matrix as "message". Both mean the same thing,
+ * and treating Matrix's as anything else renders every Matrix message as a
+ * grey system line with no author or avatar.
+ */
+export function isChatKind(kind: string | undefined): boolean {
+  return kind === 'chat' || kind === 'message'
+}
+
 export function bufferKindGlyph(kind: string): string {
   if (kind === 'server') return 'dns'
   if (kind === 'dm') return 'alternate_email'
@@ -84,7 +97,7 @@ export function nickColor(nick: string): string {
 }
 
 /**
- * chatd hands back local file:// paths for media it fetched on our behalf
+ * nobilis hands back local file:// paths for media it fetched on our behalf
  * (Tor-routed Sneedchat avatars/attachments, Matrix media, the Discord QR).
  * The renderer can't load file:// under contextIsolation, so route those
  * through main's guarded moho-media scheme instead. Remote http(s) URLs and

@@ -1,7 +1,7 @@
 import type {
   Account,
   Buffer as WireBuffer,
-  ChatdEvent,
+  NobilisEvent,
   CustomEmoji,
   Member,
   Message,
@@ -22,7 +22,7 @@ import { resolveMediaUrl } from '../lib/util'
  * is non-obvious the reason is noted at the handler.
  */
 
-/** A wire Buffer plus the local-only counters chatd doesn't track. */
+/** A wire Buffer plus the local-only counters nobilis doesn't track. */
 export interface BufferEntry extends WireBuffer {
   unread: number
   highlight: boolean
@@ -30,7 +30,7 @@ export interface BufferEntry extends WireBuffer {
 
 /** A wire Message plus local optimistic-send bookkeeping. */
 export interface ChatMessage extends Message {
-  /** Set on a locally-echoed message that chatd hasn't confirmed yet. */
+  /** Set on a locally-echoed message that nobilis hasn't confirmed yet. */
   pending?: boolean
   /** Set once the send definitively failed or timed out. */
   failed?: boolean
@@ -65,7 +65,7 @@ export interface ChatState {
   smilieIndex: SmilieIndex | null
   /** Per-buffer Discord guild emoji, fetched lazily per buffer. */
   bufferEmoji: Record<string, CustomEmoji[]>
-  /** The one in-flight Matrix verification, if any (chatd allows one per account). */
+  /** The one in-flight Matrix verification, if any (nobilis allows one per account). */
   matrixVerification: MatrixVerification | null
 
   // Login flows
@@ -107,7 +107,7 @@ const INITIAL: ChatState = {
 }
 
 /**
- * Scrollback kept in memory per buffer. Older messages stay in chatd's SQLite
+ * Scrollback kept in memory per buffer. Older messages stay in nobilis's SQLite
  * store and come back through getBacklog when the user scrolls up, so this cap
  * bounds memory without losing history.
  */
@@ -184,7 +184,7 @@ export class ChatStore {
         ...b
       }))
       this.set({ buffers })
-      // "message" is a scoped event - chatd only delivers it for buffers this
+      // "message" is a scoped event - nobilis only delivers it for buffers this
       // connection explicitly subscribed to. Without subscribing to every
       // buffer up front, one that's never been opened would never bump its
       // own unread count.
@@ -196,7 +196,7 @@ export class ChatStore {
 
   // --- push events ----------------------------------------------------
 
-  private handleEvent(frame: ChatdEvent): void {
+  private handleEvent(frame: NobilisEvent): void {
     const { event, data } = frame
     switch (event) {
       case 'message':
@@ -244,8 +244,11 @@ export class ChatStore {
         this.handleConnectionState(data)
         break
 
+      // nobilis names these fields `qrCodePath` and `detail`; reading `path`
+      // and `status` silently yielded empty strings, which is why the QR
+      // never appeared and login progress text stayed blank.
       case 'discordLoginQr':
-        this.set({ discordQrPath: data.path || '', discordLoginStatus: 'Scan the code' })
+        this.set({ discordQrPath: data.qrCodePath || '', discordLoginStatus: 'Scan the code' })
         break
       case 'discordLoginScanned':
         this.set({ discordLoginStatus: 'Scanned - approve it on your phone' })
@@ -256,7 +259,7 @@ export class ChatStore {
         break
 
       case 'sockChatLoginStatus':
-        this.set({ sockChatLoginStatus: data.status || '' })
+        this.set({ sockChatLoginStatus: data.detail || '' })
         break
       case 'sockChatLoginResult':
         this.set({ sockChatLoginStatus: data.error || '' })
@@ -294,7 +297,7 @@ export class ChatStore {
         break
 
       case 'matrixLoginStatus':
-        this.set({ matrixLoginStatus: data.status || '' })
+        this.set({ matrixLoginStatus: data.detail || '' })
         break
       case 'matrixLoginResult':
         this.set({ matrixLoginStatus: data.error || '' })
@@ -327,7 +330,7 @@ export class ChatStore {
   private handleConnectionState(data: { accountId: string; state: string; error?: string }): void {
     const { accounts } = this.state
     // Upsert rather than map-update: this connection also observes accounts
-    // added elsewhere (chatd reconnecting saved accounts at startup, another
+    // added elsewhere (nobilis reconnecting saved accounts at startup, another
     // client) that this session's list never had to begin with.
     if (accounts.some((a) => a.id === data.accountId)) {
       this.set({
@@ -360,7 +363,7 @@ export class ChatStore {
 
   private appendMessage(bufferId: string, msg: Message): void {
     const existing = this.state.messagesByBuffer[bufferId] || []
-    // chatd can re-broadcast a message we already hold (a reconnect replaying
+    // nobilis can re-broadcast a message we already hold (a reconnect replaying
     // recent history); appending it again would show a visible duplicate.
     if (existing.some((m) => m.id === msg.id)) return
 
@@ -417,7 +420,7 @@ export class ChatStore {
   }
 
   /**
-   * chatd returns a bare filename per smiley - the table is bundled with the
+   * nobilis returns a bare filename per smiley - the table is bundled with the
    * client, not fetched from the site, so resolving it against our own
    * resource directory is the client's job. Fetched once per session.
    */
@@ -449,7 +452,7 @@ export class ChatStore {
       const emoji = await window.moho.rpc<CustomEmoji[]>('listBufferEmoji', { bufferId })
       this.set({ bufferEmoji: { ...this.state.bufferEmoji, [bufferId]: emoji } })
     } catch {
-      /* a guild with no custom emoji, or a buffer chatd has no emoji for */
+      /* a guild with no custom emoji, or a buffer nobilis has no emoji for */
     }
   }
 
@@ -525,7 +528,7 @@ export class ChatStore {
   /**
    * Optimistic local echo, the way Discord's own client does it: the message
    * appears dimmed the instant the user hits send, keyed by a client-generated
-   * id since chatd hasn't assigned a real one yet. It stays that way until
+   * id since nobilis hasn't assigned a real one yet. It stays that way until
    * either the real "message" event echoes it back (reconcileOwnEcho) or the
    * timeout sweep gives up on it.
    */
@@ -562,7 +565,7 @@ export class ChatStore {
         ...(replyToId ? { replyToId } : {})
       })
       // Success alone doesn't resolve the echo - only the real message event
-      // does, since that's what carries chatd's own id and timestamp.
+      // does, since that's what carries nobilis's own id and timestamp.
     } catch (e) {
       this.markSendFailed(clientId, (e as Error).message)
     }

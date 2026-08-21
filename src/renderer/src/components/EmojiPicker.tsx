@@ -93,13 +93,24 @@ export function EmojiPicker({ anchor, customEmoji = [], smilies = [], onSelect, 
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onClose()
     }
+    // Same capture-phase hazard as ContextMenu: dismissing on any mousedown
+    // would unmount the cell before its click could land, so a press inside
+    // the picker never selected anything. The anchor is excluded too, so the
+    // button that opened this stays a clean toggle rather than closing here
+    // and immediately reopening on its own click.
+    const onMouseDown = (e: MouseEvent): void => {
+      const target = e.target as Node
+      if (ref.current?.contains(target)) return
+      if (anchor?.contains(target)) return
+      onClose()
+    }
     window.addEventListener('keydown', onKey)
-    window.addEventListener('mousedown', onClose, true)
+    window.addEventListener('mousedown', onMouseDown, true)
     return () => {
       window.removeEventListener('keydown', onKey)
-      window.removeEventListener('mousedown', onClose, true)
+      window.removeEventListener('mousedown', onMouseDown, true)
     }
-  }, [onClose])
+  }, [onClose, anchor])
 
   const q = query.trim().toLowerCase()
 
@@ -137,7 +148,6 @@ export function EmojiPicker({ anchor, customEmoji = [], smilies = [], onSelect, 
       ref={ref}
       className="emoji-picker"
       style={{ left: pos.left, top: pos.top }}
-      onMouseDown={(e) => e.stopPropagation()}
     >
       <input
         className="text-field"

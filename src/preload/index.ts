@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc'
-import type { ChatdEvent } from '../shared/wire'
+import type { NobilisEvent } from '../shared/wire'
 
 /**
  * The entire surface the renderer gets. Deliberately narrow: no `ipcRenderer`
@@ -9,7 +9,7 @@ import type { ChatdEvent } from '../shared/wire'
  */
 const api = {
   /**
-   * Resolves to chatd's result, or rejects with chatd's own error text.
+   * Resolves to nobilis's result, or rejects with nobilis's own error text.
    * Errors travel as values over IPC (see main's handler) and are re-thrown
    * here so callers can just try/catch.
    */
@@ -19,8 +19,8 @@ const api = {
     return res.result as T
   },
 
-  onEvent(cb: (frame: ChatdEvent) => void): () => void {
-    const handler = (_e: unknown, frame: ChatdEvent): void => cb(frame)
+  onEvent(cb: (frame: NobilisEvent) => void): () => void {
+    const handler = (_e: unknown, frame: NobilisEvent): void => cb(frame)
     ipcRenderer.on(IPC.event, handler)
     return () => ipcRenderer.off(IPC.event, handler)
   },

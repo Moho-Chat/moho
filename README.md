@@ -30,12 +30,72 @@ resources/              bundled assets (Sneedchat smilies, icons)
 ## Building
 
 ```bash
-cargo build --release   # chatd
-npm install && npm run dev
+cargo build --release
+npm install
 ```
 
-`npm run dev` starts the renderer with hot reload and launches Electron, which in turn spawns
-`target/release/chatd`. `npm run build` produces a packaged app with the daemon bundled.
+If npm reports that install scripts were blocked, approve the two that fetch platform binaries —
+without them there is no Electron or esbuild to run:
+
+```bash
+npm install-scripts approve electron esbuild
+```
+
+### Running from source
+
+```bash
+npm run dev
+```
+
+Starts the renderer with hot reload and launches Electron, which spawns `target/release/chatd`.
+
+### Installing it properly
+
+Run `cargo build --release` first — the daemon is bundled from `target/release/chatd`, so a stale
+or missing binary ships a stale or missing daemon.
+
+**Arch (recommended):**
+
+```bash
+npm run pack
+sudo pacman -U dist/moho-0.1.0.pacman
+```
+
+Installs to `/opt/moho` with a desktop entry and icon, so moho shows up in your launcher. Remove
+it with `sudo pacman -R moho`.
+
+**Any distribution, no install:**
+
+```bash
+npm run pack:dir
+```
+
+Produces `dist/linux-unpacked/`, a self-contained directory — run `dist/linux-unpacked/moho`.
+No runtime dependencies beyond what Electron itself needs.
+
+**AppImage:**
+
+```bash
+npm run pack:appimage
+```
+
+Note that AppImages need `libfuse2` at runtime, which Arch and other recent distributions no
+longer install by default; without it the file refuses to start with a `libfuse.so.2` error.
+Either `sudo pacman -S fuse2`, or skip FUSE entirely:
+
+```bash
+APPIMAGE_EXTRACT_AND_RUN=1 ./dist/moho-0.1.0.AppImage
+```
+
+Every packaged form bundles `chatd`, the Sneedchat smilies and the icons under `resources/`, and
+the app resolves them from there rather than from the source tree.
+
+### One daemon, many clients
+
+chatd holds an `flock`-based singleton lock on its data directory, so launching a second client
+does not start a second daemon — it attaches to the running one. Quitting the app sends the
+daemon a clean shutdown (real QUITs to IRC, rather than dropping the connections), so your nick
+isn't left ghosted.
 
 ## The client
 

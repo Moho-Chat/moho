@@ -1,0 +1,3 @@
+[submodule "nobilis"]
+	path = nobilis
+	url = https://git.salastil.com/Salastil/nobilis.git

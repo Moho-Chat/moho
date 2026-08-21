@@ -1,4 +1,4 @@
-// The chatd wire contract, mirrored from chatd/src/model.rs. Field names and
+// The nobilis wire contract, mirrored from nobilis/src/model.rs. Field names and
 // shapes here are not negotiable - the daemon serializes exactly these.
 
 export interface Account {
@@ -144,7 +144,7 @@ export interface RoomPermissions {
 }
 
 /** A push frame: `{event, data}`. */
-export interface ChatdEvent {
+export interface NobilisEvent {
   event: string
   data: any
 }

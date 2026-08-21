@@ -168,7 +168,7 @@ export function Composer(): JSX.Element | null {
       {pickerOpen && (
         <EmojiPicker
           anchor={emojiButtonRef.current}
-          // Only the active buffer's own guild emoji are offered - chatd
+          // Only the active buffer's own guild emoji are offered - nobilis
           // already filters that list to what's actually usable there.
           customEmoji={bufferEmojiByBuffer[buffer.id] || []}
           // Smilies are Sneedchat-only; posting a shortcode anywhere else

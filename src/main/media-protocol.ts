@@ -5,9 +5,9 @@ import { net, protocol } from 'electron'
 import { pathToFileURL } from 'node:url'
 
 /**
- * chatd hands back local `file://` paths for media it has already fetched on
+ * nobilis hands back local `file://` paths for media it has already fetched on
  * the client's behalf - Tor-routed Sneedchat avatars and attachments, Matrix
- * media, the Discord login QR (see each chatd backend's own cache dir).
+ * media, the Discord login QR (see each nobilis backend's own cache dir).
  * The renderer has no route to any of those origins itself, which is why they
  * arrive as local files in the first place.
  *

@@ -14,8 +14,8 @@ import {
   Tray
 } from 'electron'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
-import { ChatdClient } from './chatd-client'
-import { ChatdProcess } from './chatd-process'
+import { NobilisClient } from './nobilis-client'
+import { NobilisProcess } from './nobilis-process'
 import { Prefs } from './prefs'
 import { Notifier } from './notifications'
 import { IPC } from '../shared/ipc'
@@ -27,8 +27,8 @@ registerMediaScheme()
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let prefs: Prefs
-let chatd: ChatdProcess
-let client: ChatdClient
+let nobilis: NobilisProcess
+let client: NobilisClient
 let notifier: Notifier
 let registeredHotkey: string | null = null
 
@@ -36,6 +36,18 @@ function resourcePath(...parts: string[]): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, ...parts)
     : path.join(app.getAppPath(), 'resources', ...parts)
+}
+
+/**
+ * The Sneedchat smiley images live in the nobilis repository, next to the table
+ * that names them, so the daemon's shortcode list and the files it refers to
+ * can't drift apart. Packaging copies them out of the submodule; in
+ * development they are read from the checkout in place.
+ */
+function smiliesPath(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'sockchat-smilies')
+    : path.join(app.getAppPath(), 'nobilis', 'resources', 'sockchat-smilies')
 }
 
 function send(channel: string, ...args: unknown[]): void {
@@ -108,7 +120,7 @@ function createTray(): void {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Show/hide', click: toggleWindow },
-      { label: 'Restart daemon', click: () => chatd.restart() },
+      { label: 'Restart daemon', click: () => nobilis.restart() },
       { type: 'separator' },
       {
         label: 'Quit',
@@ -148,7 +160,7 @@ function wireIpc(): void {
       return { ok: true, result: await client.request(method, params) }
     } catch (err) {
       // Surfaced as a value rather than a rejection so the renderer sees
-      // chatd's own error text (which is often the actionable part - "account
+      // nobilis's own error text (which is often the actionable part - "account
       // not connected", "no such buffer") instead of a generic IPC failure.
       return { ok: false, error: (err as Error).message }
     }
@@ -197,13 +209,13 @@ function wireIpc(): void {
     return file
   })
 
-  ipcMain.handle(IPC.restartDaemon, () => chatd.restart())
+  ipcMain.handle(IPC.restartDaemon, () => nobilis.restart())
   ipcMain.handle(IPC.daemonStatus, () => ({
-    binaryPath: chatd.binaryPath,
-    available: chatd.available(),
+    binaryPath: nobilis.binaryPath,
+    available: nobilis.available(),
     linkUp: client.linkUp
   }))
-  ipcMain.handle(IPC.smiliesDir, () => resourcePath('sockchat-smilies'))
+  ipcMain.handle(IPC.smiliesDir, () => smiliesPath())
 }
 
 app.whenReady().then(() => {
@@ -211,13 +223,14 @@ app.whenReady().then(() => {
   app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
 
   // Bundled Sneedchat smilies are served through the same guarded scheme as
-  // chatd's cached media, so the renderer needs no file access of its own.
+  // nobilis's cached media, so the renderer needs no file access of its own.
   allowRoot(resourcePath())
+  allowRoot(smiliesPath())
   installMediaHandler()
 
   prefs = new Prefs()
-  chatd = new ChatdProcess()
-  client = new ChatdClient()
+  nobilis = new NobilisProcess()
+  client = new NobilisClient()
 
   notifier = new Notifier(prefs, updateTray, (bufferId) => {
     mainWindow?.show()
@@ -239,7 +252,7 @@ app.whenReady().then(() => {
   })
 
   wireIpc()
-  chatd.start()
+  nobilis.start()
   client.start()
   createWindow()
   createTray()
@@ -258,5 +271,5 @@ app.on('will-quit', () => {
   globalShortcut.unregisterAll()
   prefs?.flushNow()
   client?.stop()
-  chatd?.stop()
+  nobilis?.stop()
 })

@@ -29,7 +29,7 @@ export default function App(): JSX.Element {
   const [savedBufferId] = usePref<string>('ui.activeBufferId', '')
 
   // Boot once prefs have loaded, so the restored buffer selection is available
-  // before the store asks chatd for its backlog.
+  // before the store asks nobilis for its backlog.
   useEffect(() => {
     if (!prefsReady || booted) return
     setBooted(true)
