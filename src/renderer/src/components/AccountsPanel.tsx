@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
-import { useChat, useStore } from '../state/hooks'
+import { useChat, usePref, useStore } from '../state/hooks'
 import { resolveMediaUrl, serviceIcon, serviceLabel } from '../lib/util'
 import type { Account } from '../../../shared/wire'
 
@@ -50,6 +50,70 @@ export function AccountsPanel(): JSX.Element {
         {adding === 'sockchat' && <SockChatForm />}
         {adding === 'matrix' && <MatrixForm />}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Per-server icon overrides for one account.
+ *
+ * Lives here rather than in Settings because the thing being renamed belongs
+ * to an account - and because a rail tile is too small to hang an edit
+ * affordance off without getting in the way of dragging it.
+ *
+ * Discord and Matrix supply icons of their own; this outranks them, and is the
+ * only way to give an icon to something that has none - an IRC network, a
+ * Sneedchat account, a guild whose owner never set one.
+ */
+function GroupIcons({ accountId }: { accountId: string }): JSX.Element | null {
+  const store = useStore()
+  const groups = useChat((s) => s.groups)
+  const [icons, setIcons] = usePref<Record<string, string>>('groupIcons', {})
+
+  const mine = groups.filter((g) => g.accountId === accountId)
+  if (!mine.length) return null
+
+  const choose = (groupId: string): void => {
+    void window.moho.importGroupIcon(groupId).then((res) => {
+      if (res.error) store.toast('error', res.error)
+      // No path and no error means the picker was dismissed.
+      else if (res.path) setIcons({ ...icons, [groupId]: res.path })
+    })
+  }
+
+  const clear = (groupId: string): void => {
+    const next = { ...icons }
+    delete next[groupId]
+    setIcons(next)
+  }
+
+  return (
+    <div className="group-icons">
+      <div className="small muted">Server icons</div>
+      {mine.map((g) => {
+        const custom = icons[g.id]
+        const shown = custom || g.iconUrl
+        return (
+          <div key={g.id} className="group-icon-row">
+            <span className="group-icon-preview">
+              {shown ? (
+                <img src={resolveMediaUrl(shown)} alt="" />
+              ) : (
+                <Icon name={g.kind === 'dms' ? 'forum' : 'tag'} size={16} />
+              )}
+            </span>
+            <span className="ellipsis group-icon-name">{g.name}</span>
+            <button type="button" className="button subtle" onClick={() => choose(g.id)}>
+              {custom ? 'Replace' : 'Upload'}
+            </button>
+            {custom && (
+              <button type="button" className="button subtle" onClick={() => clear(g.id)}>
+                Reset
+              </button>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -107,6 +171,8 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
             placeholder="Shown in the sidebar"
             onCommit={(name) => call('setAccountDisplayName', { accountId: account.id, name })}
           />
+
+          <GroupIcons accountId={account.id} />
 
           {account.service === 'irc' && (
             <>

@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { useChat, useIdSetPref, usePref, useStore } from '../state/hooks'
-import { PINNED_GROUP_ID, pinnedGroup, visibleGroups } from '../lib/groups'
+import { isMutedBuffer, PINNED_GROUP_ID, pinnedGroup, visibleGroups } from '../lib/groups'
 import type { BufferEntry } from '../state/store'
 import {
   bufferDisplayName,
@@ -30,7 +30,7 @@ export function BufferList(): JSX.Element {
   const activeGroupId = useChat((s) => s.activeGroupId)
 
   const [pinned, togglePin, isPinned] = useIdSetPref('pinnedBuffers')
-  const [, toggleMute, isMuted] = useIdSetPref('mutedBuffers')
+  const [muted, toggleMute] = useIdSetPref('mutedBuffers')
   const [hidden, , isHidden] = useIdSetPref('hiddenBuffers')
   const [, setHidden] = usePref<string[]>('hiddenBuffers', [])
 
@@ -73,19 +73,11 @@ export function BufferList(): JSX.Element {
     )
   }, [visible, activeGroup, isPinnedPage, pinned])
 
-  /**
-   * Muting a server buffer cascades to every channel and DM under that
-   * account, matching how muting a whole IRC network is normally
-   * all-or-nothing. The menu still toggles a buffer's *own* flag independently
-   * of the cascade, the same way muting a channel inside an already-muted
-   * Slack workspace works.
-   */
-  const isEffectivelyMuted = (buffer: BufferEntry): boolean => {
-    if (isMuted(buffer.id)) return true
-    if (buffer.kind === 'server') return false
-    const server = buffers.find((b) => b.accountId === buffer.accountId && b.kind === 'server')
-    return server ? isMuted(server.id) : false
-  }
+  // The menu still toggles a buffer's *own* flag independently of the
+  // cascade, the same way muting a channel inside an already-muted Slack
+  // workspace works.
+  const isEffectivelyMuted = (buffer: BufferEntry): boolean =>
+    isMutedBuffer(buffer, buffers, muted)
 
   const hideBuffer = (id: string): void => {
     if (!isHidden(id)) setHidden([...hidden, id])

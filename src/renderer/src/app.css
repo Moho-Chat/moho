@@ -1701,25 +1701,34 @@ video.lightbox-media {
   letter-spacing: 0.02em;
 }
 
-.rail-badge {
+/* Which service a tile belongs to, in the corner. Small and quiet - it
+   identifies, it does not demand attention the way a count does. */
+.rail-service {
   position: absolute;
-  right: 2px;
-  bottom: 0;
-  min-width: 16px;
-  padding: 0 4px;
-  border-radius: 999px;
+  right: 1px;
+  bottom: -1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
   background: var(--surface-container-highest);
-  color: var(--surface-text);
+  color: var(--surface-variant-text);
   border: 2px solid var(--surface-container-lowest);
-  font-size: 10px;
-  line-height: 14px;
-  text-align: center;
 }
 
-.rail-badge.highlight {
+.rail-service img {
+  width: 11px;
+  height: 11px;
+  object-fit: contain;
+  display: block;
+}
+
+/* A waiting mention is worth more than a quiet service label. */
+.rail-service.highlight {
   background: var(--primary);
   color: var(--primary-text);
-  font-weight: 600;
 }
 
 /* The selected rail entry, naming what the channel list below belongs to. */
@@ -1765,4 +1774,43 @@ video.lightbox-media {
   height: 2px;
   border-radius: 2px;
   background: var(--primary);
+}
+
+/* Per-server icon overrides, inside an account's card. */
+.group-icons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  margin-top: var(--spacing-s);
+}
+
+.group-icon-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+.group-icon-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.group-icon-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  overflow: hidden;
+  border-radius: 30%;
+  background: var(--surface-container-high);
+  color: var(--surface-variant-text);
+}
+
+.group-icon-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }

@@ -58,6 +58,8 @@ const api = {
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke(IPC.openExternal, url),
   pickFile: (): Promise<string | null> => ipcRenderer.invoke(IPC.pickFile),
   pickDirectory: (): Promise<string | null> => ipcRenderer.invoke(IPC.pickDirectory),
+  importGroupIcon: (groupId: string): Promise<{ path?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC.importGroupIcon, groupId),
   defaultDownloadDir: (): Promise<string> => ipcRenderer.invoke(IPC.defaultDownloadDir),
   downloadMedia: (source: string, filename?: string): Promise<{ path?: string; error?: string }> =>
     ipcRenderer.invoke(IPC.downloadMedia, source, filename),

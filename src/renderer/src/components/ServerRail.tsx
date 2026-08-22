@@ -9,6 +9,7 @@ import {
   pinnedGroup,
   reorder,
   visibleGroups,
+  countsTowardRail,
   type RailGroup
 } from '../lib/groups'
 import type { BufferEntry } from '../state/store'
@@ -32,6 +33,8 @@ function initials(name: string): string {
 
 interface TileProps {
   group: RailGroup
+  /** A picture the user chose, which outranks whatever the service supplies. */
+  customIcon?: string
   active: boolean
   unread: number
   highlight: boolean
@@ -45,15 +48,20 @@ interface TileProps {
 }
 
 function RailTile(props: TileProps): JSX.Element {
-  const { group, active, unread, highlight, draggable, dropTarget } = props
+  const { group, active, unread, highlight, draggable, dropTarget, customIcon } = props
   const service = serviceIcon(group.service)
+  // An account tile already *is* the service mark, and pinned spans all of
+  // them, so neither gains anything from the corner badge.
+  const badge = group.kind === 'account' || group.kind === 'pinned' ? null : service
 
   // Precedence is deliberate: a real icon, else the mark for an entry that
   // stands for a whole account, else initials. A guild is a name first -
   // showing every icon-less guild the same Discord logo would make them
   // indistinguishable, which is the one thing the rail exists to avoid.
   let content: JSX.Element
-  if (group.kind === 'pinned') {
+  if (customIcon) {
+    content = <img className="rail-icon" src={resolveMediaUrl(customIcon)} alt="" />
+  } else if (group.kind === 'pinned') {
     content = <Icon name="push_pin" size={22} />
   } else if (group.iconUrl) {
     content = <img className="rail-icon" src={resolveMediaUrl(group.iconUrl)} alt="" />
@@ -104,9 +112,20 @@ function RailTile(props: TileProps): JSX.Element {
           reads at a glance without opening anything. */}
       <span className={`rail-pill${active ? ' active' : unread ? ' unread' : ''}`} />
       <span className="rail-face">{content}</span>
-      {unread > 0 && !active && (
-        <span className={`rail-badge${highlight ? ' highlight' : ''}`}>
-          {unread > 99 ? '99+' : unread}
+      {/* Which service this belongs to, rather than a count. The unread
+          count lives on the channel rows; up here the pill already says
+          something is waiting, and what a tile needs to answer at a glance
+          is "whose server is this". Skipped where the face is already the
+          service mark, and on the cross-service pinned page. */}
+      {badge && (
+        <span className={`rail-service${highlight ? ' highlight' : ''}`}>
+          {badge.colour && badge.mark ? (
+            <img src={badge.mark} alt="" />
+          ) : badge.mark ? (
+            <MaskIcon src={badge.mark} size={11} color="var(--surface-text)" />
+          ) : (
+            <Icon name={badge.glyph!} size={11} />
+          )}
         </span>
       )}
     </button>
@@ -123,6 +142,9 @@ export function ServerRail(): JSX.Element | null {
   const buffers = useChat((s) => s.buffers)
   const [railOrder, setRailOrder] = usePref<string[]>('ui.railOrder', [])
   const [pinned] = usePref<string[]>('pinnedBuffers', [])
+  const [muted] = usePref<string[]>('mutedBuffers', [])
+  const [hidden] = usePref<string[]>('hiddenBuffers', [])
+  const [customIcons] = usePref<Record<string, string>>('groupIcons', {})
 
   // The authoritative dragged id lives in a ref, not in state: dragstart and
   // drop are separate events, and reading it from state means depending on a
@@ -152,7 +174,11 @@ export function ServerRail(): JSX.Element | null {
     t.highlight = t.highlight || b.highlight
     totals.set(key, t)
   }
-  for (const b of buffers as BufferEntry[]) {
+  const all = buffers as BufferEntry[]
+  for (const b of all) {
+    // Only what the pane below would show: a hidden buffer has no row to
+    // reach, and a muted one is not asking for attention.
+    if (!countsTowardRail(b, all, muted, hidden)) continue
     if (b.groupId) bump(b.groupId, b)
     // A pinned buffer counts twice over - once where it lives, once on the
     // pinned page - because both tiles are places the user would look for it.
@@ -179,6 +205,7 @@ export function ServerRail(): JSX.Element | null {
           <RailTile
             key={g.id}
             group={g}
+            customIcon={customIcons[g.id]}
             active={g.id === activeGroupId}
             unread={t?.unread ?? 0}
             highlight={t?.highlight ?? false}

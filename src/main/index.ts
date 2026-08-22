@@ -1,5 +1,6 @@
 import path from 'node:path'
 import fs from 'node:fs'
+import fsp from 'node:fs/promises'
 import os from 'node:os'
 import {
   app,
@@ -70,6 +71,24 @@ function smiliesPath(): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, 'sockchat-smilies')
     : path.join(app.getAppPath(), 'nobilis', 'resources', 'sockchat-smilies')
+}
+
+/**
+ * The image format a file's own leading bytes call for, or null.
+ *
+ * By content rather than by extension: the picker filters on names, which say
+ * nothing about what is actually inside.
+ */
+function sniffImage(head: Buffer): string | null {
+  const ascii = head.subarray(0, 12).toString('latin1')
+  if (head[0] === 0x89 && ascii.slice(1, 4) === 'PNG') return 'png'
+  if (head[0] === 0xff && head[1] === 0xd8) return 'jpg'
+  if (ascii.startsWith('GIF8')) return 'gif'
+  if (ascii.startsWith('RIFF') && ascii.slice(8, 12) === 'WEBP') return 'webp'
+  if (ascii.slice(4, 8) === 'ftyp' && ascii.slice(8, 12).startsWith('avi')) return 'avif'
+  // SVG is text, so there are no magic bytes - look for the root element.
+  if (/^\s*(<\?xml|<svg)/i.test(ascii)) return 'svg'
+  return null
 }
 
 function send(channel: string, ...args: unknown[]): void {
@@ -274,6 +293,46 @@ function wireIpc(): void {
       }
     )
   )
+
+  /**
+   * Picks an image and keeps a copy as a rail entry's icon.
+   *
+   * Copied into the app's own directory rather than referenced where it sits:
+   * the original may be on removable media, in a temp folder, or simply moved
+   * later, and an icon that silently disappears is worse than none. That
+   * directory is already a permitted media root, so the renderer can load it
+   * back through the same guarded scheme as everything else.
+   */
+  ipcMain.handle(IPC.importGroupIcon, async (_e, groupId: string) => {
+    if (!mainWindow) return { error: 'no window' }
+    const res = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'] }]
+    })
+    if (res.canceled || !res.filePaths[0]) return {}
+    try {
+      const source = res.filePaths[0]
+      // Trust the bytes, not the extension - a file named .png that isn't one
+      // would render as a broken tile with nothing to explain why.
+      const head = await fsp.readFile(source, { flag: 'r' }).then((b) => b.subarray(0, 16))
+      const kind = sniffImage(head)
+      if (!kind) return { error: 'that file is not an image moho can display' }
+
+      const dir = path.join(app.getPath('userData'), 'group-icons')
+      await fsp.mkdir(dir, { recursive: true })
+      // Named for the group, so replacing an icon leaves nothing behind, with
+      // a cache-buster since the path is what the renderer keys on.
+      const safe = groupId.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 80)
+      for (const stale of await fsp.readdir(dir).catch(() => [])) {
+        if (stale.startsWith(`${safe}.`)) await fsp.rm(path.join(dir, stale)).catch(() => {})
+      }
+      const target = path.join(dir, `${safe}.${Date.now()}.${kind}`)
+      await fsp.copyFile(source, target)
+      return { path: target }
+    } catch (e) {
+      return { error: (e as Error).message }
+    }
+  })
 
   ipcMain.handle(IPC.readClipboardImage, () => {
     const img = clipboard.readImage()

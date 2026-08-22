@@ -111,3 +111,40 @@ export function reorder(groups: RailGroup[], draggedId: string, targetId: string
   movable.splice(to, 0, movable.splice(from, 1)[0])
   return movable
 }
+
+
+/**
+ * Whether a buffer is muted, directly or by its account's server buffer.
+ *
+ * Muting a server cascades to every channel and DM under that account,
+ * matching how muting a whole IRC network is normally all-or-nothing.
+ *
+ * Shared by the rail and the channel pane for the same reason the visibility
+ * rule is: they disagreed before, and the rail counted unread from muted
+ * buffers while the rows underneath refused to badge them - so a tile could
+ * read 40 waiting with nothing beneath it to explain where.
+ */
+export function isMutedBuffer(
+  buffer: BufferEntry,
+  all: BufferEntry[],
+  muted: string[]
+): boolean {
+  if (muted.includes(buffer.id)) return true
+  if (buffer.kind === 'server') return false
+  const server = all.find((b) => b.accountId === buffer.accountId && b.kind === 'server')
+  return server ? muted.includes(server.id) : false
+}
+
+/**
+ * The buffers whose unread should reach a rail tile: what the pane below it
+ * would actually list. A hidden buffer has no row to click through to, and a
+ * muted one deliberately does not ask for attention.
+ */
+export function countsTowardRail(
+  buffer: BufferEntry,
+  all: BufferEntry[],
+  muted: string[],
+  hidden: string[]
+): boolean {
+  return !hidden.includes(buffer.id) && !isMutedBuffer(buffer, all, muted)
+}
