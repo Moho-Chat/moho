@@ -101,10 +101,10 @@ export function Lightbox({ source, onClose }: Props): JSX.Element {
         </span>
       </div>
 
-      <div
-        className={`lightbox-stage${zoomed ? ' zoomed' : ''}`}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+      {/* The stage fills the backdrop, so it must not stop the click itself -
+          the empty space around the media is part of "outside", and clicking
+          there closes. Only the media and the toolbar hold their clicks. */}
+      <div className={`lightbox-stage${zoomed ? ' zoomed' : ''}`}>
         {source.kind === 'video' ? (
           <video
             className="lightbox-media"
@@ -112,6 +112,8 @@ export function Lightbox({ source, onClose }: Props): JSX.Element {
             controls
             autoPlay
             loop={source.loop}
+            // Reaching for the scrubber must not dismiss the video.
+            onMouseDown={(e) => e.stopPropagation()}
           />
         ) : (
           <img
@@ -126,6 +128,8 @@ export function Lightbox({ source, onClose }: Props): JSX.Element {
               })
             }
             onClick={toggleZoom}
+            // The picture itself is not "outside": clicking it zooms.
+            onMouseDown={(e) => e.stopPropagation()}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
