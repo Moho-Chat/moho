@@ -146,6 +146,8 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
             </>
           )}
 
+          {account.service === 'discord' && <DiscordReauth account={account} />}
+
           {account.service === 'matrix' && <MatrixAccountTools account={account} />}
 
           <button
@@ -253,32 +255,221 @@ function IrcForm({ onDone }: { onDone: () => void }): JSX.Element {
  * Inherently multi-step and asynchronous: the RPC just kicks it off, and the
  * QR image plus the eventual result arrive as push events.
  */
-function DiscordForm(): JSX.Element {
+/**
+ * Re-authentication for an existing Discord account, folded out in place.
+ *
+ * This is where it is actually needed: a revoked token shows up as the account
+ * sitting at "auth_failed" in this list, so the fix belongs on the row that
+ * reports the problem rather than in the add-an-account section, where it
+ * would read as adding a second copy.
+ */
+function DiscordReauth({ account }: { account: Account }): JSX.Element {
+  const store = useStore()
+  const reauthing = useChat((s) => s.discordReauthAccountId) === account.id
+  const revoked = account.state === 'auth_failed'
+
+  if (!reauthing) {
+    return (
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Sign-in</div>
+          <div className="small muted">
+            {revoked
+              ? 'Discord revoked this login. Re-authenticate to reconnect.'
+              : 'Replace this account\u2019s login without removing it.'}
+          </div>
+        </div>
+        <button
+          type="button"
+          className={revoked ? 'button' : 'button subtle'}
+          onClick={() => store.setDiscordReauth(account.id)}
+        >
+          Re-authenticate
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="matrix-tools">
+      <DiscordForm accountId={account.id} />
+      <button type="button" className="button subtle" onClick={() => store.setDiscordReauth('')}>
+        Cancel
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Discord sign-in, in either of the two ways Discord itself allows, plus the
+ * two-factor step that either can land on.
+ *
+ * Doubles as the re-authentication form: when `accountId` is set the login is
+ * bound to that existing account, so a revoked token is replaced rather than a
+ * second copy of the account appearing beside the dead one.
+ */
+function DiscordForm({ accountId }: { accountId?: string }): JSX.Element {
   const store = useStore()
   const qrPath = useChat((s) => s.discordQrPath)
   const status = useChat((s) => s.discordLoginStatus)
+  const mfa = useChat((s) => s.discordMfa)
+  const [method, setMethod] = useState<'qr' | 'password'>('qr')
+  const [login, setLogin] = useState('')
+  const [password, setPassword] = useState('')
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const target = accountId ? { accountId } : {}
+  const fail = (e: Error): void => {
+    store.toast('error', e.message)
+    setBusy(false)
+  }
+
+  // The two-factor step replaces the form: the login is already in flight and
+  // only needs the code to finish.
+  if (mfa) {
+    return (
+      <div className="add-form">
+        <p className="small muted">
+          {mfa.totp
+            ? 'Enter the 6-digit code from your authenticator app.'
+            : 'Enter your verification code.'}
+          {mfa.backup && ' A backup code works here too.'}
+        </p>
+        <div className="field-row">
+          <input
+            className="text-field"
+            autoFocus
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder="123456"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && code.trim()) {
+                void window.moho
+                  .rpc('submitDiscordMfa', { loginId: mfa.loginId, code })
+                  .catch(fail)
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="button"
+            disabled={!code.trim()}
+            onClick={() =>
+              void window.moho.rpc('submitDiscordMfa', { loginId: mfa.loginId, code }).catch(fail)
+            }
+          >
+            Verify
+          </button>
+        </div>
+        {/* When re-authenticating, the surrounding block already offers a
+            Cancel that backs out of the whole thing - two stacked Cancels
+            would just be a question of which one you meant. */}
+        {!accountId && (
+          <button
+            type="button"
+            className="button subtle"
+            onClick={() => {
+              store.clearDiscordMfa()
+              setCode('')
+            }}
+          >
+            Cancel
+          </button>
+        )}
+        {status && <p className="small muted">{status}</p>}
+      </div>
+    )
+  }
 
   return (
     <div className="add-form">
-      <p className="small muted">
-        Scan this code with the Discord mobile app (Settings → Scan QR Code), then approve the
-        login on your phone.
-      </p>
-      {qrPath ? (
-        <img className="qr-image" src={resolveMediaUrl(qrPath)} alt="Discord login QR code" />
-      ) : (
+      <div className="setting-segmented">
         <button
           type="button"
-          className="button"
-          onClick={() =>
-            void window.moho
-              .rpc('addDiscordAccount')
-              .then(() => store.setDiscordLoginStatus('Waiting for a code…'))
-              .catch((e: Error) => store.toast('error', e.message))
-          }
+          className={method === 'qr' ? 'active' : undefined}
+          onClick={() => setMethod('qr')}
         >
-          Start QR login
+          QR code
         </button>
+        <button
+          type="button"
+          className={method === 'password' ? 'active' : undefined}
+          onClick={() => setMethod('password')}
+        >
+          Password
+        </button>
+      </div>
+
+      {method === 'qr' ? (
+        <>
+          <p className="small muted">
+            Scan this with the Discord mobile app (Settings → Scan QR Code), then approve the login
+            on your phone.
+          </p>
+          {qrPath ? (
+            <img className="qr-image" src={resolveMediaUrl(qrPath)} alt="Discord login QR code" />
+          ) : (
+            <button
+              type="button"
+              className="button"
+              onClick={() =>
+                void window.moho
+                  .rpc('addDiscordAccount', target)
+                  .then(() => store.setDiscordLoginStatus('Waiting for a code…'))
+                  .catch(fail)
+              }
+            >
+              {accountId ? 'Re-authenticate with QR' : 'Start QR login'}
+            </button>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="field-row">
+            <label className="field">
+              <span className="small muted">Email or phone</span>
+              <input
+                className="text-field"
+                value={login}
+                onChange={(e) => setLogin(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="small muted">Password</span>
+              <input
+                className="text-field"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </label>
+          </div>
+          <button
+            type="button"
+            className="button"
+            disabled={busy || !login || !password}
+            onClick={() => {
+              setBusy(true)
+              void window.moho
+                .rpc('addDiscordAccountPassword', { login, password, ...target })
+                .then(() => {
+                  setPassword('')
+                  setBusy(false)
+                })
+                .catch(fail)
+            }}
+          >
+            {accountId ? 'Re-authenticate' : 'Sign in'}
+          </button>
+          <p className="small muted">
+            Discord often answers a password sign-in with a captcha, which can&apos;t be completed
+            from here. QR login is the way through that, since approving on a device you are
+            already signed in on is the same proof the captcha asks for.
+          </p>
+        </>
       )}
       {status && <p className="small muted">{status}</p>}
     </div>

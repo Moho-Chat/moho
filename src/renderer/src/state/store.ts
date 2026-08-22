@@ -71,6 +71,10 @@ export interface ChatState {
   // Login flows
   discordQrPath: string
   discordLoginStatus: string
+  /** Set when a Discord password login stops at the two-factor step. */
+  discordMfa: { loginId: string; totp: boolean; sms: boolean; backup: boolean } | null
+  /** The account being re-authenticated, or '' for a brand-new one. */
+  discordReauthAccountId: string
   sockChatLoginStatus: string
   matrixLoginStatus: string
 }
@@ -102,6 +106,8 @@ const INITIAL: ChatState = {
   matrixVerification: null,
   discordQrPath: '',
   discordLoginStatus: '',
+  discordMfa: null,
+  discordReauthAccountId: '',
   sockChatLoginStatus: '',
   matrixLoginStatus: ''
 }
@@ -253,9 +259,34 @@ export class ChatStore {
       case 'discordLoginScanned':
         this.set({ discordLoginStatus: 'Scanned - approve it on your phone' })
         break
+      case 'discordLoginMfa':
+        this.set({
+          discordMfa: {
+            loginId: data.loginId,
+            totp: !!data.totp,
+            sms: !!data.sms,
+            backup: !!data.backup
+          },
+          discordLoginStatus: ''
+        })
+        break
+
       case 'discordLoginResult':
-        this.set({ discordQrPath: '', discordLoginStatus: data.error || '' })
-        if (!data.error) void this.refreshAccounts()
+        this.set({
+          discordQrPath: '',
+          discordLoginStatus: data.error || '',
+          // A failure leaves the form open to try again; success clears it.
+          discordMfa: data.error ? this.state.discordMfa : null,
+          discordReauthAccountId: data.error ? this.state.discordReauthAccountId : ''
+        })
+        if (!data.error) {
+          void this.refreshAccounts()
+          void this.refreshBuffers()
+        }
+        break
+
+      case 'discordLoginStatus':
+        this.set({ discordLoginStatus: data.detail || '' })
         break
 
       case 'sockChatLoginStatus':
@@ -712,6 +743,20 @@ export class ChatStore {
 
   setDiscordLoginStatus(status: string): void {
     this.set({ discordLoginStatus: status, discordQrPath: '' })
+  }
+
+  /** Begin (or clear) a re-authentication of an existing Discord account. */
+  setDiscordReauth(accountId: string): void {
+    this.set({
+      discordReauthAccountId: accountId,
+      discordQrPath: '',
+      discordLoginStatus: '',
+      discordMfa: null
+    })
+  }
+
+  clearDiscordMfa(): void {
+    this.set({ discordMfa: null })
   }
   setSockChatLoginStatus(status: string): void {
     this.set({ sockChatLoginStatus: status })
