@@ -19,8 +19,12 @@
   border-bottom: 1px solid var(--outline-strong);
 }
 
-/* Sits behind the brand and controls: -webkit-app-region: drag swallows
-   clicks on any descendant, so the buttons must not be inside it. */
+/* Covers the whole bar so it can be dragged from anywhere. Being a sibling of
+   the buttons rather than their parent is not enough on its own: a drag region
+   is a window-level hit-test area the compositor resolves before the page sees
+   the click, so it applies to whatever sits within its rectangle no matter how
+   the DOM is arranged or what paints on top. The controls carve themselves
+   back out with no-drag below. */
 .titlebar-drag {
   position: absolute;
   inset: 0;
@@ -59,6 +63,10 @@
   display: flex;
   gap: var(--spacing-xxs);
   padding-right: var(--spacing-s);
+  /* Without this, minimise/maximise/close sit inside the drag region and the
+     compositor treats a press on them as the start of a window drag - the
+     clicks never reach the page at all. */
+  -webkit-app-region: no-drag;
 }
 
 /* --- shell ------------------------------------------------------------ */

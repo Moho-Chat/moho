@@ -18,8 +18,10 @@ export function TitleBar(): JSX.Element {
 
   return (
     <div className="titlebar">
-      {/* The drag region has to be a sibling of the buttons, not their parent:
-          -webkit-app-region: drag swallows clicks on anything inside it. */}
+      {/* Fills the bar so it can be dragged from anywhere. The controls sit
+          within its rectangle and take themselves back out with no-drag - a
+          drag region is resolved by the compositor before the page sees the
+          press, so DOM order and stacking do not exempt anything from it. */}
       <div className="titlebar-drag" />
 
       <div className="titlebar-brand">
