@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { useChat, useIdSetPref, usePref, useStore } from '../state/hooks'
+import { visibleGroups } from '../lib/groups'
 import type { BufferEntry } from '../state/store'
 import {
   bufferDisplayName,
@@ -38,7 +39,8 @@ export function BufferList(): JSX.Element {
 
   // A stale selection (a guild that went away, a first run) resolves to the
   // first entry rather than an empty pane.
-  const activeGroup = groups.find((g) => g.id === activeGroupId) || groups[0]
+  const shownGroups = useMemo(() => visibleGroups(groups, visible), [groups, visible])
+  const activeGroup = shownGroups.find((g) => g.id === activeGroupId) || shownGroups[0]
   const groupAccount = accounts.find((a) => a.id === activeGroup?.accountId)
 
   // Server buffer first, then most recent activity - the ordering nobilis's
@@ -243,8 +245,8 @@ function BufferRow({
   // name as text in front of every entry.
   const service = serviceIcon(account?.service ?? '')
   const leading = showServiceIcon ? (
-    service.svg ? (
-      <MaskIcon src={service.svg} size={15} />
+    service.mark ? (
+      <MaskIcon src={service.mark} size={15} />
     ) : (
       <Icon name={service.glyph!} size={15} />
     )

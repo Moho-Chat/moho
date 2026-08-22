@@ -1,4 +1,5 @@
 import discordSvg from '../assets/discord.svg'
+import sneedchatMark from '../assets/sneedchat.png'
 import matrixSvg from '../assets/matrix.svg'
 
 /**
@@ -26,12 +27,30 @@ export function guildOf(name: string): string {
  * XMPP (which has no widely recognised mark), and "vpn_lock" evokes the
  * Tor-only transport Sneedchat runs over.
  */
-export function serviceIcon(service: string): { svg?: string; glyph?: string } {
+/**
+ * A service's brand mark.
+ *
+ * `mark` is artwork whose *alpha* is the silhouette, so it works as a CSS mask
+ * regardless of being an SVG or a PNG - which is what lets these sit quietly in
+ * a list, painted in the surrounding text colour like any other icon.
+ *
+ * `colour` says the artwork's own colours are worth keeping where there is
+ * room for them - the rail, where it sits beside full-colour guild icons -
+ * while the same file still masks down to a monochrome glyph in the compact
+ * places.
+ */
+export interface ServiceIcon {
+  mark?: string
+  colour?: boolean
+  glyph?: string
+}
+
+export function serviceIcon(service: string): ServiceIcon {
   switch (service) {
     case 'discord':
-      return { svg: discordSvg }
+      return { mark: discordSvg }
     case 'matrix':
-      return { svg: matrixSvg }
+      return { mark: matrixSvg }
     case 'irc':
       return { glyph: 'tag' }
     case 'slack':
@@ -40,7 +59,7 @@ export function serviceIcon(service: string): { svg?: string; glyph?: string } {
     case 'xmpp':
       return { glyph: 'forum' }
     case 'sockchat':
-      return { glyph: 'vpn_lock' }
+      return { mark: sneedchatMark, colour: true }
     default:
       return { glyph: 'chat' }
   }

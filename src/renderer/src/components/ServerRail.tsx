@@ -1,6 +1,7 @@
 import { Icon, MaskIcon } from './Icon'
 import { useChat, useStore } from '../state/hooks'
 import { nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
+import { visibleGroups } from '../lib/groups'
 import type { BufferGroup } from '../../../shared/wire'
 import type { BufferEntry } from '../state/store'
 
@@ -41,8 +42,13 @@ function RailTile({ group, active, unread, highlight, onSelect }: TileProps): JS
     content = <img className="rail-icon" src={resolveMediaUrl(group.iconUrl)} alt="" />
   } else if (group.kind === 'dms') {
     content = <Icon name="forum" size={22} />
+  } else if (group.kind === 'account' && service.mark && service.colour) {
+    // Artwork with colour worth keeping, shown as-is rather than flattened to
+    // a silhouette - it sits beside full-colour guild icons here, and this is
+    // the one place with room for it.
+    content = <img className="rail-mark" src={service.mark} alt="" />
   } else if (group.kind === 'account') {
-    content = service.svg ? <MaskIcon src={service.svg} size={22} /> : <Icon name={service.glyph!} size={22} />
+    content = service.mark ? <MaskIcon src={service.mark} size={22} /> : <Icon name={service.glyph!} size={22} />
   } else {
     content = (
       <span className="rail-initials" style={{ color: nickColor(group.name) }}>
@@ -82,8 +88,6 @@ export function ServerRail(): JSX.Element | null {
   const activeGroupId = useChat((s) => s.activeGroupId)
   const buffers = useChat((s) => s.buffers)
 
-  if (groups.length <= 1) return null
-
   // Unread rolls up from the buffers under each entry, so a guild whose
   // channels are all collapsed away still shows it has something waiting.
   const totals = new Map<string, { unread: number; highlight: boolean }>()
@@ -95,9 +99,13 @@ export function ServerRail(): JSX.Element | null {
     totals.set(b.groupId, t)
   }
 
+  const visible = visibleGroups(groups, buffers as BufferEntry[])
+
+  if (visible.length <= 1) return null
+
   return (
     <nav className="server-rail" aria-label="Servers">
-      {groups.map((g) => {
+      {visible.map((g) => {
         const t = totals.get(g.id)
         return (
           <RailTile

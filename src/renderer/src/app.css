@@ -1735,3 +1735,13 @@ video.lightbox-media {
   min-width: 0;
   font-weight: 600;
 }
+
+/* A brand mark kept in its own colours. Unlike a guild icon it is a logo
+   rather than a photo, so it is fitted with breathing room instead of cropped
+   to fill the tile. */
+.rail-mark {
+  width: 74%;
+  height: 74%;
+  object-fit: contain;
+  display: block;
+}

@@ -38,7 +38,7 @@ export function AccountsPanel(): JSX.Element {
                 className={`service-chip${adding === service ? ' active' : ''}`}
                 onClick={() => setAdding(adding === service ? null : service)}
               >
-                {icon.svg ? <MaskIcon src={icon.svg} size={16} /> : <Icon name={icon.glyph!} size={16} />}
+                {icon.mark ? <MaskIcon src={icon.mark} size={16} /> : <Icon name={icon.glyph!} size={16} />}
                 {serviceLabel(service)}
               </button>
             )
@@ -72,8 +72,8 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
       <div className="account-card-head">
         {account.avatarUrl ? (
           <img className="account-avatar" src={resolveMediaUrl(account.avatarUrl)} alt="" />
-        ) : icon.svg ? (
-          <MaskIcon src={icon.svg} size={20} />
+        ) : icon.mark ? (
+          <MaskIcon src={icon.mark} size={20} />
         ) : (
           <Icon name={icon.glyph!} size={20} />
         )}
