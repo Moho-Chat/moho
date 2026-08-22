@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import type { NobilisEvent } from '../shared/wire'
+import { log } from './log'
 
 /**
  * Newline-delimited JSON-RPC client for nobilis's Unix socket (see
@@ -120,7 +121,7 @@ export class NobilisClient extends EventEmitter {
       try {
         msg = JSON.parse(line)
       } catch {
-        console.warn('[nobilis] unparseable line:', line.slice(0, 200))
+        log.warn('[nobilis] unparseable line:', line.slice(0, 200))
         continue
       }
       this.dispatch(msg)

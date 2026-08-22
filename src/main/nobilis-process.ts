@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
 import { app } from 'electron'
+import { log } from './log'
 
 /**
  * Owns the nobilis daemon's lifecycle - but adopts one that is already
@@ -52,7 +53,7 @@ export class NobilisProcess {
   async ensureRunning(socketPath: string): Promise<void> {
     if (await isListening(socketPath)) {
       this.adopted = true
-      console.log('[nobilis] adopting the daemon already listening on', socketPath)
+      log.info('[nobilis] adopting the daemon already listening on', socketPath)
       return
     }
     this.adopted = false
@@ -62,7 +63,7 @@ export class NobilisProcess {
   start(): void {
     if (this.child) return
     if (!this.available()) {
-      console.warn(
+      log.warn(
         `[nobilis] binary not found at ${this.binaryPath} - not spawning. ` +
           'Run `cargo build --release`, or start nobilis yourself.'
       )
@@ -72,11 +73,11 @@ export class NobilisProcess {
     const child = spawn(this.binaryPath, [], { stdio: ['ignore', 'pipe', 'pipe'] })
     this.child = child
 
-    lineStream(child.stdout, (line) => console.log('[nobilis]', line))
-    lineStream(child.stderr, (line) => console.log('[nobilis]', line))
+    lineStream(child.stdout, (line) => log.info('[nobilis]', line))
+    lineStream(child.stderr, (line) => log.info('[nobilis]', line))
 
     child.on('exit', (code) => {
-      console.log('[nobilis] exited, code:', code)
+      log.info('[nobilis] exited, code:', code)
       this.child = null
       if (this.restartPending) {
         this.restartPending = false
@@ -85,7 +86,7 @@ export class NobilisProcess {
     })
 
     child.on('error', (err) => {
-      console.error('[nobilis] failed to spawn:', err.message)
+      log.error('[nobilis] failed to spawn:', err.message)
       this.child = null
     })
   }
@@ -132,7 +133,7 @@ export class NobilisProcess {
     }
     // It did not go quietly - only now escalate, and only for our own child.
     this.child?.kill('SIGKILL')
-    console.warn('[nobilis] daemon did not exit within 5s of being asked to stop')
+    log.warn('[nobilis] daemon did not exit within 5s of being asked to stop')
   }
 }
 

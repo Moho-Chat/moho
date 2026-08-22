@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { net, protocol } from 'electron'
 import { pathToFileURL } from 'node:url'
+import { log } from './log'
 
 /**
  * nobilis hands back local `file://` paths for media it has already fetched on
@@ -22,6 +23,9 @@ export const SCHEME = 'moho-media'
 /** Extra roots registered at startup - the app's own bundled resources dir. */
 const extraRoots: string[] = []
 
+/** Paths already reported as refused, so each is logged once. */
+const refused = new Set<string>()
+
 export function allowRoot(dir: string): void {
   extraRoots.push(path.resolve(dir) + path.sep)
 }
@@ -35,14 +39,26 @@ export function allowRoot(dir: string): void {
  */
 function allowedRoots(): string[] {
   const home = os.homedir()
-  const cacheRoot = path.join(process.env.XDG_CACHE_HOME || path.join(home, '.cache'), 'nobilis')
-  const configRoot = path.join(process.env.XDG_CONFIG_HOME || path.join(home, '.config'), 'nobilis')
-  return [cacheRoot, configRoot, os.tmpdir()]
+  const cache = process.env.XDG_CACHE_HOME || path.join(home, '.cache')
+  const config = process.env.XDG_CONFIG_HOME || path.join(home, '.config')
+  return [
+    path.join(cache, 'nobilis'),
+    path.join(config, 'nobilis'),
+    // The daemon's pre-rename directories. Its migration only moves these
+    // when the destination does not already exist, so a client that ran under
+    // both names ends up with the two side by side and years of stored
+    // messages still naming the old one. Those files are the user's own cache
+    // either way; refusing them only blanks the avatars on old scrollback.
+    path.join(cache, 'moho'),
+    path.join(config, 'moho'),
+    os.tmpdir()
+  ]
     .map((p) => path.resolve(p) + path.sep)
     .concat(extraRoots)
 }
 
-function isAllowed(target: string): boolean {
+/** Exported for tests: this predicate is the whole security boundary. */
+export function isAllowed(target: string): boolean {
   const resolved = path.resolve(target)
   // Reject symlinks that escape the allowed roots - resolve the real path
   // first, so a link planted inside the cache dir can't point outward.
@@ -73,7 +89,12 @@ export function installMediaHandler(): void {
     const filePath = new URL(request.url).searchParams.get('p')
     if (!filePath) return new Response('bad request', { status: 400 })
     if (!isAllowed(filePath)) {
-      console.warn('[media] refused out-of-root request:', filePath)
+      // Once per path: a refused avatar is re-requested for every message its
+      // sender ever posted, and logging each one buries anything else.
+      if (!refused.has(filePath)) {
+        refused.add(filePath)
+        log.warn('[media] refused out-of-root request:', filePath)
+      }
       return new Response('forbidden', { status: 403 })
     }
     return net.fetch(pathToFileURL(filePath).toString())

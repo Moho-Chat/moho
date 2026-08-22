@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { app } from 'electron'
+import { log } from './log'
 
 /**
  * Durable UI preferences - the replacement for DMS's per-plugin data store.
@@ -66,7 +67,7 @@ export class Prefs extends EventEmitter {
         fs.mkdirSync(path.dirname(this.file), { recursive: true })
         fs.writeFileSync(this.file, JSON.stringify(this.data, null, 2))
       } catch (e) {
-        console.error('[prefs] write failed:', (e as Error).message)
+        log.error('[prefs] write failed:', (e as Error).message)
       }
     }, 300)
   }

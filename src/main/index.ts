@@ -23,6 +23,7 @@ import { IPC } from '../shared/ipc'
 import { allowRoot, installMediaHandler, registerMediaScheme } from './media-protocol'
 import { saveMedia } from './downloads'
 import type { Buffer as ChatBuffer } from '../shared/wire'
+import { log } from './log'
 
 registerMediaScheme()
 
@@ -192,9 +193,9 @@ function applyHotkey(accelerator: string): void {
   if (!accelerator) return
   try {
     if (globalShortcut.register(accelerator, toggleWindow)) registeredHotkey = accelerator
-    else console.warn('[hotkey] refused by the system:', accelerator)
+    else log.warn('[hotkey] refused by the system:', accelerator)
   } catch (e) {
-    console.warn('[hotkey] invalid accelerator:', accelerator, (e as Error).message)
+    log.warn('[hotkey] invalid accelerator:', accelerator, (e as Error).message)
   }
 }
 
@@ -381,6 +382,6 @@ app.on('before-quit', (event) => {
   globalShortcut.unregisterAll()
   prefs?.flushNow()
   void stopDaemon()
-    .catch((e) => console.warn('[nobilis] stop on quit failed:', (e as Error).message))
+    .catch((e) => log.warn('[nobilis] stop on quit failed:', (e as Error).message))
     .finally(() => app.exit(0))
 })
