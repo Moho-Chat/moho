@@ -176,15 +176,24 @@ export function MessageRow({
           {grouped ? '' : timeLabel}
         </span>
 
-        {comfy && !grouped && !isSystem && (
+        {/* The avatar column is reserved on every grouped row, not just the
+            one that draws an avatar. Rendering this only for the first
+            message of a group let the follow-ups slide left into the space
+            the avatar would occupy, so a group's second and third lines sat
+            out of line with its own first line - visible against any other
+            client, where a group's text all shares one left edge. Wrapped
+            lines never showed it because they wrap inside message-content,
+            which was already in the right place. */}
+        {comfy && !isSystem && (
           <span className="message-avatar">
-            {message.avatarUrl ? (
-              <img src={resolveMediaUrl(message.avatarUrl)} alt="" />
-            ) : (
-              <span className="avatar-fallback" style={{ background: nickColor(message.from) }}>
-                {message.from.slice(0, 1).toUpperCase()}
-              </span>
-            )}
+            {!grouped &&
+              (message.avatarUrl ? (
+                <img src={resolveMediaUrl(message.avatarUrl)} alt="" />
+              ) : (
+                <span className="avatar-fallback" style={{ background: nickColor(message.from) }}>
+                  {message.from.slice(0, 1).toUpperCase()}
+                </span>
+              ))}
           </span>
         )}
 

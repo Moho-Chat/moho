@@ -369,6 +369,13 @@
   height: 28px;
 }
 
+/* A grouped row keeps the slot to hold the column open, but draws nothing in
+   it. Without this the empty box still claims its full 28px of height, so
+   every follow-up line in a group gained ~9px of dead space above it. */
+.message-avatar:empty {
+  height: 0;
+}
+
 .message-avatar img,
 .avatar-fallback {
   width: 28px;
