@@ -14,7 +14,7 @@ import {
   Tray
 } from 'electron'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
-import { NobilisClient } from './nobilis-client'
+import { defaultSocketPath, NobilisClient } from './nobilis-client'
 import { NobilisProcess } from './nobilis-process'
 import { Prefs } from './prefs'
 import { Notifier } from './notifications'
@@ -140,6 +140,15 @@ function createTray(): void {
     Menu.buildFromTemplate([
       { label: 'Show/hide', click: toggleWindow },
       { label: 'Restart daemon', click: () => nobilis.restart() },
+      {
+        label: 'Stop daemon',
+        // Deliberately separate from Quit: stopping the daemon disconnects
+        // every account, which is worth asking for explicitly rather than
+        // making it a side effect of closing a window.
+        click: () => {
+          void stopDaemon()
+        }
+      },
       { type: 'separator' },
       {
         label: 'Quit',
@@ -157,6 +166,20 @@ function updateTray(unreadCount: number, hasPinnedAlert: boolean): void {
   tray.setImage(trayIcon(hasPinnedAlert))
   tray.setToolTip(unreadCount > 0 ? `moho - ${unreadCount} unread` : 'moho')
   send(IPC.link, client.linkUp)
+}
+
+const SOCKET_PATH = defaultSocketPath()
+
+/**
+ * Stop the daemon and wait for it to be gone. Asking over the socket is what
+ * reaches a daemon this process adopted; a spawned one is signalled directly.
+ * Either way nobilis sends real QUITs to every connected network on the way
+ * out, so this waits rather than cutting them short.
+ */
+async function stopDaemon(): Promise<void> {
+  await nobilis.stopAndWait(SOCKET_PATH, () => client.request('shutdown'))
+  client.stop()
+  send(IPC.link, false)
 }
 
 function applyHotkey(accelerator: string): void {
@@ -288,8 +311,9 @@ app.whenReady().then(() => {
   })
 
   wireIpc()
-  nobilis.start()
-  client.start()
+  // Adopt a daemon that is already listening rather than launching a second
+  // one that would immediately lose the flock race and exit.
+  void nobilis.ensureRunning(SOCKET_PATH).then(() => client.start())
   createWindow()
   createTray()
   applyHotkey(prefs.get<string>('hotkey.toggle'))
@@ -303,9 +327,22 @@ app.whenReady().then(() => {
 // there is nothing to quit on last-window-closed on any platform.
 app.on('window-all-closed', () => {})
 
-app.on('will-quit', () => {
+/**
+ * Quitting takes the daemon with it, adopted or not.
+ *
+ * will-quit is synchronous, which is not enough here: nobilis needs a moment
+ * to send QUITs to every connected network before exiting, and a bare kill
+ * leaves ghost sessions holding nicks until the server's ping timeout notices.
+ * So the quit is deferred until the daemon is actually gone.
+ */
+let quitting = false
+app.on('before-quit', (event) => {
+  if (quitting) return
+  event.preventDefault()
+  quitting = true
   globalShortcut.unregisterAll()
   prefs?.flushNow()
-  client?.stop()
-  nobilis?.stop()
+  void stopDaemon()
+    .catch((e) => console.warn('[nobilis] stop on quit failed:', (e as Error).message))
+    .finally(() => app.exit(0))
 })
