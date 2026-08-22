@@ -89,7 +89,7 @@ export function BufferList(): JSX.Element {
                   active={b.id === activeBufferId}
                   muted={isEffectivelyMuted(b)}
                   pinned
-                  showAccountPrefix
+                  showServiceIcon
                   accounts={accounts}
                   onSelect={() => void store.selectBuffer(b.id)}
                   onTogglePin={() => togglePin(b.id)}
@@ -345,7 +345,9 @@ interface BufferRowProps {
   muted: boolean
   pinned: boolean
   accounts: Account[]
-  showAccountPrefix?: boolean
+  /** Pinned rows sit outside their account group, so they carry the service
+   * mark instead of the buffer-kind glyph to show where they belong. */
+  showServiceIcon?: boolean
   onSelect: () => void
   onTogglePin: () => void
   onToggleMute: () => void
@@ -359,7 +361,7 @@ function BufferRow({
   muted,
   pinned,
   accounts,
-  showAccountPrefix,
+  showServiceIcon,
   onSelect,
   onTogglePin,
   onToggleMute,
@@ -368,6 +370,24 @@ function BufferRow({
 }: BufferRowProps): JSX.Element {
   const { menu, open, close } = useContextMenu()
   const account = accounts.find((a) => a.id === buffer.accountId)
+
+  // Under an account header the row's own kind is what's worth showing (a
+  // channel vs a DM vs the server buffer). A pinned row has no header above
+  // it, so it shows the service instead - the Discord or Matrix mark, or the
+  // "#" that IRC channels already use - rather than repeating the account
+  // name as text in front of every entry.
+  const service = serviceIcon(account?.service ?? '')
+  const leading = showServiceIcon ? (
+    service.svg ? (
+      <MaskIcon src={service.svg} size={15} />
+    ) : (
+      <Icon name={service.glyph!} size={15} />
+    )
+  ) : buffer.avatarUrl ? (
+    <img className="buffer-avatar" src={resolveMediaUrl(buffer.avatarUrl)} alt="" />
+  ) : (
+    <Icon name={bufferKindGlyph(buffer.kind)} size={15} />
+  )
 
   const entries: MenuEntry[] = [
     { label: pinned ? 'Unpin' : 'Pin', icon: 'push_pin', onClick: onTogglePin },
@@ -388,15 +408,8 @@ function BufferRow({
         onContextMenu={open}
         title={buffer.name}
       >
-        {buffer.avatarUrl ? (
-          <img className="buffer-avatar" src={resolveMediaUrl(buffer.avatarUrl)} alt="" />
-        ) : (
-          <Icon name={bufferKindGlyph(buffer.kind)} size={15} />
-        )}
-        <span className="ellipsis buffer-name">
-          {showAccountPrefix && account ? `${account.displayName} · ` : ''}
-          {bufferDisplayName(buffer.name)}
-        </span>
+        {leading}
+        <span className="ellipsis buffer-name">{bufferDisplayName(buffer.name)}</span>
         {muted && <Icon name="notifications_off" size={13} className="buffer-muted-icon" />}
         {buffer.unread > 0 && !muted && (
           <span className={classes('unread-badge', buffer.highlight && 'highlight')}>
