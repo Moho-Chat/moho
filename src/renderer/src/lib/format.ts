@@ -228,8 +228,19 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   return out
 }
 
+/**
+ * The video id in any of the forms a YouTube link actually arrives in.
+ *
+ * `/embed/` matters as much as `watch?v=`: Discord resolves a posted YouTube
+ * link into a rich embed whose `video.url` is the *embed page*, and nobilis
+ * carries that through as the message body. Missing it meant those messages
+ * showed no thumbnail and, worse, had their embed page probed over the network
+ * as if it might be a media file - a request that can only ever fail.
+ */
 export function youtubeId(url: string): string | null {
-  const m = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([\w-]{11})/)
+  const m = url.match(
+    /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/|live\/|v\/)|youtu\.be\/)([\w-]{11})/
+  )
   return m ? m[1] : null
 }
 

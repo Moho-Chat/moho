@@ -113,6 +113,21 @@ const INITIAL: ChatState = {
 }
 
 /**
+ * A call whose failure is not worth reporting and not worth retrying here.
+ *
+ * Subscribing is the case this exists for: it is re-issued for every buffer
+ * each time the buffer list loads, so one that fails because the daemon link
+ * is momentarily down repairs itself on reconnect. Left as a bare `void` these
+ * became unhandled rejections - one per buffer, on every buffer list load and
+ * every channel opened - which fills the console and buries real errors. A
+ * toast each would be worse still, since a dropped link fails all of them at
+ * once.
+ */
+function bestEffort(work: Promise<unknown>, what: string): void {
+  void work.catch((e: Error) => console.debug(`[moho] ${what}:`, e.message))
+}
+
+/**
  * Scrollback kept in memory per buffer. Older messages stay in nobilis's SQLite
  * store and come back through getBacklog when the user scrolls up, so this cap
  * bounds memory without losing history.
@@ -194,7 +209,8 @@ export class ChatStore {
       // connection explicitly subscribed to. Without subscribing to every
       // buffer up front, one that's never been opened would never bump its
       // own unread count.
-      for (const b of buffers) void window.moho.rpc('subscribe', { bufferId: b.id })
+      for (const b of buffers)
+        bestEffort(window.moho.rpc('subscribe', { bufferId: b.id }), `subscribe ${b.id}`)
     } catch (e) {
       this.toast('error', `Couldn't list buffers: ${(e as Error).message}`)
     }
@@ -358,7 +374,7 @@ export class ChatStore {
       return
     }
     this.set({ buffers: [...buffers, { unread: 0, highlight: false, ...data }] })
-    void window.moho.rpc('subscribe', { bufferId: data.id })
+    bestEffort(window.moho.rpc('subscribe', { bufferId: data.id }), `subscribe ${data.id}`)
   }
 
   private handleConnectionState(data: { accountId: string; state: string; error?: string }): void {
@@ -442,8 +458,8 @@ export class ChatStore {
 
     void window.moho.prefs.set('ui.activeBufferId', bufferId)
     void window.moho.markBufferRead(bufferId)
-    void this.markRead(bufferId)
-    void window.moho.rpc('subscribe', { bufferId })
+    bestEffort(this.markRead(bufferId), 'mark read')
+    bestEffort(window.moho.rpc('subscribe', { bufferId }), `subscribe ${bufferId}`)
 
     if (!this.state.loadedBuffers[bufferId]) await this.loadBacklog(bufferId)
     void this.refreshMatrixPermissions(bufferId)
