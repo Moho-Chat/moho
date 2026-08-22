@@ -24,6 +24,25 @@ import type { Buffer as ChatBuffer } from '../shared/wire'
 
 registerMediaScheme()
 
+/**
+ * One client per profile. Launching moho again - from a launcher, a terminal,
+ * a desktop file - should raise the window that already exists rather than
+ * start a second copy.
+ *
+ * Stacked copies are not merely untidy: they contend for the same daemon,
+ * whose own flock lets exactly one nobilis own the socket, so the extras sit
+ * there half-working. They also each hold their own notification and tray
+ * state, so unread counts and alerts diverge between windows.
+ *
+ * The lock is per user-data directory, so an explicit `--user-data-dir` still
+ * gets its own instance. That is deliberate: it keeps a throwaway profile
+ * usable for testing without disturbing a running client.
+ */
+const isPrimaryInstance = app.requestSingleInstanceLock()
+if (!isPrimaryInstance) {
+  app.quit()
+}
+
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let prefs: Prefs
@@ -219,8 +238,25 @@ function wireIpc(): void {
 }
 
 app.whenReady().then(() => {
+  // A losing second instance is on its way out; it must not spawn a daemon,
+  // claim a tray icon or register a hotkey on the way.
+  if (!isPrimaryInstance) return
+
   electronApp.setAppUserModelId('com.salastil.moho')
   app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
+
+  // Someone tried to launch a second copy: treat it as "show me moho", which
+  // is almost always what they meant - especially when the window is hidden
+  // to the tray and looks like nothing is running.
+  app.on('second-instance', () => {
+    if (!mainWindow) {
+      createWindow()
+      return
+    }
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  })
 
   // Bundled Sneedchat smilies are served through the same guarded scheme as
   // nobilis's cached media, so the renderer needs no file access of its own.

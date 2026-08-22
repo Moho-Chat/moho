@@ -26,10 +26,17 @@ export function allowRoot(dir: string): void {
   extraRoots.push(path.resolve(dir) + path.sep)
 }
 
+/**
+ * These are the *daemon's* directories, not this app's: every local path that
+ * arrives on the wire was written by nobilis (Tor-fetched Sneedchat media,
+ * Matrix media, the Discord login QR), so nobilis is what the roots have to
+ * track. They moved with the rename - pointing them at moho's own dirs
+ * silently refuses every image the daemon fetches.
+ */
 function allowedRoots(): string[] {
   const home = os.homedir()
-  const cacheRoot = path.join(process.env.XDG_CACHE_HOME || path.join(home, '.cache'), 'moho')
-  const configRoot = path.join(process.env.XDG_CONFIG_HOME || path.join(home, '.config'), 'moho')
+  const cacheRoot = path.join(process.env.XDG_CACHE_HOME || path.join(home, '.cache'), 'nobilis')
+  const configRoot = path.join(process.env.XDG_CONFIG_HOME || path.join(home, '.config'), 'nobilis')
   return [cacheRoot, configRoot, os.tmpdir()]
     .map((p) => path.resolve(p) + path.sep)
     .concat(extraRoots)

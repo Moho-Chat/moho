@@ -61,6 +61,28 @@ export interface Embed {
   url?: string
 }
 
+/**
+ * A file attached to a message, described rather than inlined into the body.
+ *
+ * `path`/`thumbnailPath` are local cache files nobilis has already fetched -
+ * the only route to media behind Tor, a Matrix access token, or E2EE
+ * decryption. `url` is the remote original: directly loadable for Discord,
+ * but not for Sneedchat or Matrix, which is what the local paths are for.
+ */
+export interface Attachment {
+  kind: 'image' | 'video' | 'audio' | 'file'
+  mimetype?: string
+  filename?: string
+  size?: number
+  /** Intrinsic dimensions, used to reserve layout space before bytes arrive. */
+  width?: number
+  height?: number
+  blurhash?: string
+  path?: string
+  thumbnailPath?: string
+  url?: string
+}
+
 export interface Message {
   id: string
   bufferId: string
@@ -76,6 +98,12 @@ export interface Message {
   isOwn?: boolean
   avatarUrl?: string
   embeds?: Embed[]
+  /**
+   * Files attached to this message. Absent on scrollback recorded before
+   * nobilis described attachments separately - those messages still carry
+   * their media as URLs inside the body, which link unfurling picks up.
+   */
+  attachments?: Attachment[]
   /** Matrix only - the sender's full MXID, for targeting moderation actions. */
   senderId?: string
 }

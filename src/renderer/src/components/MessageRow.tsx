@@ -75,6 +75,8 @@ export function MessageRow({
   const canReact = service === 'discord' || service === 'matrix'
   const isSystem = !isChatKind(message.kind)
 
+  const attachments = message.attachments ?? []
+
   // The extraction passes each walk the same normalised body independently,
   // matching how the original structured this - one do-everything function
   // would have to interleave four unrelated concerns.
@@ -271,8 +273,25 @@ export function MessageRow({
             </div>
           ))}
 
-          {parts.media.length > 0 && (
+          {(attachments.length > 0 || parts.media.length > 0) && (
             <div className="media-row">
+              {/* Files nobilis described: mimetype and dimensions known up
+                  front, so these lay out without waiting on bytes. */}
+              {attachments.map((att, i) => (
+                <MediaEmbed
+                  key={`att-${i}-${att.path || att.url || att.filename}`}
+                  attachment={att}
+                  autoplay={mediaAutoplay}
+                  loop={mediaLoop}
+                  bufferId={bufferId}
+                  messageId={message.id}
+                  onOpenInDiscord={(b, m) => void store.openInDiscord(b, m)}
+                />
+              ))}
+              {/* Links someone typed, unfurled from the body. Still needed
+                  alongside attachments: a pasted image URL is not an
+                  attachment, and pre-existing scrollback predates the
+                  attachment list and carries its media inline. */}
               {parts.media.map((item) => (
                 <MediaEmbed
                   key={item.url}

@@ -1405,3 +1405,51 @@ img.smilie {
 .join-panel .field {
   flex: none;
 }
+
+/* An attachment knows its intrinsic size, so its box can be reserved before
+   the bytes arrive - without this the list reflows under the reader as each
+   image loads. */
+.media-embed[style*='aspect-ratio'] {
+  width: auto;
+  height: auto;
+  background: var(--surface-container-low);
+}
+
+.media-embed.audio {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  padding: var(--spacing-s);
+  background: var(--surface-container-high);
+  border-radius: var(--corner-radius-small);
+  max-width: 420px;
+}
+
+.media-embed.audio audio {
+  width: 100%;
+  height: 32px;
+}
+
+.media-embed.file-card {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  color: var(--surface-text);
+  max-width: 360px;
+  text-align: left;
+}
+
+.media-embed.file-card:hover {
+  border-color: var(--primary);
+}
+
+.file-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}

@@ -2,22 +2,23 @@ import { useState } from 'react'
 import { Icon } from './Icon'
 import { resolveMediaUrl } from '../lib/util'
 import type { MediaItem } from '../lib/format'
+import type { Attachment } from '../../../shared/wire'
 
 /**
- * Inline preview for a single URL detected in a message body. Three kinds:
+ * Inline preview for one piece of media, from either of two sources:
  *
- * - image: loads directly.
- * - video: a direct file link, click to load and play in place. No poster
- *   frame - producing one means fetching and decoding the file anyway, so
- *   there's no cheaper preview to show before that click.
- * - youtube: the public static thumbnail, opening the real video in the
- *   browser on click. A real <iframe> embed would work here, unlike in the
- *   original's Qt runtime - but it also silently loads YouTube's player and
- *   its cookies into the app the moment any message linking a video arrives.
- *   Keeping the thumbnail preserves the privacy posture deliberately.
+ * - an Attachment, described by nobilis (a real file someone attached), or
+ * - a MediaItem, detected by unfurling a URL someone typed into a message.
+ *
+ * The two differ in how much is known. An attachment arrives with a mimetype,
+ * a filename and usually intrinsic dimensions, so its box can be reserved
+ * before any bytes load and the message list doesn't reflow underneath the
+ * reader. An unfurled link is a guess from the URL alone, so it can only be
+ * laid out once the image reports its own size.
  */
 interface Props {
-  item: MediaItem
+  item?: MediaItem
+  attachment?: Attachment
   autoplay: boolean
   loop: boolean
   /** Only needed for the expired-Discord-link fallback. */
@@ -37,8 +38,15 @@ function isDiscordAttachment(url: string): boolean {
   return /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\//i.test(url)
 }
 
+function humanSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 export function MediaEmbed({
   item,
+  attachment,
   autoplay,
   loop,
   bufferId,
@@ -48,35 +56,57 @@ export function MediaEmbed({
   const [failed, setFailed] = useState(false)
   const [playing, setPlaying] = useState(false)
 
-  const open = (): void => void window.moho.openExternal(item.url)
+  // An attachment knows its own kind; an unfurled link only has a guess.
+  const kind = attachment?.kind ?? item?.kind ?? 'file'
+  // Local cache first: for Sneedchat and Matrix the remote URL is unreachable
+  // from here (Tor, or an access token we don't hold), so the path nobilis
+  // fetched is the only way to show anything. Discord supplies no path and
+  // its CDN URL loads directly.
+  const fullSrc = attachment ? attachment.path || attachment.url || '' : item?.url || ''
+  // A server-generated thumbnail is enough for a preview and much cheaper.
+  const previewSrc = attachment?.thumbnailPath || fullSrc
+  const openTarget = attachment?.url || fullSrc
 
-  if (failed) {
-    const expiredDiscord = isDiscordAttachment(item.url) && bufferId && messageId && onOpenInDiscord
+  const open = (): void => void window.moho.openExternal(openTarget)
+
+  // Reserve the right box before anything loads. Without this the list
+  // reflows under the reader as each image arrives.
+  const ratio =
+    attachment?.width && attachment?.height
+      ? { aspectRatio: `${attachment.width} / ${attachment.height}` }
+      : undefined
+
+  if (failed || !fullSrc) {
+    const expiredDiscord =
+      isDiscordAttachment(openTarget) && bufferId && messageId && onOpenInDiscord
     return (
       <div className="media-embed failed small muted">
         <Icon name="broken_image" size={16} />
         {expiredDiscord ? (
           <>
             <span>This attachment link has expired.</span>
-            <button type="button" className="link-button" onClick={() => onOpenInDiscord(bufferId, messageId)}>
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => onOpenInDiscord(bufferId, messageId)}
+            >
               Open in Discord
             </button>
           </>
         ) : (
           <button type="button" className="link-button" onClick={open}>
-            Couldn&apos;t load — open the link
+            {attachment?.filename || "Couldn't load — open the link"}
           </button>
         )}
       </div>
     )
   }
 
-  if (item.kind === 'image') {
-    // Animated formats honour the autoplay preference by swapping to a paused
-    // <video>-less static render; browsers give no direct pause control over
-    // an animated GIF, so "don't autoplay" is expressed by not loading it
-    // until asked.
-    const animated = /\.(gif|webp)(\?\S*)?$/i.test(item.url)
+  if (kind === 'image') {
+    // Browsers give no pause control over an animated GIF, so "don't autoplay"
+    // is expressed by not loading it until asked.
+    const animated =
+      attachment?.mimetype === 'image/gif' || /\.(gif|webp)(\?\S*)?$/i.test(fullSrc)
     if (animated && !autoplay && !playing) {
       return (
         <button type="button" className="media-embed paused" onClick={() => setPlaying(true)}>
@@ -88,8 +118,10 @@ export function MediaEmbed({
     return (
       <img
         className="media-embed"
-        src={resolveMediaUrl(item.url)}
-        alt=""
+        style={ratio}
+        src={resolveMediaUrl(playing || !attachment?.thumbnailPath ? fullSrc : previewSrc)}
+        alt={attachment?.filename || ''}
+        title={attachment?.filename}
         loading="lazy"
         onError={() => setFailed(true)}
         onClick={open}
@@ -97,19 +129,27 @@ export function MediaEmbed({
     )
   }
 
-  if (item.kind === 'video') {
+  if (kind === 'video') {
     if (!playing) {
       return (
-        <button type="button" className="media-embed paused" onClick={() => setPlaying(true)}>
+        <button
+          type="button"
+          className="media-embed paused"
+          style={ratio}
+          onClick={() => setPlaying(true)}
+        >
           <Icon name="play_circle" size={28} />
-          <span className="small ellipsis">{item.url.split('/').pop()}</span>
+          <span className="small ellipsis">
+            {attachment?.filename || fullSrc.split('/').pop()}
+          </span>
         </button>
       )
     }
     return (
       <video
         className="media-embed"
-        src={resolveMediaUrl(item.url)}
+        style={ratio}
+        src={resolveMediaUrl(fullSrc)}
         controls
         autoPlay
         loop={loop}
@@ -118,11 +158,36 @@ export function MediaEmbed({
     )
   }
 
-  // youtube
+  if (kind === 'audio') {
+    return (
+      <div className="media-embed audio">
+        <span className="small ellipsis">{attachment?.filename || 'audio'}</span>
+        <audio src={resolveMediaUrl(fullSrc)} controls onError={() => setFailed(true)} />
+      </div>
+    )
+  }
+
+  if (kind === 'file') {
+    // Nothing to preview - show what it is and let the user open it.
+    return (
+      <button type="button" className="media-embed file-card" onClick={open}>
+        <Icon name="description" size={22} />
+        <span className="file-meta">
+          <span className="ellipsis">{attachment?.filename || 'attachment'}</span>
+          {attachment?.size !== undefined && (
+            <span className="small muted">{humanSize(attachment.size)}</span>
+          )}
+        </span>
+        <Icon name="open_in_new" size={16} />
+      </button>
+    )
+  }
+
+  // youtube - a detected link, never an attachment
   return (
-    <button type="button" className="media-embed youtube" onClick={open} title={item.url}>
+    <button type="button" className="media-embed youtube" onClick={open} title={fullSrc}>
       <img
-        src={`https://i.ytimg.com/vi/${item.youtubeId}/hqdefault.jpg`}
+        src={`https://i.ytimg.com/vi/${item?.youtubeId}/hqdefault.jpg`}
         alt=""
         loading="lazy"
         onError={() => setFailed(true)}
