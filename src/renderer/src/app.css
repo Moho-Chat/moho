@@ -1460,3 +1460,44 @@ img.smilie {
   min-width: 0;
   flex: 1;
 }
+
+/* An expired attachment still shows its cached preview; the overlay says the
+   original has to be fetched again, and the whole thing is the button. */
+.media-embed-wrap {
+  position: relative;
+  display: inline-block;
+  max-width: 420px;
+}
+
+.media-embed.expired {
+  position: relative;
+  padding: 0;
+  border: none;
+  background: none;
+  display: block;
+}
+
+.media-embed.expired img {
+  max-width: 420px;
+  max-height: 320px;
+  border-radius: var(--corner-radius-small);
+  display: block;
+  /* Dimmed so a stale preview is not mistaken for the live image. */
+  opacity: 0.55;
+}
+
+.expired-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs);
+  border-radius: 0 0 var(--corner-radius-small) var(--corner-radius-small);
+  background: rgba(12, 16, 20, 0.82);
+  color: var(--surface-text);
+  pointer-events: none;
+}

@@ -219,9 +219,12 @@ export class ChatStore {
         // genuine earlier edit isn't clobbered by a later silent rewrite.
         this.mapMessage(data.bufferId, data.id, (m) => ({
           ...m,
-          body: data.body,
+          // A thumbnail landing or links being re-signed carries attachments
+          // only - no body, no embeds - so those must not be blanked out.
+          body: data.body ?? m.body,
           edited: m.edited || !!data.edited,
-          embeds: data.embeds || []
+          embeds: data.embeds ?? m.embeds ?? [],
+          attachments: data.attachments ?? m.attachments
         }))
         break
 
@@ -488,8 +491,17 @@ export class ChatStore {
   }
 
   /**
-   * Opens the real Discord message in a browser - the fallback for an
-   * attachment link whose signed query string has expired.
+   * Asks nobilis to re-sign a Discord message's attachment links, which it
+   * does by fetching the message again. Resolves to the fresh attachments;
+   * the store is updated by the messageUpdated the daemon broadcasts.
+   */
+  async refreshAttachments(bufferId: string, messageId: string): Promise<void> {
+    await window.moho.rpc('refreshDiscordAttachments', { bufferId, messageId })
+  }
+
+  /**
+   * Opens the real Discord message in a browser - the last resort when even
+   * a refresh cannot produce a working link.
    */
   async openInDiscord(bufferId: string, messageId: string): Promise<void> {
     try {

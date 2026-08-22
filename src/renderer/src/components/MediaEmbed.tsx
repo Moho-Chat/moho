@@ -25,17 +25,30 @@ interface Props {
   bufferId?: string
   messageId?: string
   onOpenInDiscord?: (bufferId: string, messageId: string) => void
+  /** Re-signs this message's links by asking Discord for it again. */
+  onRefresh?: (bufferId: string, messageId: string) => Promise<void>
 }
 
 /**
  * Every cdn.discordapp.com / media.discordapp.net link Discord hands out is
  * signed with an ex=/is=/hm= query string that lapses roughly 24h after issue.
- * nobilis has no way to silently re-sign one (Discord's refresh-urls endpoint
- * rejects user-token requests outright), so once expired the only real fix is
- * opening the actual message in a real Discord session.
+ * nobilis re-signs one by asking Discord for the message again, so an expired
+ * link is a reload rather than a dead end.
  */
 function isDiscordAttachment(url: string): boolean {
   return /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\//i.test(url)
+}
+
+/**
+ * `ex=` is the link's expiry as a hex unix timestamp. Reading it means a stale
+ * link is known before it is requested - which matters once a cached preview
+ * exists, because then the image never fails to load and nothing would
+ * otherwise reveal that the original is gone.
+ */
+function linkExpired(url: string): boolean {
+  const ex = /[?&]ex=([0-9a-f]+)/i.exec(url)?.[1]
+  if (!ex) return false
+  return Date.now() / 1000 >= parseInt(ex, 16)
 }
 
 function humanSize(bytes: number): string {
@@ -51,10 +64,13 @@ export function MediaEmbed({
   loop,
   bufferId,
   messageId,
-  onOpenInDiscord
+  onOpenInDiscord,
+  onRefresh
 }: Props): JSX.Element | null {
   const [failed, setFailed] = useState(false)
   const [playing, setPlaying] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshError, setRefreshError] = useState('')
 
   // An attachment knows its own kind; an unfurled link only has a guess.
   const kind = attachment?.kind ?? item?.kind ?? 'file'
@@ -76,22 +92,62 @@ export function MediaEmbed({
       ? { aspectRatio: `${attachment.width} / ${attachment.height}` }
       : undefined
 
+  const canRefresh = !!(isDiscordAttachment(openTarget) && bufferId && messageId && onRefresh)
+
+  const refresh = (): void => {
+    if (!canRefresh) return
+    setRefreshing(true)
+    setRefreshError('')
+    void onRefresh(bufferId!, messageId!)
+      .then(() => {
+        // The daemon broadcasts the re-signed attachment, which arrives as a
+        // prop; clearing the failure lets the new link be attempted.
+        setFailed(false)
+      })
+      .catch((e: Error) => setRefreshError(e.message))
+      .finally(() => setRefreshing(false))
+  }
+
   if (failed || !fullSrc) {
-    const expiredDiscord =
-      isDiscordAttachment(openTarget) && bufferId && messageId && onOpenInDiscord
+    // A cached preview outlives the signed link, so an expired attachment
+    // still has something to show - click it to fetch the original again
+    // rather than being told it is gone.
+    const preview = attachment?.thumbnailPath
+    if (preview && canRefresh) {
+      return (
+        <button
+          type="button"
+          className="media-embed expired"
+          style={ratio}
+          title={refreshError || 'Link expired — click to reload from Discord'}
+          onClick={refresh}
+        >
+          <img src={resolveMediaUrl(preview)} alt={attachment?.filename || ''} loading="lazy" />
+          <span className="expired-overlay small">
+            <Icon name={refreshing ? 'hourglass_empty' : 'refresh'} size={18} />
+            {refreshing ? 'Reloading…' : refreshError || 'Click to reload'}
+          </span>
+        </button>
+      )
+    }
     return (
       <div className="media-embed failed small muted">
         <Icon name="broken_image" size={16} />
-        {expiredDiscord ? (
+        {canRefresh ? (
           <>
-            <span>This attachment link has expired.</span>
-            <button
-              type="button"
-              className="link-button"
-              onClick={() => onOpenInDiscord(bufferId, messageId)}
-            >
-              Open in Discord
+            <span>{refreshError || 'This attachment link has expired.'}</span>
+            <button type="button" className="link-button" disabled={refreshing} onClick={refresh}>
+              {refreshing ? 'Reloading…' : 'Reload'}
             </button>
+            {onOpenInDiscord && (
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => onOpenInDiscord(bufferId!, messageId!)}
+              >
+                Open in Discord
+              </button>
+            )}
           </>
         ) : (
           <button type="button" className="link-button" onClick={open}>
@@ -115,17 +171,49 @@ export function MediaEmbed({
         </button>
       )
     }
+
+    // Show the cheap local copy until asked for the original.
+    const showingPreview = !!attachment?.thumbnailPath && !playing
+    const stale = canRefresh && linkExpired(openTarget)
+
+    const load = (): void => {
+      if (!showingPreview) {
+        open()
+        return
+      }
+      // Clicking a preview means "show me the real thing" - which needs a
+      // fresh signature first if the link has already lapsed.
+      if (stale) {
+        setRefreshing(true)
+        setRefreshError('')
+        void onRefresh!(bufferId!, messageId!)
+          .then(() => setPlaying(true))
+          .catch((e: Error) => setRefreshError(e.message))
+          .finally(() => setRefreshing(false))
+        return
+      }
+      setPlaying(true)
+    }
+
     return (
-      <img
-        className="media-embed"
-        style={ratio}
-        src={resolveMediaUrl(playing || !attachment?.thumbnailPath ? fullSrc : previewSrc)}
-        alt={attachment?.filename || ''}
-        title={attachment?.filename}
-        loading="lazy"
-        onError={() => setFailed(true)}
-        onClick={open}
-      />
+      <span className="media-embed-wrap" style={ratio}>
+        <img
+          className="media-embed"
+          style={ratio}
+          src={resolveMediaUrl(showingPreview ? previewSrc : fullSrc)}
+          alt={attachment?.filename || ''}
+          title={refreshError || attachment?.filename}
+          loading="lazy"
+          onError={() => setFailed(true)}
+          onClick={load}
+        />
+        {showingPreview && stale && (
+          <span className="expired-overlay small">
+            <Icon name={refreshing ? 'hourglass_empty' : 'refresh'} size={16} />
+            {refreshing ? 'Reloading…' : refreshError || 'Click to reload'}
+          </span>
+        )}
+      </span>
     )
   }
 

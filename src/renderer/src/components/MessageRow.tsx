@@ -295,6 +295,7 @@ export function MessageRow({
                   bufferId={bufferId}
                   messageId={message.id}
                   onOpenInDiscord={(b, m) => void store.openInDiscord(b, m)}
+                  onRefresh={(b, m) => store.refreshAttachments(b, m)}
                 />
               ))}
               {/* Links someone typed, unfurled from the body. Still needed
