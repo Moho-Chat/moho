@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { TitleBar } from './components/TitleBar'
 import { BufferList } from './components/BufferList'
+import { ServerRail } from './components/ServerRail'
 import { MessageList } from './components/MessageList'
 import { Composer } from './components/Composer'
 import { NickList } from './components/NickList'
@@ -27,15 +28,16 @@ export default function App(): JSX.Element {
   const [sidebarFolded, setSidebarFolded] = usePref<boolean>('ui.sidebarFolded', false)
   const [userListFolded, setUserListFolded] = usePref<boolean>('ui.userListFolded', false)
   const [savedBufferId] = usePref<string>('ui.activeBufferId', '')
+  const [savedGroupId] = usePref<string>('ui.activeGroupId', '')
 
   // Boot once prefs have loaded, so the restored buffer selection is available
   // before the store asks nobilis for its backlog.
   useEffect(() => {
     if (!prefsReady || booted) return
     setBooted(true)
-    void store.init(savedBufferId)
+    void store.init(savedBufferId, savedGroupId)
     return () => store.dispose()
-  }, [prefsReady, booted, savedBufferId, store])
+  }, [prefsReady, booted, savedBufferId, savedGroupId, store])
 
   // A stale restored id is harmless: it simply resolves to no buffer and the
   // empty state shows, exactly as it would for "".
@@ -60,6 +62,11 @@ export default function App(): JSX.Element {
       <div className="app-body">
         {!sidebarFolded && (
           <>
+            {/* The rail folds away with the channel list: they are one
+                navigation surface, and leaving a strip of server icons beside
+                a collapsed sidebar would be a column that selects something
+                you cannot see. */}
+            <ServerRail />
             <div className="sidebar">
               <BufferList />
             </div>

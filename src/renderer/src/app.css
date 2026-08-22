@@ -1605,3 +1605,133 @@ video.lightbox-media {
   color: var(--success);
   max-width: 40ch;
 }
+
+/* --- server rail ------------------------------------------------------ */
+
+.server-rail {
+  width: var(--rail-width);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) 0;
+  background: var(--surface-container-lowest);
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* The rail is a fixed strip of tiles; a scrollbar would eat a third of it. */
+  scrollbar-width: none;
+}
+
+.server-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.rail-tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  flex: none;
+  padding: 0;
+  background: none;
+  border: none;
+}
+
+/* Discord's selection pill, on the left edge. */
+.rail-pill {
+  position: absolute;
+  left: 0;
+  width: 3px;
+  height: 8px;
+  border-radius: 0 3px 3px 0;
+  background: var(--surface-text);
+  opacity: 0;
+  transition: height 120ms ease, opacity 120ms ease;
+}
+
+.rail-pill.active {
+  height: 26px;
+  opacity: 1;
+}
+
+.rail-pill.unread {
+  height: 8px;
+  opacity: 1;
+}
+
+.rail-face {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  overflow: hidden;
+  background: var(--surface-container-high);
+  color: var(--surface-variant-text);
+  /* Squircle-to-circle on hover and selection, the way Discord's does. */
+  border-radius: 34%;
+  transition: border-radius 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.rail-tile:hover .rail-face,
+.rail-tile.active .rail-face {
+  border-radius: 30%;
+  background: var(--primary);
+  color: var(--primary-text);
+}
+
+/* An icon fills its tile, so hovering must not recolour the artwork. */
+.rail-tile:hover .rail-face:has(.rail-icon),
+.rail-tile.active .rail-face:has(.rail-icon) {
+  background: var(--surface-container-high);
+}
+
+.rail-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.rail-initials {
+  font-size: var(--font-size-medium);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.rail-badge {
+  position: absolute;
+  right: 2px;
+  bottom: 0;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--surface-container-highest);
+  color: var(--surface-text);
+  border: 2px solid var(--surface-container-lowest);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+}
+
+.rail-badge.highlight {
+  background: var(--primary);
+  color: var(--primary-text);
+  font-weight: 600;
+}
+
+/* The selected rail entry, naming what the channel list below belongs to. */
+.group-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-s) var(--spacing-s) var(--spacing-xs) var(--spacing-m);
+}
+
+.group-title-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}

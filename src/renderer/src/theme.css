@@ -63,6 +63,7 @@
 
   /* Fixed chrome dimensions, from the original layout. */
   --titlebar-height: 44px;
+  --rail-width: 56px;
   --sidebar-width: 220px;
   --nicklist-width: 180px;
   --settings-rail-width: 130px;

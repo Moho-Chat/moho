@@ -5,6 +5,7 @@ import type {
   CustomEmoji,
   Member,
   Message,
+  BufferGroup,
   MatrixVerification,
   RoomPermissions,
   SockchatSmilie
@@ -46,6 +47,10 @@ export interface ChatState {
   linkUp: boolean
   accounts: Account[]
   buffers: BufferEntry[]
+  /** Rail entries - guilds, spaces, DM collections and account entries. */
+  groups: BufferGroup[]
+  /** Which rail entry the channel pane is showing. */
+  activeGroupId: string
   activeBufferId: string
   activePanel: ActivePanel
   joinPanelAccountId: string
@@ -89,6 +94,8 @@ const INITIAL: ChatState = {
   linkUp: false,
   accounts: [],
   buffers: [],
+  groups: [],
+  activeGroupId: '',
   activeBufferId: '',
   activePanel: '',
   joinPanelAccountId: '',
@@ -159,8 +166,8 @@ export class ChatStore {
 
   // --- lifecycle ------------------------------------------------------
 
-  async init(initialBufferId: string): Promise<void> {
-    this.set({ activeBufferId: initialBufferId })
+  async init(initialBufferId: string, initialGroupId = ''): Promise<void> {
+    this.set({ activeBufferId: initialBufferId, activeGroupId: initialGroupId })
 
     window.moho.onLinkChange((up) => {
       this.set({ linkUp: up })
@@ -183,7 +190,7 @@ export class ChatStore {
   }
 
   private async refreshAll(): Promise<void> {
-    await Promise.all([this.refreshAccounts(), this.refreshBuffers()])
+    await Promise.all([this.refreshAccounts(), this.refreshBuffers(), this.refreshGroups()])
     if (this.state.activeBufferId) await this.selectBuffer(this.state.activeBufferId)
   }
 
@@ -193,6 +200,49 @@ export class ChatStore {
     } catch (e) {
       this.toast('error', `Couldn't list accounts: ${(e as Error).message}`)
     }
+  }
+
+  /**
+   * The rail. Kept in nobilis's order (its own `position`, then name), which
+   * for Discord is the order the user arranged their servers in.
+   */
+  async refreshGroups(): Promise<void> {
+    try {
+      const groups = await window.moho.rpc<BufferGroup[]>('listBufferGroups')
+      this.set({ groups })
+      // Land somewhere sensible on first run rather than an empty pane.
+      if (!this.state.activeGroupId && groups.length) {
+        this.set({ activeGroupId: this.groupOfActiveBuffer() || groups[0].id })
+      }
+    } catch (e) {
+      this.toast('error', `Couldn't list servers: ${(e as Error).message}`)
+    }
+  }
+
+  /** Keeps the rail selection on whatever buffer is already open. */
+  private groupOfActiveBuffer(): string {
+    const active = this.state.buffers.find((b) => b.id === this.state.activeBufferId)
+    return active?.groupId || ''
+  }
+
+  /**
+   * A guild arriving, or one re-registering once its icon finished
+   * downloading. Replaced by id rather than appended, then re-sorted so a
+   * late arrival lands in the right place instead of at the end.
+   */
+  private upsertGroup(group: BufferGroup): void {
+    const rest = this.state.groups.filter((g) => g.id !== group.id)
+    const groups = [...rest, group].sort(
+      (a, b) => a.position - b.position || a.name.localeCompare(b.name)
+    )
+    this.set({ groups })
+    if (!this.state.activeGroupId) this.set({ activeGroupId: groups[0].id })
+  }
+
+  selectGroup(groupId: string): void {
+    if (groupId === this.state.activeGroupId) return
+    this.set({ activeGroupId: groupId })
+    void window.moho.prefs.set('ui.activeGroupId', groupId)
   }
 
   async refreshBuffers(): Promise<void> {
@@ -257,6 +307,10 @@ export class ChatStore {
 
       case 'bufferListChange':
         this.handleBufferListChange(data)
+        break
+
+      case 'bufferGroupChange':
+        this.upsertGroup(data as BufferGroup)
         break
 
       case 'presenceChange':
@@ -457,6 +511,11 @@ export class ChatStore {
     this.set(patch)
 
     void window.moho.prefs.set('ui.activeBufferId', bufferId)
+    // A buffer can be opened from outside the rail - a notification click, or
+    // the restored selection at startup - so the rail follows it rather than
+    // showing a channel that isn't in the list underneath.
+    const group = this.state.buffers.find((b) => b.id === bufferId)?.groupId
+    if (group && group !== this.state.activeGroupId) this.selectGroup(group)
     void window.moho.markBufferRead(bufferId)
     bestEffort(this.markRead(bufferId), 'mark read')
     bestEffort(window.moho.rpc('subscribe', { bufferId }), `subscribe ${bufferId}`)

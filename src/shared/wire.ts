@@ -35,6 +35,24 @@ export interface Buffer {
   avatarUrl?: string
   /** Matrix only - absent, not false, for protocols with no encryption concept. */
   encrypted?: boolean
+  /** Which rail entry this buffer sits under. */
+  groupId?: string
+}
+
+/**
+ * One entry in the server rail: a Discord guild, a Matrix space, an account's
+ * direct messages, or - for protocols with no such concept - the account.
+ */
+export interface BufferGroup {
+  id: string
+  accountId: string
+  /** Which brand mark to fall back to when there is no icon. */
+  service: string
+  kind: 'guild' | 'space' | 'dms' | 'account'
+  name: string
+  /** A local path nobilis already fetched, absent when there is no icon. */
+  iconUrl?: string
+  position: number
 }
 
 export interface ReplyPreview {
