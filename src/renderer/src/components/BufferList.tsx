@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { useChat, useIdSetPref, usePref, useStore } from '../state/hooks'
-import { visibleGroups } from '../lib/groups'
+import { PINNED_GROUP_ID, pinnedGroup, visibleGroups } from '../lib/groups'
 import type { BufferEntry } from '../state/store'
 import {
   bufferDisplayName,
@@ -33,31 +33,45 @@ export function BufferList(): JSX.Element {
   const [, toggleMute, isMuted] = useIdSetPref('mutedBuffers')
   const [hidden, , isHidden] = useIdSetPref('hiddenBuffers')
   const [, setHidden] = usePref<string[]>('hiddenBuffers', [])
-  const [pinnedCollapsed, setPinnedCollapsed] = usePref<boolean>('pinnedCollapsed', false)
 
   const visible = useMemo(() => buffers.filter((b) => !hidden.includes(b.id)), [buffers, hidden])
 
   // A stale selection (a guild that went away, a first run) resolves to the
-  // first entry rather than an empty pane.
-  const shownGroups = useMemo(() => visibleGroups(groups, visible), [groups, visible])
+  // first entry rather than an empty pane. The pinned page is added the same
+  // way the rail adds it, so both agree on what is selectable.
+  const shownGroups = useMemo(() => {
+    const list = visibleGroups(groups, visible)
+    return pinned.length > 0 ? [...list, pinnedGroup()] : list
+  }, [groups, visible, pinned])
   const activeGroup = shownGroups.find((g) => g.id === activeGroupId) || shownGroups[0]
+  const isPinnedPage = activeGroup?.id === PINNED_GROUP_ID
   const groupAccount = accounts.find((a) => a.id === activeGroup?.accountId)
 
-  // Server buffer first, then most recent activity - the ordering nobilis's
-  // lastActivityTs exists to make possible without querying history here.
+  /**
+   * What the pane lists, in reading order: pinned first, then direct messages,
+   * then channels, each band by most recent activity.
+   *
+   * The pinned page is the same list unfiltered by group - a pin is a
+   * cross-service shortcut, so its page is the one place they all appear
+   * together.
+   */
   const groupBuffers = useMemo(() => {
     if (!activeGroup) return []
-    return visible
-      .filter((b) => b.groupId === activeGroup.id)
-      .sort((a, b) => {
-        if ((a.kind === 'server') !== (b.kind === 'server')) return a.kind === 'server' ? -1 : 1
-        return (b.lastActivityTs || 0) - (a.lastActivityTs || 0)
-      })
-  }, [visible, activeGroup])
-  const pinnedBuffers = useMemo(
-    () => visible.filter((b) => pinned.includes(b.id)),
-    [visible, pinned]
-  )
+    const inScope = isPinnedPage
+      ? visible.filter((b) => pinned.includes(b.id))
+      : visible.filter((b) => b.groupId === activeGroup.id)
+
+    // Server buffer above everything; then pinned, DMs, channels.
+    const band = (b: BufferEntry): number => {
+      if (b.kind === 'server') return 0
+      if (!isPinnedPage && pinned.includes(b.id)) return 1
+      if (b.kind === 'dm') return 2
+      return 3
+    }
+    return [...inScope].sort(
+      (a, b) => band(a) - band(b) || (b.lastActivityTs || 0) - (a.lastActivityTs || 0)
+    )
+  }, [visible, activeGroup, isPinnedPage, pinned])
 
   /**
    * Muting a server buffer cascades to every channel and DM under that
@@ -80,34 +94,6 @@ export function BufferList(): JSX.Element {
   return (
     <div className="bufferlist">
       <div className="bufferlist-scroll">
-        {pinnedBuffers.length > 0 && (
-          <>
-            <GroupHeader
-              label="Pinned"
-              glyph="push_pin"
-              collapsed={pinnedCollapsed}
-              onToggle={() => setPinnedCollapsed(!pinnedCollapsed)}
-            />
-            {!pinnedCollapsed &&
-              pinnedBuffers.map((b) => (
-                <BufferRow
-                  key={`pinned-${b.id}`}
-                  buffer={b}
-                  active={b.id === activeBufferId}
-                  muted={isEffectivelyMuted(b)}
-                  pinned
-                  showServiceIcon
-                  accounts={accounts}
-                  onSelect={() => void store.selectBuffer(b.id)}
-                  onTogglePin={() => togglePin(b.id)}
-                  onToggleMute={() => toggleMute(b.id)}
-                  onHide={() => hideBuffer(b.id)}
-                  onClose={() => void store.closeBuffer(b.id)}
-                />
-              ))}
-          </>
-        )}
-
         {accounts.length === 0 && (
           <div className="bufferlist-empty muted small">
             No accounts yet. Add one to get started.
@@ -179,31 +165,6 @@ function ConnectionDot({ state }: { state: string }): JSX.Element {
         ? 'var(--warning)'
         : 'var(--outline)'
   return <span className="connection-dot" style={{ background: color }} title={state} />
-}
-
-function GroupHeader({
-  label,
-  glyph,
-  collapsed,
-  onToggle,
-  trailing
-}: {
-  label: string
-  glyph?: string
-  collapsed: boolean
-  onToggle: () => void
-  trailing?: JSX.Element
-}): JSX.Element {
-  return (
-    <div className="group-header">
-      <button type="button" className="group-header-main" onClick={onToggle}>
-        <Icon name={collapsed ? 'chevron_right' : 'expand_more'} size={16} />
-        {glyph && <Icon name={glyph} size={14} />}
-        <span className="ellipsis">{label}</span>
-      </button>
-      {trailing}
-    </div>
-  )
 }
 
 interface BufferRowProps {

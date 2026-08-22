@@ -1745,3 +1745,24 @@ video.lightbox-media {
   object-fit: contain;
   display: block;
 }
+
+/* Drag feedback: the tile being dragged fades, the one it would land on gets
+   a line above it, so the drop position is unambiguous in a single column. */
+.rail-tile[draggable='true'] {
+  cursor: grab;
+}
+
+.rail-tile[draggable='true']:active {
+  cursor: grabbing;
+}
+
+.rail-tile.drop-target::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--primary);
+}
