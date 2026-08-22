@@ -57,6 +57,10 @@ const api = {
 
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke(IPC.openExternal, url),
   pickFile: (): Promise<string | null> => ipcRenderer.invoke(IPC.pickFile),
+  pickDirectory: (): Promise<string | null> => ipcRenderer.invoke(IPC.pickDirectory),
+  defaultDownloadDir: (): Promise<string> => ipcRenderer.invoke(IPC.defaultDownloadDir),
+  downloadMedia: (source: string, filename?: string): Promise<{ path?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC.downloadMedia, source, filename),
   readClipboardImage: (): Promise<string | null> => ipcRenderer.invoke(IPC.readClipboardImage),
   restartDaemon: (): Promise<void> => ipcRenderer.invoke(IPC.restartDaemon),
   daemonStatus: (): Promise<{ binaryPath: string; available: boolean; linkUp: boolean }> =>

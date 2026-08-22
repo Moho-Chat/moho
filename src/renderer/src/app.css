@@ -1593,3 +1593,15 @@ img.smilie {
 video.lightbox-media {
   cursor: default;
 }
+
+.setting-actions {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex: none;
+}
+
+/* Where a save lands, next to the file name. */
+.lightbox-saved {
+  color: var(--success);
+  max-width: 40ch;
+}

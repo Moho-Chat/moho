@@ -125,3 +125,54 @@ export function SelectionSetting({
     </div>
   )
 }
+
+/**
+ * A folder chosen through the system picker, with the platform default shown
+ * (and used) until the user overrides it.
+ *
+ * Stored empty rather than pre-filled with the resolved default: writing the
+ * default in would freeze today's path into the preferences file, so a later
+ * change to the account's own Downloads location would stop being followed.
+ */
+export function DirectorySetting({
+  settingKey,
+  label,
+  description,
+  defaultPath
+}: {
+  settingKey: string
+  label: string
+  description?: string
+  defaultPath?: string
+}): JSX.Element {
+  const [value, setValue] = usePref<string>(settingKey, '')
+
+  return (
+    <div className="setting-row">
+      <div className="setting-text">
+        <div>{label}</div>
+        {description && <div className="small muted">{description}</div>}
+        <div className="small muted ellipsis">
+          {value || defaultPath || 'the system downloads folder'}
+          {!value && ' (default)'}
+        </div>
+      </div>
+      <div className="setting-actions">
+        <button
+          type="button"
+          className="button"
+          onClick={() => {
+            void window.moho.pickDirectory().then((dir) => dir && setValue(dir))
+          }}
+        >
+          Browse…
+        </button>
+        {value && (
+          <button type="button" className="button" onClick={() => setValue('')}>
+            Reset
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}

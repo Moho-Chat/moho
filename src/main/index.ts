@@ -9,6 +9,7 @@ import {
   globalShortcut,
   ipcMain,
   nativeImage,
+  net,
   Menu,
   shell,
   Tray
@@ -20,6 +21,7 @@ import { Prefs } from './prefs'
 import { Notifier } from './notifications'
 import { IPC } from '../shared/ipc'
 import { allowRoot, installMediaHandler, registerMediaScheme } from './media-protocol'
+import { saveMedia } from './downloads'
 import type { Buffer as ChatBuffer } from '../shared/wire'
 
 registerMediaScheme()
@@ -241,6 +243,37 @@ function wireIpc(): void {
     return res.canceled ? null : res.filePaths[0]
   })
 
+  ipcMain.handle(IPC.pickDirectory, async () => {
+    if (!mainWindow) return null
+    const res = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory', 'createDirectory']
+    })
+    return res.canceled ? null : res.filePaths[0]
+  })
+
+  // Where downloads land when the user hasn't chosen somewhere. Electron
+  // resolves this per-platform (XDG's Downloads dir on Linux), so there is
+  // nothing to guess at.
+  ipcMain.handle(IPC.defaultDownloadDir, () => app.getPath('downloads'))
+
+  ipcMain.handle(IPC.downloadMedia, async (_e, source: string, filename?: string) =>
+    saveMedia(
+      source,
+      filename,
+      String(prefs.get('downloads.directory', '') || app.getPath('downloads')),
+      // Electron's net rather than global fetch: it follows the app's own
+      // proxy and certificate settings, which a plain fetch would not.
+      async (url) => {
+        const res = await net.fetch(url)
+        return {
+          ok: res.ok,
+          status: res.status,
+          bytes: async () => new Uint8Array(await res.arrayBuffer())
+        }
+      }
+    )
+  )
+
   ipcMain.handle(IPC.readClipboardImage, () => {
     const img = clipboard.readImage()
     if (img.isEmpty()) return null
@@ -291,11 +324,16 @@ app.whenReady().then(() => {
   nobilis = new NobilisProcess()
   client = new NobilisClient()
 
-  notifier = new Notifier(prefs, updateTray, (bufferId) => {
-    mainWindow?.show()
-    mainWindow?.focus()
-    send(IPC.activateBuffer, bufferId)
-  })
+  notifier = new Notifier(
+    prefs,
+    updateTray,
+    (bufferId) => {
+      mainWindow?.show()
+      mainWindow?.focus()
+      send(IPC.activateBuffer, bufferId)
+    },
+    () => mainWindow?.webContents ?? null
+  )
 
   client.on('link', (up) => send(IPC.link, up))
   client.on('push', (frame) => {

@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
-import { SettingsSection, SelectionSetting, StringSetting, ToggleSetting } from './controls'
+import {
+  DirectorySetting,
+  SettingsSection,
+  SelectionSetting,
+  StringSetting,
+  ToggleSetting
+} from './controls'
 import { useChat, useStore } from '../../state/hooks'
 import { Icon } from '../Icon'
 import type { Account } from '../../../../shared/wire'
@@ -11,7 +17,7 @@ import type { Account } from '../../../../shared/wire'
  * protocols rather than dozens of categories (hence no search).
  */
 const CATEGORIES = [
-  { id: 'display', label: 'Display', available: true },
+  { id: 'general', label: 'General', available: true },
   { id: 'irc', label: 'IRC', available: true },
   { id: 'sockchat', label: 'Sneedchat', available: true },
   { id: 'tor', label: 'Tor', available: true },
@@ -22,7 +28,7 @@ const CATEGORIES = [
 ]
 
 export function SettingsPanel(): JSX.Element {
-  const [selected, setSelected] = useState('display')
+  const [selected, setSelected] = useState('general')
 
   return (
     <div className="settings">
@@ -42,7 +48,7 @@ export function SettingsPanel(): JSX.Element {
       <div className="divider-v" />
 
       <div className="settings-content">
-        {selected === 'display' && <DisplaySettings />}
+        {selected === 'general' && <GeneralSettings />}
         {selected === 'irc' && <IrcSettings />}
         {selected === 'sockchat' && <SneedchatSettings />}
         {selected === 'tor' && <TorSettings />}
@@ -69,7 +75,12 @@ function ComingSoon({ label }: { label: string }): JSX.Element {
  * Cross-protocol preferences - these apply to every buffer regardless of
  * backend, unlike the per-protocol message filters.
  */
-function DisplaySettings(): JSX.Element {
+function GeneralSettings(): JSX.Element {
+  const [defaultDir, setDefaultDir] = useState('')
+  useEffect(() => {
+    void window.moho.defaultDownloadDir().then(setDefaultDir)
+  }, [])
+
   return (
     <>
       <SettingsSection title="Message layout">
@@ -109,6 +120,15 @@ function DisplaySettings(): JSX.Element {
           label="Embed unrecognized links by content type"
           description="Many image hosts use short, extensionless links that can't be identified from the URL text alone. When on, an unrecognized link is checked directly and embedded if it turns out to be media. Privacy note: this contacts the linked site the moment a message arrives, not only if you click it - and for Sneedchat it bypasses Tor entirely, since it's a plain network request. Turn off to only embed links with a recognizable file extension."
           defaultValue={true}
+        />
+      </SettingsSection>
+
+      <SettingsSection title="Downloads">
+        <DirectorySetting
+          settingKey="downloads.directory"
+          label="Save downloads to"
+          description="Where the save button in the expanded media viewer puts files. Left unset, this follows your system's downloads folder."
+          defaultPath={defaultDir}
         />
       </SettingsSection>
 

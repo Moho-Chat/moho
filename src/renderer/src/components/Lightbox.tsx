@@ -36,6 +36,8 @@ export function Lightbox({ source, onClose }: Props): JSX.Element {
   const [zoomed, setZoomed] = useState(false)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState('')
   const dragging = useRef<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
@@ -78,6 +80,22 @@ export function Lightbox({ source, onClose }: Props): JSX.Element {
     void window.moho.openExternal(source.externalUrl || source.src)
   }
 
+  /**
+   * Saves to the configured downloads folder (the system one unless changed
+   * in Settings). Prefers the original over what is on screen: the displayed
+   * source may be a downscaled preview, and nobody wants to save the thumbnail.
+   */
+  const download = (): void => {
+    if (saving) return
+    setSaving(true)
+    setSaved('')
+    void window.moho
+      .downloadMedia(source.externalUrl || source.src, source.filename)
+      .then((res) => setSaved(res.error ? `Couldn't save: ${res.error}` : `Saved to ${res.path}`))
+      .catch((e: Error) => setSaved(`Couldn't save: ${e.message}`))
+      .finally(() => setSaving(false))
+  }
+
   return createPortal(
     // Clicking the backdrop closes; the media and toolbar stop that
     // themselves, so a click that lands on either is never a dismissal.
@@ -86,6 +104,7 @@ export function Lightbox({ source, onClose }: Props): JSX.Element {
         <span className="lightbox-title ellipsis">
           {source.from && <strong>{source.from}</strong>}
           {source.filename && <span className="small muted">{source.filename}</span>}
+          {saved && <span className="small lightbox-saved ellipsis">{saved}</span>}
         </span>
         <span className="lightbox-actions">
           {canZoom && (
@@ -96,6 +115,13 @@ export function Lightbox({ source, onClose }: Props): JSX.Element {
               onClick={toggleZoom}
             />
           )}
+          <IconButton
+            name={saving ? 'hourglass_empty' : 'download'}
+            size={20}
+            title={saved || 'Save to your downloads folder'}
+            disabled={saving}
+            onClick={download}
+          />
           <IconButton name="open_in_new" size={20} title="Open outside moho" onClick={openExternal} />
           <IconButton name="close" size={20} title="Close (Esc)" onClick={onClose} />
         </span>

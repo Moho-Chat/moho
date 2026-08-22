@@ -1,7 +1,8 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { Notification } from 'electron'
+import { Notification, nativeImage } from 'electron'
+import type { WebContents } from 'electron'
 import type { Prefs } from './prefs'
 import type { Buffer as ChatBuffer } from '../shared/wire'
 
@@ -32,10 +33,15 @@ export class Notifier {
   private avatarFetchInFlight = false
   private avatarSeq = 0
 
+  /** Source path -> transcoded PNG, so a repeat sender is converted once. */
+  private transcoded = new Map<string, string>()
+
   constructor(
     private prefs: Prefs,
     private onAlertChange: (unreadCount: number, hasPinnedAlert: boolean) => void,
-    private onActivate: (bufferId: string) => void
+    private onActivate: (bufferId: string) => void,
+    /** The renderer, borrowed only to decode formats nativeImage cannot. */
+    private renderer: () => WebContents | null = () => null
   ) {}
 
   trackBuffer(buffer: ChatBuffer, removed: boolean): void {
@@ -69,7 +75,7 @@ export class Notifier {
 
     if (!Notification.isSupported()) return
 
-    const icon = await this.fetchAvatar(payload.avatarUrl)
+    const icon = await this.notificationIcon(payload.avatarUrl)
     const notification = new Notification({
       title: payload.title || 'moho',
       body: payload.body || '',
@@ -77,6 +83,72 @@ export class Notifier {
     })
     notification.on('click', () => this.onActivate(payload.bufferId))
     notification.show()
+  }
+
+  /**
+   * A file path the notification daemon will actually display, or null.
+   *
+   * Electron renders a notification icon through nativeImage, which only
+   * decodes PNG and JPEG. That is a real constraint here rather than a
+   * theoretical one: Sneedchat serves avatars as WebP and GIF (and names them
+   * .jpg), and Matrix serves whatever the uploader sent, so on those services
+   * the icon silently came out empty while Discord's PNGs worked - which is
+   * exactly the "only Discord has avatars" symptom.
+   *
+   * Chromium itself decodes all of those, so anything nativeImage rejects is
+   * handed to the renderer to be redrawn as a PNG.
+   */
+  private async notificationIcon(url?: string): Promise<string | null> {
+    const file = await this.fetchAvatar(url)
+    if (!file) return null
+    if (!nativeImage.createFromPath(file).isEmpty()) return file
+
+    const cached = this.transcoded.get(file)
+    if (cached && fs.existsSync(cached)) return cached
+    const png = await this.transcodeToPng(file)
+    if (png) this.transcoded.set(file, png)
+    return png
+  }
+
+  /**
+   * Redraws an image the main process cannot decode into a PNG it can, using
+   * the window's own renderer - Chromium reads WebP, GIF and the rest natively.
+   *
+   * The window is hidden rather than destroyed when closed, so its renderer is
+   * alive whenever the app is, which is what makes this safe to rely on for
+   * notifications that fire with no window on screen. If it ever isn't there,
+   * this returns null and the notification simply goes out without an icon.
+   */
+  private async transcodeToPng(file: string): Promise<string | null> {
+    const wc = this.renderer()
+    if (!wc || wc.isDestroyed()) return null
+    try {
+      const src = `moho-media://file/?p=${encodeURIComponent(file)}`
+      const dataUrl: string | null = await wc.executeJavaScript(
+        `(async () => {
+           try {
+             const res = await fetch(${JSON.stringify(src)})
+             if (!res.ok) return null
+             const bmp = await createImageBitmap(await res.blob())
+             // Notification icons are displayed small; capping keeps an
+             // animated GIF's first frame from becoming a huge PNG.
+             const scale = Math.min(1, 128 / Math.max(bmp.width, bmp.height))
+             const c = document.createElement('canvas')
+             c.width = Math.max(1, Math.round(bmp.width * scale))
+             c.height = Math.max(1, Math.round(bmp.height * scale))
+             c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height)
+             return c.toDataURL('image/png')
+           } catch { return null }
+         })()`,
+        true
+      )
+      if (!dataUrl?.startsWith('data:image/png;base64,')) return null
+      const out = path.join(os.tmpdir(), `moho-notify-icon-${++this.avatarSeq}.png`)
+      fs.writeFileSync(out, global.Buffer.from(dataUrl.split(',')[1], 'base64'))
+      return out
+    } catch {
+      return null
+    }
   }
 
   /**
