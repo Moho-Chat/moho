@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Icon } from './Icon'
+import { Lightbox } from './Lightbox'
 import { resolveMediaUrl } from '../lib/util'
 import type { MediaItem } from '../lib/format'
 import type { Attachment } from '../../../shared/wire'
@@ -24,6 +25,8 @@ interface Props {
   /** Only needed for the expired-Discord-link fallback. */
   bufferId?: string
   messageId?: string
+  /** Shown in the expanded view's header, so it stays attributable. */
+  from?: string
   onOpenInDiscord?: (bufferId: string, messageId: string) => void
   /** Re-signs this message's links by asking Discord for it again. */
   onRefresh?: (bufferId: string, messageId: string) => Promise<void>
@@ -64,11 +67,13 @@ export function MediaEmbed({
   loop,
   bufferId,
   messageId,
+  from,
   onOpenInDiscord,
   onRefresh
 }: Props): JSX.Element | null {
   const [failed, setFailed] = useState(false)
   const [playing, setPlaying] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState('')
 
@@ -176,23 +181,21 @@ export function MediaEmbed({
     const showingPreview = !!attachment?.thumbnailPath && !playing
     const stale = canRefresh && linkExpired(openTarget)
 
+    // Clicking a picture opens it large. The inline copy stays the cheap
+    // preview either way - only the expanded view loads the original.
     const load = (): void => {
-      if (!showingPreview) {
-        open()
-        return
-      }
-      // Clicking a preview means "show me the real thing" - which needs a
-      // fresh signature first if the link has already lapsed.
       if (stale) {
+        // A lapsed link would expand into a broken box, so re-sign first and
+        // only open once there is something that will actually load.
         setRefreshing(true)
         setRefreshError('')
         void onRefresh!(bufferId!, messageId!)
-          .then(() => setPlaying(true))
+          .then(() => setExpanded(true))
           .catch((e: Error) => setRefreshError(e.message))
           .finally(() => setRefreshing(false))
         return
       }
-      setPlaying(true)
+      setExpanded(true)
     }
 
     return (
@@ -213,36 +216,54 @@ export function MediaEmbed({
             {refreshing ? 'Reloading…' : refreshError || 'Click to reload'}
           </span>
         )}
+        {expanded && (
+          <Lightbox
+            source={{
+              kind: 'image',
+              src: resolveMediaUrl(fullSrc),
+              externalUrl: openTarget,
+              filename: attachment?.filename,
+              width: attachment?.width,
+              height: attachment?.height,
+              from
+            }}
+            onClose={() => setExpanded(false)}
+          />
+        )}
       </span>
     )
   }
 
   if (kind === 'video') {
-    if (!playing) {
-      return (
+    // Plays expanded rather than in the log: a video squeezed into a message
+    // row is the size of a postage stamp, and its controls barely fit.
+    return (
+      <>
         <button
           type="button"
           className="media-embed paused"
           style={ratio}
-          onClick={() => setPlaying(true)}
+          onClick={() => setExpanded(true)}
         >
           <Icon name="play_circle" size={28} />
           <span className="small ellipsis">
             {attachment?.filename || fullSrc.split('/').pop()}
           </span>
         </button>
-      )
-    }
-    return (
-      <video
-        className="media-embed"
-        style={ratio}
-        src={resolveMediaUrl(fullSrc)}
-        controls
-        autoPlay
-        loop={loop}
-        onError={() => setFailed(true)}
-      />
+        {expanded && (
+          <Lightbox
+            source={{
+              kind: 'video',
+              src: resolveMediaUrl(fullSrc),
+              externalUrl: openTarget,
+              filename: attachment?.filename,
+              loop,
+              from
+            }}
+            onClose={() => setExpanded(false)}
+          />
+        )}
+      </>
     )
   }
 

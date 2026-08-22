@@ -9,3 +9,6 @@ node_modules/
 *.log
 
 *.tsbuildinfo
+
+# Local UI harness - fixtures hold real message data and signed media URLs
+.uicheck/

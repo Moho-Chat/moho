@@ -294,6 +294,7 @@ export function MessageRow({
                   loop={mediaLoop}
                   bufferId={bufferId}
                   messageId={message.id}
+                  from={message.from}
                   onOpenInDiscord={(b, m) => void store.openInDiscord(b, m)}
                   onRefresh={(b, m) => store.refreshAttachments(b, m)}
                 />
@@ -310,6 +311,7 @@ export function MessageRow({
                   loop={mediaLoop}
                   bufferId={bufferId}
                   messageId={message.id}
+                  from={message.from}
                   onOpenInDiscord={(b, m) => void store.openInDiscord(b, m)}
                 />
               ))}
