@@ -61,7 +61,21 @@ export function BufferList(): JSX.Element {
   const activeGroup = shownGroups.find((g) => g.id === activeGroupId) || shownGroups[0]
   const isPinnedPage = activeGroup?.id === PINNED_GROUP_ID
   const isDmPage = activeGroup?.id === DM_GROUP_ID
-  const groupAccount = accounts.find((a) => a.id === activeGroup?.accountId)
+  /**
+   * Whose identity the plaque shows.
+   *
+   * The direct-messages and pinned pages deliberately belong to no account -
+   * they gather conversations from every service - so there is no group
+   * account to read. Falling back to the account of whatever is open keeps
+   * the plaque present on those pages, which matters beyond the name on it:
+   * the microphone and speaker buttons live there, and losing them because
+   * of which page you happen to be on leaves no way to mute during a call.
+   */
+  const activeBuffer = buffers.find((b) => b.id === activeBufferId)
+  const groupAccount =
+    accounts.find((a) => a.id === activeGroup?.accountId) ??
+    accounts.find((a) => a.id === activeBuffer?.accountId) ??
+    accounts[0]
 
   /**
    * What the pane lists, in reading order: pinned first, then direct messages,
