@@ -564,6 +564,11 @@ export class ChatStore {
     bestEffort(this.markRead(bufferId), 'mark read')
     bestEffort(window.moho.rpc('subscribe', { bufferId }), `subscribe ${bufferId}`)
 
+    // Discord only sends a member list for the channel being looked at, and
+    // answers per guild rather than per channel - so this is asked for on
+    // open, one channel at a time, rather than for everything subscribed.
+    bestEffort(window.moho.rpc('requestMemberList', { bufferId }), 'member list')
+
     if (!this.state.loadedBuffers[bufferId]) await this.loadBacklog(bufferId)
     void this.refreshMatrixPermissions(bufferId)
 
