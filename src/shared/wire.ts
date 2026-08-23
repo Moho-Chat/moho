@@ -138,6 +138,13 @@ export interface Member {
   away?: boolean
   userId?: string
   powerLevel?: number
+  /**
+   * The protocol's own presence word - "online", "idle", "dnd", "offline".
+   * Only sent by protocols that actually report presence, so its presence
+   * (rather than any service name) is what tells a client the roster can be
+   * split into online and offline.
+   */
+  status?: string
 }
 
 export interface Protocol {

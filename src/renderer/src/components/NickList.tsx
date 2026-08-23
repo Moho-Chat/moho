@@ -9,10 +9,15 @@ import type { Member } from '../../../shared/wire'
  * The member list for the active channel. Two grouping modes, both driven off
  * the same protocol-agnostic presenceChange shape:
  *
- * - "tier" (IRC): owner / moderator / regular by rank prefix, alphabetical
- *   within each.
- * - "presence" (Matrix): online / offline by away flag, sorted by power level
- *   descending then alphabetically.
+ * - "presence": online / offline, used whenever the roster carries a status -
+ *   Matrix and Discord today. Sorted by power level where the protocol has
+ *   one, then alphabetically.
+ * - "tier": owner / moderator / regular by rank prefix, alphabetical within
+ *   each. Used where there is no presence to report, which is also where rank
+ *   is the more useful thing to show - IRC, and Sneedchat's site owner.
+ *
+ * Chosen from the data rather than from the service name, so a protocol that
+ * starts reporting presence needs no change here.
  */
 export function NickList(): JSX.Element {
   const store = useStore()
@@ -26,6 +31,10 @@ export function NickList(): JSX.Element {
 
   const members = (buffer && presenceByBuffer[buffer.id]) || []
   const account = buffer && accounts.find((a) => a.id === buffer.accountId)
+  // Any protocol that reports presence gets the online/offline split.
+  const hasPresence = members.some((m) => m.status !== undefined)
+  // Separate question: kick/ban are Matrix-only, so the row still needs to
+  // know which service it belongs to.
   const isMatrix = account?.service === 'matrix'
   const perms = (buffer && permissions[buffer.id]) || {}
 
@@ -34,7 +43,7 @@ export function NickList(): JSX.Element {
       ? members.filter((m) => m.nick.toLowerCase().includes(query.toLowerCase()))
       : members
 
-    if (isMatrix) {
+    if (hasPresence) {
       const byPower = (a: Member, b: Member): number =>
         (b.powerLevel ?? 0) - (a.powerLevel ?? 0) || a.nick.localeCompare(b.nick)
       return [
@@ -53,7 +62,7 @@ export function NickList(): JSX.Element {
       { label: 'Moderators', members: filtered.filter((m) => rank(m) > 0 && rank(m) < 4).sort(byName) },
       { label: 'Members', members: filtered.filter((m) => rank(m) === -1 || rank(m) === 4).sort(byName) }
     ].filter((g) => g.members.length > 0)
-  }, [members, isMatrix, query])
+  }, [members, hasPresence, query])
 
   return (
     <div className="nicklist">
