@@ -162,6 +162,25 @@ const INITIAL: ChatState = {
  * once.
  */
 /**
+ * Whether a message that arrived is the one we just sent.
+ *
+ * Normally the bodies are identical. A reply on a service with no reply field
+ * is the exception: Sneedchat answers somebody by opening the message with an
+ * "@Name," mention, which the daemon adds on the way out, so what comes back
+ * is longer than what was typed. Matching those strictly left the sent message
+ * showing as failed while its own echo appeared beside it as a new message.
+ *
+ * The looser match is deliberately narrow - only for a message that was sent
+ * as a reply, and only when the arriving body ends with exactly what was
+ * typed - so an unrelated message that happens to share a suffix cannot
+ * swallow somebody's pending send.
+ */
+function echoMatches(echo: ChatMessage, real: Message): boolean {
+  if (echo.pendingBody === real.body) return true
+  return !!echo.pendingReplyTo && !!echo.pendingBody && real.body.endsWith(echo.pendingBody)
+}
+
+/**
  * Trims a failure report down to the part that explains anything.
  *
  * These arrive with the full request URL in them, and a Matrix sync URL
@@ -1050,7 +1069,7 @@ export class ChatStore {
       if (info.bufferId !== real.bufferId) continue
       const list = this.state.messagesByBuffer[info.bufferId] || []
       const echo = list.find((m) => m.id === clientId)
-      if (!echo || echo.pendingBody !== real.body) continue
+      if (!echo || !echoMatches(echo, real)) continue
       this.pendingSends.delete(clientId)
       this.setMessages(
         info.bufferId,
