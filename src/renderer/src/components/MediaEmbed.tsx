@@ -72,6 +72,16 @@ export function MediaEmbed({
   onRefresh
 }: Props): JSX.Element | null {
   const [failed, setFailed] = useState(false)
+  /**
+   * The locally cached preview is gone, so fall back to the original.
+   *
+   * This is routine rather than exceptional: the daemon caps its thumbnail
+   * cache and sweeps the oldest files, while the stored message goes on naming
+   * the file that was swept. Treating that as a broken attachment reports a
+   * perfectly good link as expired and shows a broken image in place of a
+   * picture that could be fetched.
+   */
+  const [previewGone, setPreviewGone] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
@@ -84,8 +94,9 @@ export function MediaEmbed({
   // fetched is the only way to show anything. Discord supplies no path and
   // its CDN URL loads directly.
   const fullSrc = attachment ? attachment.path || attachment.url || '' : item?.url || ''
-  // A server-generated thumbnail is enough for a preview and much cheaper.
-  const previewSrc = attachment?.thumbnailPath || fullSrc
+  // A server-generated thumbnail is enough for a preview and much cheaper -
+  // until it has been swept, after which the original is all there is.
+  const previewSrc = (!previewGone && attachment?.thumbnailPath) || fullSrc
   const openTarget = attachment?.url || fullSrc
 
   const open = (): void => void window.moho.openExternal(openTarget)
@@ -117,7 +128,7 @@ export function MediaEmbed({
     // A cached preview outlives the signed link, so an expired attachment
     // still has something to show - click it to fetch the original again
     // rather than being told it is gone.
-    const preview = attachment?.thumbnailPath
+    const preview = previewGone ? '' : attachment?.thumbnailPath
     if (preview && canRefresh) {
       return (
         <button
@@ -178,7 +189,7 @@ export function MediaEmbed({
     }
 
     // Show the cheap local copy until asked for the original.
-    const showingPreview = !!attachment?.thumbnailPath && !playing
+    const showingPreview = !!attachment?.thumbnailPath && !previewGone && !playing
     const stale = canRefresh && linkExpired(openTarget)
 
     // Clicking a picture opens it large. The inline copy stays the cheap
@@ -207,7 +218,10 @@ export function MediaEmbed({
           alt={attachment?.filename || ''}
           title={refreshError || attachment?.filename}
           loading="lazy"
-          onError={() => setFailed(true)}
+          // A failed preview means the cached file went away, which says
+          // nothing about the link. Only a failure of the original itself is
+          // the attachment actually being unreachable.
+          onError={() => (showingPreview ? setPreviewGone(true) : setFailed(true))}
           onClick={load}
         />
         {showingPreview && stale && (
