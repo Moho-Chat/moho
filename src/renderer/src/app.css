@@ -2025,6 +2025,115 @@ video.lightbox-media {
   font-size: 11px;
 }
 
+/* --- conversation tools ----------------------------------------------- */
+
+.conversation-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex: none;
+  position: relative;
+  margin-left: auto;
+}
+
+/* Hanging up should not look like the same button in a different mood. */
+.conversation-tools .calling {
+  color: var(--error);
+}
+
+.conversation-search {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 3px var(--spacing-s);
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  color: var(--surface-variant-text);
+}
+
+.conversation-search input {
+  width: 150px;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--surface-text);
+  font-family: inherit;
+  font-size: var(--font-size-small);
+}
+
+.conversation-search input::placeholder {
+  color: var(--surface-variant-text);
+}
+
+/* Widens on use: a search box is a small target until it is the thing being
+   used, at which point the query and its results deserve the room. */
+.conversation-search:focus-within {
+  border-color: var(--primary);
+}
+
+.conversation-search:focus-within input {
+  width: 240px;
+}
+
+.search-results {
+  position: absolute;
+  top: calc(100% + var(--spacing-xs));
+  right: 0;
+  z-index: 40;
+  width: 380px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding: var(--spacing-xs);
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--corner-radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.search-results-head,
+.search-results-empty {
+  padding: var(--spacing-xs) var(--spacing-s);
+}
+
+.search-result {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-s);
+  background: none;
+  border: none;
+  border-radius: var(--spacing-xs);
+  text-align: left;
+  color: var(--surface-text);
+}
+
+.search-result:hover {
+  background: var(--surface-hover);
+}
+
+.search-result-head {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: baseline;
+}
+
+.search-result-from {
+  font-weight: 600;
+}
+
+.search-result-body {
+  color: var(--surface-variant-text);
+}
+
+/* Briefly marks the message a search jumped to, so the eye can find it in a
+   wall of similar rows. */
+.message-row.found {
+  background: var(--primary-pressed);
+  transition: background 0.4s ease;
+}
+
 /* --- voice panel ------------------------------------------------------ */
 
 .voice-panel {

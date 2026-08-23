@@ -36,6 +36,8 @@ export function NickList(): JSX.Element {
   // Separate question: kick/ban are Matrix-only, so the row still needs to
   // know which service it belongs to.
   const isMatrix = account?.service === 'matrix'
+  // Calling is Discord-only for now, and needs an account id to place from.
+  const canCall = account?.service === 'discord'
   const perms = (buffer && permissions[buffer.id]) || {}
 
   const groups = useMemo(() => {
@@ -108,6 +110,7 @@ export function NickList(): JSX.Element {
                 blockKey={`${buffer?.accountId}|${member.nick}`}
                 blocked={isBlocked(`${buffer?.accountId}|${member.nick}`)}
                 isMatrix={isMatrix}
+                canCall={canCall && !!member.userId}
                 perms={perms}
                 onToggleBlock={toggleBlocked}
                 onMention={() => store.startReply('', member.nick, '')}
@@ -126,6 +129,19 @@ export function NickList(): JSX.Element {
                       userId: member.userId || member.nick
                     })
                     .catch((e: Error) => store.toast('error', e.message))
+                }}
+                onCall={() => {
+                  if (!account) return
+                  store.toast('info', `Calling ${member.nick}…`)
+                  void window.moho
+                    .rpc<{ bufferId: string }>('callDiscordUser', {
+                      accountId: account.id,
+                      userId: member.userId
+                    })
+                    // Go to the conversation the call is in, which is where
+                    // hanging up and everything else about it lives.
+                    .then((r) => store.selectBuffer(r.bufferId))
+                    .catch((e: Error) => store.toast('error', `Couldn't call: ${e.message}`))
                 }}
                 onOpenDm={() => {
                   if (!account) return
@@ -159,6 +175,9 @@ interface MemberRowProps {
   onMention: () => void
   onModerate: (action: 'kick' | 'ban' | 'mute') => void
   onOpenDm: () => void
+  /** Only where the protocol supports it and the member is identifiable. */
+  canCall: boolean
+  onCall: () => void
 }
 
 function MemberRow({
@@ -170,7 +189,9 @@ function MemberRow({
   onToggleBlock,
   onMention,
   onModerate,
-  onOpenDm
+  onOpenDm,
+  canCall,
+  onCall
 }: MemberRowProps): JSX.Element {
   const { menu, open, close } = useContextMenu()
 
@@ -178,6 +199,7 @@ function MemberRow({
   // work; the server is still the actual authority and re-checks regardless.
   const entries: MenuEntry[] = [
     { label: 'Mention', icon: 'alternate_email', onClick: onMention },
+    ...(canCall ? ([{ label: 'Call', icon: 'call', onClick: onCall }] as MenuEntry[]) : []),
     ...(isMatrix ? ([{ label: 'Open DM', icon: 'chat', onClick: onOpenDm }] as MenuEntry[]) : []),
     { separator: true },
     {

@@ -5,6 +5,7 @@ import { ServerRail } from './components/ServerRail'
 import { MessageList } from './components/MessageList'
 import { Composer } from './components/Composer'
 import { NickList } from './components/NickList'
+import { ConversationTools } from './components/ConversationTools'
 import { AccountsPanel } from './components/AccountsPanel'
 import { SettingsPanel } from './components/settings/SettingsPanel'
 import { JoinPanel } from './components/JoinPanel'
@@ -82,6 +83,8 @@ export default function App(): JSX.Element {
               onClick={() => setSidebarFolded(!sidebarFolded)}
             />
             <span className="main-header-title ellipsis">{headerTitle}</span>
+
+            {activePanel === '' && buffer && <ConversationTools buffer={buffer} />}
 
             {activePanel === '' && buffer?.kind === 'channel' && (
               <IconButton

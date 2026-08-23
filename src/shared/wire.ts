@@ -112,9 +112,12 @@ export interface VoiceChannel {
 /** Where an account is currently connected in voice. */
 export interface VoiceSession {
   accountId: string
-  guildId: string
+  /** Absent on a one-to-one call, which belongs to no guild. */
+  guildId?: string
   channelId: string
   channelName: string
+  /** A call with a person rather than a room. */
+  isDirect: boolean
 }
 
 export interface ReplyPreview {

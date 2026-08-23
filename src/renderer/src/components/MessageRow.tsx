@@ -170,6 +170,8 @@ export function MessageRow({
           grouped && 'grouped',
           comfy && 'comfy'
         )}
+        // Addressable, so a search result can scroll to the message it found.
+        data-msg-id={message.id}
         onContextMenu={open}
       >
         <span className="message-time small muted" title={formatFullTime(message.ts)}>

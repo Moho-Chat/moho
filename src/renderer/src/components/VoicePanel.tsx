@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Icon, IconButton } from './Icon'
 import { useChat, useStore } from '../state/hooks'
+import { DM_GROUP_ID } from '../lib/groups'
 
 /**
  * The call you are in, shown above the account plaque.
@@ -42,8 +43,10 @@ export function VoicePanel(): JSX.Element | null {
 
   if (!session) return null
 
-  const groupId = `${session.accountId}|guild:${session.guildId}`
-  const guildName = groups.find((g) => g.id === groupId)?.name ?? ''
+  // A one-to-one call has no guild to go back to; its home is the
+  // conversation itself, which the DM page holds.
+  const groupId = session.guildId ? `${session.accountId}|guild:${session.guildId}` : DM_GROUP_ID
+  const guildName = session.isDirect ? '' : (groups.find((g) => g.id === groupId)?.name ?? '')
   // Thresholds, not a linear scale of full scale. Measured on this hardware,
   // a quiet room sits around 0.008 and ordinary speech peaks between 0.02 and
   // 0.05 - so anything scaled against 1.0 stays dark while somebody is
@@ -72,7 +75,7 @@ export function VoicePanel(): JSX.Element | null {
       <button
         type="button"
         className="voice-panel-where ellipsis"
-        title={guildName ? `Go to ${guildName}` : 'Go to this server'}
+        title={session.isDirect ? 'Go to this conversation' : guildName ? `Go to ${guildName}` : 'Go to this server'}
         onClick={() => store.selectGroup(groupId)}
       >
         <Icon name="volume_up" size={14} />
