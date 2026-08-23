@@ -1927,6 +1927,43 @@ video.lightbox-media {
   margin-bottom: var(--spacing-xxs);
 }
 
+/* --- render failure --------------------------------------------------- */
+
+.render-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-m);
+  max-width: 560px;
+  margin: 15vh auto;
+  padding: var(--spacing-xl);
+}
+
+.render-error h2 {
+  font-size: var(--font-size-large);
+  font-weight: 600;
+}
+
+.render-error-detail {
+  align-self: stretch;
+  padding: var(--spacing-m);
+  background: var(--surface-container-high);
+  border-radius: var(--corner-radius);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  color: var(--error);
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+.render-error button {
+  padding: var(--spacing-s) var(--spacing-l);
+  background: var(--primary);
+  color: var(--primary-text);
+  border: none;
+  border-radius: var(--corner-radius);
+}
+
 /* --- voice channels --------------------------------------------------- */
 
 .bufferlist-section {

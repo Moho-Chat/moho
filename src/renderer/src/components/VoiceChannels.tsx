@@ -38,6 +38,7 @@ export function VoiceChannels({ group }: { group: RailGroup }): JSX.Element | nu
 
       {channels.map((c) => {
         const here = session?.channelId === c.id
+        const members = c.members ?? []
         return (
           <div key={c.id} className={`voice-channel${here ? ' active' : ''}`}>
             <button
@@ -49,15 +50,15 @@ export function VoiceChannels({ group }: { group: RailGroup }): JSX.Element | nu
               <Icon name="volume_up" size={16} />
               <span className="ellipsis">{c.name}</span>
               {/* A limit only means something once it is close to being hit. */}
-              {c.userLimit > 0 && c.members.length >= c.userLimit - 1 && (
+              {c.userLimit > 0 && members.length >= c.userLimit - 1 && (
                 <span className="small muted voice-limit">
-                  {c.members.length}/{c.userLimit}
+                  {members.length}/{c.userLimit}
                 </span>
               )}
               {here && <IconButton name="call_end" size={16} title="Disconnect" onClick={() => void store.leaveVoice(group.accountId)} />}
             </button>
 
-            {c.members.map((m) => (
+            {members.map((m) => (
               <div key={m.userId} className="voice-member small">
                 <span className="voice-member-dot" style={{ background: nickColor(m.nick) }} />
                 <span className="ellipsis">{m.nick}</span>

@@ -100,7 +100,13 @@ export interface VoiceChannel {
   occupants: number
   /** Nobody else is in it, which is what the empty-only join rule tests. */
   empty: boolean
-  members: VoiceMember[]
+  /**
+   * Who is in it. Optional because a daemon older than this field simply does
+   * not send it - and the client has to keep working when it doesn't, since
+   * the daemon can be a separately built binary or one already running from
+   * before an upgrade.
+   */
+  members?: VoiceMember[]
 }
 
 /** Where an account is currently connected in voice. */
