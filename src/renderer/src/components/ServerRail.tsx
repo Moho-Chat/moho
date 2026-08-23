@@ -234,6 +234,8 @@ export function ServerRail(): JSX.Element | null {
 
   return (
     <nav className="server-rail" aria-label="Servers">
+      {/* Only the entries scroll; the cog stays pinned to the foot. */}
+      <div className="rail-scroll">
       {ordered.map((g) => {
         const t = totals.get(g.id)
         return (
@@ -264,6 +266,48 @@ export function ServerRail(): JSX.Element | null {
           />
         )
       })}
+      </div>
+
+      <div className="rail-divider" />
+      <RailMenu />
     </nav>
+  )
+}
+
+/**
+ * The cog at the foot of the rail: the way into Accounts and Settings, which
+ * used to sit in the channel list's own footer. They belong here because they
+ * are about the app rather than about whichever server is selected.
+ */
+function RailMenu(): JSX.Element {
+  const store = useStore()
+  const { menu, open, close } = useContextMenu()
+  return (
+    <>
+      <button
+        type="button"
+        className="rail-tile rail-cog"
+        title="Accounts and settings"
+        aria-label="Accounts and settings"
+        // Opened by left click, unlike the tiles above it - it is a menu
+        // button, not a thing being acted upon.
+        onClick={open}
+      >
+        <span className="rail-face">
+          <Icon name="settings" size={20} />
+        </span>
+      </button>
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          entries={[
+            { label: 'Accounts', icon: 'manage_accounts', onClick: () => store.setActivePanel('accounts') },
+            { label: 'Settings', icon: 'settings', onClick: () => store.setActivePanel('settings') }
+          ]}
+          onClose={close}
+        />
+      )}
+    </>
   )
 }

@@ -5,6 +5,11 @@ export interface Account {
   id: string
   service: 'irc' | 'discord' | 'sockchat' | 'matrix' | 'jabber' | 'slack'
   displayName: string
+  /**
+   * How the user is presenting: "online" | "idle" | "dnd". Distinct from
+   * `state`, which is whether the connection is up.
+   */
+  status?: string
   state: string
   autojoin: string
   hasNickservPassword: boolean

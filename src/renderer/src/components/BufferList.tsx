@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
+import { UserFooter } from './UserFooter'
 import { useChat, useIdSetPref, usePref, useStore } from '../state/hooks'
 import {
   dmGroup,
@@ -151,16 +152,7 @@ export function BufferList(): JSX.Element {
       </div>
 
       <div className="divider-h" />
-      <div className="bufferlist-footer">
-        <button type="button" className="footer-button" onClick={() => store.setActivePanel('accounts')}>
-          <Icon name="manage_accounts" size={16} />
-          Accounts
-        </button>
-        <button type="button" className="footer-button" onClick={() => store.setActivePanel('settings')}>
-          <Icon name="settings" size={16} />
-          Settings
-        </button>
-      </div>
+      <UserFooter account={groupAccount} />
     </div>
   )
 }

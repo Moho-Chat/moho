@@ -248,6 +248,23 @@ export class ChatStore {
     if (!this.state.activeGroupId) this.set({ activeGroupId: groups[0].id })
   }
 
+  /**
+   * Sets how an account presents itself.
+   *
+   * Refreshes the account list rather than patching state locally: nobilis
+   * reports whether it could actually apply the status, and for a
+   * disconnected account or a protocol with no presence concept the answer is
+   * no - showing it as set anyway would be a lie.
+   */
+  async setAccountStatus(accountId: string, status: 'online' | 'idle' | 'dnd'): Promise<void> {
+    try {
+      await window.moho.rpc('setAccountStatus', { accountId, status })
+      await this.refreshAccounts()
+    } catch (e) {
+      this.toast('error', `Couldn't set status: ${(e as Error).message}`)
+    }
+  }
+
   selectGroup(groupId: string): void {
     if (groupId === this.state.activeGroupId) return
     this.set({ activeGroupId: groupId })

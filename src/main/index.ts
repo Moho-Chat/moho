@@ -221,7 +221,15 @@ function applyHotkey(accelerator: string): void {
 function wireIpc(): void {
   ipcMain.handle(IPC.rpc, async (_e, method: string, params: Record<string, unknown>) => {
     try {
-      return { ok: true, result: await client.request(method, params) }
+      const result = await client.request(method, params)
+      // Main needs each account's status to enforce Do Not Disturb, and the
+      // renderer already asks for the account list whenever it changes -
+      // watching the answer keeps the two in step without a second channel or
+      // a poll of its own.
+      if (method === 'listAccounts' && Array.isArray(result)) {
+        notifier.trackAccounts(result as { id: string; status?: string }[])
+      }
+      return { ok: true, result }
     } catch (err) {
       // Surfaced as a value rather than a rejection so the renderer sees
       // nobilis's own error text (which is often the actionable part - "account
