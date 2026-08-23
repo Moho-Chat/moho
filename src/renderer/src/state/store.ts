@@ -211,7 +211,16 @@ export class ChatStore {
   }
 
   private async refreshAll(): Promise<void> {
-    await Promise.all([this.refreshAccounts(), this.refreshBuffers(), this.refreshGroups(), this.refreshVoicePrefs()])
+    await Promise.all([
+      this.refreshAccounts(),
+      this.refreshBuffers(),
+      this.refreshGroups(),
+      this.refreshVoicePrefs(),
+      // A call outlives this window: the daemon holds it, so a reconnecting
+      // or restarted client has to pick the connection back up rather than
+      // showing nothing while audio is still flowing.
+      this.refreshVoiceSessions()
+    ])
     if (this.state.activeBufferId) await this.selectBuffer(this.state.activeBufferId)
   }
 
@@ -443,6 +452,15 @@ export class ChatStore {
 
       case 'bufferGroupChange':
         this.upsertGroup(data as BufferGroup)
+        break
+
+      // The call itself came up or went away. Separate from membership
+      // because these fire for our own connection, which is what decides
+      // whether the connected panel is on screen at all.
+      case 'discordVoiceConnected':
+      case 'discordVoiceLeft':
+      case 'discordVoiceError':
+        void this.refreshVoiceSessions()
         break
 
       // Somebody joined or left a voice channel in a guild we may be showing.

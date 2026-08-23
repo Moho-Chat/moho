@@ -3,6 +3,7 @@ import { Icon, IconButton, MaskIcon } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { UserFooter } from './UserFooter'
 import { VoiceChannels } from './VoiceChannels'
+import { VoicePanel } from './VoicePanel'
 import { useChat, useIdSetPref, usePref, useStore } from '../state/hooks'
 import {
   dmGroup,
@@ -154,6 +155,10 @@ export function BufferList(): JSX.Element {
           </>
         )}
       </div>
+
+      {/* Outside the group above, so a call stays visible and hangable-up
+          wherever you navigate. */}
+      <VoicePanel />
 
       <div className="divider-h" />
       <UserFooter account={groupAccount} />

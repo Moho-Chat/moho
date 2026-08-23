@@ -2025,6 +2025,82 @@ video.lightbox-media {
   font-size: 11px;
 }
 
+/* --- voice panel ------------------------------------------------------ */
+
+.voice-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  flex: none;
+  padding: var(--spacing-s) var(--spacing-s) var(--spacing-xs);
+  border-top: 1px solid var(--outline-medium);
+}
+
+.voice-panel-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+.voice-panel-state {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  flex: 1;
+  min-width: 0;
+  color: var(--success);
+  font-weight: 600;
+  font-size: var(--font-size-small);
+}
+
+/* Rising bars, so a glance says whether the microphone is hearing anything
+   rather than only that a connection exists. */
+.voice-meter {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+  flex: none;
+}
+
+.voice-meter-bar {
+  width: 3px;
+  background: var(--outline);
+  border-radius: 1px;
+}
+
+.voice-meter-bar:nth-child(1) {
+  height: 4px;
+}
+.voice-meter-bar:nth-child(2) {
+  height: 8px;
+}
+.voice-meter-bar:nth-child(3) {
+  height: 12px;
+}
+
+.voice-meter-bar.lit {
+  background: var(--success);
+}
+
+.voice-panel-where {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  text-align: left;
+  color: var(--surface-variant-text);
+  font-size: var(--font-size-small);
+}
+
+.voice-panel-where:hover {
+  color: var(--surface-text);
+  text-decoration: underline;
+}
+
 /* --- user footer ------------------------------------------------------ */
 
 .user-footer {
