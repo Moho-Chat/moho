@@ -2,7 +2,16 @@ import { useMemo } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { useChat, useIdSetPref, usePref, useStore } from '../state/hooks'
-import { isMutedBuffer, PINNED_GROUP_ID, pinnedGroup, visibleGroups } from '../lib/groups'
+import {
+  dmGroup,
+  DM_GROUP_ID,
+  isDirectMessage,
+  isMutedBuffer,
+  PINNED_GROUP_ID,
+  pinnedGroup,
+  visibleGroups,
+  type RailGroup
+} from '../lib/groups'
 import type { BufferEntry } from '../state/store'
 import {
   bufferDisplayName,
@@ -32,6 +41,7 @@ export function BufferList(): JSX.Element {
   const [pinned, togglePin, isPinned] = useIdSetPref('pinnedBuffers')
   const [muted, toggleMute] = useIdSetPref('mutedBuffers')
   const [hidden, , isHidden] = useIdSetPref('hiddenBuffers')
+  const [mutedGroups] = usePref<string[]>('mutedGroups', [])
   const [, setHidden] = usePref<string[]>('hiddenBuffers', [])
 
   const visible = useMemo(() => buffers.filter((b) => !hidden.includes(b.id)), [buffers, hidden])
@@ -40,11 +50,14 @@ export function BufferList(): JSX.Element {
   // first entry rather than an empty pane. The pinned page is added the same
   // way the rail adds it, so both agree on what is selectable.
   const shownGroups = useMemo(() => {
-    const list = visibleGroups(groups, visible)
-    return pinned.length > 0 ? [...list, pinnedGroup()] : list
+    const list: RailGroup[] = [...visibleGroups(groups, visible)]
+    if (visible.some(isDirectMessage)) list.push(dmGroup())
+    if (pinned.length > 0) list.push(pinnedGroup())
+    return list
   }, [groups, visible, pinned])
   const activeGroup = shownGroups.find((g) => g.id === activeGroupId) || shownGroups[0]
   const isPinnedPage = activeGroup?.id === PINNED_GROUP_ID
+  const isDmPage = activeGroup?.id === DM_GROUP_ID
   const groupAccount = accounts.find((a) => a.id === activeGroup?.accountId)
 
   /**
@@ -59,7 +72,9 @@ export function BufferList(): JSX.Element {
     if (!activeGroup) return []
     const inScope = isPinnedPage
       ? visible.filter((b) => pinned.includes(b.id))
-      : visible.filter((b) => b.groupId === activeGroup.id)
+      : isDmPage
+        ? visible.filter(isDirectMessage)
+        : visible.filter((b) => b.groupId === activeGroup.id)
 
     // Server buffer above everything; then pinned, DMs, channels.
     const band = (b: BufferEntry): number => {
@@ -71,13 +86,13 @@ export function BufferList(): JSX.Element {
     return [...inScope].sort(
       (a, b) => band(a) - band(b) || (b.lastActivityTs || 0) - (a.lastActivityTs || 0)
     )
-  }, [visible, activeGroup, isPinnedPage, pinned])
+  }, [visible, activeGroup, isPinnedPage, isDmPage, pinned])
 
   // The menu still toggles a buffer's *own* flag independently of the
   // cascade, the same way muting a channel inside an already-muted Slack
   // workspace works.
   const isEffectivelyMuted = (buffer: BufferEntry): boolean =>
-    isMutedBuffer(buffer, buffers, muted)
+    isMutedBuffer(buffer, buffers, muted, hidden, mutedGroups)
 
   const hideBuffer = (id: string): void => {
     if (!isHidden(id)) setHidden([...hidden, id])

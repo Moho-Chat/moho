@@ -19,6 +19,34 @@ export type RailGroup = Omit<BufferGroup, 'kind'> & { kind: BufferGroup['kind'] 
  */
 export const PINNED_GROUP_ID = '~pinned'
 
+/**
+ * The rail entry collecting direct messages from every service.
+ *
+ * Synthesised here rather than taken from nobilis for the same reason as
+ * pinned: the daemon reports one DM group per account that has them, which is
+ * correct as a statement about Discord's own grouping but would put an IRC
+ * query under the IRC tile and a Matrix DM under the Matrix tile. A person
+ * messaging you is a person messaging you, whichever network carried it, so
+ * the rail folds them into one page and suppresses the per-account ones.
+ */
+export const DM_GROUP_ID = '~dms'
+
+export function dmGroup(): RailGroup {
+  return {
+    id: DM_GROUP_ID,
+    accountId: '',
+    service: '',
+    kind: 'dms',
+    name: 'Direct Messages',
+    position: -1000
+  }
+}
+
+/** Whether a buffer belongs on the cross-service direct messages page. */
+export function isDirectMessage(buffer: BufferEntry): boolean {
+  return buffer.kind === 'dm'
+}
+
 export function pinnedGroup(): RailGroup {
   return {
     id: PINNED_GROUP_ID,
@@ -55,6 +83,8 @@ export function visibleGroups(groups: BufferGroup[], buffers: BufferEntry[]): Bu
     if (b.groupId) inGroup.set(b.groupId, (inGroup.get(b.groupId) ?? 0) + 1)
   }
   return groups.filter((g) => {
+    // Folded into the one cross-service direct messages page.
+    if (g.kind === 'dms') return false
     if (g.kind !== 'account') return true
     if ((inGroup.get(g.id) ?? 0) > 0) return true
     return (inAccount.get(g.accountId) ?? 0) === 0
@@ -116,8 +146,9 @@ export function reorder(groups: RailGroup[], draggedId: string, targetId: string
 /**
  * Whether a buffer is muted, directly or by its account's server buffer.
  *
- * Muting a server cascades to every channel and DM under that account,
- * matching how muting a whole IRC network is normally all-or-nothing.
+ * Muting a server cascades to every channel under that account, matching how
+ * muting a whole IRC network is normally all-or-nothing. Direct messages are
+ * exempt, and a hidden server does not cascade - see below.
  *
  * Shared by the rail and the channel pane for the same reason the visibility
  * rule is: they disagreed before, and the rail counted unread from muted
@@ -127,12 +158,32 @@ export function reorder(groups: RailGroup[], draggedId: string, targetId: string
 export function isMutedBuffer(
   buffer: BufferEntry,
   all: BufferEntry[],
-  muted: string[]
+  muted: string[],
+  hidden: string[] = [],
+  mutedGroups: string[] = []
 ): boolean {
+  // An explicit mute on this buffer always stands.
   if (muted.includes(buffer.id)) return true
+
+  // A muted server, guild or space silences everything under it. Unlike the
+  // server-buffer cascade below, this one is always undoable: the rail tile is
+  // always on screen, and right-clicking it is what set this in the first
+  // place.
+  if (buffer.groupId && mutedGroups.includes(buffer.groupId)) return true
+
   if (buffer.kind === 'server') return false
+
+  // A direct message is a person addressing you, not channel traffic.
+  // Silencing a network should not silence someone messaging you on it.
+  if (buffer.kind === 'dm') return false
+
   const server = all.find((b) => b.accountId === buffer.accountId && b.kind === 'server')
-  return server ? muted.includes(server.id) : false
+  if (!server || !muted.includes(server.id)) return false
+
+  // The cascade is only fair while its source can be reached. A hidden server
+  // buffer has no row, so its mute toggle is unreachable - inheriting from it
+  // would silence an entire account with no way to undo it from the UI.
+  return !hidden.includes(server.id)
 }
 
 /**
@@ -144,7 +195,8 @@ export function countsTowardRail(
   buffer: BufferEntry,
   all: BufferEntry[],
   muted: string[],
-  hidden: string[]
+  hidden: string[],
+  mutedGroups: string[] = []
 ): boolean {
-  return !hidden.includes(buffer.id) && !isMutedBuffer(buffer, all, muted)
+  return !hidden.includes(buffer.id) && !isMutedBuffer(buffer, all, muted, hidden, mutedGroups)
 }

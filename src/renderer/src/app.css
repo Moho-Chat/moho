@@ -1822,3 +1822,58 @@ video.lightbox-media {
   object-fit: cover;
   display: block;
 }
+
+/* Recovering hidden and muted channels, inside an account's card. Collapsed by
+   default: it is a repair tool, not something to scroll past every time. */
+.recover-list {
+  margin-top: var(--spacing-s);
+}
+
+.recover-list > summary {
+  cursor: pointer;
+  padding: var(--spacing-xxs) 0;
+  color: var(--surface-variant-text);
+}
+
+.recover-list > summary:hover {
+  color: var(--surface-text);
+}
+
+.recover-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xxs) 0 var(--spacing-xxs) var(--spacing-m);
+}
+
+.recover-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.recover-state {
+  flex: none;
+}
+
+/* A muted server, guild or space. Sits opposite the service mark so the two
+   never collide on one tile. */
+.rail-muted {
+  position: absolute;
+  left: 3px;
+  bottom: -1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--surface-container-highest);
+  color: var(--surface-variant-text);
+  border: 2px solid var(--surface-container-lowest);
+}
+
+/* Muted entries recede rather than disappear - still reachable, just not
+   competing for attention. */
+.rail-tile.muted .rail-face {
+  opacity: 0.45;
+}

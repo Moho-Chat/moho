@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { ContextMenu, useContextMenu } from './ContextMenu'
 import { Icon, MaskIcon } from './Icon'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
@@ -10,6 +11,9 @@ import {
   reorder,
   visibleGroups,
   countsTowardRail,
+  dmGroup,
+  DM_GROUP_ID,
+  isDirectMessage,
   type RailGroup
 } from '../lib/groups'
 import type { BufferEntry } from '../state/store'
@@ -40,6 +44,8 @@ interface TileProps {
   highlight: boolean
   draggable: boolean
   dropTarget: boolean
+  muted: boolean
+  onToggleMute: () => void
   onSelect: () => void
   onDragStart: () => void
   onDragOver: () => void
@@ -48,11 +54,15 @@ interface TileProps {
 }
 
 function RailTile(props: TileProps): JSX.Element {
-  const { group, active, unread, highlight, draggable, dropTarget, customIcon } = props
+  const { group, active, unread, highlight, draggable, dropTarget, customIcon, muted } = props
+  const { menu, open, close } = useContextMenu()
   const service = serviceIcon(group.service)
-  // An account tile already *is* the service mark, and pinned spans all of
-  // them, so neither gains anything from the corner badge.
-  const badge = group.kind === 'account' || group.kind === 'pinned' ? null : service
+  // Only a guild or space needs telling apart by service: its face is a
+  // picture or initials that say nothing about where it came from. An account
+  // tile already *is* the service mark, and the direct message and pinned
+  // pages span every service at once, so a single mark on those would be a
+  // lie rather than a label.
+  const badge = group.kind === 'guild' || group.kind === 'space' ? service : null
 
   // Precedence is deliberate: a real icon, else the mark for an entry that
   // stands for a whole account, else initials. A guild is a name first -
@@ -85,12 +95,13 @@ function RailTile(props: TileProps): JSX.Element {
   return (
     <button
       type="button"
-      className={`rail-tile${active ? ' active' : ''}${dropTarget ? ' drop-target' : ''}`}
+      className={`rail-tile${active ? ' active' : ''}${dropTarget ? ' drop-target' : ''}${muted ? ' muted' : ''}`}
       title={group.name}
       aria-label={group.name}
       aria-current={active}
       draggable={draggable}
       onClick={props.onSelect}
+      onContextMenu={open}
       onDragStart={(e) => {
         // Chromium abandons a drag whose dataTransfer was never written to.
         e.dataTransfer.setData('text/plain', group.id)
@@ -117,6 +128,25 @@ function RailTile(props: TileProps): JSX.Element {
           something is waiting, and what a tile needs to answer at a glance
           is "whose server is this". Skipped where the face is already the
           service mark, and on the cross-service pinned page. */}
+      {muted && (
+        <span className="rail-muted" title="Muted">
+          <Icon name="notifications_off" size={11} />
+        </span>
+      )}
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          entries={[
+            {
+              label: muted ? `Unmute ${group.name}` : `Mute ${group.name}`,
+              icon: muted ? 'notifications_active' : 'notifications_off',
+              onClick: props.onToggleMute
+            }
+          ]}
+          onClose={close}
+        />
+      )}
       {badge && (
         <span className={`rail-service${highlight ? ' highlight' : ''}`}>
           {badge.colour && badge.mark ? (
@@ -145,6 +175,7 @@ export function ServerRail(): JSX.Element | null {
   const [muted] = usePref<string[]>('mutedBuffers', [])
   const [hidden] = usePref<string[]>('hiddenBuffers', [])
   const [customIcons] = usePref<Record<string, string>>('groupIcons', {})
+  const [mutedGroups, setMutedGroups] = usePref<string[]>('mutedGroups', [])
 
   // The authoritative dragged id lives in a ref, not in state: dragstart and
   // drop are separate events, and reading it from state means depending on a
@@ -178,16 +209,20 @@ export function ServerRail(): JSX.Element | null {
   for (const b of all) {
     // Only what the pane below would show: a hidden buffer has no row to
     // reach, and a muted one is not asking for attention.
-    if (!countsTowardRail(b, all, muted, hidden)) continue
+    if (!countsTowardRail(b, all, muted, hidden, mutedGroups)) continue
+    // A buffer can count on more than one tile: where it lives, and on any
+    // aggregate page that also lists it. Both are places the user would look.
     if (b.groupId) bump(b.groupId, b)
-    // A pinned buffer counts twice over - once where it lives, once on the
-    // pinned page - because both tiles are places the user would look for it.
+    if (isDirectMessage(b)) bump(DM_GROUP_ID, b)
     if (pinned.includes(b.id)) bump(PINNED_GROUP_ID, b)
   }
 
-  const shown = visibleGroups(groups, buffers as BufferEntry[])
-  const withPinned = pinned.length > 0 ? [...shown, pinnedGroup()] : shown
-  const ordered = orderedGroups(withPinned, railOrder)
+  const shown = visibleGroups(groups, all)
+  const extras: RailGroup[] = []
+  // Only worth a tile once there is something on it.
+  if (all.some(isDirectMessage)) extras.push(dmGroup())
+  if (pinned.length > 0) extras.push(pinnedGroup())
+  const ordered = orderedGroups([...shown, ...extras], railOrder)
 
   if (ordered.length <= 1) return null
 
@@ -206,6 +241,14 @@ export function ServerRail(): JSX.Element | null {
             key={g.id}
             group={g}
             customIcon={customIcons[g.id]}
+            muted={mutedGroups.includes(g.id)}
+            onToggleMute={() =>
+              setMutedGroups(
+                mutedGroups.includes(g.id)
+                  ? mutedGroups.filter((x) => x !== g.id)
+                  : [...mutedGroups, g.id]
+              )
+            }
             active={g.id === activeGroupId}
             unread={t?.unread ?? 0}
             highlight={t?.highlight ?? false}

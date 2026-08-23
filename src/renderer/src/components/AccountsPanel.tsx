@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
 import { useChat, usePref, useStore } from '../state/hooks'
-import { resolveMediaUrl, serviceIcon, serviceLabel } from '../lib/util'
+import { bufferDisplayName, resolveMediaUrl, serviceIcon, serviceLabel } from '../lib/util'
 import type { Account } from '../../../shared/wire'
 
 const ADDABLE = ['irc', 'discord', 'sockchat', 'matrix'] as const
@@ -51,6 +51,61 @@ export function AccountsPanel(): JSX.Element {
         {adding === 'matrix' && <MatrixForm />}
       </div>
     </div>
+  )
+}
+
+/**
+ * Muted and hidden channels for one account, and the only way back from
+ * either.
+ *
+ * Hiding a buffer removes its row, which also removes the context menu that
+ * hid it - so without a list somewhere else, a hidden channel is gone for
+ * good. Muting has the same problem one step removed: muting a server buffer
+ * silences the whole account, and if that server buffer is *also* hidden there
+ * is no row left holding the toggle that would undo it.
+ */
+function HiddenAndMuted({ accountId }: { accountId: string }): JSX.Element | null {
+  const buffers = useChat((s) => s.buffers)
+  const [muted, setMuted] = usePref<string[]>('mutedBuffers', [])
+  const [hidden, setHidden] = usePref<string[]>('hiddenBuffers', [])
+
+  const mine = buffers.filter(
+    (b) => b.accountId === accountId && (muted.includes(b.id) || hidden.includes(b.id))
+  )
+  if (!mine.length) return null
+
+  const drop = (list: string[], id: string): string[] => list.filter((x) => x !== id)
+
+  return (
+    <details className="recover-list">
+      <summary className="small">
+        Hidden and muted channels <span className="muted">({mine.length})</span>
+      </summary>
+      {mine.map((b) => {
+        const isHidden = hidden.includes(b.id)
+        const isMuted = muted.includes(b.id)
+        return (
+          <div key={b.id} className="recover-row">
+            <span className="ellipsis recover-name" title={b.name}>
+              {bufferDisplayName(b.name)}
+            </span>
+            <span className="small muted recover-state">
+              {[isHidden && 'hidden', isMuted && 'muted'].filter(Boolean).join(' · ')}
+            </span>
+            {isHidden && (
+              <button type="button" className="button subtle" onClick={() => setHidden(drop(hidden, b.id))}>
+                Show
+              </button>
+            )}
+            {isMuted && (
+              <button type="button" className="button subtle" onClick={() => setMuted(drop(muted, b.id))}>
+                Unmute
+              </button>
+            )}
+          </div>
+        )
+      })}
+    </details>
   )
 }
 
@@ -173,6 +228,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
           />
 
           <GroupIcons accountId={account.id} />
+          <HiddenAndMuted accountId={account.id} />
 
           {account.service === 'irc' && (
             <>

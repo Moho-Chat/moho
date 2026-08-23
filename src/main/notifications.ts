@@ -51,18 +51,39 @@ export class Notifier {
 
   /**
    * Mute is hierarchical: muting a server buffer suppresses notifications for
-   * every channel/DM under that account, matching how muting an entire IRC
+   * every channel under that account, matching how muting an entire IRC
    * network is normally all-or-nothing. Deliberately two-level, not a
    * three-state inherit/override system - to restore notifications under a
    * muted server, unmute the server itself.
+   *
+   * Direct messages are exempt, and a hidden server buffer does not cascade at
+   * all; see isMuted for why.
    */
   private isMuted(accountId: string, bufferId: string): boolean {
     const muted = this.prefs.get<string[]>('mutedBuffers', [])
     if (muted.includes(bufferId)) return true
-    for (const buf of this.buffers.values()) {
-      if (buf.accountId === accountId && buf.kind === 'server') return muted.includes(buf.id)
-    }
-    return false
+
+    // A server, guild or space muted from its rail tile silences everything
+    // under it, direct messages included - unlike the server-buffer cascade
+    // below, this one was set deliberately on that exact group.
+    const group = this.buffers.get(bufferId)?.groupId
+    if (group && this.prefs.get<string[]>('mutedGroups', []).includes(group)) return true
+
+    // A direct message is a person addressing you, not channel traffic:
+    // silencing a network should not silence someone messaging you on it.
+    // This is where that mattered most - a muted IRC network swallowed the
+    // desktop notification for an incoming query.
+    if (this.buffers.get(bufferId)?.kind === 'dm') return false
+
+    const server = [...this.buffers.values()].find(
+      (b) => b.accountId === accountId && b.kind === 'server'
+    )
+    if (!server || !muted.includes(server.id)) return false
+
+    // Only inherit from a server buffer the user can still reach. A hidden one
+    // has no row in the list, so its mute toggle is unreachable and the
+    // cascade would be impossible to undo.
+    return !this.prefs.get<string[]>('hiddenBuffers', []).includes(server.id)
   }
 
   async handle(payload: NotificationPayload): Promise<void> {
