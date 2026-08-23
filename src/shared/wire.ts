@@ -84,6 +84,33 @@ export interface VoicePrefs {
   deafened: boolean
 }
 
+/** Someone sitting in a voice channel. */
+export interface VoiceMember {
+  userId: string
+  nick: string
+  isSelf: boolean
+}
+
+export interface VoiceChannel {
+  id: string
+  name: string
+  /** 0 means no limit. */
+  userLimit: number
+  /** How many people other than us. */
+  occupants: number
+  /** Nobody else is in it, which is what the empty-only join rule tests. */
+  empty: boolean
+  members: VoiceMember[]
+}
+
+/** Where an account is currently connected in voice. */
+export interface VoiceSession {
+  accountId: string
+  guildId: string
+  channelId: string
+  channelName: string
+}
+
 export interface ReplyPreview {
   id: string
   from: string

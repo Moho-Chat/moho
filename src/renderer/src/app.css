@@ -1927,6 +1927,67 @@ video.lightbox-media {
   margin-bottom: var(--spacing-xxs);
 }
 
+/* --- voice channels --------------------------------------------------- */
+
+.bufferlist-section {
+  padding: var(--spacing-s) var(--spacing-s) var(--spacing-xxs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+}
+
+.voice-channel {
+  display: flex;
+  flex-direction: column;
+}
+
+.voice-channel-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  width: 100%;
+  padding: var(--spacing-xxs) var(--spacing-s);
+  background: none;
+  border: none;
+  text-align: left;
+  color: var(--surface-variant-text);
+}
+
+.voice-channel-row:hover {
+  background: var(--surface-hover);
+  color: var(--surface-text);
+}
+
+.voice-channel.active .voice-channel-row {
+  color: var(--primary);
+}
+
+.voice-limit {
+  margin-left: auto;
+}
+
+/* Indented under their channel, so membership reads as belonging to it
+   rather than as more channels. */
+.voice-member {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: 1px var(--spacing-s) 1px var(--spacing-xl);
+  color: var(--surface-variant-text);
+}
+
+.voice-member-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.voice-you {
+  margin-left: auto;
+  font-size: 11px;
+}
+
 /* --- user footer ------------------------------------------------------ */
 
 .user-footer {

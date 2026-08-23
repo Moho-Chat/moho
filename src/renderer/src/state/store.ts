@@ -10,7 +10,9 @@ import type {
   RoomPermissions,
   SockchatSmilie,
   AudioDevice,
-  VoicePrefs
+  VoicePrefs,
+  VoiceChannel,
+  VoiceSession
 } from '../../../shared/wire'
 import { buildSmilieIndex, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { resolveMediaUrl } from '../lib/util'
@@ -59,6 +61,12 @@ export interface ChatState {
   /** Sound devices and whether voice is silenced, as the daemon sees them. */
   voicePrefs: VoicePrefs
   audioDevices: AudioDevice[]
+  /** The selected guild's voice channels, and who is in each. */
+  voiceChannels: VoiceChannel[]
+  /** Which guild `voiceChannels` describes, so a stale update is ignorable. */
+  voiceGuildId: string
+  /** Live voice connections, so the pane can show what you are in. */
+  voiceSessions: VoiceSession[]
   activeBufferId: string
   activePanel: ActivePanel
   joinPanelAccountId: string
@@ -106,6 +114,9 @@ const INITIAL: ChatState = {
   activeGroupId: '',
   voicePrefs: { micMuted: false, deafened: false },
   audioDevices: [],
+  voiceChannels: [],
+  voiceGuildId: '',
+  voiceSessions: [],
   activeBufferId: '',
   activePanel: '',
   joinPanelAccountId: '',
@@ -306,6 +317,51 @@ export class ChatStore {
     }
   }
 
+  /**
+   * The voice channels of whichever guild is on screen.
+   *
+   * Fetched per guild rather than kept for all of them: membership changes
+   * constantly across every server someone is in, and only the one being
+   * looked at is worth tracking.
+   */
+  async refreshVoiceChannels(accountId: string, guildId: string): Promise<void> {
+    try {
+      const channels = await window.moho.rpc<VoiceChannel[]>('listVoiceChannels', { accountId, guildId })
+      this.set({ voiceChannels: channels, voiceGuildId: guildId })
+    } catch {
+      // Only Discord has these; anything else legitimately has none.
+      this.set({ voiceChannels: [], voiceGuildId: guildId })
+    }
+  }
+
+  async refreshVoiceSessions(): Promise<void> {
+    try {
+      this.set({ voiceSessions: await window.moho.rpc<VoiceSession[]>('getVoiceSession') })
+    } catch {
+      this.set({ voiceSessions: [] })
+    }
+  }
+
+  async joinVoice(accountId: string, guildId: string, channelId: string): Promise<void> {
+    try {
+      // soloOnly is off here because a person clicking a channel in a list
+      // that shows them who is already in it has chosen to join those people.
+      await window.moho.rpc('joinVoiceChannel', { accountId, guildId, channelId, soloOnly: false, transmit: true })
+      await Promise.all([this.refreshVoiceSessions(), this.refreshVoiceChannels(accountId, guildId)])
+    } catch (e) {
+      this.toast('error', `Couldn't join voice: ${(e as Error).message}`)
+    }
+  }
+
+  async leaveVoice(accountId: string): Promise<void> {
+    try {
+      await window.moho.rpc('leaveVoiceChannel', { accountId })
+      await this.refreshVoiceSessions()
+    } catch (e) {
+      this.toast('error', `Couldn't leave voice: ${(e as Error).message}`)
+    }
+  }
+
   async setAccountStatus(accountId: string, status: 'online' | 'idle'): Promise<void> {
     try {
       await window.moho.rpc('setAccountStatus', { accountId, status })
@@ -387,6 +443,14 @@ export class ChatStore {
 
       case 'bufferGroupChange':
         this.upsertGroup(data as BufferGroup)
+        break
+
+      // Somebody joined or left a voice channel in a guild we may be showing.
+      case 'voiceMembershipChanged':
+        if (data.guildId === this.state.voiceGuildId) {
+          void this.refreshVoiceChannels(data.accountId, data.guildId)
+        }
+        void this.refreshVoiceSessions()
         break
 
       // Another window, or the daemon itself, changed the audio state.

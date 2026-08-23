@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { UserFooter } from './UserFooter'
+import { VoiceChannels } from './VoiceChannels'
 import { useChat, useIdSetPref, usePref, useStore } from '../state/hooks'
 import {
   dmGroup,
@@ -147,6 +148,9 @@ export function BufferList(): JSX.Element {
                 onClose={() => void store.closeBuffer(b.id)}
               />
             ))}
+
+            {/* Below the text channels, as everywhere else that has both. */}
+            <VoiceChannels group={activeGroup} />
           </>
         )}
       </div>
