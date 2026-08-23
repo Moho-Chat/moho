@@ -178,6 +178,16 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
   const [expanded, setExpanded] = useState(false)
   const icon = serviceIcon(account.service)
   const connected = account.state === 'connected'
+  /**
+   * A connection attempt in progress is a third state, not a variety of
+   * "disconnected".
+   *
+   * Treating it as one meant the button read Connect while an attempt was
+   * already running, and pressing it started another - which leaves the state
+   * exactly where it was, so a connection stuck retrying looked like a dead
+   * button. What is wanted there is a way to stop.
+   */
+  const connecting = account.state === 'connecting'
 
   const call = (method: string, params: Record<string, unknown>): void => {
     void window.moho
@@ -206,11 +216,30 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
           type="button"
           className="button subtle"
           onClick={() =>
-            call('setAccountConnected', { accountId: account.id, connected: !connected })
+            call('setAccountConnected', {
+              accountId: account.id,
+              // Stopping covers both being connected and trying to be.
+              connected: !connected && !connecting
+            })
           }
         >
-          {connected ? 'Disconnect' : 'Connect'}
+          {connected ? 'Disconnect' : connecting ? 'Cancel' : 'Connect'}
         </button>
+        {connecting && (
+          <button
+            type="button"
+            className="button subtle"
+            // Starting over, for an attempt that is retrying without getting
+            // anywhere: the daemon tears the old one down before starting.
+            title="Stop this attempt and start again"
+            onClick={() => {
+              call('setAccountConnected', { accountId: account.id, connected: false })
+              setTimeout(() => call('setAccountConnected', { accountId: account.id, connected: true }), 400)
+            }}
+          >
+            Retry
+          </button>
+        )}
         <IconButton
           name={expanded ? 'expand_less' : 'expand_more'}
           title="Settings"

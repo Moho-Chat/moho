@@ -414,11 +414,16 @@ export class ChatStore {
   async setPresence(accountId: string, status: 'online' | 'idle' | 'offline'): Promise<void> {
     if (status === 'offline') return this.setAccountConnected(accountId, false)
 
-    const account = this.state.accounts.find((a) => a.id === accountId)
+    const state = this.state.accounts.find((a) => a.id === accountId)?.state
     await this.setAccountStatus(accountId, status)
-    if (account && account.state !== 'connected' && account.state !== 'connecting') {
-      await this.setAccountConnected(accountId, true)
-    }
+    if (state === 'connected') return
+
+    // An attempt already running is stopped before starting another. Without
+    // this, choosing a status on an account stuck retrying did nothing
+    // visible: the state was "connecting" before and after, so the only way
+    // out was the Accounts page - which had the same dead button.
+    if (state === 'connecting') await this.setAccountConnected(accountId, false)
+    await this.setAccountConnected(accountId, true)
   }
 
   async setAccountStatus(accountId: string, status: 'online' | 'idle'): Promise<void> {
