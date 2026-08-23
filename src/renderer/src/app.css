@@ -2309,59 +2309,9 @@ video.lightbox-media {
   color: var(--surface-text);
 }
 
-/* Silenced is a state worth seeing at a glance from across the room, so it
-   is coloured rather than merely a different glyph. */
-.user-audio-button.muted {
-  color: var(--error);
-}
 
-.user-audio-button.muted:hover {
-  background: rgba(242, 184, 181, 0.12);
-  color: var(--error);
-}
 
-/* Reserves the row's height before an account is selected, so the channel
-   list doesn't shift when one arrives. */
-.user-footer.empty {
-  height: 44px;
-  pointer-events: none;
-}
 
-.user-avatar {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  flex: none;
-}
-
-.user-avatar img,
-.user-avatar .avatar-fallback {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  object-fit: cover;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--font-size-small);
-  font-weight: 600;
-  color: var(--primary-text);
-}
-
-/* The status dot overlaps the avatar's corner, so it needs a ring to stay
-   legible against whatever the picture happens to be. */
-.user-status-dot {
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 2px solid var(--surface-container);
-}
 
 .user-identity {
   flex: 1;

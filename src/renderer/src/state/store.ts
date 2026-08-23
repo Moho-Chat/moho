@@ -387,6 +387,40 @@ export class ChatStore {
     }
   }
 
+  /**
+   * Connects or disconnects an account.
+   *
+   * The same thing the Accounts page does; exposed here because presence and
+   * connection are one choice to a person - "offline" is not a mood, it is
+   * being gone.
+   */
+  async setAccountConnected(accountId: string, connected: boolean): Promise<void> {
+    try {
+      await window.moho.rpc('setAccountConnected', { accountId, connected })
+      await this.refreshAccounts()
+    } catch (e) {
+      this.toast('error', `Couldn't ${connected ? 'connect' : 'disconnect'}: ${(e as Error).message}`)
+    }
+  }
+
+  /**
+   * How this account should present itself, including not at all.
+   *
+   * Online and idle on a disconnected account connect it first - choosing to
+   * appear online while signed out otherwise does nothing visible, which is
+   * the kind of switch people press twice and then distrust. The status is
+   * recorded either way and applied when the connection comes up.
+   */
+  async setPresence(accountId: string, status: 'online' | 'idle' | 'offline'): Promise<void> {
+    if (status === 'offline') return this.setAccountConnected(accountId, false)
+
+    const account = this.state.accounts.find((a) => a.id === accountId)
+    await this.setAccountStatus(accountId, status)
+    if (account && account.state !== 'connected' && account.state !== 'connecting') {
+      await this.setAccountConnected(accountId, true)
+    }
+  }
+
   async setAccountStatus(accountId: string, status: 'online' | 'idle'): Promise<void> {
     try {
       await window.moho.rpc('setAccountStatus', { accountId, status })

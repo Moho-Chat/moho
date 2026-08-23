@@ -1,7 +1,8 @@
 import { ContextMenu, useContextMenu } from './ContextMenu'
-import { Icon, MaskIcon } from './Icon'
+import { Icon } from './Icon'
+import { Avatar } from './Avatar'
 import { useStore, useChat } from '../state/hooks'
-import { nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
+import { presenceLabel } from '../lib/presence'
 import type { Account } from '../../../shared/wire'
 
 /**
@@ -15,15 +16,33 @@ import type { Account } from '../../../shared/wire'
  * the plaque.
  */
 
-export type Status = 'online' | 'idle'
+export type Status = 'online' | 'idle' | 'offline'
 
 const STATUSES: { id: Status; label: string; glyph: string }[] = [
   { id: 'online', label: 'Online', glyph: 'circle' },
-  { id: 'idle', label: 'Idle', glyph: 'dark_mode' }
+  { id: 'idle', label: 'Idle', glyph: 'dark_mode' },
+  // Not a mood but an action: it signs the account out. Named for the state it
+  // leaves you in rather than for the mechanism, since that is how it reads
+  // beside the other two.
+  { id: 'offline', label: 'Offline', glyph: 'logout' }
 ]
 
-export function statusColor(status: string): string {
-  return status === 'idle' ? 'var(--warning)' : 'var(--success)'
+/**
+ * What the plaque should say, which is not always what the account last chose.
+ *
+ * A disconnected account is offline whatever status it holds - it is signed
+ * out, and nobody can see it as anything. Reporting the stored status there
+ * meant a Discord account that had dropped still showed a green dot and the
+ * word Online.
+ */
+export function effectiveStatus(account: Account): Status | 'connecting' {
+  if (account.state === 'connecting') return 'connecting'
+  if (account.state !== 'connected') return 'offline'
+  return (account.status as Status) || 'online'
+}
+
+function label(status: Status | 'connecting'): string {
+  return status === 'connecting' ? 'Connecting…' : presenceLabel(status)
 }
 
 export function UserFooter({ account }: { account?: Account }): JSX.Element {
@@ -35,12 +54,8 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
   // has to exist so the layout doesn't jump when one arrives.
   if (!account) return <div className="user-footer empty" />
 
-  const status = (account.status || 'online') as Status
-  const service = serviceIcon(account.service)
+  const status = effectiveStatus(account)
   const name = account.displayName || account.id
-  const label = STATUSES.find((s) => s.id === status)?.label
-
-  const setStatus = (next: Status): void => void store.setAccountStatus(account.id, next)
 
   return (
     <>
@@ -49,23 +64,12 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
           type="button"
           className="user-identity-button"
           onClick={open}
-          title={`${name} — ${label}`}
+          title={`${name} — ${label(status)}`}
         >
-          <span className="user-avatar">
-            {account.avatarUrl ? (
-              <img src={resolveMediaUrl(account.avatarUrl)} alt="" />
-            ) : service.mark ? (
-              <MaskIcon src={service.mark} size={18} />
-            ) : (
-              <span className="avatar-fallback" style={{ background: nickColor(name) }}>
-                {name.slice(0, 1).toUpperCase()}
-              </span>
-            )}
-            <span className="user-status-dot" style={{ background: statusColor(status) }} />
-          </span>
+          <Avatar name={name} url={account.avatarUrl} size={28} status={status} />
           <span className="user-identity">
             <span className="ellipsis user-name">{name}</span>
-            <span className="ellipsis small muted">{label}</span>
+            <span className="ellipsis small muted">{label(status)}</span>
           </span>
         </button>
 
@@ -99,7 +103,11 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
           entries={STATUSES.map((s) => ({
             label: s.id === status ? `${s.label} ✓` : s.label,
             icon: s.glyph,
-            onClick: () => setStatus(s.id)
+            // Signing out is the one entry here that loses something - the
+            // connection, and with it anything unsent - so it is marked as the
+            // destructive one rather than sitting flush with the others.
+            danger: s.id === 'offline' && status !== 'offline',
+            onClick: () => void store.setPresence(account.id, s.id)
           }))}
           onClose={close}
         />
