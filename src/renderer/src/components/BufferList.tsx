@@ -138,7 +138,8 @@ export function BufferList(): JSX.Element {
                 muted={isEffectivelyMuted(b)}
                 pinned={isPinned(b.id)}
                 accounts={accounts}
-                onSelect={() => void store.selectBuffer(b.id)}
+                // Already on the page being shown; keep the rail where it is.
+                onSelect={() => void store.selectBuffer(b.id, false)}
                 onTogglePin={() => togglePin(b.id)}
                 onToggleMute={() => toggleMute(b.id)}
                 onHide={() => hideBuffer(b.id)}

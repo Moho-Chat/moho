@@ -12,6 +12,7 @@ import type {
 } from '../../../shared/wire'
 import { buildSmilieIndex, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { resolveMediaUrl } from '../lib/util'
+import { DM_GROUP_ID, isDirectMessage } from '../lib/groups'
 
 /**
  * The whole client-side model, held in one immutable object that is replaced
@@ -210,6 +211,12 @@ export class ChatStore {
     try {
       const groups = await window.moho.rpc<BufferGroup[]>('listBufferGroups')
       this.set({ groups })
+      // A session saved before direct messages were folded into one page may
+      // still name a per-account DM group, which no longer has a tile. Point
+      // it at the page that replaced it rather than letting the pane fall back
+      // to whatever entry happens to be first.
+      const active = groups.find((g) => g.id === this.state.activeGroupId)
+      if (active?.kind === 'dms') this.selectGroup(DM_GROUP_ID)
       // Land somewhere sensible on first run rather than an empty pane.
       if (!this.state.activeGroupId && groups.length) {
         this.set({ activeGroupId: this.groupOfActiveBuffer() || groups[0].id })
@@ -485,7 +492,20 @@ export class ChatStore {
     }
   }
 
-  async selectBuffer(bufferId: string): Promise<void> {
+  /**
+   * Opens a buffer.
+   *
+   * `followGroup` moves the rail to wherever the buffer lives. That is right
+   * for a selection arriving from outside the list - a notification click, a
+   * freshly joined channel, the restored buffer at startup - which would
+   * otherwise open something the sidebar isn't showing.
+   *
+   * It is wrong for a click on a row in the list, because that row is by
+   * definition already on the page being shown. Following there dragged the
+   * rail off the pinned and direct message pages onto whichever guild happened
+   * to own the conversation, which is the opposite of what those pages are for.
+   */
+  async selectBuffer(bufferId: string, followGroup = true): Promise<void> {
     if (!this.state.buffers.some((b) => b.id === bufferId)) return
 
     // Snapshot the divider before clearing unread, so the "New messages" line
@@ -511,11 +531,16 @@ export class ChatStore {
     this.set(patch)
 
     void window.moho.prefs.set('ui.activeBufferId', bufferId)
-    // A buffer can be opened from outside the rail - a notification click, or
-    // the restored selection at startup - so the rail follows it rather than
-    // showing a channel that isn't in the list underneath.
-    const group = this.state.buffers.find((b) => b.id === bufferId)?.groupId
-    if (group && group !== this.state.activeGroupId) this.selectGroup(group)
+    if (followGroup) {
+      const buffer = this.state.buffers.find((b) => b.id === bufferId)
+      // A direct message's home group is the per-account one nobilis reports,
+      // which the rail folds away in favour of the single cross-service page.
+      // Selecting the folded id would land on a group with no tile, and the
+      // pane falls back to the first entry - which is how a Discord DM opened
+      // an unrelated guild.
+      const group = buffer && isDirectMessage(buffer) ? DM_GROUP_ID : buffer?.groupId
+      if (group && group !== this.state.activeGroupId) this.selectGroup(group)
+    }
     void window.moho.markBufferRead(bufferId)
     bestEffort(this.markRead(bufferId), 'mark read')
     bestEffort(window.moho.rpc('subscribe', { bufferId }), `subscribe ${bufferId}`)
