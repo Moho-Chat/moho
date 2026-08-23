@@ -1,10 +1,10 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { UserFooter } from './UserFooter'
 import { VoiceChannels } from './VoiceChannels'
 import { VoicePanel } from './VoicePanel'
-import { useChat, useIdSetPref, usePref, useStore } from '../state/hooks'
+import { useChat, useIdSetPref, useMapPref, usePref, useStore } from '../state/hooks'
 import {
   dmGroup,
   DM_GROUP_ID,
@@ -26,6 +26,7 @@ import {
 } from '../lib/util'
 import type { Account, Member } from '../../../shared/wire'
 import { Avatar } from './Avatar'
+import { categoryKey, sections, type CategorySection, type CustomCategory } from '../lib/categories'
 
 /**
  * Buffers grouped under a collapsible header per account, rather than one flat
@@ -48,6 +49,12 @@ export function BufferList(): JSX.Element {
   const [muted, toggleMute] = useIdSetPref('mutedBuffers')
   const [hidden, , isHidden] = useIdSetPref('hiddenBuffers')
   const [mutedGroups] = usePref<string[]>('mutedGroups', [])
+  // Headings a person made, per rail entry, and which channel goes under
+  // which. Kept here rather than in the daemon: a heading you invented is not
+  // something any other client of the same account would agree about.
+  const [customCats, setCustomCats] = useMapPref<CustomCategory[]>('customCategories')
+  const [assignment, setAssignment] = useMapPref<string>('channelCategory')
+  const [, toggleCollapsed, isCollapsed] = useIdSetPref('collapsedCategories')
   const [, setHidden] = usePref<string[]>('hiddenBuffers', [])
 
   const visible = useMemo(() => buffers.filter((b) => !hidden.includes(b.id)), [buffers, hidden])
@@ -108,11 +115,74 @@ export function BufferList(): JSX.Element {
     )
   }, [visible, activeGroup, isPinnedPage, isDmPage, pinned])
 
+  /**
+   * The channel rows, under their headings.
+   *
+   * Only where headings make sense: the pinned and direct-message pages are
+   * already one flat idea each, and adding a heading over them would be
+   * inventing structure that isn't there. Ordinary channels sort by the
+   * service's own position within a heading, since that is the order the
+   * server arranged them in and the reason it supplies one.
+   */
+  const grouped = useMemo(() => {
+    if (!activeGroup || isPinnedPage || isDmPage) return null
+    const mine = customCats[activeGroup.id] ?? []
+    const list = sections(groupBuffers, mine, assignment)
+    for (const s of list) {
+      s.buffers.sort((a, b) => (a.position || 0) - (b.position || 0))
+    }
+    // A heading with nothing under it is still drawn when it is the user's -
+    // they just made it, and a heading that vanishes until something is put
+    // in it cannot have anything put in it.
+    return list.filter((s) => s.custom || s.buffers.length > 0)
+  }, [activeGroup, isPinnedPage, isDmPage, groupBuffers, customCats, assignment])
+
   // The menu still toggles a buffer's *own* flag independently of the
   // cascade, the same way muting a channel inside an already-muted Slack
   // workspace works.
   const isEffectivelyMuted = (buffer: BufferEntry): boolean =>
     isMutedBuffer(buffer, buffers, muted, hidden, mutedGroups)
+
+  const [naming, setNaming] = useState<{ id: string; name: string } | null>(null)
+  const { menu: groupMenu, open: openGroupMenuAt, close: closeGroupMenu } = useContextMenu()
+  const [catMenu, setCatMenu] = useState<{ x: number; y: number; section: CategorySection } | null>(null)
+
+  const myCategories = activeGroup ? (customCats[activeGroup.id] ?? []) : []
+  const writeCategories = (next: CustomCategory[]): void => {
+    if (activeGroup) setCustomCats(activeGroup.id, next)
+  }
+
+  const openGroupMenu = (e: React.MouseEvent): void => openGroupMenuAt(e)
+  const openCategoryMenu = (e: React.MouseEvent, section: CategorySection): void => {
+    e.preventDefault()
+    // Only a heading you made is yours to rename or remove; a server's
+    // category is theirs, and offering to rename it would be a lie.
+    if (!section.custom) return
+    setCatMenu({ x: e.clientX, y: e.clientY, section })
+  }
+
+  const renderRow = (b: BufferEntry): JSX.Element => (
+    <BufferRow
+      key={b.id}
+      buffer={b}
+      active={b.id === activeBufferId}
+      muted={isEffectivelyMuted(b)}
+      pinned={isPinned(b.id)}
+      accounts={accounts}
+      // Already on the page being shown; keep the rail where it is.
+      onSelect={() => void store.selectBuffer(b.id, false)}
+      onTogglePin={() => togglePin(b.id)}
+      onToggleMute={() => toggleMute(b.id)}
+      onHide={() => hideBuffer(b.id)}
+      onClose={() => void store.closeBuffer(b.id)}
+      inCall={voiceSessions.some((s) => s.bufferId === b.id)}
+      status={dmStatus(b, presence, buffers)}
+      onCall={() => void store.callBuffer(b.id)}
+      onHangUp={() => void store.leaveVoice(b.accountId)}
+      categories={activeGroup ? (customCats[activeGroup.id] ?? []) : []}
+      onFile={(categoryId) => setAssignment(b.id, categoryId)}
+    />
+  )
 
   const hideBuffer = (id: string): void => {
     if (!isHidden(id)) setHidden([...hidden, id])
@@ -134,7 +204,16 @@ export function BufferList(): JSX.Element {
         {activeGroup && (
           <>
             <div className="group-title">
-              <span className="ellipsis group-title-name">{activeGroup.name}</span>
+              <button
+                type="button"
+                className="ellipsis group-title-name"
+                title={`${activeGroup.name} — organise this list`}
+                onClick={grouped ? openGroupMenu : undefined}
+                disabled={!grouped}
+              >
+                {activeGroup.name}
+                {grouped && <Icon name="expand_more" size={14} />}
+              </button>
               {/* Only where the page is actually one account's. The direct
                   messages and pinned pages gather several, so a single
                   connection light there says nothing about any of them - and
@@ -155,32 +234,116 @@ export function BufferList(): JSX.Element {
               <div className="bufferlist-empty muted small">Nothing here yet.</div>
             )}
 
-            {groupBuffers.map((b) => (
-              <BufferRow
-                key={b.id}
-                buffer={b}
-                active={b.id === activeBufferId}
-                muted={isEffectivelyMuted(b)}
-                pinned={isPinned(b.id)}
-                accounts={accounts}
-                // Already on the page being shown; keep the rail where it is.
-                onSelect={() => void store.selectBuffer(b.id, false)}
-                onTogglePin={() => togglePin(b.id)}
-                onToggleMute={() => toggleMute(b.id)}
-                onHide={() => hideBuffer(b.id)}
-                onClose={() => void store.closeBuffer(b.id)}
-                inCall={voiceSessions.some((s) => s.bufferId === b.id)}
-                status={dmStatus(b, presence, buffers)}
-                onCall={() => void store.callBuffer(b.id)}
-                onHangUp={() => void store.leaveVoice(b.accountId)}
-              />
-            ))}
+            {grouped
+              ? grouped.map((section) => {
+                  const key = categoryKey(activeGroup.id, section)
+                  const folded = isCollapsed(key)
+                  return (
+                    <div key={section.key} className="category">
+                      {section.name && (
+                        <button
+                          type="button"
+                          className="category-head small"
+                          onClick={() => toggleCollapsed(key)}
+                          onContextMenu={(e) => openCategoryMenu(e, section)}
+                          title={section.custom ? 'Your heading — right-click to rename or remove' : section.name}
+                        >
+                          <Icon name={folded ? 'chevron_right' : 'expand_more'} size={14} />
+                          <span className="ellipsis">{section.name}</span>
+                          {folded && section.buffers.length > 0 && (
+                            <span className="muted category-count">{section.buffers.length}</span>
+                          )}
+                        </button>
+                      )}
+                      {/* A collapsed heading still shows the channel you are
+                          reading, or selecting it from elsewhere would appear
+                          to do nothing. */}
+                      {section.buffers
+                        .filter((b) => !folded || b.id === activeBufferId)
+                        .map((b) => renderRow(b))}
+                      {section.custom && section.buffers.length === 0 && !folded && (
+                        <div className="category-empty small muted">
+                          Right-click a channel to file it here
+                        </div>
+                      )}
+                    </div>
+                  )
+                })
+              : groupBuffers.map((b) => renderRow(b))}
+
 
             {/* Below the text channels, as everywhere else that has both. */}
             <VoiceChannels group={activeGroup} />
           </>
         )}
       </div>
+
+      {groupMenu && activeGroup && (
+        <ContextMenu
+          x={groupMenu.x}
+          y={groupMenu.y}
+          entries={[
+            {
+              label: 'New category',
+              icon: 'create_new_folder',
+              onClick: () => {
+                const id = `cat-${Date.now().toString(36)}`
+                writeCategories([...myCategories, { id, name: 'New category' }])
+                // Straight into renaming it: a heading called "New category"
+                // is not one anybody meant to keep.
+                setNaming({ id, name: 'New category' })
+              }
+            }
+          ]}
+          onClose={closeGroupMenu}
+        />
+      )}
+
+      {catMenu && (
+        <ContextMenu
+          x={catMenu.x}
+          y={catMenu.y}
+          entries={[
+            {
+              label: 'Rename',
+              icon: 'edit',
+              onClick: () =>
+                setNaming({ id: catMenu.section.key, name: catMenu.section.name ?? '' })
+            },
+            {
+              label: 'Remove',
+              icon: 'delete',
+              danger: true,
+              // The channels stay; only the heading goes, and they fall back
+              // to wherever the service filed them.
+              onClick: () => writeCategories(myCategories.filter((c) => c.id !== catMenu.section.key))
+            }
+          ]}
+          onClose={() => setCatMenu(null)}
+        />
+      )}
+
+      {naming && (
+        <div className="category-naming">
+          <input
+            autoFocus
+            className="text-field"
+            value={naming.name}
+            onChange={(e) => setNaming({ ...naming, name: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setNaming(null)
+              if (e.key === 'Enter') {
+                const name = naming.name.trim()
+                if (name) {
+                  writeCategories(myCategories.map((c) => (c.id === naming.id ? { ...c, name } : c)))
+                }
+                setNaming(null)
+              }
+            }}
+            onBlur={() => setNaming(null)}
+          />
+        </div>
+      )}
 
       {/* Outside the group above, so a call stays visible and hangable-up
           wherever you navigate. */}
@@ -254,6 +417,9 @@ interface BufferRowProps {
   onClose: () => void
   onCall: () => void
   onHangUp: () => void
+  /** Headings this list offers, so a channel can be filed under one. */
+  categories: CustomCategory[]
+  onFile: (categoryId: string) => void
   /** A call is already up in this conversation. */
   inCall: boolean
   /** The other person's presence, for a direct message. */
@@ -275,7 +441,9 @@ function BufferRow({
   onCall,
   onHangUp,
   inCall,
-  status
+  status,
+  categories,
+  onFile
 }: BufferRowProps): JSX.Element {
   const { menu, open, close } = useContextMenu()
   const account = accounts.find((a) => a.id === buffer.accountId)
@@ -320,6 +488,18 @@ function BufferRow({
     { label: pinned ? 'Unpin' : 'Pin', icon: 'push_pin', onClick: onTogglePin },
     { label: muted ? 'Unmute' : 'Mute', icon: muted ? 'notifications' : 'notifications_off', onClick: onToggleMute },
     { separator: true },
+    ...(categories.length
+      ? ([
+          { separator: true },
+          ...categories.map((c) => ({
+            label: `File under ${c.name}`,
+            icon: 'folder',
+            onClick: () => onFile(c.id)
+          })),
+          { label: 'Remove from category', icon: 'folder_off', onClick: () => onFile('') },
+          { separator: true }
+        ] as MenuEntry[])
+      : []),
     { label: 'Hide', icon: 'visibility_off', onClick: onHide },
     ...(buffer.kind === 'server'
       ? []

@@ -1983,6 +1983,70 @@ video.lightbox-media {
   border-radius: var(--corner-radius);
 }
 
+/* --- channel categories ----------------------------------------------- */
+
+.category-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  width: 100%;
+  padding: var(--spacing-s) var(--spacing-s) var(--spacing-xxs);
+  background: none;
+  border: none;
+  text-align: left;
+  color: var(--surface-variant-text);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.category-head:hover {
+  color: var(--surface-text);
+}
+
+.category-count {
+  margin-left: auto;
+  font-weight: 400;
+}
+
+.category-empty {
+  padding: var(--spacing-xxs) var(--spacing-s) var(--spacing-xs) var(--spacing-l);
+}
+
+/* The nameplate is a button now, so it has to stop looking like one. */
+.group-title-name {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.group-title-name:hover:not(:disabled) {
+  color: var(--primary);
+}
+
+/* Renaming happens over the list rather than in place: the heading may be
+   scrolled out of view by the time the menu is used. */
+.category-naming {
+  position: absolute;
+  left: var(--spacing-s);
+  right: var(--spacing-s);
+  bottom: 84px;
+  z-index: 30;
+}
+
+.category-naming input {
+  width: 100%;
+}
+
 /* --- voice channels --------------------------------------------------- */
 
 .bufferlist-section {

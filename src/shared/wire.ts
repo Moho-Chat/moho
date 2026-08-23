@@ -42,6 +42,10 @@ export interface Buffer {
   encrypted?: boolean
   /** Which rail entry this buffer sits under. */
   groupId?: string
+  /** The service's own heading for this buffer - a Discord category. */
+  category?: string
+  /** Where the service orders it: category rank and channel rank folded. */
+  position?: number
 }
 
 /**
