@@ -44,7 +44,10 @@ export function NickList(): JSX.Element {
     }
 
     const byName = (a: Member, b: Member): number => a.nick.localeCompare(b.nick)
-    const rank = (m: Member): number => '~&@%+'.indexOf(m.prefix || '')
+    // Guard the empty prefix explicitly: indexOf('') is 0, which is the
+    // owner slot, so every unranked member - all of Sneedchat, and any
+    // ordinary IRC user - was being filed under Owners.
+    const rank = (m: Member): number => (m.prefix ? '~&@%+'.indexOf(m.prefix) : -1)
     return [
       { label: 'Owners', members: filtered.filter((m) => rank(m) === 0).sort(byName) },
       { label: 'Moderators', members: filtered.filter((m) => rank(m) > 0 && rank(m) < 4).sort(byName) },
