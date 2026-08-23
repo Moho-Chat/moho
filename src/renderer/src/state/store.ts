@@ -256,7 +256,7 @@ export class ChatStore {
    * disconnected account or a protocol with no presence concept the answer is
    * no - showing it as set anyway would be a lie.
    */
-  async setAccountStatus(accountId: string, status: 'online' | 'idle' | 'dnd'): Promise<void> {
+  async setAccountStatus(accountId: string, status: 'online' | 'idle'): Promise<void> {
     try {
       await window.moho.rpc('setAccountStatus', { accountId, status })
       await this.refreshAccounts()

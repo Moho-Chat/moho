@@ -35,8 +35,6 @@ export class Notifier {
 
   /** Source path -> transcoded PNG, so a repeat sender is converted once. */
   private transcoded = new Map<string, string>()
-  /** Accounts currently set to Do Not Disturb. */
-  private dndAccounts = new Set<string>()
 
   constructor(
     private prefs: Prefs,
@@ -45,11 +43,6 @@ export class Notifier {
     /** The renderer, borrowed only to decode formats nativeImage cannot. */
     private renderer: () => WebContents | null = () => null
   ) {}
-
-  /** Mirrors each account's status, so DND can be enforced here. */
-  trackAccounts(accounts: { id: string; status?: string }[]): void {
-    this.dndAccounts = new Set(accounts.filter((a) => a.status === 'dnd').map((a) => a.id))
-  }
 
   trackBuffer(buffer: ChatBuffer, removed: boolean): void {
     if (removed) this.buffers.delete(buffer.id)
@@ -67,12 +60,6 @@ export class Notifier {
    * all; see isMuted for why.
    */
   private isMuted(accountId: string, bufferId: string): boolean {
-    // Do Not Disturb is a statement about the person rather than any one
-    // connection, so it silences every account regardless of which one it was
-    // set from. Held in main so it keeps working with the window closed,
-    // which is the whole point of the setting.
-    if (this.dndAccounts.size > 0) return true
-
     const muted = this.prefs.get<string[]>('mutedBuffers', [])
     if (muted.includes(bufferId)) return true
 

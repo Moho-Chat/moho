@@ -6,7 +6,7 @@ export interface Account {
   service: 'irc' | 'discord' | 'sockchat' | 'matrix' | 'jabber' | 'slack'
   displayName: string
   /**
-   * How the user is presenting: "online" | "idle" | "dnd". Distinct from
+   * How the user is presenting: "online" | "idle". Distinct from
    * `state`, which is whether the connection is up.
    */
   status?: string

@@ -1,6 +1,6 @@
 import { ContextMenu, useContextMenu } from './ContextMenu'
 import { Icon, MaskIcon } from './Icon'
-import { useChat, useStore } from '../state/hooks'
+import { useStore } from '../state/hooks'
 import { nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
 import type { Account } from '../../../shared/wire'
 
@@ -9,33 +9,22 @@ import type { Account } from '../../../shared/wire'
  * channel list - and the way to change how you are presenting.
  *
  * Per account rather than global because that is what the underlying status
- * is: each protocol carries its own, and only Do Not Disturb reaches across
- * all of them (by silencing notifications, which is this app's own doing
- * rather than anything a server is told).
+ * is: each protocol carries its own.
  */
 
-export type Status = 'online' | 'idle' | 'dnd'
+export type Status = 'online' | 'idle'
 
-const STATUSES: { id: Status; label: string; glyph: string; note?: string }[] = [
+const STATUSES: { id: Status; label: string; glyph: string }[] = [
   { id: 'online', label: 'Online', glyph: 'circle' },
-  { id: 'idle', label: 'Idle', glyph: 'dark_mode' },
-  {
-    id: 'dnd',
-    label: 'Do Not Disturb',
-    glyph: 'do_not_disturb_on',
-    note: 'Silences notifications everywhere'
-  }
+  { id: 'idle', label: 'Idle', glyph: 'dark_mode' }
 ]
 
 export function statusColor(status: string): string {
-  if (status === 'idle') return 'var(--warning)'
-  if (status === 'dnd') return 'var(--error)'
-  return 'var(--success)'
+  return status === 'idle' ? 'var(--warning)' : 'var(--success)'
 }
 
 export function UserFooter({ account }: { account?: Account }): JSX.Element {
   const store = useStore()
-  const accounts = useChat((s) => s.accounts)
   const { menu, open, close } = useContextMenu()
 
   // With no account selected there is nobody to show, but the footer still
@@ -46,13 +35,7 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
   const service = serviceIcon(account.service)
   const name = account.displayName || account.id
 
-  const setStatus = (next: Status): void => {
-    // DND is a statement about the person, not the connection, so it goes to
-    // every account at once. The others are per-account, matching where the
-    // user set them from.
-    const targets = next === 'dnd' || status === 'dnd' ? accounts : [account]
-    for (const a of targets) void store.setAccountStatus(a.id, next)
-  }
+  const setStatus = (next: Status): void => void store.setAccountStatus(account.id, next)
 
   return (
     <>

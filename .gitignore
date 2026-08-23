@@ -6,6 +6,8 @@
 node_modules/
 /out/
 /dist/
+# npm pack output - a build artifact, regenerable with `npm pack`
+*.tgz
 *.log
 
 *.tsbuildinfo
