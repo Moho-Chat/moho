@@ -23,8 +23,9 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
 
   const isDiscord = buffer.accountId.startsWith('discord:')
   const isDm = buffer.kind === 'dm'
-  // A call in this conversation, as opposed to one somewhere else entirely.
-  const inCall = sessions.some((s) => s.accountId === buffer.accountId && s.isDirect)
+  // This conversation's call, not merely a call on the same account: one
+  // account can only be in one, but the button has to be right about which.
+  const inCall = sessions.some((s) => s.bufferId === buffer.id)
 
   // Searching on every keystroke would query the database for every prefix of
   // a word on the way to typing it; a short pause after typing stops is both
@@ -91,11 +92,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
       return
     }
     setCalling(true)
-    void window.moho
-      .rpc('startDiscordCall', { bufferId: buffer.id })
-      .then(() => store.refreshVoiceSessions())
-      .catch((e: Error) => store.toast('error', `Couldn't call: ${e.message}`))
-      .finally(() => setCalling(false))
+    void store.callBuffer(buffer.id).finally(() => setCalling(false))
   }
 
   return (

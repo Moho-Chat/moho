@@ -362,6 +362,22 @@ export class ChatStore {
     }
   }
 
+  /**
+   * Calls whoever is on the other end of a conversation.
+   *
+   * Takes a buffer rather than a user because that is what both callers have
+   * - a row in the list, or the conversation on screen - and the daemon
+   * resolves it to the channel the call happens in.
+   */
+  async callBuffer(bufferId: string): Promise<void> {
+    try {
+      await window.moho.rpc('startDiscordCall', { bufferId })
+      await this.refreshVoiceSessions()
+    } catch (e) {
+      this.toast('error', `Couldn't call: ${(e as Error).message}`)
+    }
+  }
+
   async leaveVoice(accountId: string): Promise<void> {
     try {
       await window.moho.rpc('leaveVoiceChannel', { accountId })

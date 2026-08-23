@@ -24,7 +24,8 @@ import {
   serviceIcon,
   serviceLabel
 } from '../lib/util'
-import type { Account } from '../../../shared/wire'
+import type { Account, Member } from '../../../shared/wire'
+import { presenceColor, presenceLabel } from '../lib/presence'
 
 /**
  * Buffers grouped under a collapsible header per account, rather than one flat
@@ -40,6 +41,8 @@ export function BufferList(): JSX.Element {
   const activeBufferId = useChat((s) => s.activeBufferId)
   const groups = useChat((s) => s.groups)
   const activeGroupId = useChat((s) => s.activeGroupId)
+  const voiceSessions = useChat((s) => s.voiceSessions)
+  const presence = useChat((s) => s.presenceByBuffer)
 
   const [pinned, togglePin, isPinned] = useIdSetPref('pinnedBuffers')
   const [muted, toggleMute] = useIdSetPref('mutedBuffers')
@@ -132,7 +135,12 @@ export function BufferList(): JSX.Element {
           <>
             <div className="group-title">
               <span className="ellipsis group-title-name">{activeGroup.name}</span>
-              {groupAccount && <ConnectionDot state={groupAccount.state} />}
+              {/* Only where the page is actually one account's. The direct
+                  messages and pinned pages gather several, so a single
+                  connection light there says nothing about any of them - and
+                  says it in the confident green of something that means
+                  something. */}
+              {activeGroup.accountId && groupAccount && <ConnectionDot state={groupAccount.state} />}
               {groupAccount && (
                 <IconButton
                   name="add"
@@ -161,6 +169,10 @@ export function BufferList(): JSX.Element {
                 onToggleMute={() => toggleMute(b.id)}
                 onHide={() => hideBuffer(b.id)}
                 onClose={() => void store.closeBuffer(b.id)}
+                inCall={voiceSessions.some((s) => s.bufferId === b.id)}
+                status={dmStatus(b, presence)}
+                onCall={() => void store.callBuffer(b.id)}
+                onHangUp={() => void store.leaveVoice(b.accountId)}
               />
             ))}
 
@@ -178,6 +190,22 @@ export function BufferList(): JSX.Element {
       <UserFooter account={groupAccount} />
     </div>
   )
+}
+
+/**
+ * The other person's status in a direct message.
+ *
+ * A DM's roster is the people in it other than you, so for a one-to-one
+ * conversation there is exactly one and it is them. Returns nothing for
+ * anything else: a channel has no single status, and a protocol that reports
+ * no presence should show no dot rather than a confident grey one claiming
+ * everybody is offline.
+ */
+function dmStatus(buffer: BufferEntry, presence: Record<string, Member[]>): string | undefined {
+  if (buffer.kind !== 'dm') return undefined
+  const roster = presence[buffer.id]
+  if (!roster || roster.length !== 1) return undefined
+  return roster[0].status
 }
 
 function ConnectionDot({ state }: { state: string }): JSX.Element {
@@ -204,6 +232,12 @@ interface BufferRowProps {
   onToggleMute: () => void
   onHide: () => void
   onClose: () => void
+  onCall: () => void
+  onHangUp: () => void
+  /** A call is already up in this conversation. */
+  inCall: boolean
+  /** The other person's presence, for a direct message. */
+  status?: string
 }
 
 function BufferRow({
@@ -217,7 +251,11 @@ function BufferRow({
   onTogglePin,
   onToggleMute,
   onHide,
-  onClose
+  onClose,
+  onCall,
+  onHangUp,
+  inCall,
+  status
 }: BufferRowProps): JSX.Element {
   const { menu, open, close } = useContextMenu()
   const account = accounts.find((a) => a.id === buffer.accountId)
@@ -240,7 +278,31 @@ function BufferRow({
     <Icon name={bufferKindGlyph(buffer.kind)} size={15} />
   )
 
+  // The status rides on the avatar's corner rather than sitting beside the
+  // name, so the picture and its state read as one thing.
+  const leadingWithStatus = status ? (
+    <span className="buffer-avatar-wrap">
+      {leading}
+      <span className="presence-dot" style={{ background: presenceColor(status) }} title={presenceLabel(status)} />
+    </span>
+  ) : (
+    leading
+  )
+
+  // Calling from the row it belongs to, as well as from the header of the
+  // conversation once it is open - the list is where you look for somebody
+  // you want to reach, so it is where reaching them should be offered.
+  const canCall = account?.service === 'discord' && buffer.kind === 'dm'
+
   const entries: MenuEntry[] = [
+    ...(canCall
+      ? ([
+          inCall
+            ? { label: 'Hang up', icon: 'call_end', danger: true, onClick: onHangUp }
+            : { label: 'Call', icon: 'call', onClick: onCall }
+        ] as MenuEntry[])
+      : []),
+    ...(canCall ? ([{ separator: true }] as MenuEntry[]) : []),
     { label: pinned ? 'Unpin' : 'Pin', icon: 'push_pin', onClick: onTogglePin },
     { label: muted ? 'Unmute' : 'Mute', icon: muted ? 'notifications' : 'notifications_off', onClick: onToggleMute },
     { separator: true },
@@ -259,7 +321,7 @@ function BufferRow({
         onContextMenu={open}
         title={buffer.name}
       >
-        {leading}
+        {leadingWithStatus}
         <span className="ellipsis buffer-name">{bufferDisplayName(buffer.name)}</span>
         {muted && <Icon name="notifications_off" size={13} className="buffer-muted-icon" />}
         {buffer.unread > 0 && !muted && (

@@ -11,8 +11,10 @@ import { SettingsPanel } from './components/settings/SettingsPanel'
 import { JoinPanel } from './components/JoinPanel'
 import { Toasts } from './components/Toasts'
 import { Icon, IconButton } from './components/Icon'
+import { presenceColor, presenceLabel } from './lib/presence'
 import { useActiveBuffer, useChat, usePref, usePrefsReady, useStore } from './state/hooks'
-import { bufferDisplayName } from './lib/util'
+import { bufferDisplayName, resolveMediaUrl } from './lib/util'
+import type { BufferEntry } from './state/store'
 
 export default function App(): JSX.Element {
   const store = useStore()
@@ -82,6 +84,10 @@ export default function App(): JSX.Element {
               title={sidebarFolded ? 'Show sidebar' : 'Hide sidebar'}
               onClick={() => setSidebarFolded(!sidebarFolded)}
             />
+            {/* A conversation is headed by whoever it is with, the same way
+                its row in the list is - the picture and the status together,
+                not a bare name. */}
+            {activePanel === '' && buffer && <BufferFace buffer={buffer} />}
             <span className="main-header-title ellipsis">{headerTitle}</span>
 
             {activePanel === '' && buffer && <ConversationTools buffer={buffer} />}
@@ -121,6 +127,29 @@ export default function App(): JSX.Element {
 
       <Toasts />
     </div>
+  )
+}
+
+/**
+ * The face at the head of a conversation: their picture, and how they are.
+ *
+ * Shown only where there is one person to show. A channel's header has no
+ * single face, and inventing one - the first member, the last to speak -
+ * would be worse than none.
+ */
+function BufferFace({ buffer }: { buffer: BufferEntry }): JSX.Element | null {
+  const presence = useChat((s) => s.presenceByBuffer)
+  if (buffer.kind !== 'dm' || !buffer.avatarUrl) return null
+  const roster = presence[buffer.id]
+  const status = roster?.length === 1 ? roster[0].status : undefined
+
+  return (
+    <span className="header-face">
+      <img src={resolveMediaUrl(buffer.avatarUrl)} alt="" />
+      {status && (
+        <span className="presence-dot" style={{ background: presenceColor(status) }} title={presenceLabel(status)} />
+      )}
+    </span>
   )
 }
 

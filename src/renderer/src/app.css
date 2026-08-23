@@ -260,11 +260,19 @@
 }
 
 .buffer-avatar {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   flex: none;
   object-fit: cover;
+}
+
+/* A DM is a person, so their face is worth more room than a channel glyph
+   needs - large enough to recognise at a glance without changing the rhythm
+   of a list that also holds channels. */
+.buffer-avatar-wrap .buffer-avatar {
+  width: 24px;
+  height: 24px;
 }
 
 .buffer-muted-icon {
@@ -2023,6 +2031,41 @@ video.lightbox-media {
 .voice-you {
   margin-left: auto;
   font-size: 11px;
+}
+
+/* --- presence on avatars ---------------------------------------------- */
+
+.buffer-avatar-wrap,
+.header-face {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.header-face img {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* Notched into the corner, with a ring in the surface colour so it stays
+   legible over whatever the picture happens to be - the same reason the
+   account plaque's own dot has one. */
+.presence-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--surface-container-low);
+}
+
+.header-face .presence-dot {
+  border-color: var(--surface);
 }
 
 /* --- conversation tools ----------------------------------------------- */

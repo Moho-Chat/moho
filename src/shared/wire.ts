@@ -118,6 +118,8 @@ export interface VoiceSession {
   channelName: string
   /** A call with a person rather than a room. */
   isDirect: boolean
+  /** The conversation the call is in, where one is known. */
+  bufferId?: string
 }
 
 export interface ReplyPreview {
