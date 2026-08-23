@@ -487,6 +487,23 @@ export class ChatStore {
         void this.refreshVoiceSessions()
         break
 
+      // The server said the message went nowhere. Recorded in the
+      // conversation rather than as a toast: it belongs beside the message it
+      // is about, and is still true when you scroll back to it tomorrow.
+      case 'deliveryFailed':
+        this.appendMessage(data.bufferId, {
+          id: `notice-${++this.sendSeq}-${Date.now()}`,
+          bufferId: data.bufferId,
+          from: '',
+          body: data.text,
+          ts: Math.floor(Date.now() / 1000),
+          isAction: false,
+          isHighlight: false,
+          kind: 'notice',
+          isOwn: false
+        })
+        break
+
       // Another window, or the daemon itself, changed the audio state.
       case 'voicePrefsChanged':
         this.set({ voicePrefs: data as VoicePrefs })
@@ -895,6 +912,13 @@ export class ChatStore {
       pendingAttachment: attachmentPath,
       ...(reply ? { replyTo: reply } : {})
     }
+    // Warn before the message rather than after it. On IRC a message to
+    // somebody who is not connected is accepted by the server and thrown
+    // away - there is no bounce, no queue and no delivery later - so without
+    // saying so the conversation looks like it worked.
+    const warning = this.undeliverableNotice(bufferId)
+    if (warning) this.appendMessage(bufferId, warning)
+
     this.appendMessage(bufferId, echo)
     this.pendingSends.set(clientId, { bufferId, ts: Date.now() })
 
@@ -909,6 +933,37 @@ export class ChatStore {
       // does, since that's what carries nobilis's own id and timestamp.
     } catch (e) {
       this.markSendFailed(clientId, (e as Error).message)
+    }
+  }
+
+  /**
+   * A note that what is about to be sent will not arrive, or nothing.
+   *
+   * Only where the protocol genuinely discards it. Discord and Matrix hold a
+   * message for someone who is offline and deliver it when they return, so
+   * warning there would be false; IRC does not, and Sneedchat's rooms are not
+   * conversations that can be missed in this way.
+   */
+  private undeliverableNotice(bufferId: string): ChatMessage | null {
+    const buffer = this.state.buffers.find((b) => b.id === bufferId)
+    const account = this.accountFor(bufferId)
+    if (!buffer || buffer.kind !== 'dm' || account?.service !== 'irc') return null
+
+    const roster = this.state.presenceByBuffer[bufferId]
+    // Absent presence is not evidence of absence: say nothing until the poll
+    // has actually answered for this person.
+    if (roster?.length !== 1 || roster[0].status !== 'offline') return null
+
+    return {
+      id: `notice-${++this.sendSeq}-${Date.now()}`,
+      bufferId,
+      from: '',
+      body: `${buffer.name} is offline and will not receive this message.`,
+      ts: Math.floor(Date.now() / 1000),
+      isAction: false,
+      isHighlight: false,
+      kind: 'notice',
+      isOwn: false
     }
   }
 

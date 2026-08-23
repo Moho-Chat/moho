@@ -109,7 +109,7 @@ export function NickList(): JSX.Element {
                 member={member}
                 blockKey={`${buffer?.accountId}|${member.nick}`}
                 blocked={isBlocked(`${buffer?.accountId}|${member.nick}`)}
-                isMatrix={isMatrix}
+                canOpenDm={isMatrix || account?.service === 'irc'}
                 canCall={canCall && !!member.userId}
                 perms={perms}
                 onToggleBlock={toggleBlocked}
@@ -145,12 +145,17 @@ export function NickList(): JSX.Element {
                 }}
                 onOpenDm={() => {
                   if (!account) return
+                  // IRC has no server-side notion of opening one, so it takes
+                  // a nick where Matrix takes a user id.
+                  const [method, params] =
+                    account.service === 'irc'
+                      ? (['openIrcQuery', { accountId: account.id, nick: member.nick }] as const)
+                      : ([
+                          'openMatrixDm',
+                          { accountId: account.id, userId: member.userId || member.nick, displayName: member.nick }
+                        ] as const)
                   void window.moho
-                    .rpc<{ bufferId: string }>('openMatrixDm', {
-                      accountId: account.id,
-                      userId: member.userId || member.nick,
-                      displayName: member.nick
-                    })
+                    .rpc<{ bufferId: string }>(method, params)
                     .then((r) => store.selectBuffer(r.bufferId))
                     .catch((e: Error) => store.toast('error', e.message))
                 }}
@@ -169,7 +174,8 @@ interface MemberRowProps {
   member: Member
   blockKey: string
   blocked: boolean
-  isMatrix: boolean
+  /** The protocol can start a conversation from a member list. */
+  canOpenDm: boolean
   perms: { canKick?: boolean; canBan?: boolean; canMute?: boolean }
   onToggleBlock: (key: string) => void
   onMention: () => void
@@ -184,7 +190,7 @@ function MemberRow({
   member,
   blockKey,
   blocked,
-  isMatrix,
+  canOpenDm,
   perms,
   onToggleBlock,
   onMention,
@@ -200,7 +206,7 @@ function MemberRow({
   const entries: MenuEntry[] = [
     { label: 'Mention', icon: 'alternate_email', onClick: onMention },
     ...(canCall ? ([{ label: 'Call', icon: 'call', onClick: onCall }] as MenuEntry[]) : []),
-    ...(isMatrix ? ([{ label: 'Open DM', icon: 'chat', onClick: onOpenDm }] as MenuEntry[]) : []),
+    ...(canOpenDm ? ([{ label: 'Open DM', icon: 'chat', onClick: onOpenDm }] as MenuEntry[]) : []),
     { separator: true },
     {
       label: blocked ? 'Unblock' : 'Block',
