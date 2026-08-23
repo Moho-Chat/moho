@@ -1211,6 +1211,25 @@ img.smilie {
   flex: 0 0 220px;
 }
 
+/* Device names run long, so this is capped and truncates rather than pushing
+   the settings pane wide enough to scroll. */
+.setting-select {
+  flex: none;
+  max-width: 260px;
+  padding: 4px var(--spacing-s);
+  background: var(--surface-container-high);
+  color: var(--surface-text);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  font-family: inherit;
+  font-size: var(--font-size-small);
+}
+
+.setting-select:disabled {
+  color: var(--surface-variant-text);
+  opacity: 0.6;
+}
+
 .setting-segmented {
   display: flex;
   flex: none;
@@ -1913,19 +1932,62 @@ video.lightbox-media {
 .user-footer {
   display: flex;
   align-items: center;
-  gap: var(--spacing-s);
+  gap: var(--spacing-xxs);
   width: 100%;
   flex: none;
   padding: var(--spacing-xs) var(--spacing-s);
-  background: none;
-  border: none;
-  text-align: left;
   color: var(--surface-variant-text);
 }
 
-.user-footer:hover {
+/* The identity half takes the room that is left, so the audio buttons keep
+   their size and a long display name is what gets truncated. */
+.user-identity-button {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  flex: 1;
+  min-width: 0;
+  padding: var(--spacing-xxs);
+  background: none;
+  border: none;
+  border-radius: var(--spacing-xs);
+  text-align: left;
+  color: inherit;
+}
+
+.user-identity-button:hover {
   background: var(--surface-hover);
   color: var(--surface-text);
+}
+
+.user-audio-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--spacing-xs);
+  color: var(--surface-variant-text);
+}
+
+.user-audio-button:hover {
+  background: var(--surface-hover);
+  color: var(--surface-text);
+}
+
+/* Silenced is a state worth seeing at a glance from across the room, so it
+   is coloured rather than merely a different glyph. */
+.user-audio-button.muted {
+  color: var(--error);
+}
+
+.user-audio-button.muted:hover {
+  background: rgba(242, 184, 181, 0.12);
+  color: var(--error);
 }
 
 /* Reserves the row's height before an account is selected, so the channel

@@ -176,3 +176,48 @@ export function DirectorySetting({
     </div>
   )
 }
+
+
+/**
+ * A dropdown over values the daemon owns rather than a stored preference.
+ *
+ * Separate from SelectionSetting because that one is backed by a pref key and
+ * renders every option as a button: sound devices are neither - they live in
+ * the daemon, and a machine can easily have a dozen.
+ */
+export function ChoiceSetting({
+  label,
+  description,
+  value,
+  options,
+  onChange,
+  disabled
+}: {
+  label: string
+  description?: string
+  value: string
+  options: { label: string; value: string }[]
+  onChange: (value: string) => void
+  disabled?: boolean
+}): JSX.Element {
+  return (
+    <div className="setting-row">
+      <div className="setting-text">
+        <div>{label}</div>
+        {description && <div className="small muted">{description}</div>}
+      </div>
+      <select
+        className="setting-select"
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}

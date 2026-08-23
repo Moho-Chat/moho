@@ -60,6 +60,30 @@ export interface BufferGroup {
   position: number
 }
 
+/** A microphone or a set of speakers the sound server offers. */
+export interface AudioDevice {
+  /** The sound server's own name: stable, and what a stored choice keys on. */
+  id: string
+  /** What to show a person. */
+  name: string
+  kind: 'input' | 'output'
+  isDefault: boolean
+}
+
+/**
+ * Which devices voice uses and whether it is silenced.
+ *
+ * One set per machine rather than per account: there is one microphone and
+ * one pair of speakers, whatever you are signed in to.
+ */
+export interface VoicePrefs {
+  /** Device ids, or absent for whatever the sound server defaults to. */
+  input?: string
+  output?: string
+  micMuted: boolean
+  deafened: boolean
+}
+
 export interface ReplyPreview {
   id: string
   from: string

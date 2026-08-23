@@ -8,7 +8,9 @@ import type {
   BufferGroup,
   MatrixVerification,
   RoomPermissions,
-  SockchatSmilie
+  SockchatSmilie,
+  AudioDevice,
+  VoicePrefs
 } from '../../../shared/wire'
 import { buildSmilieIndex, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { resolveMediaUrl } from '../lib/util'
@@ -54,6 +56,9 @@ export interface ChatState {
   groups: BufferGroup[]
   /** Which rail entry the channel pane is showing. */
   activeGroupId: string
+  /** Sound devices and whether voice is silenced, as the daemon sees them. */
+  voicePrefs: VoicePrefs
+  audioDevices: AudioDevice[]
   activeBufferId: string
   activePanel: ActivePanel
   joinPanelAccountId: string
@@ -99,6 +104,8 @@ const INITIAL: ChatState = {
   buffers: [],
   groups: [],
   activeGroupId: '',
+  voicePrefs: { micMuted: false, deafened: false },
+  audioDevices: [],
   activeBufferId: '',
   activePanel: '',
   joinPanelAccountId: '',
@@ -193,7 +200,7 @@ export class ChatStore {
   }
 
   private async refreshAll(): Promise<void> {
-    await Promise.all([this.refreshAccounts(), this.refreshBuffers(), this.refreshGroups()])
+    await Promise.all([this.refreshAccounts(), this.refreshBuffers(), this.refreshGroups(), this.refreshVoicePrefs()])
     if (this.state.activeBufferId) await this.selectBuffer(this.state.activeBufferId)
   }
 
@@ -256,6 +263,49 @@ export class ChatStore {
    * disconnected account or a protocol with no presence concept the answer is
    * no - showing it as set anyway would be a lie.
    */
+  /**
+   * The microphone and speaker state, which the daemon owns.
+   *
+   * Read back rather than assumed: a mute survives a restart, so the button
+   * has to show what is actually in force rather than what this window last
+   * set.
+   */
+  async refreshVoicePrefs(): Promise<void> {
+    try {
+      this.set({ voicePrefs: await window.moho.rpc<VoicePrefs>('getVoicePrefs') })
+    } catch {
+      // Voice is optional; a daemon that cannot answer just means no controls.
+    }
+  }
+
+  async refreshAudioDevices(): Promise<void> {
+    try {
+      this.set({ audioDevices: await window.moho.rpc<AudioDevice[]>('listAudioDevices') })
+    } catch (e) {
+      this.toast('error', `Couldn't list sound devices: ${(e as Error).message}`)
+    }
+  }
+
+  async setVoiceMuted(next: { micMuted?: boolean; deafened?: boolean }): Promise<void> {
+    // Applied optimistically: a mute button that waits for a round trip feels
+    // broken, and the daemon's reply corrects it either way.
+    this.set({ voicePrefs: { ...this.state.voicePrefs, ...next } })
+    try {
+      this.set({ voicePrefs: await window.moho.rpc<VoicePrefs>('setVoiceMuted', next) })
+    } catch (e) {
+      this.toast('error', `Couldn't change audio: ${(e as Error).message}`)
+      await this.refreshVoicePrefs()
+    }
+  }
+
+  async setVoiceDevice(kind: 'input' | 'output', deviceId: string): Promise<void> {
+    try {
+      this.set({ voicePrefs: await window.moho.rpc<VoicePrefs>('setVoiceDevice', { kind, deviceId }) })
+    } catch (e) {
+      this.toast('error', `Couldn't select that device: ${(e as Error).message}`)
+    }
+  }
+
   async setAccountStatus(accountId: string, status: 'online' | 'idle'): Promise<void> {
     try {
       await window.moho.rpc('setAccountStatus', { accountId, status })
@@ -337,6 +387,11 @@ export class ChatStore {
 
       case 'bufferGroupChange':
         this.upsertGroup(data as BufferGroup)
+        break
+
+      // Another window, or the daemon itself, changed the audio state.
+      case 'voicePrefsChanged':
+        this.set({ voicePrefs: data as VoicePrefs })
         break
 
       case 'presenceChange':

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
+  ChoiceSetting,
   DirectorySetting,
   SettingsSection,
   SelectionSetting,
@@ -72,6 +73,62 @@ function ComingSoon({ label }: { label: string }): JSX.Element {
 }
 
 /**
+ * Which microphone and speakers voice uses.
+ *
+ * These are the daemon's rather than this window's: it holds the connection
+ * and does the encoding, so it is the only place that can act on the choice,
+ * and a second window has to show the same answer.
+ */
+function VoiceSettings(): JSX.Element {
+  const store = useStore()
+  const devices = useChat((s) => s.audioDevices)
+  const voice = useChat((s) => s.voicePrefs)
+
+  useEffect(() => {
+    void store.refreshAudioDevices()
+    void store.refreshVoicePrefs()
+  }, [store])
+
+  const listFor = (kind: 'input' | 'output'): { label: string; value: string }[] => [
+    // Following the system default is the right behaviour for anyone who has
+    // not chosen, and has to stay reachable after they have.
+    { label: 'System default', value: '' },
+    ...devices
+      .filter((d) => d.kind === kind)
+      .map((d) => ({ label: d.isDefault ? `${d.name} (default)` : d.name, value: d.id }))
+  ]
+
+  const none = devices.length === 0
+
+  return (
+    <SettingsSection
+      title="Voice"
+      description={
+        none
+          ? "No sound devices were found. Voice needs a running sound server; everything else works without one."
+          : 'Used for voice calls. A change takes effect on a call already in progress. Muting is on the status plaque at the foot of the channel list, where it stays reachable during one.'
+      }
+    >
+      <ChoiceSetting
+        label="Microphone"
+        description="Monitor devices are deliberately not offered: they play back what you are already hearing, which would send the call back into itself."
+        value={voice.input ?? ''}
+        options={listFor('input')}
+        onChange={(id) => void store.setVoiceDevice('input', id)}
+        disabled={none}
+      />
+      <ChoiceSetting
+        label="Output"
+        value={voice.output ?? ''}
+        options={listFor('output')}
+        onChange={(id) => void store.setVoiceDevice('output', id)}
+        disabled={none}
+      />
+    </SettingsSection>
+  )
+}
+
+/**
  * Cross-protocol preferences - these apply to every buffer regardless of
  * backend, unlike the per-protocol message filters.
  */
@@ -131,6 +188,8 @@ function GeneralSettings(): JSX.Element {
           defaultPath={defaultDir}
         />
       </SettingsSection>
+
+      <VoiceSettings />
 
       <SettingsSection
         title="Window"
