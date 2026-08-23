@@ -145,7 +145,7 @@ function GeneralSettings(): JSX.Element {
           settingKey="display.messageMode"
           label="Display style"
           description="Classic: a compact IRC-style log, one line per message. Comfy: grouped by author with an avatar and more breathing room."
-          defaultValue="classic"
+          defaultValue="comfy"
           options={[
             { label: 'Classic', value: 'classic' },
             { label: 'Comfy', value: 'comfy' }

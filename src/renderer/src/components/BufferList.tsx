@@ -25,7 +25,7 @@ import {
   serviceLabel
 } from '../lib/util'
 import type { Account, Member } from '../../../shared/wire'
-import { presenceColor, presenceLabel } from '../lib/presence'
+import { Avatar } from './Avatar'
 
 /**
  * Buffers grouped under a collapsible header per account, rather than one flat
@@ -170,7 +170,7 @@ export function BufferList(): JSX.Element {
                 onHide={() => hideBuffer(b.id)}
                 onClose={() => void store.closeBuffer(b.id)}
                 inCall={voiceSessions.some((s) => s.bufferId === b.id)}
-                status={dmStatus(b, presence)}
+                status={dmStatus(b, presence, buffers)}
                 onCall={() => void store.callBuffer(b.id)}
                 onHangUp={() => void store.leaveVoice(b.accountId)}
               />
@@ -195,17 +195,37 @@ export function BufferList(): JSX.Element {
 /**
  * The other person's status in a direct message.
  *
- * A DM's roster is the people in it other than you, so for a one-to-one
- * conversation there is exactly one and it is them. Returns nothing for
- * anything else: a channel has no single status, and a protocol that reports
- * no presence should show no dot rather than a confident grey one claiming
- * everybody is offline.
+ * Three sources, in descending order of directness. A DM's own roster is the
+ * people in it other than you, so for a one-to-one conversation there is
+ * exactly one and it is them - that is Discord and Matrix, which report
+ * presence properly.
+ *
+ * IRC reports none, but it does say who is in a channel, and somebody sitting
+ * in a channel with you is by definition connected. So a query with a nick
+ * visible anywhere else on the same account counts as online - or away, which
+ * IRC does have. This is why the lookup is worth doing rather than showing a
+ * permanent grey dot on every IRC conversation.
+ *
+ * Failing both, they are reported offline: for a protocol where presence is
+ * knowable, not knowing means not there.
  */
-function dmStatus(buffer: BufferEntry, presence: Record<string, Member[]>): string | undefined {
+export function dmStatus(
+  buffer: BufferEntry,
+  presence: Record<string, Member[]>,
+  buffers: BufferEntry[]
+): string | undefined {
   if (buffer.kind !== 'dm') return undefined
-  const roster = presence[buffer.id]
-  if (!roster || roster.length !== 1) return undefined
-  return roster[0].status
+
+  const own = presence[buffer.id]
+  if (own?.length === 1 && own[0].status) return own[0].status
+
+  const name = buffer.name.toLowerCase()
+  for (const b of buffers) {
+    if (b.accountId !== buffer.accountId) continue
+    const member = presence[b.id]?.find((m) => m.nick.toLowerCase() === name)
+    if (member) return member.away ? 'idle' : 'online'
+  }
+  return 'offline'
 }
 
 function ConnectionDot({ state }: { state: string }): JSX.Element {
@@ -272,21 +292,15 @@ function BufferRow({
     ) : (
       <Icon name={service.glyph!} size={15} />
     )
+  ) : buffer.kind === 'dm' ? (
+    // A conversation with a person is headed by that person, whatever
+    // protocol they are on: their picture where there is one, their initial
+    // where there is not.
+    <Avatar name={buffer.name} url={buffer.avatarUrl} size={22} status={status} />
   ) : buffer.avatarUrl ? (
     <img className="buffer-avatar" src={resolveMediaUrl(buffer.avatarUrl)} alt="" />
   ) : (
     <Icon name={bufferKindGlyph(buffer.kind)} size={15} />
-  )
-
-  // The status rides on the avatar's corner rather than sitting beside the
-  // name, so the picture and its state read as one thing.
-  const leadingWithStatus = status ? (
-    <span className="buffer-avatar-wrap">
-      {leading}
-      <span className="presence-dot" style={{ background: presenceColor(status) }} title={presenceLabel(status)} />
-    </span>
-  ) : (
-    leading
   )
 
   // Calling from the row it belongs to, as well as from the header of the
@@ -321,7 +335,7 @@ function BufferRow({
         onContextMenu={open}
         title={buffer.name}
       >
-        {leadingWithStatus}
+        {leading}
         <span className="ellipsis buffer-name">{bufferDisplayName(buffer.name)}</span>
         {muted && <Icon name="notifications_off" size={13} className="buffer-muted-icon" />}
         {buffer.unread > 0 && !muted && (

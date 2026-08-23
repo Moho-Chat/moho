@@ -28,7 +28,7 @@ export function MessageList(): JSX.Element {
   const loadingMore = useChat((s) => s.loadingMore)
   const dividerTsByBuffer = useChat((s) => s.dividerTsByBuffer)
   const [relativeTimestamps] = usePref<boolean>('display.relativeTimestamps', false)
-  const [comfy] = usePref<string>('display.messageMode', 'classic')
+  const [comfy] = usePref<string>('display.messageMode', 'comfy')
   const [mediaAutoplay] = usePref<boolean>('media.autoplay', true)
   const [mediaLoop] = usePref<boolean>('media.loop', true)
   const [contentSniffing] = usePref<boolean>('media.contentSniffing', true)

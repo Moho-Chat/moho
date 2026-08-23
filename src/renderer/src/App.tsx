@@ -11,9 +11,10 @@ import { SettingsPanel } from './components/settings/SettingsPanel'
 import { JoinPanel } from './components/JoinPanel'
 import { Toasts } from './components/Toasts'
 import { Icon, IconButton } from './components/Icon'
-import { presenceColor, presenceLabel } from './lib/presence'
+import { Avatar } from './components/Avatar'
+import { dmStatus } from './components/BufferList'
 import { useActiveBuffer, useChat, usePref, usePrefsReady, useStore } from './state/hooks'
-import { bufferDisplayName, resolveMediaUrl } from './lib/util'
+import { bufferDisplayName } from './lib/util'
 import type { BufferEntry } from './state/store'
 
 export default function App(): JSX.Element {
@@ -139,16 +140,12 @@ export default function App(): JSX.Element {
  */
 function BufferFace({ buffer }: { buffer: BufferEntry }): JSX.Element | null {
   const presence = useChat((s) => s.presenceByBuffer)
-  if (buffer.kind !== 'dm' || !buffer.avatarUrl) return null
-  const roster = presence[buffer.id]
-  const status = roster?.length === 1 ? roster[0].status : undefined
+  const buffers = useChat((s) => s.buffers)
+  if (buffer.kind !== 'dm') return null
 
   return (
     <span className="header-face">
-      <img src={resolveMediaUrl(buffer.avatarUrl)} alt="" />
-      {status && (
-        <span className="presence-dot" style={{ background: presenceColor(status) }} title={presenceLabel(status)} />
-      )}
+      <Avatar name={buffer.name} url={buffer.avatarUrl} size={24} status={dmStatus(buffer, presence, buffers)} />
     </span>
   )
 }

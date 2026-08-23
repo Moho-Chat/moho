@@ -27,7 +27,7 @@ export const PREF_DEFAULTS: Record<string, unknown> = {
   discordGuildChannelLimits: {},
   blockedNicks: [],
   lastReadTs: {},
-  'display.messageMode': 'classic',
+  'display.messageMode': 'comfy',
   'display.relativeTimestamps': false,
   'media.autoplay': true,
   'media.loop': true,

@@ -267,10 +267,21 @@
   object-fit: cover;
 }
 
-/* A DM is a person, so their face is worth more room than a channel glyph
-   needs - large enough to recognise at a glance without changing the rhythm
-   of a list that also holds channels. */
-.buffer-avatar-wrap .buffer-avatar {
+/* Both shapes of avatar - a picture and a coloured initial - are round and
+   fill the box they are given, so a list of people reads as one column
+   whether or not any of them has set a picture. */
+.avatar img,
+.avatar .avatar-fallback {
+  border-radius: 50%;
+  object-fit: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: var(--primary-text);
+}
+
+.header-face .avatar {
   width: 24px;
   height: 24px;
 }
@@ -2035,20 +2046,13 @@ video.lightbox-media {
 
 /* --- presence on avatars ---------------------------------------------- */
 
-.buffer-avatar-wrap,
+.avatar,
 .header-face {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   flex: none;
-}
-
-.header-face img {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  object-fit: cover;
 }
 
 /* Notched into the corner, with a ring in the surface colour so it stays
