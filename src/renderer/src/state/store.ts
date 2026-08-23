@@ -40,6 +40,8 @@ export interface ChatMessage extends Message {
   /** The body as typed, kept so a retry can resend the original text. */
   pendingBody?: string
   pendingReplyTo?: string
+  /** The staged file, kept for the same reason as the body. */
+  pendingAttachment?: string
 }
 
 export type ActivePanel = '' | 'accounts' | 'settings' | 'join'
@@ -676,8 +678,29 @@ export class ChatStore {
    * timeout sweep gives up on it.
    */
   async sendMessage(bufferId: string, body: string, attachmentPath?: string): Promise<void> {
+    // A fresh send takes its reply target from the composer, and consumes it.
+    const reply = this.state.replyingTo
+    this.set({ replyingTo: null })
+    return this.dispatchSend(bufferId, body, reply, attachmentPath)
+  }
+
+  /**
+   * The actual send, with everything it needs passed in rather than read from
+   * current state.
+   *
+   * That distinction is the whole point: a retry happens some time after the
+   * failure, by which point the composer's reply target has been cleared - and
+   * may have been replaced by a different one. Reading it live meant a retried
+   * message lost its reply, or worse, silently acquired someone else's.
+   */
+  private async dispatchSend(
+    bufferId: string,
+    body: string,
+    reply: { id: string; from: string; body: string } | null,
+    attachmentPath?: string
+  ): Promise<void> {
     if (!body.trim() && !attachmentPath) return
-    const replyToId = this.state.replyingTo?.id
+    const replyToId = reply?.id
     const clientId = `pending-${++this.sendSeq}-${Date.now()}`
     const account = this.accountFor(bufferId)
 
@@ -694,11 +717,11 @@ export class ChatStore {
       pending: true,
       pendingBody: body,
       pendingReplyTo: replyToId,
-      ...(this.state.replyingTo ? { replyTo: this.state.replyingTo } : {})
+      pendingAttachment: attachmentPath,
+      ...(reply ? { replyTo: reply } : {})
     }
     this.appendMessage(bufferId, echo)
     this.pendingSends.set(clientId, { bufferId, ts: Date.now() })
-    this.set({ replyingTo: null })
 
     try {
       await window.moho.rpc('sendMessage', {
@@ -766,7 +789,14 @@ export class ChatStore {
     if (!echo) return
     this.pendingSends.delete(clientId)
     this.setMessages(info.bufferId, list.filter((m) => m.id !== clientId))
-    void this.sendMessage(info.bufferId, echo.pendingBody || echo.body)
+    // Resend exactly what was sent: the original reply target and file, not
+    // whatever the composer happens to hold now.
+    void this.dispatchSend(
+      info.bufferId,
+      echo.pendingBody || echo.body,
+      echo.replyTo ?? null,
+      echo.pendingAttachment
+    )
   }
 
   async editMessage(bufferId: string, messageId: string, body: string): Promise<void> {
