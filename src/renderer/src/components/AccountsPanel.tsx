@@ -188,6 +188,9 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
    * button. What is wanted there is a way to stop.
    */
   const connecting = account.state === 'connecting'
+  // What the daemon last said about why. Only meaningful while something is
+  // wrong, which is exactly when the state line alone explains nothing.
+  const detail = useChat((st) => st.connectionDetail)[account.id]
 
   const call = (method: string, params: Record<string, unknown>): void => {
     void window.moho
@@ -211,6 +214,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
           <div className="small muted">
             {serviceLabel(account.service)} · {account.state}
           </div>
+          {detail && <div className="small muted ellipsis account-detail" title={detail}>{detail}</div>}
         </div>
         <button
           type="button"

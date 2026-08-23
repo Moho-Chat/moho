@@ -2044,6 +2044,21 @@ video.lightbox-media {
   font-size: 11px;
 }
 
+/* The reason an account is not connected, under its name. Constrained rather
+   than wrapping: these can be a whole sentence plus a countdown, and a card
+   that changes height every retry is worse than one that truncates. */
+.account-detail {
+  max-width: 420px;
+  color: var(--warning);
+  /* Two lines rather than one truncated: the reason and the countdown are at
+     the end of these, so cutting the tail hides the only useful part. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+}
+
 /* --- presence on avatars ---------------------------------------------- */
 
 .avatar,

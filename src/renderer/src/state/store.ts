@@ -58,6 +58,15 @@ export interface ChatState {
   groups: BufferGroup[]
   /** Which rail entry the channel pane is showing. */
   activeGroupId: string
+  /**
+   * Why an account is in the state it is, per account.
+   *
+   * The daemon reports this on every reconnection cycle - what failed and how
+   * long until the next attempt - and it used to be dropped on the floor,
+   * which is why an account could sit at "connecting" for five minutes with
+   * nothing to read.
+   */
+  connectionDetail: Record<string, string>
   /** Sound devices and whether voice is silenced, as the daemon sees them. */
   voicePrefs: VoicePrefs
   audioDevices: AudioDevice[]
@@ -112,6 +121,7 @@ const INITIAL: ChatState = {
   buffers: [],
   groups: [],
   activeGroupId: '',
+  connectionDetail: {},
   voicePrefs: { micMuted: false, deafened: false },
   audioDevices: [],
   voiceChannels: [],
@@ -151,6 +161,18 @@ const INITIAL: ChatState = {
  * toast each would be worse still, since a dropped link fails all of them at
  * once.
  */
+/**
+ * Trims a failure report down to the part that explains anything.
+ *
+ * These arrive with the full request URL in them, and a Matrix sync URL
+ * carries a sync token longer than the rest of the message combined - which
+ * matters because the actual reason and the retry countdown are at the *end*,
+ * so a line truncated to fit shows nothing but an opaque token.
+ */
+function tidyDetail(detail: string): string {
+  return detail.replace(/(https?:\/\/[^\s)]+?)\?[^\s)]*/g, '$1')
+}
+
 function bestEffort(work: Promise<unknown>, what: string): void {
   void work.catch((e: Error) => console.debug(`[moho] ${what}:`, e.message))
 }
@@ -666,8 +688,20 @@ export class ChatStore {
     bestEffort(window.moho.rpc('subscribe', { bufferId: data.id }), `subscribe ${data.id}`)
   }
 
-  private handleConnectionState(data: { accountId: string; state: string; error?: string }): void {
+  private handleConnectionState(data: {
+    accountId: string
+    state: string
+    error?: string
+    detail?: string
+  }): void {
     const { accounts } = this.state
+
+    // Kept only while it explains something. A connected account's last
+    // failure is history, and leaving it on screen reads as a current problem.
+    const detail = { ...this.state.connectionDetail }
+    if (data.detail && data.state !== 'connected') detail[data.accountId] = tidyDetail(data.detail)
+    else delete detail[data.accountId]
+    this.set({ connectionDetail: detail })
     // Upsert rather than map-update: this connection also observes accounts
     // added elsewhere (nobilis reconnecting saved accounts at startup, another
     // client) that this session's list never had to begin with.

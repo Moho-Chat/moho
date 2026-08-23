@@ -49,6 +49,7 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
   const store = useStore()
   const { menu, open, close } = useContextMenu()
   const voice = useChat((s) => s.voicePrefs)
+  const details = useChat((s) => s.connectionDetail)
 
   // With no account selected there is nobody to show, but the footer still
   // has to exist so the layout doesn't jump when one arrives.
@@ -56,6 +57,7 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
 
   const status = effectiveStatus(account)
   const name = account.displayName || account.id
+  const detail = details[account.id]
 
   return (
     <>
@@ -64,7 +66,7 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
           type="button"
           className="user-identity-button"
           onClick={open}
-          title={`${name} — ${label(status)}`}
+          title={detail ? `${name} — ${label(status)}\n${detail}` : `${name} — ${label(status)}`}
         >
           <Avatar name={name} url={account.avatarUrl} size={28} status={status} />
           <span className="user-identity">
