@@ -215,7 +215,28 @@ export interface RailFolder {
   name: string
   /** Group ids, in the order they were put in. */
   members: string[]
+  /** A colour, so one folder is told from another at a glance. */
+  colour?: string
 }
+
+/**
+ * The colours a folder can be given.
+ *
+ * A fixed set rather than a picker: these have to stay legible against the
+ * rail and as a tint behind a panel of icons, which an arbitrary colour will
+ * not. Named so the choice reads as a decision rather than a hex value.
+ */
+export const FOLDER_COLOURS: { name: string; value: string }[] = [
+  { name: 'Blurple', value: '#5865f2' },
+  { name: 'Crimson', value: '#ed4245' },
+  { name: 'Rose', value: '#eb459e' },
+  { name: 'Amber', value: '#faa61a' },
+  { name: 'Green', value: '#3ba55d' },
+  { name: 'Teal', value: '#1abc9c' },
+  { name: 'Sky', value: '#3498db' },
+  { name: 'Violet', value: '#9b59b6' },
+  { name: 'Slate', value: '#95a5a6' }
+]
 
 /** What the rail draws, top to bottom: loose entries and folders, in order. */
 export type RailEntry =
@@ -262,6 +283,21 @@ export function railEntries(ordered: RailGroup[], folders: RailFolder[]): RailEn
     if (!placed.has(f.id)) out.push({ kind: 'folder', id: f.id, folder: f, members: [] })
   }
   return out
+}
+
+/**
+ * Makes a folder out of two servers, the way dropping one onto another does.
+ *
+ * The new folder takes the place of the one that was already there, so the
+ * column does not rearrange itself around the gesture.
+ */
+export function foldTogether(folders: RailFolder[], ontoId: string, draggedId: string): RailFolder[] {
+  const existing = folders.find((f) => f.members.includes(ontoId))
+  if (existing) return fileInFolder(folders, existing.id, draggedId)
+  return [
+    ...folders.map((f) => ({ ...f, members: f.members.filter((m) => m !== draggedId) })),
+    { id: `folder-${Date.now().toString(36)}`, name: 'New folder', members: [ontoId, draggedId] }
+  ]
 }
 
 /** Puts a group in a folder, taking it out of any other. */

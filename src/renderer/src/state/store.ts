@@ -901,6 +901,37 @@ export class ChatStore {
     }
   }
 
+  /**
+   * Marks everything in a set of buffers as read.
+   *
+   * One preference write rather than one per buffer: a folder can hold a
+   * dozen servers with hundreds of channels between them, and writing the
+   * file that many times would be slow and would leave it half-updated if
+   * anything failed midway.
+   */
+  async markBuffersRead(bufferIds: string[]): Promise<void> {
+    if (bufferIds.length === 0) return
+    const now = Math.floor(Date.now() / 1000)
+    try {
+      const prefs = await window.moho.prefs.getAll()
+      const lastReadTs = { ...((prefs.lastReadTs as Record<string, number>) || {}) }
+      for (const id of bufferIds) {
+        lastReadTs[id] = now
+        void window.moho.markBufferRead(id)
+      }
+      void window.moho.prefs.set('lastReadTs', lastReadTs)
+      // The counters are this client's own tally, so they have to be cleared
+      // here too - the stored timestamp only decides what counts next time.
+      this.set({
+        buffers: this.state.buffers.map((b) =>
+          bufferIds.includes(b.id) ? { ...b, unread: 0, highlight: false } : b
+        )
+      })
+    } catch (e) {
+      this.toast('error', `Couldn't mark as read: ${(e as Error).message}`)
+    }
+  }
+
   private async markRead(bufferId: string): Promise<void> {
     const prefs = await window.moho.prefs.getAll()
     const lastReadTs = { ...((prefs.lastReadTs as Record<string, number>) || {}) }

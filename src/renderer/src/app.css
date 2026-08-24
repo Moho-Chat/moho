@@ -2336,7 +2336,103 @@ video.lightbox-media {
   text-decoration: underline;
 }
 
+/* --- folder settings --------------------------------------------------- */
+
+.modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.modal {
+  width: 380px;
+  max-width: calc(100vw - var(--spacing-xl));
+  padding: var(--spacing-l);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-l);
+  background: var(--surface-container);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-head h2 {
+  font-size: var(--font-size-large);
+  font-weight: 600;
+}
+
+.folder-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.folder-field input {
+  width: 100%;
+}
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--spacing-s);
+}
+
+.swatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  border: 2px solid transparent;
+  border-radius: var(--corner-radius-small);
+  color: #fff;
+}
+
+.swatch.chosen {
+  border-color: var(--surface-text);
+}
+
+.swatch-none {
+  background: var(--surface-container-highest);
+  color: var(--surface-variant-text);
+}
+
+.button.primary {
+  padding: var(--spacing-s);
+  background: var(--primary);
+  color: var(--primary-text);
+  border: none;
+  border-radius: var(--corner-radius-small);
+  font-weight: 600;
+}
+
 /* --- rail folders ------------------------------------------------------ */
+
+/* A lifted icon leaves the space it occupied rather than collapsing the
+   column, so the rail does not jump under the cursor mid-drag and there is
+   somewhere obvious to put it back. */
+.rail-tile.lifted .rail-face {
+  opacity: 0.25;
+  filter: grayscale(1);
+}
+
+/* Dropping in the middle of a tile folds the two together; the ring says so
+   before the mouse is released, which is the only warning there is. */
+.rail-tile.merge-target .rail-face {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  transform: scale(0.88);
+}
 
 /* An expanded folder and its servers share one panel: a hairline border and
    a ground a shade lighter than the rail, which is what marks where the
@@ -2402,19 +2498,6 @@ video.lightbox-media {
 .rail-tile.drop-target .rail-face {
   outline: 2px solid var(--primary);
   outline-offset: 1px;
-}
-
-/* Naming a folder happens over the rail, which is too narrow for a field. */
-.rail-naming {
-  position: absolute;
-  left: 56px;
-  bottom: 60px;
-  z-index: 40;
-  width: 220px;
-}
-
-.rail-naming input {
-  width: 100%;
 }
 
 /* --- user footer ------------------------------------------------------ */

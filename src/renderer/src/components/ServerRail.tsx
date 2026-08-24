@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { ContextMenu, useContextMenu } from './ContextMenu'
-import { Icon, MaskIcon } from './Icon'
+import { Icon, IconButton, MaskIcon } from './Icon'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { classes, nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
 import {
@@ -8,7 +8,9 @@ import {
   orderedGroups,
   railEntries,
   fileInFolder,
+  foldTogether,
   removeFromFolders,
+  FOLDER_COLOURS,
   type RailFolder,
   PINNED_GROUP_ID,
   pinnedGroup,
@@ -48,12 +50,16 @@ interface TileProps {
   highlight: boolean
   draggable: boolean
   dropTarget: boolean
+  /** Being dragged right now: it leaves a gap where it was. */
+  lifted: boolean
+  /** A drop here would fold the two together rather than reorder. */
+  mergeTarget: boolean
   muted: boolean
   onToggleMute: () => void
   onSelect: () => void
   onDragStart: () => void
-  onDragOver: () => void
-  onDrop: () => void
+  onDragOver: (merge: boolean) => void
+  onDrop: (merge: boolean) => void
   onDragEnd: () => void
 }
 
@@ -91,8 +97,21 @@ function GroupFace({ group, customIcon }: { group: RailGroup; customIcon?: strin
   )
 }
 
+/**
+ * Whether a drop on this tile means "fold these together" or "put it here".
+ *
+ * The middle of the tile merges, the top and bottom thirds reorder - the same
+ * split Discord uses, and the reason dragging onto an icon can create a folder
+ * without taking away the ability to rearrange the column.
+ */
+function isMerge(e: React.DragEvent): boolean {
+  const r = e.currentTarget.getBoundingClientRect()
+  const y = (e.clientY - r.top) / r.height
+  return y > 0.33 && y < 0.67
+}
+
 function RailTile(props: TileProps): JSX.Element {
-  const { group, active, unread, highlight, draggable, dropTarget, customIcon, muted } = props
+  const { group, active, unread, highlight, draggable, dropTarget, customIcon, muted, lifted, mergeTarget } = props
   const { menu, open, close } = useContextMenu()
   const service = serviceIcon(group.service)
   // Only a guild or space needs telling apart by service: its face is a
@@ -107,7 +126,14 @@ function RailTile(props: TileProps): JSX.Element {
   return (
     <button
       type="button"
-      className={classes('rail-tile', active && 'active', dropTarget && 'drop-target', muted && 'muted')}
+      className={classes(
+        'rail-tile',
+        active && 'active',
+        dropTarget && 'drop-target',
+        mergeTarget && 'merge-target',
+        lifted && 'lifted',
+        muted && 'muted'
+      )}
       title={group.name}
       aria-label={group.name}
       aria-current={active}
@@ -123,11 +149,11 @@ function RailTile(props: TileProps): JSX.Element {
       onDragOver={(e) => {
         // Without preventDefault the browser refuses the drop outright.
         e.preventDefault()
-        props.onDragOver()
+        props.onDragOver(isMerge(e))
       }}
       onDrop={(e) => {
         e.preventDefault()
-        props.onDrop()
+        props.onDrop(isMerge(e))
       }}
       onDragEnd={props.onDragEnd}
     >
@@ -195,9 +221,12 @@ export function ServerRail(): JSX.Element | null {
   const [expanded, setExpanded] = useState('')
   const isFolderOpen = (id: string): boolean => expanded === id
   const toggleFolder = (id: string): void => setExpanded(expanded === id ? '' : id)
-  const [naming, setNaming] = useState<{ id: string; name: string } | null>(null)
-  const { menu: railMenu, open: openRailMenu, close: closeRailMenu } = useContextMenu()
   const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; folder: RailFolder } | null>(null)
+  const [settings, setSettings] = useState<RailFolder | null>(null)
+
+  /** Every buffer belonging to any server in this folder. */
+  const buffersInFolder = (folder: RailFolder): string[] =>
+    (buffers as BufferEntry[]).filter((b) => b.groupId && folder.members.includes(b.groupId)).map((b) => b.id)
 
   // The authoritative dragged id lives in a ref, not in state: dragstart and
   // drop are separate events, and reading it from state means depending on a
@@ -207,6 +236,8 @@ export function ServerRail(): JSX.Element | null {
   const draggingRef = useRef('')
   const [dragging, setDragging] = useState('')
   const [over, setOver] = useState('')
+  // The tile a drop would merge into, as opposed to land beside.
+  const [merging, setMerging] = useState('')
 
   const beginDrag = (id: string): void => {
     draggingRef.current = id
@@ -216,6 +247,7 @@ export function ServerRail(): JSX.Element | null {
     draggingRef.current = ''
     setDragging('')
     setOver('')
+    setMerging('')
   }
 
   // Unread rolls up from the buffers under each entry, so a guild whose
@@ -248,9 +280,22 @@ export function ServerRail(): JSX.Element | null {
 
   if (ordered.length <= 1) return null
 
-  const onDrop = (targetId: string): void => {
+  /**
+   * Dropping one server onto another.
+   *
+   * Onto the middle of a tile makes a folder of the two, which is the gesture
+   * people know from Discord. Near its top or bottom edge it still means
+   * "put it here", so reordering does not disappear the moment folders exist.
+   */
+  const onDrop = (targetId: string, merge: boolean): void => {
     const from = draggingRef.current
-    if (from && from !== targetId) setRailOrder(reorder(ordered, from, targetId))
+    if (from && from !== targetId) {
+      if (merge && !isFixedEntry(ordered.find((g) => g.id === targetId) ?? ordered[0])) {
+        setFolders(foldTogether(folders, targetId, from))
+      } else {
+        setRailOrder(reorder(ordered, from, targetId))
+      }
+    }
     endDrag()
   }
 
@@ -263,11 +308,6 @@ export function ServerRail(): JSX.Element | null {
     endDrag()
   }
 
-  const newFolder = (): void => {
-    const id = `folder-${Date.now().toString(36)}`
-    setFolders([...folders, { id, name: 'New folder', members: [] }])
-    setNaming({ id, name: 'New folder' })
-  }
 
   const entries = railEntries(ordered, folders)
 
@@ -293,10 +333,16 @@ export function ServerRail(): JSX.Element | null {
         // there is nowhere for them to be dragged to.
         draggable={!isFixedEntry(g)}
         dropTarget={over === g.id && dragging !== '' && dragging !== g.id}
+        lifted={dragging === g.id}
+        mergeTarget={merging === g.id}
         onSelect={() => store.selectGroup(g.id)}
         onDragStart={() => beginDrag(g.id)}
-        onDragOver={() => !isFixedEntry(g) && setOver(g.id)}
-        onDrop={() => onDrop(g.id)}
+        onDragOver={(wantsMerge) => {
+          if (isFixedEntry(g)) return
+          setOver(g.id)
+          setMerging(wantsMerge && dragging !== g.id ? g.id : '')
+        }}
+        onDrop={(wantsMerge) => onDrop(g.id, wantsMerge)}
         onDragEnd={endDrag}
       />
     )
@@ -304,17 +350,12 @@ export function ServerRail(): JSX.Element | null {
 
   return (
     <nav className="server-rail" aria-label="Servers">
-      {/* Only the entries scroll; the cog stays pinned to the foot. The
-          empty space below them is a drop target and a menu: somewhere to
-          drag a server out of a folder, and where folders are made. */}
+      {/* Only the entries scroll; the cog stays pinned to the foot. The empty
+          space below them is where a server is dropped to take it back out of
+          a folder - folders themselves are made by dropping one icon onto
+          another. */}
       <div
         className="rail-scroll"
-        onContextMenu={(e) => {
-          // Only the space itself. A right-click that landed on a tile is
-          // that tile's business.
-          if (e.target !== e.currentTarget) return
-          openRailMenu(e)
-        }}
         onDragOver={(e) => e.target === e.currentTarget && e.preventDefault()}
         onDrop={(e) => {
           if (e.target !== e.currentTarget) return
@@ -330,7 +371,18 @@ export function ServerRail(): JSX.Element | null {
             /* Expanded, the folder and its servers sit in one panel - the
                border and lighter ground are what say where the folder ends,
                now that its contents are no longer indented. */
-            <div key={entry.id} className={classes('rail-folder-group', open && 'open')}>
+            <div
+              key={entry.id}
+              className={classes('rail-folder-group', open && 'open')}
+              // The chosen colour tints the panel and its border rather than
+              // flooding it: these sit behind a grid of other people's icons,
+              // which have to stay readable.
+              style={
+                open && entry.folder.colour
+                  ? { background: `${entry.folder.colour}22`, borderColor: `${entry.folder.colour}66` }
+                  : undefined
+              }
+            >
             <FolderTile
               key={entry.id}
               folder={entry.folder}
@@ -354,25 +406,21 @@ export function ServerRail(): JSX.Element | null {
       })}
       </div>
 
-      {railMenu && (
-        <ContextMenu
-          x={railMenu.x}
-          y={railMenu.y}
-          entries={[{ label: 'New folder', icon: 'create_new_folder', onClick: newFolder }]}
-          onClose={closeRailMenu}
-        />
-      )}
-
       {folderMenu && (
         <ContextMenu
           x={folderMenu.x}
           y={folderMenu.y}
           entries={[
             {
-              label: 'Rename',
-              icon: 'edit',
-              onClick: () => setNaming({ id: folderMenu.folder.id, name: folderMenu.folder.name })
+              label: 'Mark Folder As Read',
+              icon: 'mark_chat_read',
+              onClick: () => void store.markBuffersRead(buffersInFolder(folderMenu.folder))
             },
+            { label: 'Folder Settings', icon: 'settings', onClick: () => setSettings(folderMenu.folder) },
+            // Closes them; it does not remove them. Removing is below, and
+            // marked as the destructive thing it is.
+            { label: 'Close All Folders', icon: 'folder', onClick: () => setExpanded('') },
+            { separator: true },
             {
               label: 'Remove folder',
               icon: 'delete',
@@ -385,24 +433,15 @@ export function ServerRail(): JSX.Element | null {
         />
       )}
 
-      {naming && (
-        <div className="rail-naming">
-          <input
-            autoFocus
-            className="text-field"
-            value={naming.name}
-            onChange={(e) => setNaming({ ...naming, name: e.target.value })}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') setNaming(null)
-              if (e.key === 'Enter') {
-                const name = naming.name.trim()
-                if (name) setFolders(folders.map((f) => (f.id === naming.id ? { ...f, name } : f)))
-                setNaming(null)
-              }
-            }}
-            onBlur={() => setNaming(null)}
-          />
-        </div>
+      {settings && (
+        <FolderSettings
+          folder={settings}
+          onSave={(name, colour) => {
+            setFolders(folders.map((f) => (f.id === settings.id ? { ...f, name, colour } : f)))
+            setSettings(null)
+          }}
+          onClose={() => setSettings(null)}
+        />
       )}
 
       <div className="rail-divider" />
@@ -453,7 +492,10 @@ function FolderTile(props: {
           read. Empty it is just a folder; once there is something in it, the
           faces of what is inside - up to four, which is as many as read at
           this size. */}
-      <span className="rail-face folder-face">
+      <span
+        className="rail-face folder-face"
+        style={folder.colour ? { color: folder.colour } : undefined}
+      >
         {members.length === 0 ? (
           <Icon name="folder" size={26} />
         ) : (
@@ -473,6 +515,81 @@ function FolderTile(props: {
         </span>
       )}
     </button>
+  )
+}
+
+/**
+ * Naming a folder and giving it a colour.
+ *
+ * A dialog rather than an inline field because there are two things to set and
+ * one of them is a swatch grid, which does not fit in a 56px column.
+ */
+function FolderSettings({
+  folder,
+  onSave,
+  onClose
+}: {
+  folder: RailFolder
+  onSave: (name: string, colour?: string) => void
+  onClose: () => void
+}): JSX.Element {
+  const [name, setName] = useState(folder.name)
+  const [colour, setColour] = useState(folder.colour)
+
+  return (
+    <div className="modal-scrim" onClick={onClose}>
+      <div className="modal folder-settings" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>Folder Settings</h2>
+          <IconButton name="close" title="Close" onClick={onClose} />
+        </div>
+
+        <label className="folder-field">
+          <span className="small muted">Folder Name</span>
+          <input
+            autoFocus
+            className="text-field"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && onSave(name.trim() || folder.name, colour)}
+          />
+        </label>
+
+        <div className="folder-field">
+          <span className="small muted">Folder Colour</span>
+          <div className="swatches">
+            {/* No colour at all is a real choice - it is what every folder
+                starts as, and the rail's own grey is not a worse answer than
+                nine bright ones. */}
+            <button
+              type="button"
+              className={classes('swatch', 'swatch-none', !colour && 'chosen')}
+              title="No colour"
+              onClick={() => setColour(undefined)}
+            >
+              <Icon name="block" size={14} />
+            </button>
+            {FOLDER_COLOURS.map((c) => (
+              <button
+                key={c.value}
+                type="button"
+                className={classes('swatch', colour === c.value && 'chosen')}
+                style={{ background: c.value }}
+                title={c.name}
+                aria-label={c.name}
+                onClick={() => setColour(c.value)}
+              >
+                {colour === c.value && <Icon name="check" size={14} />}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button type="button" className="button primary" onClick={() => onSave(name.trim() || folder.name, colour)}>
+          Done
+        </button>
+      </div>
+    </div>
   )
 }
 
