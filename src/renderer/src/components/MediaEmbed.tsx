@@ -249,21 +249,35 @@ export function MediaEmbed({
   }
 
   if (kind === 'video') {
-    // Plays expanded rather than in the log: a video squeezed into a message
-    // row is the size of a postage stamp, and its controls barely fit.
+    // Played in the log, the way every other client does it. The mimetype is
+    // deliberately not consulted: Discord serves plenty of .mp4 files as
+    // video/quicktime, which canPlayType refuses outright while the browser
+    // then plays the file perfectly well once it looks inside. Letting it try
+    // and handling the failure is the honest test.
     return (
       <>
-        <button
-          type="button"
-          className="media-embed paused"
-          style={ratio}
-          onClick={() => setExpanded(true)}
-        >
-          <Icon name="play_circle" size={28} />
-          <span className="small ellipsis">
-            {attachment?.filename || fullSrc.split('/').pop()}
-          </span>
-        </button>
+        <span className="media-embed-wrap video" style={ratio}>
+          <video
+            className="media-embed"
+            style={ratio}
+            src={resolveMediaUrl(fullSrc)}
+            controls
+            // Enough to draw the first frame and know how long it is, without
+            // pulling megabytes for every video in a scrolled-past backlog.
+            preload="metadata"
+            loop={loop}
+            playsInline
+            onError={() => setFailed(true)}
+          />
+          <button
+            type="button"
+            className="video-expand"
+            title="Expand"
+            onClick={() => setExpanded(true)}
+          >
+            <Icon name="fullscreen" size={16} />
+          </button>
+        </span>
         {expanded && (
           <Lightbox
             source={{
