@@ -47,8 +47,6 @@ interface TileProps {
   unread: number
   highlight: boolean
   draggable: boolean
-  /** Drawn nested under the folder holding it, and indented to say so. */
-  inFolder?: boolean
   dropTarget: boolean
   muted: boolean
   onToggleMute: () => void
@@ -94,7 +92,7 @@ function GroupFace({ group, customIcon }: { group: RailGroup; customIcon?: strin
 }
 
 function RailTile(props: TileProps): JSX.Element {
-  const { group, active, unread, highlight, draggable, dropTarget, customIcon, muted, inFolder } = props
+  const { group, active, unread, highlight, draggable, dropTarget, customIcon, muted } = props
   const { menu, open, close } = useContextMenu()
   const service = serviceIcon(group.service)
   // Only a guild or space needs telling apart by service: its face is a
@@ -109,7 +107,7 @@ function RailTile(props: TileProps): JSX.Element {
   return (
     <button
       type="button"
-      className={classes('rail-tile', active && 'active', dropTarget && 'drop-target', muted && 'muted', inFolder && 'in-folder')}
+      className={classes('rail-tile', active && 'active', dropTarget && 'drop-target', muted && 'muted')}
       title={group.name}
       aria-label={group.name}
       aria-current={active}
@@ -319,7 +317,6 @@ export function ServerRail(): JSX.Element | null {
         return (
           <RailTile
             key={g.id}
-            inFolder={folders.some((f) => f.members.includes(g.id))}
             group={g}
             customIcon={customIcons[g.id]}
             muted={mutedGroups.includes(g.id)}

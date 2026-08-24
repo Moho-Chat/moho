@@ -2380,13 +2380,6 @@ video.lightbox-media {
   font-size: 8px;
 }
 
-/* A folder's servers are indented while it is showing them, so the column
-   reads as a list with something nested in it rather than a flat run. */
-.rail-tile.in-folder {
-  margin-left: var(--spacing-m);
-  width: calc(100% - var(--spacing-m));
-}
-
 .rail-tile.drop-target .rail-face {
   outline: 2px solid var(--primary);
   outline-offset: 1px;
