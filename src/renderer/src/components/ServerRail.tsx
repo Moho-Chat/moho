@@ -454,6 +454,14 @@ function FolderTile(props: {
           ))
         )}
       </span>
+      {/* Once the face is a grid of other people's icons, nothing says it is
+          a folder any more - so it takes the same corner badge a guild uses
+          to name its service. An empty folder is already unmistakably one. */}
+      {members.length > 0 && (
+        <span className="rail-service">
+          <Icon name="folder" size={11} />
+        </span>
+      )}
     </button>
   )
 }
