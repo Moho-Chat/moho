@@ -227,13 +227,11 @@ export type RailEntry =
  *
  * A folder takes the position of its first member, so putting servers into one
  * does not also reshuffle the column - the folder appears where the topmost of
- * them already was. Members are drawn under it only while it is open.
+ * them already was. Its members come back attached to it rather than spliced
+ * into the list, because the rail draws an expanded folder and its servers
+ * inside one container.
  */
-export function railEntries(
-  ordered: RailGroup[],
-  folders: RailFolder[],
-  open: (folderId: string) => boolean
-): RailEntry[] {
+export function railEntries(ordered: RailGroup[], folders: RailFolder[]): RailEntry[] {
   const owner = new Map<string, RailFolder>()
   for (const f of folders) {
     for (const id of f.members) owner.set(id, f)
@@ -255,9 +253,6 @@ export function railEntries(
       .map((id) => ordered.find((x) => x.id === id))
       .filter((x): x is RailGroup => !!x)
     out.push({ kind: 'folder', id: folder.id, folder, members })
-    if (open(folder.id)) {
-      for (const m of members) out.push({ kind: 'group', id: m.id, group: m })
-    }
   }
 
   // A folder with nothing in it still draws, at the foot of the column. A

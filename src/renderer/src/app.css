@@ -2338,6 +2338,25 @@ video.lightbox-media {
 
 /* --- rail folders ------------------------------------------------------ */
 
+/* An expanded folder and its servers share one panel: a hairline border and
+   a ground a shade lighter than the rail, which is what marks where the
+   folder ends now that its contents are not indented. Collapsed, the
+   container is invisible and the folder is just another tile. */
+.rail-folder-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+}
+
+.rail-folder-group.open {
+  padding: var(--spacing-xxs) 0;
+  background: var(--surface-container-low);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+}
+
 /* Squarer than a server tile, so a folder is not mistaken for one. */
 .rail-folder .rail-face {
   border-radius: var(--corner-radius);

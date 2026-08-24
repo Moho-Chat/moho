@@ -269,7 +269,38 @@ export function ServerRail(): JSX.Element | null {
     setNaming({ id, name: 'New folder' })
   }
 
-  const entries = railEntries(ordered, folders, isFolderOpen)
+  const entries = railEntries(ordered, folders)
+
+  const renderTile = (g: RailGroup): JSX.Element => {
+    const t = totals.get(g.id)
+    return (
+      <RailTile
+        key={g.id}
+        group={g}
+        customIcon={customIcons[g.id]}
+        muted={mutedGroups.includes(g.id)}
+        onToggleMute={() =>
+          setMutedGroups(
+            mutedGroups.includes(g.id)
+              ? mutedGroups.filter((x) => x !== g.id)
+              : [...mutedGroups, g.id]
+          )
+        }
+        active={g.id === activeGroupId}
+        unread={t?.unread ?? 0}
+        highlight={t?.highlight ?? false}
+        // Direct messages and pinned lead the rail by definition, so
+        // there is nowhere for them to be dragged to.
+        draggable={!isFixedEntry(g)}
+        dropTarget={over === g.id && dragging !== '' && dragging !== g.id}
+        onSelect={() => store.selectGroup(g.id)}
+        onDragStart={() => beginDrag(g.id)}
+        onDragOver={() => !isFixedEntry(g) && setOver(g.id)}
+        onDrop={() => onDrop(g.id)}
+        onDragEnd={endDrag}
+      />
+    )
+  }
 
   return (
     <nav className="server-rail" aria-label="Servers">
@@ -294,7 +325,12 @@ export function ServerRail(): JSX.Element | null {
       >
       {entries.map((entry) => {
         if (entry.kind === 'folder') {
+          const open = isFolderOpen(entry.id)
           return (
+            /* Expanded, the folder and its servers sit in one panel - the
+               border and lighter ground are what say where the folder ends,
+               now that its contents are no longer indented. */
+            <div key={entry.id} className={classes('rail-folder-group', open && 'open')}>
             <FolderTile
               key={entry.id}
               folder={entry.folder}
@@ -310,37 +346,11 @@ export function ServerRail(): JSX.Element | null {
               onDrop={() => onDropInFolder(entry.id)}
               onDragEnd={endDrag}
             />
+            {open && entry.members.map((m) => renderTile(m))}
+            </div>
           )
         }
-        const g = entry.group
-        const t = totals.get(g.id)
-        return (
-          <RailTile
-            key={g.id}
-            group={g}
-            customIcon={customIcons[g.id]}
-            muted={mutedGroups.includes(g.id)}
-            onToggleMute={() =>
-              setMutedGroups(
-                mutedGroups.includes(g.id)
-                  ? mutedGroups.filter((x) => x !== g.id)
-                  : [...mutedGroups, g.id]
-              )
-            }
-            active={g.id === activeGroupId}
-            unread={t?.unread ?? 0}
-            highlight={t?.highlight ?? false}
-            // Direct messages and pinned lead the rail by definition, so
-            // there is nowhere for them to be dragged to.
-            draggable={!isFixedEntry(g)}
-            dropTarget={over === g.id && dragging !== '' && dragging !== g.id}
-            onSelect={() => store.selectGroup(g.id)}
-            onDragStart={() => beginDrag(g.id)}
-            onDragOver={() => !isFixedEntry(g) && setOver(g.id)}
-            onDrop={() => onDrop(g.id)}
-            onDragEnd={endDrag}
-          />
-        )
+        return renderTile(entry.group)
       })}
       </div>
 
