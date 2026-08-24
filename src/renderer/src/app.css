@@ -2343,26 +2343,28 @@ video.lightbox-media {
   border-radius: var(--corner-radius);
 }
 
-.rail-folder.open .rail-face {
-  background: var(--surface-container-high);
-}
-
 /* A 2x2 of what is inside, which is how a folder is recognised without
-   opening it. */
+   opening it. Empty, the glyph fills the tile the way a server's icon does,
+   with just enough space around it not to touch the edges. */
 .folder-face {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 2px;
-  padding: 4px;
+  gap: 3px;
+  padding: 5px;
   place-items: center;
+}
+
+.folder-face > .icon {
+  grid-column: span 2;
+  font-size: 26px;
 }
 
 .folder-chip {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   overflow: hidden;
   border-radius: 3px;
   font-size: 8px;
@@ -2370,20 +2372,16 @@ video.lightbox-media {
 
 .folder-chip .rail-icon,
 .folder-chip .rail-mark {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
 }
 
 .folder-chip .rail-initials {
   font-size: 8px;
 }
 
-/* An open folder's servers are indented under it, so the column reads as a
-   list with something nested in it rather than a flat run of tiles. */
-.rail-folder.open ~ .rail-tile {
-  /* Only the ones the folder actually opened carry this, set inline below. */
-}
-
+/* A folder's servers are indented while it is showing them, so the column
+   reads as a list with something nested in it rather than a flat run. */
 .rail-tile.in-folder {
   margin-left: var(--spacing-m);
   width: calc(100% - var(--spacing-m));

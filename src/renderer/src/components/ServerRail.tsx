@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { ContextMenu, useContextMenu } from './ContextMenu'
 import { Icon, MaskIcon } from './Icon'
-import { useChat, useIdSetPref, usePref, useStore } from '../state/hooks'
+import { useChat, usePref, useStore } from '../state/hooks'
 import { classes, nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
 import {
   isFixedEntry,
@@ -47,7 +47,7 @@ interface TileProps {
   unread: number
   highlight: boolean
   draggable: boolean
-  /** Shown nested under an open folder, and indented to say so. */
+  /** Drawn nested under the folder holding it, and indented to say so. */
   inFolder?: boolean
   dropTarget: boolean
   muted: boolean
@@ -191,7 +191,12 @@ export function ServerRail(): JSX.Element | null {
   const [customIcons] = usePref<Record<string, string>>('groupIcons', {})
   const [mutedGroups, setMutedGroups] = usePref<string[]>('mutedGroups', [])
   const [folders, setFolders] = usePref<RailFolder[]>('railFolders', [])
-  const [, toggleFolder, isFolderOpen] = useIdSetPref('openRailFolders')
+  // Which folder is showing its contents, if any. Deliberately not
+  // remembered: a folder is a place to put things, and it looks the same
+  // either way - there is no state here worth carrying across a restart.
+  const [expanded, setExpanded] = useState('')
+  const isFolderOpen = (id: string): boolean => expanded === id
+  const toggleFolder = (id: string): void => setExpanded(expanded === id ? '' : id)
   const [naming, setNaming] = useState<{ id: string; name: string } | null>(null)
   const { menu: railMenu, open: openRailMenu, close: closeRailMenu } = useContextMenu()
   const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; folder: RailFolder } | null>(null)
@@ -263,7 +268,6 @@ export function ServerRail(): JSX.Element | null {
   const newFolder = (): void => {
     const id = `folder-${Date.now().toString(36)}`
     setFolders([...folders, { id, name: 'New folder', members: [] }])
-    if (!isFolderOpen(id)) toggleFolder(id)
     setNaming({ id, name: 'New folder' })
   }
 
@@ -292,21 +296,11 @@ export function ServerRail(): JSX.Element | null {
       >
       {entries.map((entry) => {
         if (entry.kind === 'folder') {
-          const inside = entry.members.reduce(
-            (acc, m) => {
-              const t = totals.get(m.id)
-              return { unread: acc.unread + (t?.unread ?? 0), highlight: acc.highlight || !!t?.highlight }
-            },
-            { unread: 0, highlight: false }
-          )
           return (
             <FolderTile
               key={entry.id}
               folder={entry.folder}
               members={entry.members}
-              open={isFolderOpen(entry.id)}
-              unread={inside.unread}
-              highlight={inside.highlight}
               customIcons={customIcons}
               dropTarget={over === entry.id && dragging !== ''}
               onToggle={() => toggleFolder(entry.id)}
@@ -420,9 +414,6 @@ export function ServerRail(): JSX.Element | null {
 function FolderTile(props: {
   folder: RailFolder
   members: RailGroup[]
-  open: boolean
-  unread: number
-  highlight: boolean
   customIcons: Record<string, string>
   dropTarget: boolean
   onToggle: () => void
@@ -431,11 +422,11 @@ function FolderTile(props: {
   onDrop: () => void
   onDragEnd: () => void
 }): JSX.Element {
-  const { folder, members, open, unread, highlight, customIcons, dropTarget } = props
+  const { folder, members, customIcons, dropTarget } = props
   return (
     <button
       type="button"
-      className={classes('rail-tile', 'rail-folder', open && 'open', dropTarget && 'drop-target')}
+      className={classes('rail-tile', 'rail-folder', dropTarget && 'drop-target')}
       title={`${folder.name} — ${members.length} ${members.length === 1 ? 'server' : 'servers'}`}
       aria-label={folder.name}
       onClick={props.onToggle}
@@ -450,13 +441,15 @@ function FolderTile(props: {
       }}
       onDragEnd={props.onDragEnd}
     >
+      {/* The same face whether or not it is showing its contents: a folder
+          is a folder, and an icon that changes underfoot is one more thing to
+          read. Empty it is just a folder; once there is something in it, the
+          faces of what is inside - up to four, which is as many as read at
+          this size. */}
       <span className="rail-face folder-face">
-        {open ? (
-          <Icon name="folder_open" size={20} />
-        ) : members.length === 0 ? (
-          <Icon name="folder" size={20} />
+        {members.length === 0 ? (
+          <Icon name="folder" size={26} />
         ) : (
-          // Up to four, which is as many as read at this size.
           members.slice(0, 4).map((m) => (
             <span key={m.id} className="folder-chip">
               <GroupFace group={m} customIcon={customIcons[m.id]} />
@@ -464,13 +457,6 @@ function FolderTile(props: {
           ))
         )}
       </span>
-      {/* Unread rolls up from inside: a folder that hides a busy server must
-          not also hide that it is busy. */}
-      {unread > 0 && (
-        <span className={classes('rail-badge', highlight && 'highlight')}>
-          {unread > 99 ? '99+' : unread}
-        </span>
-      )}
     </button>
   )
 }
