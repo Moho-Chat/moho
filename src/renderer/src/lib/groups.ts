@@ -200,3 +200,86 @@ export function countsTowardRail(
 ): boolean {
   return !hidden.includes(buffer.id) && !isMutedBuffer(buffer, all, muted, hidden, mutedGroups)
 }
+
+
+/**
+ * A folder in the rail: several servers behind one tile.
+ *
+ * Entirely this client's idea. Discord has folders of its own, but they are
+ * per-account and say nothing about the Matrix spaces or IRC networks sitting
+ * beside them in the same column - and the point of the rail is that those all
+ * live together. So a folder here can hold anything the rail can show.
+ */
+export interface RailFolder {
+  id: string
+  name: string
+  /** Group ids, in the order they were put in. */
+  members: string[]
+}
+
+/** What the rail draws, top to bottom: loose entries and folders, in order. */
+export type RailEntry =
+  | { kind: 'group'; id: string; group: RailGroup }
+  | { kind: 'folder'; id: string; folder: RailFolder; members: RailGroup[] }
+
+/**
+ * Folds the ordered groups into the rail's real layout.
+ *
+ * A folder takes the position of its first member, so putting servers into one
+ * does not also reshuffle the column - the folder appears where the topmost of
+ * them already was. Members are drawn under it only while it is open.
+ */
+export function railEntries(
+  ordered: RailGroup[],
+  folders: RailFolder[],
+  open: (folderId: string) => boolean
+): RailEntry[] {
+  const owner = new Map<string, RailFolder>()
+  for (const f of folders) {
+    for (const id of f.members) owner.set(id, f)
+  }
+
+  const out: RailEntry[] = []
+  const placed = new Set<string>()
+  for (const g of ordered) {
+    const folder = owner.get(g.id)
+    if (!folder) {
+      out.push({ kind: 'group', id: g.id, group: g })
+      continue
+    }
+    if (placed.has(folder.id)) continue
+    placed.add(folder.id)
+    // In the folder's own order, not the rail's: that order is the one the
+    // person set by dropping them in.
+    const members = folder.members
+      .map((id) => ordered.find((x) => x.id === id))
+      .filter((x): x is RailGroup => !!x)
+    out.push({ kind: 'folder', id: folder.id, folder, members })
+    if (open(folder.id)) {
+      for (const m of members) out.push({ kind: 'group', id: m.id, group: m })
+    }
+  }
+
+  // A folder with nothing in it still draws, at the foot of the column. A
+  // new one is empty by definition, and a folder that only appears once it
+  // has members can never be given any.
+  for (const f of folders) {
+    if (!placed.has(f.id)) out.push({ kind: 'folder', id: f.id, folder: f, members: [] })
+  }
+  return out
+}
+
+/** Puts a group in a folder, taking it out of any other. */
+export function fileInFolder(folders: RailFolder[], folderId: string, groupId: string): RailFolder[] {
+  return folders.map((f) => {
+    if (f.id === folderId) {
+      return f.members.includes(groupId) ? f : { ...f, members: [...f.members, groupId] }
+    }
+    return { ...f, members: f.members.filter((m) => m !== groupId) }
+  })
+}
+
+/** Takes a group out of whatever folder holds it. */
+export function removeFromFolders(folders: RailFolder[], groupId: string): RailFolder[] {
+  return folders.map((f) => ({ ...f, members: f.members.filter((m) => m !== groupId) }))
+}

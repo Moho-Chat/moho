@@ -1,11 +1,15 @@
 import { useRef, useState } from 'react'
 import { ContextMenu, useContextMenu } from './ContextMenu'
 import { Icon, MaskIcon } from './Icon'
-import { useChat, usePref, useStore } from '../state/hooks'
-import { nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
+import { useChat, useIdSetPref, usePref, useStore } from '../state/hooks'
+import { classes, nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
 import {
   isFixedEntry,
   orderedGroups,
+  railEntries,
+  fileInFolder,
+  removeFromFolders,
+  type RailFolder,
   PINNED_GROUP_ID,
   pinnedGroup,
   reorder,
@@ -43,6 +47,8 @@ interface TileProps {
   unread: number
   highlight: boolean
   draggable: boolean
+  /** Shown nested under an open folder, and indented to say so. */
+  inFolder?: boolean
   dropTarget: boolean
   muted: boolean
   onToggleMute: () => void
@@ -53,8 +59,42 @@ interface TileProps {
   onDragEnd: () => void
 }
 
+/**
+ * What a rail entry looks like, without the tile around it.
+ *
+ * Shared so a folder can show the faces of what it holds: the same precedence
+ * has to apply there, or a server would be recognisable in the column and
+ * unrecognisable inside a folder.
+ *
+ * That precedence is deliberate: a real icon, else the mark for an entry that
+ * stands for a whole account, else initials. A guild is a name first - showing
+ * every icon-less guild the same Discord logo would make them
+ * indistinguishable, which is the one thing the rail exists to avoid.
+ */
+function GroupFace({ group, customIcon }: { group: RailGroup; customIcon?: string }): JSX.Element {
+  const service = serviceIcon(group.service)
+  if (customIcon) return <img className="rail-icon" src={resolveMediaUrl(customIcon)} alt="" />
+  if (group.kind === 'pinned') return <Icon name="push_pin" size={22} />
+  if (group.iconUrl) return <img className="rail-icon" src={resolveMediaUrl(group.iconUrl)} alt="" />
+  if (group.kind === 'dms') return <Icon name="forum" size={22} />
+  if (group.kind === 'account' && service.mark && service.colour) {
+    // Artwork with colour worth keeping, shown as-is rather than flattened to
+    // a silhouette - it sits beside full-colour guild icons here, and this is
+    // the one place with room for it.
+    return <img className="rail-mark" src={service.mark} alt="" />
+  }
+  if (group.kind === 'account') {
+    return service.mark ? <MaskIcon src={service.mark} size={22} /> : <Icon name={service.glyph!} size={22} />
+  }
+  return (
+    <span className="rail-initials" style={{ color: nickColor(group.name) }}>
+      {initials(group.name)}
+    </span>
+  )
+}
+
 function RailTile(props: TileProps): JSX.Element {
-  const { group, active, unread, highlight, draggable, dropTarget, customIcon, muted } = props
+  const { group, active, unread, highlight, draggable, dropTarget, customIcon, muted, inFolder } = props
   const { menu, open, close } = useContextMenu()
   const service = serviceIcon(group.service)
   // Only a guild or space needs telling apart by service: its face is a
@@ -64,38 +104,12 @@ function RailTile(props: TileProps): JSX.Element {
   // lie rather than a label.
   const badge = group.kind === 'guild' || group.kind === 'space' ? service : null
 
-  // Precedence is deliberate: a real icon, else the mark for an entry that
-  // stands for a whole account, else initials. A guild is a name first -
-  // showing every icon-less guild the same Discord logo would make them
-  // indistinguishable, which is the one thing the rail exists to avoid.
-  let content: JSX.Element
-  if (customIcon) {
-    content = <img className="rail-icon" src={resolveMediaUrl(customIcon)} alt="" />
-  } else if (group.kind === 'pinned') {
-    content = <Icon name="push_pin" size={22} />
-  } else if (group.iconUrl) {
-    content = <img className="rail-icon" src={resolveMediaUrl(group.iconUrl)} alt="" />
-  } else if (group.kind === 'dms') {
-    content = <Icon name="forum" size={22} />
-  } else if (group.kind === 'account' && service.mark && service.colour) {
-    // Artwork with colour worth keeping, shown as-is rather than flattened to
-    // a silhouette - it sits beside full-colour guild icons here, and this is
-    // the one place with room for it.
-    content = <img className="rail-mark" src={service.mark} alt="" />
-  } else if (group.kind === 'account') {
-    content = service.mark ? <MaskIcon src={service.mark} size={22} /> : <Icon name={service.glyph!} size={22} />
-  } else {
-    content = (
-      <span className="rail-initials" style={{ color: nickColor(group.name) }}>
-        {initials(group.name)}
-      </span>
-    )
-  }
+  const content = <GroupFace group={group} customIcon={customIcon} />
 
   return (
     <button
       type="button"
-      className={`rail-tile${active ? ' active' : ''}${dropTarget ? ' drop-target' : ''}${muted ? ' muted' : ''}`}
+      className={classes('rail-tile', active && 'active', dropTarget && 'drop-target', muted && 'muted', inFolder && 'in-folder')}
       title={group.name}
       aria-label={group.name}
       aria-current={active}
@@ -176,6 +190,11 @@ export function ServerRail(): JSX.Element | null {
   const [hidden] = usePref<string[]>('hiddenBuffers', [])
   const [customIcons] = usePref<Record<string, string>>('groupIcons', {})
   const [mutedGroups, setMutedGroups] = usePref<string[]>('mutedGroups', [])
+  const [folders, setFolders] = usePref<RailFolder[]>('railFolders', [])
+  const [, toggleFolder, isFolderOpen] = useIdSetPref('openRailFolders')
+  const [naming, setNaming] = useState<{ id: string; name: string } | null>(null)
+  const { menu: railMenu, open: openRailMenu, close: closeRailMenu } = useContextMenu()
+  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; folder: RailFolder } | null>(null)
 
   // The authoritative dragged id lives in a ref, not in state: dragstart and
   // drop are separate events, and reading it from state means depending on a
@@ -232,15 +251,81 @@ export function ServerRail(): JSX.Element | null {
     endDrag()
   }
 
+  // Dropping a server onto a folder files it there rather than reordering
+  // the column, which is the whole gesture: folders are made by dragging
+  // things into them.
+  const onDropInFolder = (folderId: string): void => {
+    const from = draggingRef.current
+    if (from) setFolders(fileInFolder(folders, folderId, from))
+    endDrag()
+  }
+
+  const newFolder = (): void => {
+    const id = `folder-${Date.now().toString(36)}`
+    setFolders([...folders, { id, name: 'New folder', members: [] }])
+    if (!isFolderOpen(id)) toggleFolder(id)
+    setNaming({ id, name: 'New folder' })
+  }
+
+  const entries = railEntries(ordered, folders, isFolderOpen)
+
   return (
     <nav className="server-rail" aria-label="Servers">
-      {/* Only the entries scroll; the cog stays pinned to the foot. */}
-      <div className="rail-scroll">
-      {ordered.map((g) => {
+      {/* Only the entries scroll; the cog stays pinned to the foot. The
+          empty space below them is a drop target and a menu: somewhere to
+          drag a server out of a folder, and where folders are made. */}
+      <div
+        className="rail-scroll"
+        onContextMenu={(e) => {
+          // Only the space itself. A right-click that landed on a tile is
+          // that tile's business.
+          if (e.target !== e.currentTarget) return
+          openRailMenu(e)
+        }}
+        onDragOver={(e) => e.target === e.currentTarget && e.preventDefault()}
+        onDrop={(e) => {
+          if (e.target !== e.currentTarget) return
+          const from = draggingRef.current
+          if (from) setFolders(removeFromFolders(folders, from))
+          endDrag()
+        }}
+      >
+      {entries.map((entry) => {
+        if (entry.kind === 'folder') {
+          const inside = entry.members.reduce(
+            (acc, m) => {
+              const t = totals.get(m.id)
+              return { unread: acc.unread + (t?.unread ?? 0), highlight: acc.highlight || !!t?.highlight }
+            },
+            { unread: 0, highlight: false }
+          )
+          return (
+            <FolderTile
+              key={entry.id}
+              folder={entry.folder}
+              members={entry.members}
+              open={isFolderOpen(entry.id)}
+              unread={inside.unread}
+              highlight={inside.highlight}
+              customIcons={customIcons}
+              dropTarget={over === entry.id && dragging !== ''}
+              onToggle={() => toggleFolder(entry.id)}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                setFolderMenu({ x: e.clientX, y: e.clientY, folder: entry.folder })
+              }}
+              onDragOver={() => setOver(entry.id)}
+              onDrop={() => onDropInFolder(entry.id)}
+              onDragEnd={endDrag}
+            />
+          )
+        }
+        const g = entry.group
         const t = totals.get(g.id)
         return (
           <RailTile
             key={g.id}
+            inFolder={folders.some((f) => f.members.includes(g.id))}
             group={g}
             customIcon={customIcons[g.id]}
             muted={mutedGroups.includes(g.id)}
@@ -268,9 +353,125 @@ export function ServerRail(): JSX.Element | null {
       })}
       </div>
 
+      {railMenu && (
+        <ContextMenu
+          x={railMenu.x}
+          y={railMenu.y}
+          entries={[{ label: 'New folder', icon: 'create_new_folder', onClick: newFolder }]}
+          onClose={closeRailMenu}
+        />
+      )}
+
+      {folderMenu && (
+        <ContextMenu
+          x={folderMenu.x}
+          y={folderMenu.y}
+          entries={[
+            {
+              label: 'Rename',
+              icon: 'edit',
+              onClick: () => setNaming({ id: folderMenu.folder.id, name: folderMenu.folder.name })
+            },
+            {
+              label: 'Remove folder',
+              icon: 'delete',
+              danger: true,
+              // The servers stay in the rail; only the folder goes.
+              onClick: () => setFolders(folders.filter((f) => f.id !== folderMenu.folder.id))
+            }
+          ]}
+          onClose={() => setFolderMenu(null)}
+        />
+      )}
+
+      {naming && (
+        <div className="rail-naming">
+          <input
+            autoFocus
+            className="text-field"
+            value={naming.name}
+            onChange={(e) => setNaming({ ...naming, name: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setNaming(null)
+              if (e.key === 'Enter') {
+                const name = naming.name.trim()
+                if (name) setFolders(folders.map((f) => (f.id === naming.id ? { ...f, name } : f)))
+                setNaming(null)
+              }
+            }}
+            onBlur={() => setNaming(null)}
+          />
+        </div>
+      )}
+
       <div className="rail-divider" />
       <RailMenu />
     </nav>
+  )
+}
+
+/**
+ * A folder tile: several servers behind one square.
+ *
+ * Closed, it shows a grid of what is inside, which is how you recognise a
+ * folder you made without opening it. Open, it becomes a plain marker and the
+ * servers themselves are drawn underneath.
+ */
+function FolderTile(props: {
+  folder: RailFolder
+  members: RailGroup[]
+  open: boolean
+  unread: number
+  highlight: boolean
+  customIcons: Record<string, string>
+  dropTarget: boolean
+  onToggle: () => void
+  onContextMenu: (e: React.MouseEvent) => void
+  onDragOver: () => void
+  onDrop: () => void
+  onDragEnd: () => void
+}): JSX.Element {
+  const { folder, members, open, unread, highlight, customIcons, dropTarget } = props
+  return (
+    <button
+      type="button"
+      className={classes('rail-tile', 'rail-folder', open && 'open', dropTarget && 'drop-target')}
+      title={`${folder.name} — ${members.length} ${members.length === 1 ? 'server' : 'servers'}`}
+      aria-label={folder.name}
+      onClick={props.onToggle}
+      onContextMenu={props.onContextMenu}
+      onDragOver={(e) => {
+        e.preventDefault()
+        props.onDragOver()
+      }}
+      onDrop={(e) => {
+        e.preventDefault()
+        props.onDrop()
+      }}
+      onDragEnd={props.onDragEnd}
+    >
+      <span className="rail-face folder-face">
+        {open ? (
+          <Icon name="folder_open" size={20} />
+        ) : members.length === 0 ? (
+          <Icon name="folder" size={20} />
+        ) : (
+          // Up to four, which is as many as read at this size.
+          members.slice(0, 4).map((m) => (
+            <span key={m.id} className="folder-chip">
+              <GroupFace group={m} customIcon={customIcons[m.id]} />
+            </span>
+          ))
+        )}
+      </span>
+      {/* Unread rolls up from inside: a folder that hides a busy server must
+          not also hide that it is busy. */}
+      {unread > 0 && (
+        <span className={classes('rail-badge', highlight && 'highlight')}>
+          {unread > 99 ? '99+' : unread}
+        </span>
+      )}
+    </button>
   )
 }
 

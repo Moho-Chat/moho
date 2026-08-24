@@ -2336,6 +2336,77 @@ video.lightbox-media {
   text-decoration: underline;
 }
 
+/* --- rail folders ------------------------------------------------------ */
+
+/* Squarer than a server tile, so a folder is not mistaken for one. */
+.rail-folder .rail-face {
+  border-radius: var(--corner-radius);
+}
+
+.rail-folder.open .rail-face {
+  background: var(--surface-container-high);
+}
+
+/* A 2x2 of what is inside, which is how a folder is recognised without
+   opening it. */
+.folder-face {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 4px;
+  place-items: center;
+}
+
+.folder-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  overflow: hidden;
+  border-radius: 3px;
+  font-size: 8px;
+}
+
+.folder-chip .rail-icon,
+.folder-chip .rail-mark {
+  width: 14px;
+  height: 14px;
+}
+
+.folder-chip .rail-initials {
+  font-size: 8px;
+}
+
+/* An open folder's servers are indented under it, so the column reads as a
+   list with something nested in it rather than a flat run of tiles. */
+.rail-folder.open ~ .rail-tile {
+  /* Only the ones the folder actually opened carry this, set inline below. */
+}
+
+.rail-tile.in-folder {
+  margin-left: var(--spacing-m);
+  width: calc(100% - var(--spacing-m));
+}
+
+.rail-tile.drop-target .rail-face {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+/* Naming a folder happens over the rail, which is too narrow for a field. */
+.rail-naming {
+  position: absolute;
+  left: 56px;
+  bottom: 60px;
+  z-index: 40;
+  width: 220px;
+}
+
+.rail-naming input {
+  width: 100%;
+}
+
 /* --- user footer ------------------------------------------------------ */
 
 .user-footer {
