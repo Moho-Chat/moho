@@ -137,11 +137,11 @@ export function BufferList(): JSX.Element {
     return list.filter((s) => s.custom || s.buffers.length > 0)
   }, [activeGroup, isPinnedPage, isDmPage, groupBuffers, customCats, assignment])
 
-  // The menu still toggles a buffer's *own* flag independently of the
-  // cascade, the same way muting a channel inside an already-muted Slack
-  // workspace works.
+  // The menu still toggles a buffer's *own* flag independently of a muted
+  // rail entry above it, the same way muting a channel inside an
+  // already-muted Slack workspace works.
   const isEffectivelyMuted = (buffer: BufferEntry): boolean =>
-    isMutedBuffer(buffer, buffers, muted, hidden, mutedGroups)
+    isMutedBuffer(buffer, muted, mutedGroups)
 
   const [naming, setNaming] = useState<{ id: string; name: string } | null>(null)
   const { menu: groupMenu, open: openGroupMenuAt, close: closeGroupMenu } = useContextMenu()

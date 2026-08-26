@@ -263,7 +263,7 @@ export function ServerRail(): JSX.Element | null {
   for (const b of all) {
     // Only what the pane below would show: a hidden buffer has no row to
     // reach, and a muted one is not asking for attention.
-    if (!countsTowardRail(b, all, muted, hidden, mutedGroups)) continue
+    if (!countsTowardRail(b, muted, hidden, mutedGroups)) continue
     // A buffer can count on more than one tile: where it lives, and on any
     // aggregate page that also lists it. Both are places the user would look.
     if (b.groupId) bump(b.groupId, b)

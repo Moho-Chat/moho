@@ -144,11 +144,19 @@ export function reorder(groups: RailGroup[], draggedId: string, targetId: string
 
 
 /**
- * Whether a buffer is muted, directly or by its account's server buffer.
+ * Whether a buffer is muted, on its own account or by the rail entry it sits
+ * under.
  *
- * Muting a server cascades to every channel under that account, matching how
- * muting a whole IRC network is normally all-or-nothing. Direct messages are
- * exempt, and a hidden server does not cascade - see below.
+ * Muting a buffer mutes that buffer and nothing else - including the server
+ * buffer, which used to cascade to every channel on the account. The cascade
+ * was wrong for the case that makes muting a server buffer worth doing at
+ * all: an IRC network chatters through its whole connection, and some of that
+ * chatter carries your nick, so the notices fire. Silencing it should not be
+ * a choice between "hear the MOTD" and "hear nothing on this network".
+ *
+ * Muting a whole network is still one action - it is the rail tile's mute,
+ * which is the deliberate way to say it and is always undoable from a tile
+ * that is always on screen.
  *
  * Shared by the rail and the channel pane for the same reason the visibility
  * rule is: they disagreed before, and the rail counted unread from muted
@@ -157,33 +165,14 @@ export function reorder(groups: RailGroup[], draggedId: string, targetId: string
  */
 export function isMutedBuffer(
   buffer: BufferEntry,
-  all: BufferEntry[],
   muted: string[],
-  hidden: string[] = [],
   mutedGroups: string[] = []
 ): boolean {
   // An explicit mute on this buffer always stands.
   if (muted.includes(buffer.id)) return true
 
-  // A muted server, guild or space silences everything under it. Unlike the
-  // server-buffer cascade below, this one is always undoable: the rail tile is
-  // always on screen, and right-clicking it is what set this in the first
-  // place.
-  if (buffer.groupId && mutedGroups.includes(buffer.groupId)) return true
-
-  if (buffer.kind === 'server') return false
-
-  // A direct message is a person addressing you, not channel traffic.
-  // Silencing a network should not silence someone messaging you on it.
-  if (buffer.kind === 'dm') return false
-
-  const server = all.find((b) => b.accountId === buffer.accountId && b.kind === 'server')
-  if (!server || !muted.includes(server.id)) return false
-
-  // The cascade is only fair while its source can be reached. A hidden server
-  // buffer has no row, so its mute toggle is unreachable - inheriting from it
-  // would silence an entire account with no way to undo it from the UI.
-  return !hidden.includes(server.id)
+  // A muted server, guild or space silences everything under it.
+  return !!buffer.groupId && mutedGroups.includes(buffer.groupId)
 }
 
 /**
@@ -193,12 +182,11 @@ export function isMutedBuffer(
  */
 export function countsTowardRail(
   buffer: BufferEntry,
-  all: BufferEntry[],
   muted: string[],
   hidden: string[],
   mutedGroups: string[] = []
 ): boolean {
-  return !hidden.includes(buffer.id) && !isMutedBuffer(buffer, all, muted, hidden, mutedGroups)
+  return !hidden.includes(buffer.id) && !isMutedBuffer(buffer, muted, mutedGroups)
 }
 
 

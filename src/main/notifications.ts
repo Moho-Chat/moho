@@ -50,40 +50,29 @@ export class Notifier {
   }
 
   /**
-   * Mute is hierarchical: muting a server buffer suppresses notifications for
-   * every channel under that account, matching how muting an entire IRC
-   * network is normally all-or-nothing. Deliberately two-level, not a
-   * three-state inherit/override system - to restore notifications under a
-   * muted server, unmute the server itself.
+   * Muting a buffer silences that buffer, and muting a rail entry silences
+   * everything under it. Nothing in between: a server buffer used to cascade
+   * to every channel on its account, which made the one thing people actually
+   * want to mute impossible to mute on its own.
    *
-   * Direct messages are exempt, and a hidden server buffer does not cascade at
-   * all; see isMuted for why.
+   * That thing is an IRC server buffer. A network talks continuously while it
+   * connects - MOTD, notices, services - and some of it carries your nick, so
+   * nobilis reports it as a highlight and a desktop notification fires. The
+   * only cure was muting the server buffer, which then took every channel on
+   * the network with it. Now it takes only itself, and silencing the whole
+   * network is the rail tile's mute: one deliberate action, undoable from a
+   * tile that is always on screen.
+   *
+   * Kept in step with the renderer's isMutedBuffer, which decides the same
+   * question for the unread badges.
    */
-  private isMuted(accountId: string, bufferId: string): boolean {
-    const muted = this.prefs.get<string[]>('mutedBuffers', [])
-    if (muted.includes(bufferId)) return true
+  private isMuted(_accountId: string, bufferId: string): boolean {
+    if (this.prefs.get<string[]>('mutedBuffers', []).includes(bufferId)) return true
 
     // A server, guild or space muted from its rail tile silences everything
-    // under it, direct messages included - unlike the server-buffer cascade
-    // below, this one was set deliberately on that exact group.
+    // under it, direct messages included.
     const group = this.buffers.get(bufferId)?.groupId
-    if (group && this.prefs.get<string[]>('mutedGroups', []).includes(group)) return true
-
-    // A direct message is a person addressing you, not channel traffic:
-    // silencing a network should not silence someone messaging you on it.
-    // This is where that mattered most - a muted IRC network swallowed the
-    // desktop notification for an incoming query.
-    if (this.buffers.get(bufferId)?.kind === 'dm') return false
-
-    const server = [...this.buffers.values()].find(
-      (b) => b.accountId === accountId && b.kind === 'server'
-    )
-    if (!server || !muted.includes(server.id)) return false
-
-    // Only inherit from a server buffer the user can still reach. A hidden one
-    // has no row in the list, so its mute toggle is unreachable and the
-    // cascade would be impossible to undo.
-    return !this.prefs.get<string[]>('hiddenBuffers', []).includes(server.id)
+    return !!group && this.prefs.get<string[]>('mutedGroups', []).includes(group)
   }
 
   async handle(payload: NotificationPayload): Promise<void> {
