@@ -1,8 +1,9 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { MessageRow } from './MessageRow'
 import { useChat, usePref, useStore } from '../state/hooks'
-import { isChatKind } from '../lib/util'
+import { bufferDisplayName, isChatKind } from '../lib/util'
+import type { ChannelIndex } from '../lib/format'
 import type { ChatMessage } from '../state/store'
 
 /**
@@ -15,6 +16,16 @@ import type { ChatMessage } from '../state/store'
  * away, surfacing a "Jump to present" bar instead. Two thresholds rather than
  * one, because a single cutoff makes that bar flicker when the user parks the
  * scroll position right on it.
+ *
+ * What keeps it pinned is a ResizeObserver on the content, not a count of
+ * messages. Watching the count got this wrong three ways, all of which left
+ * the reader stranded above new traffic with no sign anything had arrived:
+ * an image or video finishing its load grows the page *after* the message it
+ * belongs to is on screen; a filtered-out join/part arriving grows nothing
+ * while the underlying list grows; and once a buffer reaches the store's
+ * 500-message cap the count stops changing at all, so a busy channel simply
+ * stopped following once you had read it long enough. Height changing is the
+ * thing that actually needs answering, so height is what is watched.
  */
 const UNANCHOR_THRESHOLD = 250
 const REANCHOR_THRESHOLD = 100
@@ -82,12 +93,33 @@ export function MessageList(): JSX.Element {
     showMxJoin, showMxInvite, showMxKick, showMxQuit
   ])
 
+  /**
+   * Every channel this client could open, by the service's own id.
+   *
+   * Not scoped to the account: a Discord channel id is unique everywhere, and
+   * people do link channels in other guilds. Built once here rather than per
+   * row - a busy guild is hundreds of channels and a screen is dozens of
+   * messages, and the identity has to stay stable or every row re-formats its
+   * body on every render.
+   */
+  const channelMentions = useMemo<ChannelIndex>(() => {
+    const index: ChannelIndex = {}
+    for (const b of buffers) {
+      if (b.remoteId) index[b.remoteId] = { bufferId: b.id, name: bufferDisplayName(b.name) }
+    }
+    return index
+  }, [buffers])
+
   const scrollRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const [anchored, setAnchored] = useState(true)
   const [missedCount, setMissedCount] = useState(0)
 
   const lastBufferRef = useRef(bufferId)
-  const lastCountRef = useRef(messages.length)
+  /** The newest message already accounted for, so growth is told from a prepend. */
+  const lastIdRef = useRef<string | undefined>(messages[messages.length - 1]?.id)
+  /** Read by the resize observer, which must not re-subscribe on every flip. */
+  const anchoredRef = useRef(true)
   /** contentHeight before a load-more, so scroll position can be restored. */
   const preLoadHeightRef = useRef(0)
 
@@ -97,42 +129,84 @@ export function MessageList(): JSX.Element {
     el.scrollTo({ top: el.scrollHeight, behavior })
   }, [])
 
+  const anchor = useCallback((on: boolean) => {
+    anchoredRef.current = on
+    setAnchored(on)
+  }, [])
+
+  /**
+   * Anything that makes the page taller while pinned scrolls it back down: a
+   * new message, an image settling into its real size, an embed unfurling.
+   *
+   * Not conditioned on a load-more being in flight, even though that growth is
+   * above the reader rather than below. A load-more can only be asked for from
+   * the top of the list, and being at the top of a list long enough to have
+   * one is not being pinned to its bottom - so the two do not overlap in
+   * practice, and a latch that had to be cleared correctly would be one more
+   * way for the pin to get stuck off, which is the bug being fixed.
+   */
+  useEffect(() => {
+    const content = contentRef.current
+    if (!content || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => {
+      if (anchoredRef.current) scrollToBottom()
+    })
+    ro.observe(content)
+    return () => ro.disconnect()
+  }, [scrollToBottom])
+
+
   // A buffer switch is a fresh view: land at the bottom, anchored, with no
   // carried-over "missed messages" count from the previous buffer.
   useLayoutEffect(() => {
     if (lastBufferRef.current === bufferId) return
     lastBufferRef.current = bufferId
-    lastCountRef.current = messages.length
-    setAnchored(true)
+    lastIdRef.current = messages[messages.length - 1]?.id
+    preLoadHeightRef.current = 0
+    anchor(true)
     setMissedCount(0)
     scrollToBottom()
-  }, [bufferId, messages.length, scrollToBottom])
+  }, [bufferId, messages, anchor, scrollToBottom])
 
   useLayoutEffect(() => {
-    const grew = messages.length - lastCountRef.current
-    lastCountRef.current = messages.length
-    if (grew <= 0) return
-
     // Older messages prepended by a load-more: hold the user's reading
     // position rather than letting the new content shove it down the page.
+    // Only once the page has actually grown, since this effect also runs on
+    // the render that merely put the loading row up.
     if (preLoadHeightRef.current > 0) {
       const el = scrollRef.current
-      if (el) el.scrollTop += el.scrollHeight - preLoadHeightRef.current
-      preLoadHeightRef.current = 0
-      return
+      if (el && el.scrollHeight > preLoadHeightRef.current) {
+        el.scrollTop += el.scrollHeight - preLoadHeightRef.current
+        preLoadHeightRef.current = 0
+      } else if (!isLoadingMore) {
+        // Came back with nothing - the top of the buffer. Released here so
+        // the next real page isn't measured against a height from minutes
+        // ago and restored to the wrong place.
+        preLoadHeightRef.current = 0
+      }
     }
 
-    if (anchored) scrollToBottom()
-    else setMissedCount((n) => n + grew)
-  }, [messages.length, anchored, scrollToBottom])
+    // A prepend leaves the newest message where it was, so this only counts
+    // arrivals - which is what the "N new messages" bar is about.
+    const lastId = messages[messages.length - 1]?.id
+    if (lastId === lastIdRef.current) return
+    const previous = lastIdRef.current
+    lastIdRef.current = lastId
+    if (anchoredRef.current) return
+
+    const seen = previous ? messages.findIndex((m) => m.id === previous) : -1
+    // Not found means the message the count was last taken from has been
+    // trimmed off the top; one is the honest floor rather than a guess.
+    setMissedCount((n) => n + (seen >= 0 ? messages.length - 1 - seen : 1))
+  }, [messages, isLoadingMore])
 
   const onScroll = useCallback(() => {
     const el = scrollRef.current
     if (!el) return
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight
-    if (distance > UNANCHOR_THRESHOLD) setAnchored(false)
+    if (distance > UNANCHOR_THRESHOLD) anchor(false)
     else if (distance < REANCHOR_THRESHOLD) {
-      setAnchored(true)
+      anchor(true)
       setMissedCount(0)
     }
 
@@ -143,10 +217,10 @@ export function MessageList(): JSX.Element {
       preLoadHeightRef.current = el.scrollHeight
       void store.loadMoreHistory(bufferId)
     }
-  }, [bufferId, isLoadingMore, messages.length, store])
+  }, [anchor, bufferId, isLoadingMore, messages.length, store])
 
   const jumpToPresent = (): void => {
-    setAnchored(true)
+    anchor(true)
     setMissedCount(0)
     scrollToBottom('smooth')
   }
@@ -158,32 +232,38 @@ export function MessageList(): JSX.Element {
   return (
     <div className="messagelist">
       <div className="messagelist-scroll" ref={scrollRef} onScroll={onScroll}>
-        {isLoadingMore && (
-          <div className="messagelist-loading muted small">Loading older messages…</div>
-        )}
-        {messages.map((msg, i) => (
-          <div key={msg.id}>
-            {i === dividerIndex && (
-              <div className="new-divider">
-                <span>New</span>
-              </div>
-            )}
-            <MessageRow
-              message={msg}
-              bufferId={bufferId}
-              service={service}
-              grouped={comfy === 'comfy' && isGrouped(messages, i)}
-              comfy={comfy === 'comfy'}
-              relativeTimestamps={relativeTimestamps}
-              mediaAutoplay={mediaAutoplay}
-              mediaLoop={mediaLoop}
-              contentSniffing={contentSniffing}
-            />
-          </div>
-        ))}
-        {messages.length === 0 && (
-          <div className="messagelist-empty muted">No messages here yet.</div>
-        )}
+        {/* One wrapper so the whole log has a single measurable height; the
+            observer above needs an element that grows with the content, which
+            the scroll container itself never does. */}
+        <div className="messagelist-content" ref={contentRef}>
+          {isLoadingMore && (
+            <div className="messagelist-loading muted small">Loading older messages…</div>
+          )}
+          {messages.map((msg, i) => (
+            <div key={msg.id}>
+              {i === dividerIndex && (
+                <div className="new-divider">
+                  <span>New</span>
+                </div>
+              )}
+              <MessageRow
+                message={msg}
+                bufferId={bufferId}
+                service={service}
+                channels={channelMentions}
+                grouped={comfy === 'comfy' && isGrouped(messages, i)}
+                comfy={comfy === 'comfy'}
+                relativeTimestamps={relativeTimestamps}
+                mediaAutoplay={mediaAutoplay}
+                mediaLoop={mediaLoop}
+                contentSniffing={contentSniffing}
+              />
+            </div>
+          ))}
+          {messages.length === 0 && (
+            <div className="messagelist-empty muted">No messages here yet.</div>
+          )}
+        </div>
       </div>
 
       {!anchored && (
