@@ -103,10 +103,15 @@ export function buildSmilieIndex(smilies: SmilieEntry[]): SmilieIndex {
   return { byAlias, regex: new RegExp(escaped.join('|'), 'g') }
 }
 
+/** Buffers this client knows about, keyed by the service's own channel id. */
+export type ChannelIndex = Record<string, { bufferId: string; name: string }>
+
 export interface FormatOptions {
   revealedSpoilers?: Record<number, boolean>
   isSockchat?: boolean
   smilies?: SmilieIndex | null
+  /** Resolves Discord's `<#id>` channel links; without it they stay literal. */
+  channels?: ChannelIndex | null
 }
 
 /**
@@ -152,6 +157,24 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
     const idx = spoilerIndex++
     if (revealed[idx]) return stow(`<span class="spoiler revealed">${escapeHtml(inner)}</span>`)
     return stow(`<a href="spoiler:${idx}" class="spoiler">${escapeHtml(inner)}</a>`)
+  })
+
+  // Discord channel links. What arrives is `<#1393001234568164748>` and
+  // nothing else - no name anywhere in the payload - so this is the only
+  // chance to make it read as the "#general" the sender saw when they typed
+  // it. Stowed like a link because it becomes one: richtext turns the
+  // `channel:` href into a click that switches buffers rather than something
+  // the browser navigates. An id nothing here knows still beats showing the
+  // raw token, which reads as a bug.
+  out = out.replace(/<#(\d+)>/g, (_m, id: string) => {
+    const known = opts.channels?.[id]
+    if (!known) return stow('<span class="channel-mention unknown">#unknown-channel</span>')
+    // The "#" is drawn here, so a name that already carries one (IRC's do,
+    // and so does the Discord half of "Guild/#general") must not double it.
+    const label = known.name.replace(/^#+/, '')
+    return stow(
+      `<a href="channel:${encodeURIComponent(known.bufferId)}" class="channel-mention">#${escapeHtml(label)}</a>`
+    )
   })
 
   // Sneedchat smiley shortcodes - only for a Sneedchat buffer, and only after

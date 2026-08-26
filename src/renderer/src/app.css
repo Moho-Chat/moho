@@ -891,6 +891,31 @@
   cursor: auto;
 }
 
+/* A linked channel, tinted the way the accent already marks anything
+   clickable in a message body. Discord draws these as a soft chip rather
+   than a link, which reads better inline than an underline does. */
+.channel-mention {
+  color: var(--primary);
+  background: var(--primary-hover);
+  border-radius: 3px;
+  padding: 0 2px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.channel-mention:hover {
+  background: var(--primary-pressed);
+}
+
+/* A channel this client has never seen - a guild we are not in, or one that
+   is gone. Still shown, because the raw <#id> reads as a bug, but not offered
+   as something to click. */
+.channel-mention.unknown {
+  color: var(--surface-variant-text);
+  background: var(--surface-container-highest);
+  cursor: default;
+}
+
 /* No fixed size: most smilies are small by design (24-64px), and forcing a
    square distorts the wider banner-shaped ones. */
 img.smilie {

@@ -25,7 +25,14 @@ const ALLOWED_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'SPA
 const DROP_CONTENT = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'IFRAME', 'OBJECT', 'EMBED'])
 
 /** Only the classes format.ts itself emits; anything else is dropped. */
-const ALLOWED_CLASSES = new Set(['inline-code', 'spoiler', 'revealed', 'smilie'])
+const ALLOWED_CLASSES = new Set([
+  'inline-code',
+  'spoiler',
+  'revealed',
+  'smilie',
+  'channel-mention',
+  'unknown'
+])
 
 /** Hex or a plain CSS colour keyword - nothing that could carry a url() or expression. */
 const SAFE_COLOR = /^#[0-9a-f]{3,8}$|^[a-z]{3,20}$/i
@@ -34,16 +41,25 @@ export interface RichTextProps {
   html: string
   /** Called with the spoiler's index when a hidden run is clicked. */
   onRevealSpoiler?: (index: number) => void
+  /** Called with a buffer id when a channel link is clicked. */
+  onOpenChannel?: (bufferId: string) => void
 }
 
-export function RichText({ html, onRevealSpoiler }: RichTextProps): JSX.Element {
+/** The callbacks walk() carries down, bundled so adding one is a single change. */
+interface Handlers {
+  onRevealSpoiler?: RichTextProps['onRevealSpoiler']
+  onOpenChannel?: RichTextProps['onOpenChannel']
+}
+
+export function RichText({ html, onRevealSpoiler, onOpenChannel }: RichTextProps): JSX.Element {
   // DOMParser builds an inert document: no scripts run, no images load, no
   // network requests happen during parsing.
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
-  return <>{walk(doc.body, onRevealSpoiler, 0)}</>
+  return <>{walk(doc.body, { onRevealSpoiler, onOpenChannel }, 0)}</>
 }
 
-function walk(node: Node, onRevealSpoiler: RichTextProps['onRevealSpoiler'], depth: number): ReactNode[] {
+function walk(node: Node, handlers: Handlers, depth: number): ReactNode[] {
+  const { onRevealSpoiler, onOpenChannel } = handlers
   const out: ReactNode[] = []
   // Depth guard: deeply nested markup in a hostile body shouldn't be able to
   // blow the stack. Beyond this, render the remaining subtree as flat text.
@@ -66,7 +82,7 @@ function walk(node: Node, onRevealSpoiler: RichTextProps['onRevealSpoiler'], dep
 
     const key = `${depth}-${i}`
     const className = classNameOf(el)
-    const kids = (): ReactNode[] => walk(el, onRevealSpoiler, depth + 1)
+    const kids = (): ReactNode[] => walk(el, handlers, depth + 1)
 
     switch (el.tagName) {
       case 'BR':
@@ -104,6 +120,30 @@ function walk(node: Node, onRevealSpoiler: RichTextProps['onRevealSpoiler'], dep
           )
           break
         }
+
+        // A channel link. Never navigates either - it moves the client to
+        // that buffer, which is the whole reason a raw <#id> was rewritten
+        // into one. Rendered as a span rather than an anchor so no browser
+        // ever sees a "channel:" href to make sense of.
+        const channel = href.match(/^channel:(.+)$/)
+        if (channel) {
+          const target = decodeURIComponent(channel[1])
+          out.push(
+            <span
+              key={key}
+              className={className}
+              role="button"
+              tabIndex={0}
+              title="Open this channel"
+              onClick={() => onOpenChannel?.(target)}
+              onKeyDown={(e) => e.key === 'Enter' && onOpenChannel?.(target)}
+            >
+              {kids()}
+            </span>
+          )
+          break
+        }
+
         // Only real web links are clickable. Anything else (javascript:,
         // data:, a custom app scheme) renders as inert text - main re-checks
         // the scheme before handing anything to the OS, so this is the first

@@ -44,6 +44,12 @@ export interface Buffer {
   groupId?: string
   /** The service's own heading for this buffer - a Discord category. */
   category?: string
+  /**
+   * The service's own id for this buffer - a Discord channel id. What a
+   * `<#id>` in a message body is matched against, so it can be drawn as the
+   * channel's name and opened when clicked.
+   */
+  remoteId?: string
   /** Where the service orders it: category rank and channel rank folded. */
   position?: number
 }

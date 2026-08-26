@@ -16,7 +16,8 @@ import {
   normalizeBBCode,
   stripCodeBlocks,
   stripEmbeddedUrls,
-  stripQuoteBlocks
+  stripQuoteBlocks,
+  type ChannelIndex
 } from '../lib/format'
 import {
   classes,
@@ -35,6 +36,8 @@ interface Props {
   message: ChatMessage
   bufferId: string
   service?: string
+  /** Channel ids this client can resolve, for `<#id>` links in the body. */
+  channels?: ChannelIndex
   grouped: boolean
   comfy: boolean
   relativeTimestamps: boolean
@@ -47,6 +50,7 @@ export function MessageRow({
   message,
   bufferId,
   service,
+  channels,
   grouped,
   comfy,
   relativeTimestamps,
@@ -95,12 +99,17 @@ export function MessageRow({
     body = stripQuoteBlocks(body)
 
     return {
-      html: formatMessage(body, { revealedSpoilers: revealed, isSockchat, smilies: smilieIndex }),
+      html: formatMessage(body, {
+        revealedSpoilers: revealed,
+        isSockchat,
+        smilies: smilieIndex,
+        channels
+      }),
       media,
       codeBlocks,
       quoteBlocks
     }
-  }, [message.body, contentSniffing, sniffed, revealed, isSockchat, smilieIndex])
+  }, [message.body, contentSniffing, sniffed, revealed, isSockchat, smilieIndex, channels])
 
   const entries: MenuEntry[] = [
     { label: 'Reply', icon: 'reply', onClick: () => reply() },
@@ -237,6 +246,11 @@ export function MessageRow({
                 <RichText
                   html={parts.html}
                   onRevealSpoiler={(i) => setRevealed((r) => ({ ...r, [i]: true }))}
+                  // Following a channel link moves the rail too: the channel
+                  // is usually in the same guild, but a cross-guild link is
+                  // exactly the case where landing on a list that isn't
+                  // showing it would be baffling.
+                  onOpenChannel={(id) => void store.selectBuffer(id, true)}
                 />
                 {message.edited && <span className="edited-tag small muted"> (edited)</span>}
               </span>
@@ -278,7 +292,10 @@ export function MessageRow({
                 ))}
               {embed.description && (
                 <div className="rich-embed-desc small">
-                  <RichText html={formatMessage(embed.description)} />
+                  <RichText
+                    html={formatMessage(embed.description, { channels })}
+                    onOpenChannel={(id) => void store.selectBuffer(id, true)}
+                  />
                 </div>
               )}
             </div>
