@@ -119,6 +119,19 @@ export interface VoiceChannel {
   members?: VoiceMember[]
 }
 
+/**
+ * A conversation that is ringing.
+ *
+ * Deliberately no name or picture: which conversation it is, is the answer,
+ * and the buffer already carries how to draw the person it is with.
+ */
+export interface IncomingCall {
+  accountId: string
+  bufferId: string
+  channelId: string
+  ringing: boolean
+}
+
 /** Where an account is currently connected in voice. */
 export interface VoiceSession {
   accountId: string

@@ -12,7 +12,8 @@ import type {
   AudioDevice,
   VoicePrefs,
   VoiceChannel,
-  VoiceSession
+  VoiceSession,
+  IncomingCall
 } from '../../../shared/wire'
 import { buildSmilieIndex, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { resolveMediaUrl } from '../lib/util'
@@ -76,6 +77,8 @@ export interface ChatState {
   voiceGuildId: string
   /** Live voice connections, so the pane can show what you are in. */
   voiceSessions: VoiceSession[]
+  /** Conversations ringing right now, newest last. */
+  incomingCalls: IncomingCall[]
   activeBufferId: string
   activePanel: ActivePanel
   joinPanelAccountId: string
@@ -127,6 +130,7 @@ const INITIAL: ChatState = {
   voiceChannels: [],
   voiceGuildId: '',
   voiceSessions: [],
+  incomingCalls: [],
   activeBufferId: '',
   activePanel: '',
   joinPanelAccountId: '',
@@ -260,7 +264,8 @@ export class ChatStore {
       // A call outlives this window: the daemon holds it, so a reconnecting
       // or restarted client has to pick the connection back up rather than
       // showing nothing while audio is still flowing.
-      this.refreshVoiceSessions()
+      this.refreshVoiceSessions(),
+      this.refreshIncomingCalls()
     ])
     if (this.state.activeBufferId) await this.selectBuffer(this.state.activeBufferId)
   }
@@ -390,6 +395,55 @@ export class ChatStore {
     } catch {
       this.set({ voiceSessions: [] })
     }
+  }
+
+  /**
+   * What is ringing, asked for at startup.
+   *
+   * The daemon holds the connection while this window is shut, so a call can
+   * begin ringing before there is anything to show it - opening the window
+   * mid-call would otherwise be silent while the caller waits.
+   */
+  async refreshIncomingCalls(): Promise<void> {
+    try {
+      this.set({ incomingCalls: await window.moho.rpc<IncomingCall[]>('getIncomingCalls') })
+    } catch {
+      // An older daemon has no such method; no calls is the honest answer.
+      this.set({ incomingCalls: [] })
+    }
+  }
+
+  private setRinging(call: IncomingCall): void {
+    const others = this.state.incomingCalls.filter((c) => c.bufferId !== call.bufferId)
+    this.set({ incomingCalls: call.ringing ? [...others, call] : others })
+  }
+
+  /** Answers a ringing call, and opens the conversation it is in. */
+  async acceptCall(bufferId: string): Promise<void> {
+    // Optimistic: the ringing stops the instant it is answered, rather than a
+    // round trip later with the ringtone still going.
+    this.setRinging({ ...this.callFor(bufferId), ringing: false })
+    try {
+      await window.moho.rpc('acceptCall', { bufferId })
+      await this.selectBuffer(bufferId, true)
+      await this.refreshVoiceSessions()
+    } catch (e) {
+      this.toast('error', `Couldn't answer: ${(e as Error).message}`)
+    }
+  }
+
+  async declineCall(bufferId: string): Promise<void> {
+    this.setRinging({ ...this.callFor(bufferId), ringing: false })
+    try {
+      await window.moho.rpc('declineCall', { bufferId })
+    } catch (e) {
+      this.toast('error', `Couldn't decline: ${(e as Error).message}`)
+    }
+  }
+
+  private callFor(bufferId: string): IncomingCall {
+    const known = this.state.incomingCalls.find((c) => c.bufferId === bufferId)
+    return known ?? { accountId: '', bufferId, channelId: '', ringing: false }
   }
 
   async joinVoice(accountId: string, guildId: string, channelId: string): Promise<void> {
@@ -557,6 +611,11 @@ export class ChatStore {
       case 'discordVoiceLeft':
       case 'discordVoiceError':
         void this.refreshVoiceSessions()
+        break
+
+      // A conversation started or stopped ringing.
+      case 'incomingCall':
+        this.setRinging(data as IncomingCall)
         break
 
       // Somebody joined or left a voice channel in a guild we may be showing.

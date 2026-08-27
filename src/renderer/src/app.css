@@ -869,6 +869,95 @@ img.composer-emoji {
 
 /* --- toasts ----------------------------------------------------------- */
 
+/* --- incoming calls ---------------------------------------------------- */
+
+/* Bottom left, above the account plaque, which is where Discord puts it and
+   where the eye already goes for who-you-are. Deliberately not centred over
+   the conversation: a call should be answerable without losing your place. */
+.incoming-calls {
+  position: fixed;
+  left: var(--spacing-m);
+  bottom: var(--spacing-m);
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--spacing-s);
+  /* Above the toasts, which are the only other floating thing this low. */
+  z-index: 2100;
+  max-width: 360px;
+}
+
+.incoming-call {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-highest);
+  border: 1px solid var(--outline-medium);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55);
+  /* Breathes in time with the ringtone, so the panel reads as ringing rather
+     than as one more notification that happens to have buttons. */
+  animation: call-pulse 2.6s ease-in-out infinite;
+}
+
+@keyframes call-pulse {
+  0%,
+  25%,
+  100% {
+    border-color: var(--outline-medium);
+  }
+  8%,
+  18% {
+    border-color: var(--success);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .incoming-call {
+    animation: none;
+  }
+}
+
+.incoming-call-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.incoming-call-name {
+  font-weight: 600;
+}
+
+/* Green to answer and red to hang up, which is the one piece of visual
+   vocabulary every phone made since 1998 shares. */
+.call-answer,
+.call-decline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 50%;
+  color: #fff;
+}
+
+.call-answer {
+  background: var(--success);
+}
+
+/* Not --error: that token is a pale pink meant for text on a dark surface,
+   and a hang-up button filled with it reads as decorative. */
+.call-decline {
+  background: #c9403c;
+}
+
+.call-answer:hover,
+.call-decline:hover {
+  filter: brightness(1.15);
+}
+
 .toasts {
   position: fixed;
   right: var(--spacing-m);
