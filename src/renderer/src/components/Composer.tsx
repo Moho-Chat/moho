@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
 import { EmojiPicker } from './EmojiPicker'
 import { useActiveBuffer, useChat, useStore } from '../state/hooks'
+import { emojiPreview } from '../lib/format'
 import { bufferDisplayName, resolveMediaUrl } from '../lib/util'
 
 interface StagedAttachment {
@@ -12,6 +13,40 @@ interface StagedAttachment {
 }
 
 const IMAGE_EXTS = /\.(png|jpe?g|gif|webp|bmp)$/i
+
+/**
+ * What the box holds, as the text that will be sent.
+ *
+ * An emoji sits in the box as a picture and leaves it as the token the service
+ * expects, which is the whole reason this is an editable div rather than an
+ * input: an input can hold text and nothing else, so choosing an emoji could
+ * only ever put `<:lettyCrazy:1413156421880647762>` in front of the person who
+ * chose it.
+ */
+export function composerText(root: HTMLElement): string {
+  let out = ''
+  const walk = (node: Node): void => {
+    node.childNodes.forEach((n) => {
+      if (n.nodeType === Node.TEXT_NODE) out += n.nodeValue ?? ''
+      else if (n instanceof HTMLImageElement) out += n.dataset.token ?? ''
+      else if (n instanceof HTMLBRElement) out += '\n'
+      else if (n.nodeType === Node.ELEMENT_NODE) walk(n)
+    })
+  }
+  walk(root)
+  return out
+}
+
+/** Caret to the end, which is where anything just inserted belongs. */
+function caretToEnd(el: HTMLElement): void {
+  el.focus()
+  const range = document.createRange()
+  range.selectNodeContents(el)
+  range.collapse(false)
+  const selection = window.getSelection()
+  selection?.removeAllRanges()
+  selection?.addRange(range)
+}
 
 /**
  * The message input, plus the reply chip, staged attachments, and the Matrix
@@ -27,7 +62,7 @@ export function Composer(): JSX.Element | null {
   const [staged, setStaged] = useState<StagedAttachment[]>([])
   const [pickerOpen, setPickerOpen] = useState(false)
   const seqRef = useRef(0)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLDivElement>(null)
   const emojiButtonRef = useRef<HTMLButtonElement>(null)
 
   const smilies = useChat((s) => s.smilies)
@@ -67,16 +102,51 @@ export function Composer(): JSX.Element | null {
     } else {
       void store.sendMessage(buffer.id, body)
     }
+    if (inputRef.current) inputRef.current.replaceChildren()
     setText('')
     inputRef.current?.focus()
   }
 
-  const onPaste = async (): Promise<void> => {
+  /** Puts a picked emoji in the box: as its picture where there is one. */
+  const insertEmoji = (token: string): void => {
+    const el = inputRef.current
+    if (!el) return
+    const preview = emojiPreview(token, service === 'sockchat' ? smilies : [])
+    if (preview) {
+      const img = document.createElement('img')
+      img.className = 'composer-emoji'
+      img.src = resolveMediaUrl(preview.src)
+      img.alt = preview.label
+      img.title = preview.label
+      // What leaves the box when the message is sent. The picture is for the
+      // person typing; the service only ever sees this.
+      img.dataset.token = token
+      el.appendChild(img)
+    } else {
+      el.appendChild(document.createTextNode(token))
+    }
+    setText(composerText(el))
+    caretToEnd(el)
+  }
+
+  const onPaste = (e: React.ClipboardEvent): void => {
+    // Pasting into an editable div would otherwise bring the clipboard's own
+    // markup with it - fonts, colours, whole tables. Only the text is wanted.
+    // Newlines flattened for the same reason Enter does not make one, and
+    // because an input silently did this to a multi-line paste anyway.
+    const pasted = e.clipboardData.getData('text/plain').replace(/\s*\n\s*/g, ' ')
+    if (pasted) {
+      e.preventDefault()
+      // Deprecated, and still the only way to insert at the caret while
+      // keeping the box's own undo history intact. Chromium is the only
+      // engine this runs on, so its removal is not a live risk.
+      document.execCommand('insertText', false, pasted)
+      if (inputRef.current) setText(composerText(inputRef.current))
+    }
     if (!supportsAttachments) return
-    // Not preventDefault'd: the browser's own text paste still runs alongside
-    // this, and is a no-op for an image-only clipboard entry.
-    const path = await window.moho.readClipboardImage()
-    if (path) stage(path)
+    void window.moho.readClipboardImage().then((path) => {
+      if (path) stage(path)
+    })
   }
 
   return (
@@ -129,20 +199,41 @@ export function Composer(): JSX.Element | null {
           />
         )}
 
-        <input
-          ref={inputRef}
-          className="text-field composer-input"
-          placeholder={`Message ${bufferDisplayName(buffer.name)}`}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              submit()
-            }
-          }}
-          onPaste={() => void onPaste()}
-        />
+        <div className="composer-input-wrap">
+          {/* Never given children by React: the box's contents are the
+              person's, and re-rendering them from state would move the caret
+              out from under them on every keystroke. */}
+          <div
+            ref={inputRef}
+            className="text-field composer-input"
+            contentEditable
+            suppressContentEditableWarning
+            role="textbox"
+            aria-multiline="true"
+            aria-label={`Message ${bufferDisplayName(buffer.name)}`}
+            onInput={(e) => setText(composerText(e.currentTarget))}
+            onKeyDown={(e) => {
+              // Enter sends and Shift+Enter does nothing, which is what the
+              // input this replaced did. An editable div would happily take a
+              // second line, but a newline reaching IRC is a malformed
+              // PRIVMSG - nothing between here and the socket splits one - so
+              // multi-line is a separate change with its own thinking to do.
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                if (!e.shiftKey) submit()
+              }
+            }}
+            onPaste={onPaste}
+            // A drop would bring the source's markup in the same way a paste
+            // would, and nothing here wants dropped content.
+            onDrop={(e) => e.preventDefault()}
+          />
+          {!text.trim() && (
+            <span className="composer-placeholder muted">
+              Message {bufferDisplayName(buffer.name)}
+            </span>
+          )}
+        </div>
 
         <button
           ref={emojiButtonRef}
@@ -175,9 +266,8 @@ export function Composer(): JSX.Element | null {
           // would just send literal text nobody renders.
           smilies={service === 'sockchat' ? smilies : []}
           onSelect={(emoji) => {
-            setText((t) => t + emoji)
+            insertEmoji(emoji)
             setPickerOpen(false)
-            inputRef.current?.focus()
           }}
           onClose={() => setPickerOpen(false)}
         />

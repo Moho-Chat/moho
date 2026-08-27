@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { resolveMediaUrl } from '../lib/util'
-import { discordEmojiUrl, type SmilieEntry } from '../lib/format'
+import { discordEmojiUrl, emojiPreview, type SmilieEntry } from '../lib/format'
 import type { CustomEmoji } from '../../../shared/wire'
 
 /**
@@ -160,11 +160,32 @@ export function EmojiPicker({ anchor, customEmoji = [], smilies = [], onSelect, 
       <div className="emoji-scroll">
         {!q && recent.length > 0 && (
           <Section title="Recent">
-            {recent.map((r) => (
-              <button key={r} type="button" className="emoji-cell" onClick={() => pick(r)}>
-                {r}
-              </button>
-            ))}
+            {recent.map((r) => {
+              // A recent is stored as the text that gets sent, which for a
+              // custom emoji or a shortcode is a stand-in rather than the
+              // thing. Resolved back to a picture here, so the row of recents
+              // looks like the rows above it rather than a column of tokens.
+              const preview = emojiPreview(r, smilies)
+              // A Unicode emoji is its own picture and shows at full size; a
+              // stand-in that resolved to nothing is a shortcode, and every
+              // shortcode has colons in it where an emoji character has none.
+              const token = !preview && r.includes(':')
+              return (
+                <button
+                  key={r}
+                  type="button"
+                  className={token ? 'emoji-cell emoji-token' : 'emoji-cell'}
+                  title={preview?.label || r}
+                  onClick={() => pick(r)}
+                >
+                  {preview ? (
+                    <img src={resolveMediaUrl(preview.src)} alt={preview.label} />
+                  ) : (
+                    r
+                  )}
+                </button>
+              )
+            })}
           </Section>
         )}
 

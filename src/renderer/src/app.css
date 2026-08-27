@@ -585,8 +585,43 @@
   padding: var(--spacing-s);
 }
 
-.composer-input {
+/* The box is an editable div rather than an input so an emoji can sit in it as
+   a picture. That costs the native placeholder, so one is drawn over the top -
+   hence the wrapper, which exists only to position it. */
+.composer-input-wrap {
+  position: relative;
   flex: 1;
+  min-width: 0;
+}
+
+.composer-input {
+  width: 100%;
+  /* An empty editable div has no height of its own, unlike the input this
+     replaced - without this the bar collapses whenever the box is empty. */
+  min-height: 1.25em;
+  /* A long message wraps and the box grows with it, up to a point - an input
+     could only scroll sideways, hiding the start of what was being written. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.composer-placeholder {
+  position: absolute;
+  /* The box's own padding plus its border, so the hint sits exactly where the
+     first typed character will. */
+  left: calc(var(--spacing-s) + 1px);
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+img.composer-emoji {
+  height: 1.375em;
+  width: auto;
+  vertical-align: -0.3em;
+  object-fit: contain;
 }
 
 /* --- nick list -------------------------------------------------------- */
@@ -1173,6 +1208,17 @@ img.smilie {
   max-width: 26px;
   max-height: 26px;
   object-fit: contain;
+}
+
+/* A recent that resolves to no picture is a shortcode belonging to a service
+   that isn't open, so its text is all there is to show. Kept inside its cell -
+   at full size a row of them overlapped into an unreadable smear. */
+.emoji-cell.emoji-token {
+  overflow: hidden;
+  padding: 0 2px;
+  font-size: 10px;
+  line-height: 1.1;
+  word-break: break-all;
 }
 
 .emoji-empty {

@@ -35,6 +35,37 @@ export function discordEmojiUrl(id: string, size = 44): string {
   return `https://cdn.discordapp.com/emojis/${id}.webp?size=${size}&animated=true`
 }
 
+/** What something picked out of the emoji list looks like, when it isn't text. */
+export interface EmojiPreview {
+  /** Possibly a local path - run it through resolveMediaUrl before use. */
+  src: string
+  label: string
+}
+
+/**
+ * The picture behind a piece of text that stands in for an emoji, or null when
+ * the text is the emoji.
+ *
+ * A Unicode emoji is its own picture and needs nothing. The other two kinds are
+ * stand-ins - Discord's `<:name:id>` and a Sneedchat shortcode - and anywhere
+ * they are shown to a person rather than sent to a server, they should be shown
+ * as what they stand for. The composer and the picker's recent list both showed
+ * the stand-in, so choosing an emoji put `<:lettyCrazy:1413156421880647762>` in
+ * the message box and left it there in the recents afterwards.
+ *
+ * Discord's form carries its own id, so it resolves anywhere. A shortcode only
+ * resolves where the smilie table is loaded, which is a Sneedchat buffer -
+ * elsewhere the shortcode is genuinely all that is known, and showing it is
+ * honest rather than broken.
+ */
+export function emojiPreview(text: string, smilies: SmilieEntry[] = []): EmojiPreview | null {
+  const custom = text.match(/^<a?:([A-Za-z0-9_~]{2,32}):(\d+)>$/)
+  if (custom) return { src: discordEmojiUrl(custom[2]), label: `:${custom[1]}:` }
+  const smilie = smilies.find((s) => s.aliases?.includes(text))
+  if (smilie?.url) return { src: smilie.url, label: smilie.label }
+  return null
+}
+
 export function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
