@@ -262,6 +262,8 @@ export function Composer(): JSX.Element | null {
           // Only the active buffer's own guild emoji are offered - nobilis
           // already filters that list to what's actually usable there.
           customEmoji={bufferEmojiByBuffer[buffer.id] || []}
+          // Recent picks belong to whoever is signed in here, not to the app.
+          accountId={account?.id}
           // Smilies are Sneedchat-only; posting a shortcode anywhere else
           // would just send literal text nobody renders.
           smilies={service === 'sockchat' ? smilies : []}

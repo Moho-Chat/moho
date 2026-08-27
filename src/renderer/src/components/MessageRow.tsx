@@ -415,6 +415,7 @@ export function MessageRow({
         <EmojiPicker
           anchor={reactButtonRef.current}
           customEmoji={bufferEmoji}
+          accountId={store.accountFor(bufferId)?.id}
           onSelect={(emoji) => {
             void store.toggleReaction(bufferId, message.id, emoji, true)
             setPickerOpen(false)

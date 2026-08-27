@@ -53,28 +53,62 @@ const COMMON_EMOJI: { emoji: string; name: string }[] = [
   { emoji: '🤖', name: 'robot bot' }
 ]
 
-const RECENT_KEY = 'emoji.recent'
 const MAX_RECENT = 16
+
+/**
+ * Where one account's recent picks are kept.
+ *
+ * Per account rather than one list for everything, because nothing in that
+ * list is portable. A Sneedchat shortcode is meaningless on Discord, which
+ * would send it as literal text. A Discord custom emoji belongs to a guild,
+ * and whether a *particular* signed-in user may use one from a guild they are
+ * not in depends on whether that user pays for Nitro - so even two Discord
+ * accounts on this machine disagree about the same emoji. An account id
+ * already names both the protocol and the user, which is exactly the grain
+ * this needs.
+ */
+function recentKey(accountId?: string): string {
+  return `emoji.recent:${accountId || 'none'}`
+}
+
+function readRecent(accountId?: string): string[] {
+  try {
+    const stored = JSON.parse(localStorage.getItem(recentKey(accountId)) || '[]')
+    return Array.isArray(stored) ? stored : []
+  } catch {
+    return []
+  }
+}
 
 interface Props {
   anchor: HTMLElement | null
   customEmoji?: CustomEmoji[]
   smilies?: SmilieEntry[]
+  /** Whose recent picks to show. Absent means no account, so none are kept. */
+  accountId?: string
   onSelect: (text: string) => void
   onClose: () => void
 }
 
-export function EmojiPicker({ anchor, customEmoji = [], smilies = [], onSelect, onClose }: Props): JSX.Element {
+export function EmojiPicker({
+  anchor,
+  customEmoji = [],
+  smilies = [],
+  accountId,
+  onSelect,
+  onClose
+}: Props): JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
   const [query, setQuery] = useState('')
   const [pos, setPos] = useState({ left: 0, top: 0 })
-  const [recent, setRecent] = useState<string[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]')
-    } catch {
-      return []
-    }
-  })
+  const [recent, setRecent] = useState<string[]>(() => readRecent(accountId))
+
+  // The picker is normally opened fresh, but it stays up across a buffer
+  // switch - and that switch can cross from one account to another, at which
+  // point the list on screen belongs to somebody else.
+  useEffect(() => {
+    setRecent(readRecent(accountId))
+  }, [accountId])
 
   // Anchored above and right-aligned to the button that opened it, then
   // clamped back inside the viewport once its real size is known.
@@ -136,7 +170,7 @@ export function EmojiPicker({ anchor, customEmoji = [], smilies = [], onSelect, 
     const next = [text, ...recent.filter((r) => r !== text)].slice(0, MAX_RECENT)
     setRecent(next)
     try {
-      localStorage.setItem(RECENT_KEY, JSON.stringify(next))
+      localStorage.setItem(recentKey(accountId), JSON.stringify(next))
     } catch {
       /* a full or disabled store just means recents don't persist */
     }
