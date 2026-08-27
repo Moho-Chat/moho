@@ -18,6 +18,23 @@ export function defaultSocketPath(): string {
   return path.join(runtimeDir, 'nobilis', 'nobilis.sock')
 }
 
+/**
+ * Turns a daemon error into one that says what to do about it.
+ *
+ * There is exactly one worth translating, and it is the one that will keep
+ * happening: the daemon and this client are separately built binaries, and the
+ * daemon can also be one left running from before an upgrade. When this client
+ * is the newer of the two it asks for methods the daemon has never heard of,
+ * and "unknown method" reads like a bug in the feature rather than what it is,
+ * which is two halves out of step. Adding a feature that spans both is routine
+ * here, so this will be met again.
+ */
+function explain(error: string): string {
+  const unknown = error.match(/^unknown method "([^"]+)"$/)
+  if (!unknown) return error
+  return `The running nobilis is older than this copy of moho and doesn't have "${unknown[1]}" yet. Restart the daemon after rebuilding, or repack the app so the two match.`
+}
+
 interface Pending {
   resolve: (value: any) => void
   reject: (reason: Error) => void
@@ -136,7 +153,7 @@ export class NobilisClient extends EventEmitter {
     const pending = this.pending.get(msg.id)
     if (!pending) return
     this.pending.delete(msg.id)
-    if (msg.error) pending.reject(new Error(String(msg.error)))
+    if (msg.error) pending.reject(new Error(explain(String(msg.error))))
     else pending.resolve(msg.result ?? null)
   }
 

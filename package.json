@@ -11,8 +11,8 @@
     "build": "npm run typecheck && electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "pack": "npm run build && electron-builder --linux AppImage",
-    "pack:dir": "npm run build && electron-builder --linux dir",
+    "pack": "npm run daemon && npm run build && electron-builder --linux AppImage",
+    "pack:dir": "npm run daemon && npm run build && electron-builder --linux dir",
     "daemon": "cargo build --release --manifest-path nobilis/Cargo.toml"
   },
   "dependencies": {
