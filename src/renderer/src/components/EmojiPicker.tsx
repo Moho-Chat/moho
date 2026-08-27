@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { resolveMediaUrl } from '../lib/util'
-import type { SmilieEntry } from '../lib/format'
+import { discordEmojiUrl, type SmilieEntry } from '../lib/format'
 import type { CustomEmoji } from '../../../shared/wire'
 
 /**
@@ -196,10 +196,7 @@ export function EmojiPicker({ anchor, customEmoji = [], smilies = [], onSelect, 
                 // renders it, so it must go out as this literal text.
                 onClick={() => pick(`<${e.animated ? 'a' : ''}:${e.name}:${e.id}>`)}
               >
-                <img
-                  src={`https://cdn.discordapp.com/emojis/${e.id}.${e.animated ? 'gif' : 'png'}?size=44`}
-                  alt={e.name}
-                />
+                <img src={discordEmojiUrl(e.id)} alt={e.name} />
               </button>
             ))}
           </Section>

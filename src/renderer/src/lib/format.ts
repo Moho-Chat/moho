@@ -17,6 +17,24 @@ export interface MediaItem {
   youtubeId?: string
 }
 
+/**
+ * The picture for a Discord custom emoji.
+ *
+ * Always WebP, and always asking for the animated form, rather than choosing
+ * .gif or .png from the emoji's `animated` flag. That flag is not reliable:
+ * a fifth of one guild's emoji here are flagged animated while the CDN holds
+ * only a still image for them, and asking that CDN for a .gif it does not
+ * have is a 415, which is a broken-image box in the picker and in every
+ * message using it. WebP is served for both kinds, so nothing has to be
+ * guessed - Discord's own client fetches emoji this way for the same reason.
+ *
+ * The flag is still right for the `<a:name:id>` token a message carries;
+ * it is only useless for picking a file extension.
+ */
+export function discordEmojiUrl(id: string, size = 44): string {
+  return `https://cdn.discordapp.com/emojis/${id}.webp?size=${size}&animated=true`
+}
+
 export function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
@@ -158,6 +176,15 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
     if (revealed[idx]) return stow(`<span class="spoiler revealed">${escapeHtml(inner)}</span>`)
     return stow(`<a href="spoiler:${idx}" class="spoiler">${escapeHtml(inner)}</a>`)
   })
+
+  // Discord custom emoji, which arrive in the body as `<:name:id>` (or
+  // `<a:name:id>` when animated) and were previously shown exactly like that.
+  // No lookup is needed - the id is in the token, and the picture is public -
+  // so this works for any guild's emoji, including ones from a server this
+  // account is not in.
+  out = out.replace(/<(a?):([A-Za-z0-9_~]{2,32}):(\d+)>/g, (_m, _anim: string, name: string, id: string) =>
+    stow(`<img src="${discordEmojiUrl(id, 48)}" class="custom-emoji" alt=":${escapeHtml(name)}:">`)
+  )
 
   // Discord channel links. What arrives is `<#1393001234568164748>` and
   // nothing else - no name anywhere in the payload - so this is the only

@@ -916,6 +916,22 @@
   cursor: default;
 }
 
+/* A Discord custom emoji inside a message. Sized in em rather than pixels so
+   it tracks the text it sits in, and baseline-aligned so a line with one in
+   it keeps the same rhythm as a line without. */
+img.custom-emoji {
+  height: 1.375em;
+  width: auto;
+  vertical-align: -0.3em;
+  object-fit: contain;
+}
+
+/* The emoji is gone from its guild, so the name the sender typed is all
+   that is left to show. */
+.custom-emoji-gone {
+  color: var(--surface-variant-text);
+}
+
 /* No fixed size: most smilies are small by design (24-64px), and forcing a
    square distorts the wider banner-shaped ones. */
 img.smilie {

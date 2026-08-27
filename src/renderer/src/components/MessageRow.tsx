@@ -17,6 +17,7 @@ import {
   stripCodeBlocks,
   stripEmbeddedUrls,
   stripQuoteBlocks,
+  discordEmojiUrl,
   type ChannelIndex
 } from '../lib/format'
 import {
@@ -428,19 +429,19 @@ export function MessageRow({
 }
 
 /**
- * A Discord custom reaction arrives as "name:id"; a plain Unicode reaction is
- * just the character itself.
+ * A Discord custom reaction; a plain Unicode reaction is just the character
+ * itself.
+ *
+ * nobilis stores these wrapped as `<:name:id>` - the same shape a message body
+ * carries - and only unwraps them at the point it calls Discord's reaction
+ * endpoint. Matching only the bare `name:id` therefore matched nothing, and
+ * every custom reaction on every message rendered as its literal token beside
+ * the count.
  */
-function ReactionEmoji({ emoji, animated }: { emoji: string; animated?: boolean }): JSX.Element {
-  const custom = emoji.match(/^(.+):(\d+)$/)
+function ReactionEmoji({ emoji }: { emoji: string; animated?: boolean }): JSX.Element {
+  const custom = emoji.match(/^<?a?:?([A-Za-z0-9_~]{2,32}):(\d+)>?$/)
   if (!custom) return <span>{emoji}</span>
-  return (
-    <img
-      className="reaction-emoji"
-      src={`https://cdn.discordapp.com/emojis/${custom[2]}.${animated ? 'gif' : 'png'}?size=44`}
-      alt={custom[1]}
-    />
-  )
+  return <img className="reaction-emoji" src={discordEmojiUrl(custom[2])} alt={custom[1]} />
 }
 
 function moderationEntries(

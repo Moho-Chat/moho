@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { MEDIA_SCHEME, resolveMediaUrl } from './util'
 
 /**
@@ -31,7 +31,8 @@ const ALLOWED_CLASSES = new Set([
   'revealed',
   'smilie',
   'channel-mention',
-  'unknown'
+  'unknown',
+  'custom-emoji'
 ])
 
 /** Hex or a plain CSS colour keyword - nothing that could carry a url() or expression. */
@@ -92,11 +93,16 @@ function walk(node: Node, handlers: Handlers, depth: number): ReactNode[] {
       case 'IMG': {
         const src = el.getAttribute('src') || ''
         const resolved = safeImageSrc(src)
-        if (resolved) {
-          out.push(
-            <img key={key} src={resolved} className={className} alt={el.getAttribute('alt') || ''} />
-          )
+        const alt = el.getAttribute('alt') || ''
+        if (!resolved) break
+        // A custom emoji that has since been deleted from its guild leaves a
+        // token in every message that used it, and a broken-image box is a
+        // worse answer than the ":name:" the sender typed.
+        if (className === 'custom-emoji') {
+          out.push(<CustomEmoji key={key} src={resolved} alt={alt} />)
+          break
         }
+        out.push(<img key={key} src={resolved} className={className} alt={alt} />)
         break
       }
 
@@ -197,6 +203,20 @@ function walk(node: Node, handlers: Handlers, depth: number): ReactNode[] {
   })
 
   return out
+}
+
+function CustomEmoji({ src, alt }: { src: string; alt: string }): JSX.Element {
+  const [gone, setGone] = useState(false)
+  if (gone) return <span className="custom-emoji-gone">{alt}</span>
+  return (
+    <img
+      src={src}
+      className="custom-emoji"
+      alt={alt}
+      title={alt}
+      onError={() => setGone(true)}
+    />
+  )
 }
 
 function classNameOf(el: Element): string | undefined {
