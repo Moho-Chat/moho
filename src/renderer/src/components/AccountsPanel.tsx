@@ -619,10 +619,12 @@ function DiscordForm({ accountId }: { accountId?: string }): JSX.Element {
           >
             {accountId ? 'Re-authenticate' : 'Sign in'}
           </button>
-          <p className="small muted">
-            Discord often answers a password sign-in with a captcha, which can&apos;t be completed
-            from here. QR login is the way through that, since approving on a device you are
-            already signed in on is the same proof the captcha asks for.
+          <p className="small warn-text">
+            Discord generally will not accept a password from a third-party client — it answers
+            with a captcha or an &ldquo;Invalid Form Body&rdquo; rejection — and every attempt
+            counts against the account, which is how sign-in warnings appear on it. QR login is
+            the way in: approving on a device you are already signed in on is the proof Discord is
+            asking for, and it costs the account nothing.
           </p>
         </>
       )}

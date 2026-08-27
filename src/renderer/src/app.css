@@ -869,6 +869,12 @@ img.composer-emoji {
 
 /* --- toasts ----------------------------------------------------------- */
 
+/* A note that is a caution rather than an aside. Muted grey is right for
+   "here is some context" and wrong for "this will cost you something". */
+.warn-text {
+  color: var(--warning);
+}
+
 /* --- incoming calls ---------------------------------------------------- */
 
 /* Bottom left, above the account plaque, which is where Discord puts it and
