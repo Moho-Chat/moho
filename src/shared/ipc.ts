@@ -19,6 +19,7 @@ export const IPC = {
   daemonStatus: 'moho:daemonStatus',
   smiliesDir: 'moho:smiliesDir',
   markBufferRead: 'moho:markBufferRead',
+  browserLogin: 'moho:browserLogin',
 
   // main -> renderer (send)
   event: 'moho:event',

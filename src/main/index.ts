@@ -20,6 +20,7 @@ import { defaultSocketPath, NobilisClient } from './nobilis-client'
 import { NobilisProcess } from './nobilis-process'
 import { Prefs } from './prefs'
 import { Notifier } from './notifications'
+import { browserLogin, LOGIN_FLOWS } from './browser-login'
 import { IPC } from '../shared/ipc'
 import { allowRoot, installMediaHandler, registerMediaScheme } from './media-protocol'
 import { saveMedia } from './downloads'
@@ -350,6 +351,30 @@ function wireIpc(): void {
     available: nobilis.available(),
     linkUp: client.linkUp
   }))
+  /**
+   * Sign in through the service's own login page.
+   *
+   * The captured credential goes straight from the login window to the daemon
+   * and is never returned here, so it never enters the renderer at all - only
+   * whether it worked comes back. Nothing in this path is logged: an error
+   * from the daemon is passed through, but the token never appears in one.
+   */
+  ipcMain.handle(IPC.browserLogin, async (_e, service: string, accountId?: string) => {
+    const flow = LOGIN_FLOWS[service]
+    if (!flow) return { ok: false, error: `No browser sign-in is defined for ${service}` }
+    const outcome = await browserLogin(service)
+    if (!outcome.ok || !outcome.value) return { ok: false, error: outcome.error }
+    try {
+      await client.request(flow.finish.method, {
+        [flow.finish.param]: outcome.value,
+        ...(accountId ? { accountId } : {})
+      })
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
+
   ipcMain.handle(IPC.smiliesDir, () => smiliesPath())
 }
 

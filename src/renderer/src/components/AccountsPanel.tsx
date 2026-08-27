@@ -468,9 +468,9 @@ function DiscordForm({ accountId }: { accountId?: string }): JSX.Element {
   const qrPath = useChat((s) => s.discordQrPath)
   const status = useChat((s) => s.discordLoginStatus)
   const mfa = useChat((s) => s.discordMfa)
-  const [method, setMethod] = useState<'qr' | 'password'>('qr')
-  const [login, setLogin] = useState('')
-  const [password, setPassword] = useState('')
+  const [method, setMethod] = useState<'qr' | 'browser'>('qr')
+  // No password state any more, deliberately: the password is typed into
+  // Discord's own page in the sign-in window, so this process never holds one.
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -551,10 +551,10 @@ function DiscordForm({ accountId }: { accountId?: string }): JSX.Element {
         </button>
         <button
           type="button"
-          className={method === 'password' ? 'active' : undefined}
-          onClick={() => setMethod('password')}
+          className={method === 'browser' ? 'active' : undefined}
+          onClick={() => setMethod('browser')}
         >
-          Password
+          Browser
         </button>
       </div>
 
@@ -583,49 +583,34 @@ function DiscordForm({ accountId }: { accountId?: string }): JSX.Element {
         </>
       ) : (
         <>
-          <div className="field-row">
-            <label className="field">
-              <span className="small muted">Email or phone</span>
-              <input
-                className="text-field"
-                value={login}
-                onChange={(e) => setLogin(e.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span className="small muted">Password</span>
-              <input
-                className="text-field"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </label>
-          </div>
+          <p className="small muted">
+            Opens Discord&apos;s own sign-in page in a browser window. Your password goes into
+            their form and never passes through moho — and because it is their page, their
+            captcha, two-factor and device checks all work normally. The window is thrown away
+            afterwards, session and all.
+          </p>
           <button
             type="button"
             className="button"
-            disabled={busy || !login || !password}
+            disabled={busy}
             onClick={() => {
               setBusy(true)
+              store.setDiscordLoginStatus('Waiting for the sign-in window…')
               void window.moho
-                .rpc('addDiscordAccountPassword', { login, password, ...target })
-                .then(() => {
-                  setPassword('')
+                .browserLogin('discord', accountId || undefined)
+                .then((r) => {
                   setBusy(false)
+                  // Closing the window is a decision, not a failure worth
+                  // shouting about.
+                  if (r.ok) store.setDiscordLoginStatus('Signed in.')
+                  else if (r.error === 'cancelled') store.setDiscordLoginStatus('')
+                  else fail(new Error(r.error || 'Sign-in failed'))
                 })
                 .catch(fail)
             }}
           >
-            {accountId ? 'Re-authenticate' : 'Sign in'}
+            {busy ? 'Waiting…' : accountId ? 'Re-authenticate in a browser' : 'Sign in with a browser'}
           </button>
-          <p className="small warn-text">
-            Discord generally will not accept a password from a third-party client — it answers
-            with a captcha or an &ldquo;Invalid Form Body&rdquo; rejection — and every attempt
-            counts against the account, which is how sign-in warnings appear on it. QR login is
-            the way in: approving on a device you are already signed in on is the proof Discord is
-            asking for, and it costs the account nothing.
-          </p>
         </>
       )}
       {status && <p className="small muted">{status}</p>}

@@ -19,6 +19,17 @@ const api = {
     return res.result as T
   },
 
+  /**
+   * Signs in through the service's own login page, in a real browser window.
+   *
+   * Only the outcome comes back. The credential the window captures goes
+   * straight from main to the daemon and is deliberately never returned here -
+   * the renderer has no reason to hold a token, so it never does.
+   */
+  browserLogin(service: string, accountId?: string): Promise<{ ok: boolean; error?: string }> {
+    return ipcRenderer.invoke(IPC.browserLogin, service, accountId)
+  },
+
   onEvent(cb: (frame: NobilisEvent) => void): () => void {
     const handler = (_e: unknown, frame: NobilisEvent): void => cb(frame)
     ipcRenderer.on(IPC.event, handler)
