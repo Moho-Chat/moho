@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "pack": "npm run daemon && npm run build && electron-builder --linux AppImage",
     "pack:dir": "npm run daemon && npm run build && electron-builder --linux dir",
-    "daemon": "cargo build --release --manifest-path nobilis/Cargo.toml"
+    "daemon": "cargo build --release --manifest-path nobilis/Cargo.toml",
+    "deploy": "npm run pack && ./scripts/install-desktop.sh"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
