@@ -575,7 +575,16 @@ function FolderTile(props: {
           this size. */}
       <span
         className="rail-face folder-face"
-        style={folder.colour ? { color: folder.colour } : undefined}
+        // The chosen colour is on the tile itself, not only on the panel it
+        // opens into. Closed is how a folder spends most of its life, and a
+        // colour you picked to tell two folders apart is no use only once one
+        // of them is open. Tinted rather than filled: four other people's
+        // icons sit on top of it and have to stay readable.
+        style={
+          folder.colour
+            ? { color: folder.colour, background: `${folder.colour}5c` }
+            : undefined
+        }
       >
         {members.length === 0 ? (
           <Icon name="folder" size={26} />
