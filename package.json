@@ -14,7 +14,8 @@
     "pack": "npm run daemon && npm run build && electron-builder --linux AppImage",
     "pack:dir": "npm run daemon && npm run build && electron-builder --linux dir",
     "daemon": "cargo build --release --manifest-path nobilis/Cargo.toml",
-    "deploy": "npm run pack && ./scripts/install-desktop.sh"
+    "deploy": "npm run pack && ./scripts/install-desktop.sh",
+    "pack:win": "npm run daemon && npm run build && electron-builder --win nsis"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
@@ -47,10 +48,6 @@
       {
         "from": "resources/icons",
         "to": "icons"
-      },
-      {
-        "from": "nobilis/target/release/nobilis",
-        "to": "nobilis"
       }
     ],
     "linux": {
@@ -62,7 +59,35 @@
       "desktop": {
         "Name": "moho",
         "Comment": "Unified chat client for IRC, Discord, Sneedchat and Matrix"
-      }
+      },
+      "extraResources": [
+        {
+          "from": "nobilis/target/release/nobilis",
+          "to": "nobilis"
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icons/moho.png",
+      "extraResources": [
+        {
+          "from": "nobilis/target/release/nobilis.exe",
+          "to": "nobilis.exe"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
     }
   },
   "allowScripts": {

@@ -5,6 +5,9 @@ import path from 'node:path'
 import { app } from 'electron'
 import { log } from './log'
 
+/** What the built daemon is called here. */
+const DAEMON_BINARY = process.platform === 'win32' ? 'nobilis.exe' : 'nobilis'
+
 /**
  * Owns the nobilis daemon's lifecycle - but adopts one that is already
  * running rather than assuming it must start its own.
@@ -29,7 +32,7 @@ export class NobilisProcess {
 
   constructor() {
     this.binaryPath = app.isPackaged
-      ? path.join(process.resourcesPath, 'nobilis')
+      ? path.join(process.resourcesPath, DAEMON_BINARY)
       : NobilisProcess.builtDaemon()
   }
 
@@ -45,11 +48,11 @@ export class NobilisProcess {
   private static builtDaemon(): string {
     let dir = app.getAppPath()
     for (let up = 0; up < 4; up++) {
-      const candidate = path.join(dir, 'nobilis', 'target', 'release', 'nobilis')
+      const candidate = path.join(dir, 'nobilis', 'target', 'release', DAEMON_BINARY)
       if (fs.existsSync(candidate)) return candidate
       dir = path.dirname(dir)
     }
-    return path.join(app.getAppPath(), 'nobilis', 'target', 'release', 'nobilis')
+    return path.join(app.getAppPath(), 'nobilis', 'target', 'release', DAEMON_BINARY)
   }
 
   available(): boolean {
@@ -123,6 +126,12 @@ export class NobilisProcess {
    * every connected IRC network before exiting (see nobilis/src/main.rs), which
    * a bare kill would skip - leaving a ghost session holding the nick until
    * the network's own ping timeout notices.
+   *
+   * That reasoning only holds where signals do. On Windows this is
+   * TerminateProcess under another name and the QUITs are lost either way,
+   * which is why quitting goes through `stopAndWait` and its shutdown RPC;
+   * this remains the synchronous path used by `restart`, where a dropped
+   * connection is about to be replaced by a fresh one anyway.
    */
   stop(): void {
     this.restartPending = false
@@ -139,8 +148,21 @@ export class NobilisProcess {
    * daemon, which has no child handle here.
    */
   async stopAndWait(socketPath: string, askToStop: () => Promise<unknown>): Promise<void> {
-    if (this.child) this.stop()
-    else await askToStop().catch(() => {})
+    // Ask over the socket first whatever kind of daemon this is, rather than
+    // signalling our own child and asking only an adopted one.
+    //
+    // A signal is not a portable way to say "shut down cleanly": Windows has
+    // no SIGTERM, and Node maps kill('SIGTERM') there onto TerminateProcess,
+    // which stops the daemon dead - skipping the QUITs whose absence leaves a
+    // ghost session holding the nick until the network times it out. The
+    // shutdown RPC means exactly the same thing on every system, and is a
+    // request the daemon can act on rather than an end it cannot refuse.
+    this.restartPending = false
+    await askToStop().catch(() => {
+      // No answer - it may already be gone, or wedged. Either way the signal
+      // below and the escalation after it are what is left to try.
+      this.child?.kill('SIGTERM')
+    })
 
     // nobilis sends QUITs and sleeps briefly before exiting, so the socket
     // outlives the request by design. Poll rather than guess at a delay.

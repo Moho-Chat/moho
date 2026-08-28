@@ -125,8 +125,19 @@ export function nickColor(nick: string): string {
 export function resolveMediaUrl(url: string): string {
   if (!url) return url
   let path: string | null = null
-  if (url.startsWith('file://')) path = decodeURI(url.slice('file://'.length))
-  else if (url.startsWith('/')) path = url
+  if (url.startsWith('file://')) {
+    path = decodeURI(url.slice('file://'.length))
+    // Some producers write file:///C:/x and some write file://C:\x. Both mean
+    // the same file; the leading slash is part of the URL form, not the path,
+    // and left on it Windows reads it as a path relative to the current drive.
+    if (/^\/[A-Za-z]:/.test(path)) path = path.slice(1)
+  } else if (url.startsWith('/') || /^[A-Za-z]:[\\/]/.test(url)) {
+    // Absolute means "starts at a root", and a Windows root is a drive letter
+    // rather than a slash. Without the second test a bare C:\... path fell
+    // through as if it were a remote URL and was handed to the renderer
+    // unresolved, which under contextIsolation simply shows nothing.
+    path = url
+  }
   if (path === null) return url
 
   // The path travels as a query parameter, not as the URL path. moho-media is

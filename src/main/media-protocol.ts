@@ -31,6 +31,39 @@ export function allowRoot(dir: string): void {
 }
 
 /**
+ * Where nobilis keeps its cache and config, on whichever system this is.
+ *
+ * Has to agree with Rust's `dirs` crate, which is what the daemon uses - not
+ * with Electron's own `app.getPath`, which answers for *this* application and
+ * would point somewhere nobilis never writes. The two disagree per platform,
+ * so guessing one convention everywhere is how the allowlist below ends up
+ * refusing every image the daemon fetched: XDG paths on Windows resolve to a
+ * `.cache` directory under the profile that nothing ever writes to, and the
+ * check would fail closed and silently.
+ */
+function daemonDirs(): { cache: string; config: string } {
+  const home = os.homedir()
+  if (process.platform === 'win32') {
+    // dirs::cache_dir is LOCALAPPDATA and dirs::config_dir is APPDATA -
+    // different directories on Windows, unlike the single ~/.config habit.
+    return {
+      cache: process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'),
+      config: process.env.APPDATA || path.join(home, 'AppData', 'Roaming')
+    }
+  }
+  if (process.platform === 'darwin') {
+    return {
+      cache: path.join(home, 'Library', 'Caches'),
+      config: path.join(home, 'Library', 'Application Support')
+    }
+  }
+  return {
+    cache: process.env.XDG_CACHE_HOME || path.join(home, '.cache'),
+    config: process.env.XDG_CONFIG_HOME || path.join(home, '.config')
+  }
+}
+
+/**
  * These are the *daemon's* directories, not this app's: every local path that
  * arrives on the wire was written by nobilis (Tor-fetched Sneedchat media,
  * Matrix media, the Discord login QR), so nobilis is what the roots have to
@@ -38,9 +71,7 @@ export function allowRoot(dir: string): void {
  * silently refuses every image the daemon fetches.
  */
 function allowedRoots(): string[] {
-  const home = os.homedir()
-  const cache = process.env.XDG_CACHE_HOME || path.join(home, '.cache')
-  const config = process.env.XDG_CONFIG_HOME || path.join(home, '.config')
+  const { cache, config } = daemonDirs()
   return [
     path.join(cache, 'nobilis'),
     path.join(config, 'nobilis'),
@@ -57,6 +88,23 @@ function allowedRoots(): string[] {
     .concat(extraRoots)
 }
 
+/**
+ * Compares two paths the way the filesystem underneath would.
+ *
+ * Windows and macOS match filenames case-insensitively, so `C:\Users\...` and
+ * `c:\users\...` name the same file while `startsWith` calls them different.
+ * Getting that wrong here fails closed - the image is refused rather than
+ * leaked - but a media allowlist that silently blanks half the avatars is
+ * still broken, and the fix belongs with the comparison rather than at each
+ * call site.
+ */
+const CASE_INSENSITIVE_FS = process.platform === 'win32' || process.platform === 'darwin'
+function underRoot(candidate: string, root: string): boolean {
+  const c = CASE_INSENSITIVE_FS ? candidate.toLowerCase() : candidate
+  const r = CASE_INSENSITIVE_FS ? root.toLowerCase() : root
+  return c.startsWith(r)
+}
+
 /** Exported for tests: this predicate is the whole security boundary. */
 export function isAllowed(target: string): boolean {
   const resolved = path.resolve(target)
@@ -68,10 +116,10 @@ export function isAllowed(target: string): boolean {
   } catch {
     return false
   }
-  if (real !== resolved && !allowedRoots().some((root) => (real + path.sep).startsWith(root))) {
+  if (real !== resolved && !allowedRoots().some((root) => underRoot(real + path.sep, root))) {
     return false
   }
-  return allowedRoots().some((root) => (resolved + path.sep).startsWith(root))
+  return allowedRoots().some((root) => underRoot(resolved + path.sep, root))
 }
 
 /** Must run before app.whenReady(). */

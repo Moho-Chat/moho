@@ -6,14 +6,29 @@ import type { NobilisEvent } from '../shared/wire'
 import { log } from './log'
 
 /**
- * Newline-delimited JSON-RPC client for nobilis's Unix socket (see
- * nobilis/src/rpc/mod.rs). One socket serves both consumers - the renderer's
+ * Newline-delimited JSON-RPC client for nobilis's local socket (see
+ * nobilis/src/ipc.rs). One connection serves both consumers - the renderer's
  * chat UI and main's own notification/tray bookkeeping - because `subscribe`
  * state is per-connection and the renderer subscribes to every buffer anyway,
  * so a second connection would only duplicate the same event stream.
  */
 
+/**
+ * Where the daemon listens, on whichever system this is.
+ *
+ * Must agree exactly with nobilis's own `ipc::default_endpoint`, which is the
+ * other half of this contract - the two are separately built binaries and a
+ * disagreement here is a client that silently never finds a daemon that is
+ * running perfectly well.
+ *
+ * Node needs no help with the difference beyond the name: `net.createConnection`
+ * takes a `path` and speaks Unix domain sockets or named pipes according to
+ * what it is handed, so only the string changes.
+ */
 export function defaultSocketPath(): string {
+  // A named pipe is not a file and has no directory to live in; the name is
+  // the whole address.
+  if (process.platform === 'win32') return '\\\\.\\pipe\\nobilis'
   const runtimeDir = process.env.XDG_RUNTIME_DIR || os.tmpdir()
   return path.join(runtimeDir, 'nobilis', 'nobilis.sock')
 }
