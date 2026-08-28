@@ -795,8 +795,23 @@ export class ChatStore {
 
   // --- messages -------------------------------------------------------
 
+  /**
+   * The one place a buffer's list is replaced, and the one place ids are
+   * guaranteed unique.
+   *
+   * Deduplicated here rather than trusted from the daemon, because the cost of
+   * a repeat is out of all proportion to the mistake. The rendered rows are
+   * keyed by message id; two rows sharing a key leave React unable to
+   * reconcile the list, and switching conversations then strands some of the
+   * old one's rows on screen above the new one's - which reads as one
+   * channel's history leaking into another's rather than as a duplicate.
+   * A message id names a message, so keeping the first of a repeated id loses
+   * nothing.
+   */
   private setMessages(bufferId: string, list: ChatMessage[]): void {
-    this.set({ messagesByBuffer: { ...this.state.messagesByBuffer, [bufferId]: list } })
+    const seen = new Set<string>()
+    const unique = list.filter((m) => !seen.has(m.id) && (seen.add(m.id), true))
+    this.set({ messagesByBuffer: { ...this.state.messagesByBuffer, [bufferId]: unique } })
   }
 
   private mapMessage(
