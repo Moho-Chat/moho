@@ -1,18 +1,19 @@
-import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
 import { Avatar } from './Avatar'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { isMutedBuffer } from '../lib/groups'
 import { bufferDisplayName, formatFullTime, serviceLabel } from '../lib/util'
-import type { Message } from '../../../shared/wire'
 
 /**
- * Everything that mentioned you, from every service, newest first.
+ * Everything that mentioned you, from every service, newest first - read and
+ * unread alike, which is what separates it from the inbox in the header.
  *
  * The point of gathering these is that a mention worth answering is usually in
- * a channel nobody has open - so it is asked of the daemon rather than
- * assembled from what this window happens to have loaded, which is only ever
- * the conversations already being read.
+ * a channel nobody has open, so the list comes from the daemon rather than
+ * from what this window happens to have loaded. It reads that list off the
+ * store instead of asking again: the inbox needs the same rows to keep a live
+ * count, and two copies fetched separately would disagree the moment one of
+ * them was refreshed.
  *
  * What counts as a mention is decided where the message arrives, by the
  * backend that can actually tell: Discord answers it from its own resolved
@@ -22,33 +23,18 @@ export function MentionsPage(): JSX.Element {
   const store = useStore()
   const buffers = useChat((s) => s.buffers)
   const accounts = useChat((s) => s.accounts)
+  const rows = useChat((s) => s.mentions)
   const [muted] = usePref<string[]>('mutedBuffers', [])
   const [mutedGroups] = usePref<string[]>('mutedGroups', [])
-  const [rows, setMentions] = useState<Message[] | null>(null)
 
   // A muted conversation was told not to ask for attention. Collecting its
   // mentions into a page whose entire purpose is asking for attention would
   // be the one place that instruction is ignored.
-  const mentions =
-    rows?.filter((m) => {
-      const buffer = buffers.find((b) => b.id === m.bufferId)
-      return !buffer || !isMutedBuffer(buffer, muted, mutedGroups)
-    }) ?? null
+  const mentions = rows.filter((m) => {
+    const buffer = buffers.find((b) => b.id === m.bufferId)
+    return !buffer || !isMutedBuffer(buffer, muted, mutedGroups)
+  })
 
-  useEffect(() => {
-    let live = true
-    void window.moho
-      .rpc<Message[]>('getMentions', { limit: 100 })
-      .then((rows) => live && setMentions(rows))
-      .catch(() => live && setMentions([]))
-    return () => {
-      live = false
-    }
-  }, [])
-
-  if (mentions === null) {
-    return <div className="mentions-page muted">Looking…</div>
-  }
   if (mentions.length === 0) {
     return (
       <div className="mentions-page empty muted">

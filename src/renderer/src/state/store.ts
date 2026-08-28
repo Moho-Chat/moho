@@ -80,6 +80,27 @@ export interface ChatState {
   /** Conversations ringing right now, newest last. */
   incomingCalls: IncomingCall[]
   /**
+   * Everything that has mentioned you, newest first, across every service.
+   *
+   * Held here rather than fetched by the inbox when it opens, because the
+   * button carries a count and a count that only becomes true once looked at
+   * is no use. Seeded from the daemon - the point of an inbox is the mention
+   * in a channel nobody opened, which this client has never seen - and kept
+   * current from the live stream afterwards.
+   */
+  mentions: Message[]
+  /**
+   * When each buffer was last read, in seconds.
+   *
+   * Mirrored into state as well as onto disk because the store writes this
+   * one through to main directly rather than through the preference hook, so
+   * nothing in the renderer's preference cache ever learns it changed. A
+   * component reading it from there would have shown whatever was on disk at
+   * startup and never moved - which for the mentions inbox meant a mention
+   * staying unread after its channel had been opened and read.
+   */
+  lastReadTs: Record<string, number>
+  /**
    * A message the view should scroll to once it has rendered.
    *
    * Held here rather than scrolled to directly, because the log decides its
@@ -140,6 +161,8 @@ const INITIAL: ChatState = {
   voiceGuildId: '',
   voiceSessions: [],
   incomingCalls: [],
+  mentions: [],
+  lastReadTs: {},
   jumpTarget: '',
   activeBufferId: '',
   activePanel: '',
@@ -226,6 +249,8 @@ function bestEffort(work: Promise<unknown>, what: string): void {
  * bounds memory without losing history.
  */
 const MAX_MESSAGES_PER_BUFFER = 500
+/** As many mentions as the inbox will hold; the daemon's own limit matches. */
+const MAX_MENTIONS = 100
 const BACKLOG_PAGE = 200
 const SEND_TIMEOUT_MS = 10000
 
@@ -237,6 +262,7 @@ export class ChatStore {
   private pendingSends = new Map<string, { bufferId: string; ts: number }>()
   private toastSeq = 0
   private sweepTimer: ReturnType<typeof setInterval> | null = null
+  private mentionsTimer: ReturnType<typeof setTimeout> | null = null
 
   getSnapshot = (): ChatState => this.state
 
@@ -254,6 +280,9 @@ export class ChatStore {
 
   async init(initialBufferId: string, initialGroupId = ''): Promise<void> {
     this.set({ activeBufferId: initialBufferId, activeGroupId: initialGroupId })
+
+    const stored = await window.moho.prefs.getAll()
+    this.set({ lastReadTs: (stored.lastReadTs as Record<string, number>) ?? {} })
 
     window.moho.onLinkChange((up) => {
       this.set({ linkUp: up })
@@ -273,6 +302,7 @@ export class ChatStore {
 
   dispose(): void {
     if (this.sweepTimer) clearInterval(this.sweepTimer)
+    if (this.mentionsTimer) clearTimeout(this.mentionsTimer)
   }
 
   private async refreshAll(): Promise<void> {
@@ -288,6 +318,21 @@ export class ChatStore {
       this.refreshIncomingCalls()
     ])
     if (this.state.activeBufferId) await this.selectBuffer(this.state.activeBufferId)
+  }
+
+  /**
+   * The mentions that arrived before this client did.
+   *
+   * A failure here is silent rather than a toast: an empty inbox is a mild
+   * disappointment, and interrupting someone to say so - on every reconnect,
+   * which is when this runs - would be worse than the missing list.
+   */
+  async refreshMentions(): Promise<void> {
+    try {
+      this.set({ mentions: await window.moho.rpc<Message[]>('getMentions', { limit: MAX_MENTIONS }) })
+    } catch {
+      // Leave whatever is already there; a reconnect should not empty it.
+    }
   }
 
   async refreshAccounts(): Promise<void> {
@@ -606,6 +651,12 @@ export class ChatStore {
       // own unread count.
       for (const b of buffers)
         bestEffort(window.moho.rpc('subscribe', { bufferId: b.id }), `subscribe ${b.id}`)
+      // The daemon answers "what mentioned me" over the channels it currently
+      // knows about, and at startup that is almost none of them - the accounts
+      // are still connecting. This first ask is worth making anyway for a
+      // reconnect, where they are all already there; the arrival of each
+      // channel schedules another.
+      void this.refreshMentions()
     } catch (e) {
       this.toast('error', `Couldn't list buffers: ${(e as Error).message}`)
     }
@@ -821,6 +872,27 @@ export class ChatStore {
     }
     this.set({ buffers: [...buffers, { unread: 0, highlight: false, ...data }] })
     bestEffort(window.moho.rpc('subscribe', { bufferId: data.id }), `subscribe ${data.id}`)
+    // A channel this client had not heard of may already hold mentions in the
+    // stored history, so the inbox has to ask again now that the daemon can
+    // see it. This is the only moment it can: channels register one at a time
+    // as each account finishes connecting, long after the startup fetch.
+    if (data.kind === 'channel') this.scheduleMentionsRefresh()
+  }
+
+  /**
+   * Re-asks for mentions once the channels stop arriving.
+   *
+   * Debounced because they arrive in a burst - one event per channel, and a
+   * Discord account alone can register a few hundred - and running the query
+   * once per channel would mean hundreds of identical answers to reach the
+   * same list the last one gives.
+   */
+  private scheduleMentionsRefresh(): void {
+    if (this.mentionsTimer) clearTimeout(this.mentionsTimer)
+    this.mentionsTimer = setTimeout(() => {
+      this.mentionsTimer = null
+      void this.refreshMentions()
+    }, 1500)
   }
 
   private handleConnectionState(data: {
@@ -894,6 +966,7 @@ export class ChatStore {
     this.setMessages(bufferId, list.slice(-MAX_MESSAGES_PER_BUFFER))
 
     if (bufferId !== this.state.activeBufferId) {
+      const buffer = this.state.buffers.find((b) => b.id === bufferId)
       this.set({
         buffers: this.state.buffers.map((b) =>
           b.id === bufferId
@@ -901,6 +974,17 @@ export class ChatStore {
             : b
         )
       })
+      // Channels only, matching the daemon's own rule for the seeded list: a
+      // direct message is addressed to you in its entirety, so "mentioned"
+      // adds nothing there, and it already has its own page and rail tile.
+      //
+      // Inside the not-the-open-buffer guard deliberately. A mention that
+      // arrives in the conversation being read has been read, and badging an
+      // inbox for it would ask someone to go and look at what is already in
+      // front of them.
+      if (msg.isHighlight && !msg.isOwn && buffer?.kind === 'channel') {
+        this.set({ mentions: [msg, ...this.state.mentions].slice(0, MAX_MENTIONS) })
+      }
     }
   }
 
@@ -1051,6 +1135,7 @@ export class ChatStore {
         void window.moho.markBufferRead(id)
       }
       void window.moho.prefs.set('lastReadTs', lastReadTs)
+      this.set({ lastReadTs })
       // The counters are this client's own tally, so they have to be cleared
       // here too - the stored timestamp only decides what counts next time.
       this.set({
@@ -1068,6 +1153,7 @@ export class ChatStore {
     const lastReadTs = { ...((prefs.lastReadTs as Record<string, number>) || {}) }
     lastReadTs[bufferId] = Math.floor(Date.now() / 1000)
     void window.moho.prefs.set('lastReadTs', lastReadTs)
+    this.set({ lastReadTs })
   }
 
   private async loadBacklog(bufferId: string): Promise<void> {

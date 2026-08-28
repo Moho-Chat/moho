@@ -3,6 +3,7 @@ import { TitleBar } from './components/TitleBar'
 import { BufferList } from './components/BufferList'
 import { ServerRail } from './components/ServerRail'
 import { MessageList } from './components/MessageList'
+import { MentionsInbox } from './components/MentionsInbox'
 import { MentionsPage } from './components/MentionsPage'
 import { MENTIONS_GROUP_ID } from './lib/groups'
 import { Composer } from './components/Composer'
@@ -47,10 +48,17 @@ export default function App(): JSX.Element {
     return () => store.dispose()
   }, [prefsReady, booted, savedBufferId, savedGroupId, store])
 
+  /**
+   * The mentions page is showing, so nothing in the window is scoped to one
+   * conversation - the header face, the conversation's own tools and the
+   * composer all belong to a buffer that is not on screen.
+   */
+  const onMentionsPage = activePanel === '' && activeGroupId === MENTIONS_GROUP_ID
+
   // A stale restored id is harmless: it simply resolves to no buffer and the
   // empty state shows, exactly as it would for "".
   const showNickList =
-    !userListFolded && activePanel === '' && buffer?.kind === 'channel'
+    !userListFolded && activePanel === '' && !onMentionsPage && buffer?.kind === 'channel'
 
   const headerTitle =
     activePanel === 'accounts'
@@ -59,7 +67,7 @@ export default function App(): JSX.Element {
         ? 'Settings'
         : activePanel === 'join'
         ? `Join · ${joinAccount?.displayName ?? ''}`
-        : activeGroupId === MENTIONS_GROUP_ID
+        : onMentionsPage
           ? 'Mentions'
           : buffer
             ? bufferDisplayName(buffer.name)
@@ -94,12 +102,26 @@ export default function App(): JSX.Element {
             {/* A conversation is headed by whoever it is with, the same way
                 its row in the list is - the picture and the status together,
                 not a bare name. */}
-            {activePanel === '' && buffer && <BufferFace buffer={buffer} />}
+            {activePanel === '' && !onMentionsPage && buffer && <BufferFace buffer={buffer} />}
             <span className="main-header-title ellipsis">{headerTitle}</span>
 
-            {activePanel === '' && buffer && <ConversationTools buffer={buffer} />}
+            {/* The face, the search and the call button all act on the open
+                conversation, which the mentions page is not showing - leaving
+                them there would offer to search a channel that isn't on
+                screen. */}
+            {activePanel === '' && !onMentionsPage && buffer && (
+              <ConversationTools buffer={buffer} />
+            )}
 
-            {activePanel === '' && buffer?.kind === 'channel' && (
+            {/* The inbox is about everywhere rather than about this
+                conversation, so it sits outside the conversation's own tools -
+                but beside them, because the header is where the things you
+                glance at live. Shown on every page for the same reason: a
+                mention does not stop mattering because you are reading a
+                direct message. */}
+            {activePanel === '' && <MentionsInbox />}
+
+            {activePanel === '' && !onMentionsPage && buffer?.kind === 'channel' && (
               <IconButton
                 name={userListFolded ? 'group' : 'group_off'}
                 title={userListFolded ? 'Show members' : 'Hide members'}

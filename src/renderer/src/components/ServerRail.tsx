@@ -22,7 +22,6 @@ import {
   countsTowardRail,
   dmGroup,
   DM_GROUP_ID,
-  mentionsGroup,
   isDirectMessage,
   type RailGroup
 } from '../lib/groups'
@@ -85,7 +84,6 @@ function GroupFace({ group, customIcon }: { group: RailGroup; customIcon?: strin
   const service = serviceIcon(group.service)
   if (customIcon) return <img className="rail-icon" src={resolveMediaUrl(customIcon)} alt="" />
   if (group.kind === 'pinned') return <Icon name="push_pin" size={22} />
-  if (group.kind === 'mentions') return <Icon name="alternate_email" size={22} />
   if (group.iconUrl) return <img className="rail-icon" src={resolveMediaUrl(group.iconUrl)} alt="" />
   if (group.kind === 'dms') return <Icon name="forum" size={22} />
   if (group.kind === 'account' && service.mark && service.colour) {
@@ -347,9 +345,9 @@ export function ServerRail(): JSX.Element | null {
   const extras: RailGroup[] = []
   // Only worth a tile once there is something on it.
   if (all.some(isDirectMessage)) extras.push(dmGroup())
-  // Always offered rather than only once something has arrived: an inbox you
-  // have to already have mail to find is not one you would look in.
-  extras.push(mentionsGroup())
+  // No tile for mentions. It is not a place you keep - it is reached from the
+  // inbox in the header, which is where the unread count already is, and a
+  // permanent tile for it only competed with the servers this column is for.
   if (pinned.length > 0) extras.push(pinnedGroup())
   const ordered = orderedGroups([...shown, ...extras], railOrder)
 

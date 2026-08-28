@@ -8,7 +8,7 @@ import type { BufferEntry } from '../state/store'
  * actually sends.
  */
 export type RailGroup = Omit<BufferGroup, 'kind'> & {
-  kind: BufferGroup['kind'] | 'pinned' | 'mentions'
+  kind: BufferGroup['kind'] | 'pinned'
 }
 
 /**
@@ -20,7 +20,14 @@ export type RailGroup = Omit<BufferGroup, 'kind'> & {
  * exactly like any other entry.
  */
 export const PINNED_GROUP_ID = '~pinned'
-/** The page gathering every mention, across every service. */
+/**
+ * The page gathering every mention, across every service.
+ *
+ * An id with no rail tile behind it, unlike the other two here. The mentions
+ * page is reached from the inbox in the header - which already carries the
+ * unread count, so a tile would have been a second place saying the same
+ * thing while taking a slot in a column that is for servers.
+ */
 export const MENTIONS_GROUP_ID = '~mentions'
 
 /**
@@ -62,17 +69,6 @@ export function pinnedGroup(): RailGroup {
   }
 }
 
-export function mentionsGroup(): RailGroup {
-  return {
-    id: MENTIONS_GROUP_ID,
-    accountId: '',
-    service: '',
-    kind: 'mentions',
-    name: 'Mentions',
-    position: -950
-  }
-}
-
 /**
  * The rail entries worth drawing.
  *
@@ -108,7 +104,7 @@ export function visibleGroups(groups: BufferGroup[], buffers: BufferEntry[]): Bu
 
 /** Entries the user cannot drag, and which always lead the rail. */
 export function isFixedEntry(group: RailGroup): boolean {
-  return group.kind === 'dms' || group.kind === 'pinned' || group.kind === 'mentions'
+  return group.kind === 'dms' || group.kind === 'pinned'
 }
 
 /**
@@ -125,8 +121,7 @@ export function orderedGroups(groups: RailGroup[], order: string[]): RailGroup[]
   // Direct messages, then pinned. Stated as a rule rather than left to the
   // position numbers, which are the backend's business and were never meant
   // to encode this.
-  const leadRank = (g: RailGroup): number =>
-    g.kind === 'dms' ? 0 : g.kind === 'mentions' ? 1 : 2
+  const leadRank = (g: RailGroup): number => (g.kind === 'dms' ? 0 : 1)
   const lead = groups
     .filter(isFixedEntry)
     .sort((a, b) => leadRank(a) - leadRank(b) || a.position - b.position)

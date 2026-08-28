@@ -978,6 +978,99 @@ img.composer-emoji {
   color: var(--surface-variant-text);
 }
 
+/* --- the inbox in the header ------------------------------------------- */
+
+.mentions-inbox {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+/* The button says there is something waiting before the badge is read, which
+   matters at a glance across a wide window. */
+.icon-button.has-mentions {
+  color: var(--primary);
+}
+
+/* Over the button's top-right corner rather than beside it, so the header
+   does not reflow every time a mention arrives or is cleared. */
+.mentions-count {
+  position: absolute;
+  top: -1px;
+  right: -3px;
+  pointer-events: none;
+  min-width: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-text);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  text-align: center;
+}
+
+.mentions-panel {
+  position: absolute;
+  top: calc(100% + var(--spacing-xs));
+  right: 0;
+  z-index: 40;
+  width: 380px;
+  max-height: 440px;
+  overflow-y: auto;
+  padding: var(--spacing-xs);
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--corner-radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.mentions-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-s);
+}
+
+.mentions-panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-l) var(--spacing-s);
+}
+
+/* Inside the panel the rows sit against its own padding, not the sidebar's. */
+.mentions-panel .mention-row {
+  padding: var(--spacing-xs) var(--spacing-s);
+  border-radius: var(--spacing-xs);
+}
+
+.mentions-panel .mention-row:hover {
+  background: var(--surface-hover);
+}
+
+.mentions-panel-all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  margin-top: var(--spacing-xs);
+  padding: var(--spacing-xs);
+  background: none;
+  border: none;
+  border-top: 1px solid var(--outline-light);
+  border-radius: 0;
+  color: var(--surface-variant-text);
+}
+
+.mentions-panel-all:hover {
+  color: var(--surface-text);
+}
+
 /* --- incoming calls ---------------------------------------------------- */
 
 /* Bottom left, above the account plaque, which is where Discord puts it and
