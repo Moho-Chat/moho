@@ -70,10 +70,12 @@ export function Composer(): JSX.Element | null {
 
   const account = buffer && accounts.find((a) => a.id === buffer.accountId)
   const service = account?.service
-  // Discord, Sneedchat and Matrix each have a real upload path; IRC has no
-  // attachment concept at all, and XMPP/Slack aren't implemented yet.
+  // Discord, Sneedchat and Matrix each carry a file natively. IRC has no idea
+  // of an attachment at all, so a file there is uploaded and the link sent -
+  // which is what people do by hand on IRC anyway, and is why it is offered
+  // here rather than left as the one service where the button is dead.
   const supportsAttachments =
-    service === 'discord' || service === 'sockchat' || service === 'matrix'
+    service === 'discord' || service === 'sockchat' || service === 'matrix' || service === 'irc'
 
   // Refocus on buffer switch so typing works immediately after clicking a
   // channel, without a second click into the field.

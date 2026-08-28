@@ -206,6 +206,16 @@ function tidyDetail(detail: string): string {
   return detail.replace(/(https?:\/\/[^\s)]+?)\?[^\s)]*/g, '$1')
 }
 
+/** The upload host the person chose, or the default if they never did. */
+async function uploadHost(): Promise<string> {
+  try {
+    const prefs = await window.moho.prefs.getAll()
+    return (prefs['uploads.host'] as string) || 'catbox'
+  } catch {
+    return 'catbox'
+  }
+}
+
 function bestEffort(work: Promise<unknown>, what: string): void {
   void work.catch((e: Error) => console.debug(`[moho] ${what}:`, e.message))
 }
@@ -1202,7 +1212,13 @@ export class ChatStore {
       await window.moho.rpc('sendMessage', {
         bufferId,
         body,
-        ...(attachmentPath ? { attachmentPath } : {}),
+        // Where a file goes on a service that cannot carry one. Read at send
+        // time rather than held in state: it is a preference somebody may
+        // change between one message and the next, and the daemon falls back
+        // to its own default if this is absent or unknown to it.
+        ...(attachmentPath
+          ? { attachmentPath, uploadHost: await uploadHost() }
+          : {}),
         ...(replyToId ? { replyToId } : {})
       })
       // Success alone doesn't resolve the echo - only the real message event

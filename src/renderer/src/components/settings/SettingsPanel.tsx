@@ -7,7 +7,7 @@ import {
   StringSetting,
   ToggleSetting
 } from './controls'
-import { useChat, useStore } from '../../state/hooks'
+import { useChat, usePref, useStore } from '../../state/hooks'
 import { Icon } from '../Icon'
 import type { Account } from '../../../../shared/wire'
 
@@ -27,6 +27,43 @@ const CATEGORIES = [
   { id: 'discord', label: 'Discord', available: false },
   { id: 'slack', label: 'Slack', available: false }
 ]
+
+/**
+ * Where files go on the services that cannot carry them.
+ *
+ * IRC has no idea of an attachment and Sneedchat's own uploader takes images
+ * only, so sharing anything on either means putting it somewhere and sending
+ * the link - which is what people do by hand there anyway. The list comes from
+ * the daemon rather than being spelled out here, since the daemon is what
+ * performs the upload and a client drawing the menu should not hold a second,
+ * separately-maintained copy of the answer.
+ */
+function UploadHostSetting(): JSX.Element {
+  const [host, setHost] = usePref<string>('uploads.host', 'catbox')
+  const [hosts, setHosts] = useState<{ id: string; label: string }[]>([])
+
+  useEffect(() => {
+    void window.moho
+      .rpc<{ id: string; label: string }[]>('listUploadHosts')
+      .then(setHosts)
+      // An older daemon has no such method; the stored choice still applies.
+      .catch(() => setHosts([]))
+  }, [])
+
+  return (
+    <ChoiceSetting
+      label="Upload files to"
+      description="Used when sending a file on a service that cannot carry one itself - IRC, and anything Sneedchat's own uploader refuses. The file is uploaded anonymously and the link is sent."
+      value={host}
+      options={
+        hosts.length
+          ? hosts.map((h) => ({ label: h.label, value: h.id }))
+          : [{ label: host, value: host }]
+      }
+      onChange={setHost}
+    />
+  )
+}
 
 export function SettingsPanel(): JSX.Element {
   const [selected, setSelected] = useState('general')
@@ -178,6 +215,10 @@ function GeneralSettings(): JSX.Element {
           description="Many image hosts use short, extensionless links that can't be identified from the URL text alone. When on, an unrecognized link is checked directly and embedded if it turns out to be media. Privacy note: this contacts the linked site the moment a message arrives, not only if you click it - and for Sneedchat it bypasses Tor entirely, since it's a plain network request. Turn off to only embed links with a recognizable file extension."
           defaultValue={true}
         />
+      </SettingsSection>
+
+      <SettingsSection title="Uploads">
+        <UploadHostSetting />
       </SettingsSection>
 
       <SettingsSection title="Downloads">
