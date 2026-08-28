@@ -30,8 +30,26 @@ export class NobilisProcess {
   constructor() {
     this.binaryPath = app.isPackaged
       ? path.join(process.resourcesPath, 'nobilis')
-      // In development the daemon is built inside its own submodule checkout.
-      : path.join(app.getAppPath(), 'nobilis', 'target', 'release', 'nobilis')
+      : NobilisProcess.builtDaemon()
+  }
+
+  /**
+   * The daemon built inside the submodule checkout.
+   *
+   * Found by looking rather than by assuming, for the same reason the icons
+   * are: unpackaged, Electron reports the running script's directory as the
+   * app path, so `electron out/main/index.js` looked for the daemon under
+   * out/main and never found it - which left a development run unable to
+   * start a daemon at all, and saying so only in a log nobody reads.
+   */
+  private static builtDaemon(): string {
+    let dir = app.getAppPath()
+    for (let up = 0; up < 4; up++) {
+      const candidate = path.join(dir, 'nobilis', 'target', 'release', 'nobilis')
+      if (fs.existsSync(candidate)) return candidate
+      dir = path.dirname(dir)
+    }
+    return path.join(app.getAppPath(), 'nobilis', 'target', 'release', 'nobilis')
   }
 
   available(): boolean {

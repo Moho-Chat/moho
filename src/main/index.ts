@@ -56,10 +56,30 @@ let client: NobilisClient
 let notifier: Notifier
 let registeredHotkey: string | null = null
 
+/**
+ * Where the bundled icons and other resources actually are.
+ *
+ * Packaged, that is simply process.resourcesPath. Unpackaged it is not
+ * app.getAppPath(): Electron given a script reports that script's *directory*
+ * as the app path, which for `electron out/main/index.js` is out/main, and
+ * resources live two levels up from there. Guessing wrong is quiet in the
+ * worst way - the tray falls back to an empty image and the panel draws a
+ * broken-icon placeholder where the icon should be - so this looks for the
+ * directory rather than assuming where it is.
+ */
+function resourceRoot(): string {
+  if (app.isPackaged) return process.resourcesPath
+  let dir = app.getAppPath()
+  for (let up = 0; up < 4; up++) {
+    const candidate = path.join(dir, 'resources')
+    if (fs.existsSync(path.join(candidate, 'icons'))) return candidate
+    dir = path.dirname(dir)
+  }
+  return path.join(app.getAppPath(), 'resources')
+}
+
 function resourcePath(...parts: string[]): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, ...parts)
-    : path.join(app.getAppPath(), 'resources', ...parts)
+  return path.join(resourceRoot(), ...parts)
 }
 
 /**
@@ -148,8 +168,8 @@ function toggleWindow(): void {
   }
 }
 
-function trayIcon(hasPinnedAlert: boolean): Electron.NativeImage {
-  const file = resourcePath('icons', hasPinnedAlert ? 'tray-alert.png' : 'tray.png')
+function trayIcon(hasAlert: boolean): Electron.NativeImage {
+  const file = resourcePath('icons', hasAlert ? 'tray-alert.png' : 'tray.png')
   const img = nativeImage.createFromPath(file)
   // A missing icon file would otherwise produce an invisible tray entry the
   // user can never click; fall back to the app icon so the entry still exists.
@@ -184,9 +204,9 @@ function createTray(): void {
   tray.on('click', toggleWindow)
 }
 
-function updateTray(unreadCount: number, hasPinnedAlert: boolean): void {
+function updateTray(unreadCount: number, hasAlert: boolean): void {
   if (!tray) return
-  tray.setImage(trayIcon(hasPinnedAlert))
+  tray.setImage(trayIcon(hasAlert))
   tray.setToolTip(unreadCount > 0 ? `moho - ${unreadCount} unread` : 'moho')
   send(IPC.link, client.linkUp)
 }
@@ -420,7 +440,24 @@ app.whenReady().then(() => {
     () => mainWindow?.webContents ?? null
   )
 
-  client.on('link', (up) => send(IPC.link, up))
+  client.on('link', (up) => {
+    send(IPC.link, up)
+    if (!up) return
+    // The daemon usually outlives this process, so its buffers were announced
+    // long before this connection existed and no bufferListChange is coming
+    // for them. Without asking outright, main knows of no conversations at
+    // all - and it has to know which ones are direct messages to light the
+    // tray for them, and which group each belongs to for the mute rules.
+    void client
+      .request('listBuffers')
+      .then((list: ChatBuffer[]) => {
+        for (const b of list) notifier.trackBuffer(b, false)
+        notifier.publish()
+      })
+      .catch(() => {
+        // Not fatal: live events still fill this in as things change.
+      })
+  })
   client.on('push', (frame) => {
     // Main watches two event kinds of its own: the buffer list (so mute
     // cascade can find an account's server buffer) and notifications (tray +

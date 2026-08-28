@@ -7,7 +7,7 @@ import type { Prefs } from './prefs'
 import type { Buffer as ChatBuffer } from '../shared/wire'
 
 /**
- * Desktop notifications plus the unread/pinned-alert bookkeeping that drives
+ * Desktop notifications plus the unread/alert bookkeeping that drives
  * the tray.
  *
  * This lives in main rather than the renderer deliberately: it has to stay
@@ -38,7 +38,7 @@ export class Notifier {
 
   constructor(
     private prefs: Prefs,
-    private onAlertChange: (unreadCount: number, hasPinnedAlert: boolean) => void,
+    private onAlertChange: (unreadCount: number, hasAlert: boolean) => void,
     private onActivate: (bufferId: string) => void,
     /** The renderer, borrowed only to decode formats nativeImage cannot. */
     private renderer: () => WebContents | null = () => null
@@ -204,13 +204,24 @@ export class Notifier {
   }
 
   /**
-   * Only *pinned* buffers escalate to the tray alert state. An unread DM or
-   * mention on some ordinary buffer already got its own desktop notification;
-   * the tray only lights up for buffers important enough to have been pinned.
+   * Whether the tray should show something is waiting.
+   *
+   * A direct message counts, and this is the change: the tray used to light up
+   * only for *pinned* buffers, on the reasoning that a DM had already had its
+   * desktop notification and the tray was for things important enough to pin.
+   * In practice that made the icon nearly inert - somebody messages you, and
+   * the one place still on screen after the notification has faded says
+   * nothing, unless you happened to have pinned that exact conversation.
+   *
+   * Pinned buffers still count, so a channel worth pinning can still raise it.
+   * There is no count here: a tray icon is around 22 pixels, which is room for
+   * "yes" and not for a number.
    */
   publish(): void {
     const pinned = this.prefs.get<string[]>('pinnedBuffers', [])
-    const hasPinnedAlert = [...this.unread].some((id) => pinned.includes(id))
-    this.onAlertChange(this.unread.size, hasPinnedAlert)
+    const hasAlert = [...this.unread].some(
+      (id) => this.buffers.get(id)?.kind === 'dm' || pinned.includes(id)
+    )
+    this.onAlertChange(this.unread.size, hasAlert)
   }
 }
