@@ -382,6 +382,105 @@
   padding-top: 0;
 }
 
+/* --- bubbles ------------------------------------------------------------
+   The phone-messaging shape. What makes it that shape is not the rounding,
+   it is that a message takes a side: yours right, theirs left. Everything
+   else here follows from having to work on both sides. */
+
+.message-row.bubbles {
+  align-items: flex-end;
+  gap: var(--spacing-s);
+  padding: 1px var(--spacing-m);
+}
+
+.message-row.bubbles.own {
+  /* Reversed rather than justified to the end, so the avatar slot, the
+     bubble and the hover toolbar all mirror together. */
+  flex-direction: row-reverse;
+}
+
+.message-row.bubbles .message-content {
+  flex: 0 1 auto;
+  /* Bounded twice: a share of the pane so a bubble never spans the full
+     width and stops reading as a bubble, and an absolute cap so it does not
+     become a paragraph of text on a wide window. */
+  max-width: min(72%, 34rem);
+  padding: var(--spacing-xs) var(--spacing-s);
+  border-radius: 18px;
+  background: var(--bubble-them);
+  color: var(--bubble-them-text);
+}
+
+.message-row.bubbles.own .message-content {
+  background: var(--bubble-me);
+  color: var(--bubble-me-text);
+}
+
+/* The tail. Squaring the bottom corner on the side the bubble sits against
+   gives the pointed-at-the-speaker look without drawing anything, and only
+   the last of a run gets it - which is what makes a run read as one turn in
+   the conversation rather than as several. */
+.message-row.bubbles.tail .message-content {
+  border-bottom-left-radius: 5px;
+}
+
+.message-row.bubbles.tail.own .message-content {
+  border-bottom-left-radius: 18px;
+  border-bottom-right-radius: 5px;
+}
+
+/* A name above the bubble, not inside it: it labels who is speaking, and
+   inside it would read as part of what they said. */
+.message-row.bubbles .message-from {
+  display: block;
+  margin: 0 0 2px;
+  font-size: 12px;
+}
+
+.message-row.bubbles .bubble-time {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  /* Against a filled bubble rather than the page, so the muted grey used
+     everywhere else would be unreadable on one side and invisible on the
+     other. */
+  opacity: 0.65;
+}
+
+/* A join or a topic change was not said by anybody, so it gets no bubble and
+   no side - centred, the way a phone shows the same kind of notice. */
+.message-row.bubbles.system {
+  justify-content: center;
+  padding: var(--spacing-xs) var(--spacing-m);
+}
+
+.message-row.bubbles.system .message-content {
+  max-width: 80%;
+  background: none;
+  color: var(--surface-variant-text);
+  text-align: center;
+}
+
+/* Links and quoted replies have to hold up against a filled background,
+   where the page's own accent and muted colours do not. */
+.message-row.bubbles.own .message-content a,
+.message-row.bubbles.own .reply-preview .ellipsis {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.message-row.bubbles .reply-preview {
+  opacity: 0.75;
+}
+
+/* Media sets its own size, and inside a bubble it should reach the rounded
+   edge rather than sit on a strip of colour. */
+.message-row.bubbles .media-row {
+  margin: var(--spacing-xxs) 0;
+}
+
 .message-time {
   flex: none;
   width: 42px;

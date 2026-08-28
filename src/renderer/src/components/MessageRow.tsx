@@ -34,6 +34,8 @@ import {
 /** A handful of one-click reactions on the hover toolbar. */
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '🔥']
 
+export type MessageMode = 'classic' | 'comfy' | 'bubbles'
+
 interface Props {
   message: ChatMessage
   bufferId: string
@@ -41,7 +43,18 @@ interface Props {
   /** Channel ids this client can resolve, for `<#id>` links in the body. */
   channels?: ChannelIndex
   grouped: boolean
-  comfy: boolean
+  /**
+   * How the log is drawn. `classic` is one line per message, `comfy` groups by
+   * author with an avatar, `bubbles` is the phone-messaging shape: sides, not
+   * columns.
+   */
+  mode: MessageMode
+  /**
+   * Whether this is the last message of its run by one author. Bubbles draw
+   * their tail here and nowhere else, so a run reads as one turn in the
+   * conversation rather than as several separate ones.
+   */
+  lastInRun: boolean
   relativeTimestamps: boolean
   mediaAutoplay: boolean
   mediaLoop: boolean
@@ -54,7 +67,8 @@ export function MessageRow({
   service,
   channels,
   grouped,
-  comfy,
+  mode,
+  lastInRun,
   relativeTimestamps,
   mediaAutoplay,
   mediaLoop,
@@ -80,6 +94,18 @@ export function MessageRow({
     !!message.isOwn && (service === 'discord' || service === 'sockchat' || service === 'matrix')
   const canReact = service === 'discord' || service === 'matrix'
   const isSystem = !isChatKind(message.kind)
+  // Both of the modes that draw an avatar column. Bubbles is otherwise
+  // nothing like comfy, but it wants the same picture beside the same first
+  // line of a group.
+  const comfy = mode === 'comfy' || mode === 'bubbles'
+  const bubbles = mode === 'bubbles'
+  /**
+   * Which side a bubble sits on.
+   *
+   * A system line takes no side: a join or a topic change was not said by
+   * anybody, and putting it in a bubble would claim it was.
+   */
+  const own = bubbles && !isSystem && !!message.isOwn
 
   const attachments = message.attachments ?? []
 
@@ -208,15 +234,23 @@ export function MessageRow({
           message.failed && 'failed',
           isSystem && 'system',
           grouped && 'grouped',
-          comfy && 'comfy'
+          comfy && 'comfy',
+          bubbles && 'bubbles',
+          own && 'own',
+          bubbles && lastInRun && 'tail'
         )}
         // Addressable, so a search result can scroll to the message it found.
         data-msg-id={message.id}
         onContextMenu={open}
       >
-        <span className="message-time small muted" title={formatFullTime(message.ts)}>
-          {grouped ? '' : timeLabel}
-        </span>
+        {/* Bubbles carry their own time inside, which is the whole point of
+            the shape - so the gutter that reserves 42px for it on every other
+            row would be 42px of nothing. */}
+        {!bubbles && (
+          <span className="message-time small muted" title={formatFullTime(message.ts)}>
+            {grouped ? '' : timeLabel}
+          </span>
+        )}
 
         {/* The avatar column is reserved on every grouped row, not just the
             one that draws an avatar. Rendering this only for the first
@@ -240,7 +274,9 @@ export function MessageRow({
         )}
 
         <div className="message-content">
-          {!grouped && !isSystem && (
+          {/* Your own bubble is not labelled with your own name - the side it
+              is on already says it, which is the point of having sides. */}
+          {!grouped && !isSystem && !own && (
             <span className="message-from" style={{ color: nickColor(message.from) }}>
               {message.isAction ? `* ${message.from}` : message.from}
             </span>
@@ -419,6 +455,15 @@ export function MessageRow({
             >
               <Icon name="error" size={13} /> Failed to send — retry
             </button>
+          )}
+
+          {/* Inside the bubble, at its foot. On a phone the time is part of
+              the bubble rather than a column beside it, and a column is
+              exactly what cannot exist once messages sit on both sides. */}
+          {bubbles && !isSystem && (
+            <span className="bubble-time small" title={formatFullTime(message.ts)}>
+              {timeLabel}
+            </span>
           )}
         </div>
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from './Icon'
-import { MessageRow } from './MessageRow'
+import { MessageRow, type MessageMode } from './MessageRow'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, isChatKind } from '../lib/util'
 import type { ChannelIndex } from '../lib/format'
@@ -40,7 +40,7 @@ export function MessageList(): JSX.Element {
   const dividerTsByBuffer = useChat((s) => s.dividerTsByBuffer)
   const jumpTarget = useChat((s) => s.jumpTarget)
   const [relativeTimestamps] = usePref<boolean>('display.relativeTimestamps', false)
-  const [comfy] = usePref<string>('display.messageMode', 'comfy')
+  const [comfy] = usePref<MessageMode>('display.messageMode', 'comfy')
   const [mediaAutoplay] = usePref<boolean>('media.autoplay', true)
   const [mediaLoop] = usePref<boolean>('media.loop', true)
   const [contentSniffing] = usePref<boolean>('media.contentSniffing', true)
@@ -293,8 +293,10 @@ export function MessageList(): JSX.Element {
                 bufferId={bufferId}
                 service={service}
                 channels={channelMentions}
-                grouped={comfy === 'comfy' && isGrouped(messages, i)}
-                comfy={comfy === 'comfy'}
+                grouped={comfy !== 'classic' && isGrouped(messages, i)}
+                mode={comfy}
+                // The newest message is always the end of its own run.
+                lastInRun={i === messages.length - 1 || !isGrouped(messages, i + 1)}
                 relativeTimestamps={relativeTimestamps}
                 mediaAutoplay={mediaAutoplay}
                 mediaLoop={mediaLoop}
