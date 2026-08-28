@@ -914,6 +914,70 @@ img.composer-emoji {
   color: #fff;
 }
 
+/* --- mentions ---------------------------------------------------------- */
+
+.mentions-page {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--spacing-s) 0;
+}
+
+.mentions-page.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-s);
+}
+
+.mention-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-s);
+  width: 100%;
+  padding: var(--spacing-s) var(--spacing-m);
+  text-align: left;
+}
+
+.mention-row:hover {
+  background: var(--outline-light);
+}
+
+.mention-row[disabled] {
+  opacity: 0.55;
+}
+
+.mention-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.mention-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-s);
+  min-width: 0;
+}
+
+.mention-from {
+  font-weight: 600;
+}
+
+/* Pushed to the far edge: the when is the least of the three things on this
+   line, and putting it last keeps the who and the where together. */
+.mention-when {
+  margin-left: auto;
+  flex: none;
+}
+
+.mention-text {
+  color: var(--surface-variant-text);
+}
+
 /* --- incoming calls ---------------------------------------------------- */
 
 /* Bottom left, above the account plaque, which is where Discord puts it and

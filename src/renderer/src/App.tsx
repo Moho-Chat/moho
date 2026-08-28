@@ -3,6 +3,8 @@ import { TitleBar } from './components/TitleBar'
 import { BufferList } from './components/BufferList'
 import { ServerRail } from './components/ServerRail'
 import { MessageList } from './components/MessageList'
+import { MentionsPage } from './components/MentionsPage'
+import { MENTIONS_GROUP_ID } from './lib/groups'
 import { Composer } from './components/Composer'
 import { NickList } from './components/NickList'
 import { ConversationTools } from './components/ConversationTools'
@@ -26,6 +28,7 @@ export default function App(): JSX.Element {
   const accounts = useChat((s) => s.accounts)
   const activePanel = useChat((s) => s.activePanel)
   const activeBufferId = useChat((s) => s.activeBufferId)
+  const activeGroupId = useChat((s) => s.activeGroupId)
   const joinPanelAccountId = useChat((s) => s.joinPanelAccountId)
   const buffer = useActiveBuffer()
   const joinAccount = accounts.find((a) => a.id === joinPanelAccountId)
@@ -56,7 +59,9 @@ export default function App(): JSX.Element {
         ? 'Settings'
         : activePanel === 'join'
         ? `Join · ${joinAccount?.displayName ?? ''}`
-        : buffer
+        : activeGroupId === MENTIONS_GROUP_ID
+          ? 'Mentions'
+          : buffer
             ? bufferDisplayName(buffer.name)
             : ''
 
@@ -111,10 +116,17 @@ export default function App(): JSX.Element {
           </div>
 
           <div className="main-body">
-            <Body activePanel={activePanel} hasAccounts={accounts.length > 0} hasBuffer={!!activeBufferId} />
+            <Body
+              activePanel={activePanel}
+              hasAccounts={accounts.length > 0}
+              hasBuffer={!!activeBufferId}
+              activeGroupId={activeGroupId}
+            />
           </div>
 
-          {activePanel === '' && activeBufferId !== '' && <Composer />}
+          {activePanel === '' && activeBufferId !== '' && activeGroupId !== MENTIONS_GROUP_ID && (
+            <Composer />
+          )}
         </div>
 
         {showNickList && (
@@ -156,17 +168,22 @@ function BufferFace({ buffer }: { buffer: BufferEntry }): JSX.Element | null {
 function Body({
   activePanel,
   hasAccounts,
-  hasBuffer
+  hasBuffer,
+  activeGroupId
 }: {
   activePanel: string
   hasAccounts: boolean
   hasBuffer: boolean
+  activeGroupId: string
 }): JSX.Element {
   if (activePanel === 'settings') return <SettingsPanel />
   // With no accounts at all, the accounts panel is the only useful thing to
   // show - there is nothing to chat in yet.
   if (activePanel === 'accounts' || !hasAccounts) return <AccountsPanel />
   if (activePanel === 'join') return <JoinPanel />
+  // The mentions page replaces the log rather than sitting beside it: it is a
+  // list of places to go, and every row leads into a conversation.
+  if (activeGroupId === MENTIONS_GROUP_ID) return <MentionsPage />
   if (hasBuffer) return <MessageList />
   return <Placeholder icon="forum" text="Select or join a channel" />
 }

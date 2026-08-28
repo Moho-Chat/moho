@@ -7,7 +7,9 @@ import type { BufferEntry } from '../state/store'
  * widening the wire type, which should only describe what the daemon
  * actually sends.
  */
-export type RailGroup = Omit<BufferGroup, 'kind'> & { kind: BufferGroup['kind'] | 'pinned' }
+export type RailGroup = Omit<BufferGroup, 'kind'> & {
+  kind: BufferGroup['kind'] | 'pinned' | 'mentions'
+}
 
 /**
  * The rail entry collecting pinned buffers from every service.
@@ -18,6 +20,8 @@ export type RailGroup = Omit<BufferGroup, 'kind'> & { kind: BufferGroup['kind'] 
  * exactly like any other entry.
  */
 export const PINNED_GROUP_ID = '~pinned'
+/** The page gathering every mention, across every service. */
+export const MENTIONS_GROUP_ID = '~mentions'
 
 /**
  * The rail entry collecting direct messages from every service.
@@ -58,6 +62,17 @@ export function pinnedGroup(): RailGroup {
   }
 }
 
+export function mentionsGroup(): RailGroup {
+  return {
+    id: MENTIONS_GROUP_ID,
+    accountId: '',
+    service: '',
+    kind: 'mentions',
+    name: 'Mentions',
+    position: -950
+  }
+}
+
 /**
  * The rail entries worth drawing.
  *
@@ -93,7 +108,7 @@ export function visibleGroups(groups: BufferGroup[], buffers: BufferEntry[]): Bu
 
 /** Entries the user cannot drag, and which always lead the rail. */
 export function isFixedEntry(group: RailGroup): boolean {
-  return group.kind === 'dms' || group.kind === 'pinned'
+  return group.kind === 'dms' || group.kind === 'pinned' || group.kind === 'mentions'
 }
 
 /**
@@ -110,7 +125,8 @@ export function orderedGroups(groups: RailGroup[], order: string[]): RailGroup[]
   // Direct messages, then pinned. Stated as a rule rather than left to the
   // position numbers, which are the backend's business and were never meant
   // to encode this.
-  const leadRank = (g: RailGroup): number => (g.kind === 'dms' ? 0 : 1)
+  const leadRank = (g: RailGroup): number =>
+    g.kind === 'dms' ? 0 : g.kind === 'mentions' ? 1 : 2
   const lead = groups
     .filter(isFixedEntry)
     .sort((a, b) => leadRank(a) - leadRank(b) || a.position - b.position)
