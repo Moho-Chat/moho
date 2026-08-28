@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Icon, IconButton, MaskIcon } from './Icon'
+import { Icon, MaskIcon } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { UserFooter } from './UserFooter'
 import { VoiceChannels } from './VoiceChannels'
@@ -21,8 +21,7 @@ import {
   bufferKindGlyph,
   classes,
   resolveMediaUrl,
-  serviceIcon,
-  serviceLabel
+  serviceIcon
 } from '../lib/util'
 import type { Account, Member } from '../../../shared/wire'
 import { Avatar } from './Avatar'
@@ -220,14 +219,6 @@ export function BufferList(): JSX.Element {
                   says it in the confident green of something that means
                   something. */}
               {activeGroup.accountId && groupAccount && <ConnectionDot state={groupAccount.state} />}
-              {groupAccount && (
-                <IconButton
-                  name="add"
-                  size={16}
-                  title={`Join on ${serviceLabel(groupAccount.service)}`}
-                  onClick={() => store.setActivePanel('join', groupAccount.id)}
-                />
-              )}
             </div>
 
             {groupBuffers.length === 0 && (
