@@ -816,6 +816,21 @@ img.composer-emoji {
   gap: var(--spacing-s);
 }
 
+/* The SASL fields read as one decision rather than three loose settings, so
+   they are boxed together and indent under the switch that turns them on. */
+.sasl-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s);
+  border: 1px solid var(--outline-light);
+  border-radius: var(--corner-radius);
+}
+
+.sasl-block .field {
+  margin-left: calc(16px + var(--spacing-s));
+}
+
 .qr-image {
   width: 220px;
   height: 220px;

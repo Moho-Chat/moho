@@ -16,6 +16,11 @@ export interface Account {
   saslEnabled: boolean
   saslUsername: string
   allowPlaintextSasl: boolean
+  /**
+   * Whether the connection is encrypted. Only IRC is ever false - every other
+   * service here is HTTPS or WSS by construction.
+   */
+  ssl: boolean
   hasPassword: boolean
   avatarUrl?: string
   sockchatRooms?: SockChatRoom[]

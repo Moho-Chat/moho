@@ -274,6 +274,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
                   call('setAccountAutojoin', { accountId: account.id, channels })
                 }
               />
+              <IrcSasl account={account} call={call} />
               <LabeledInput
                 label="NickServ password"
                 type="password"
@@ -317,6 +318,115 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
             <Icon name="delete" size={16} /> Remove account
           </button>
         </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Signing in to an IRC network with SASL rather than by messaging NickServ.
+ *
+ * Worth preferring where it exists: it happens during registration, so the
+ * account is identified before the first channel is joined - which is what
+ * makes cloaks and invite-only channels work on the first attempt instead of
+ * after a race with NickServ that IRC gives no way to wait on.
+ *
+ * All four fields are one settings call, because the daemon stores them
+ * together and sending them apart would let a half-applied change - a username
+ * without the password it goes with - decide a connection attempt.
+ */
+function IrcSasl({
+  account,
+  call
+}: {
+  account: Account
+  call: (method: string, params: Record<string, unknown>) => void
+}): JSX.Element {
+  const [username, setUsername] = useState(account.saslUsername)
+  const [password, setPassword] = useState('')
+  const [allowPlaintext, setAllowPlaintext] = useState(account.allowPlaintextSasl)
+
+  const apply = (patch: { enabled?: boolean; saslUser?: string; allowPlaintextSasl?: boolean }): void =>
+    call('setAccountSasl', {
+      accountId: account.id,
+      enabled: account.saslEnabled,
+      saslUser: username,
+      // Empty means "leave the stored one alone" - the daemon never reads a
+      // password back out, so there is nothing to prefill and clearing the
+      // box must not be read as clearing the credential.
+      password,
+      allowPlaintextSasl: allowPlaintext,
+      ...patch
+    })
+
+  return (
+    <div className="sasl-block">
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={account.saslEnabled}
+          onChange={(e) => apply({ enabled: e.target.checked })}
+        />
+        <span>
+          Authenticate with SASL
+          <span className="small muted">
+            {' '}
+            — identifies during connection, before any channel is joined
+          </span>
+        </span>
+      </label>
+
+      {account.saslEnabled && (
+        <>
+          <LabeledInput
+            label="SASL username"
+            defaultValue={account.saslUsername}
+            placeholder={account.id.split('@')[0] || 'your account name'}
+            onCommit={(value) => {
+              setUsername(value)
+              apply({ saslUser: value })
+            }}
+          />
+          <LabeledInput
+            label="SASL password"
+            type="password"
+            placeholder={account.hasPassword ? '(set)' : 'unset'}
+            onCommit={(value) => {
+              setPassword(value)
+              call('setAccountSasl', {
+                accountId: account.id,
+                enabled: true,
+                saslUser: username,
+                password: value,
+                allowPlaintextSasl: allowPlaintext
+              })
+            }}
+          />
+
+          {/* Only where it is a live question. On a TLS connection the
+              allowance decides nothing, and offering it there would be a
+              switch that appears to weaken something and does not. */}
+          {!account.ssl && (
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={account.allowPlaintextSasl}
+                onChange={(e) => {
+                  setAllowPlaintext(e.target.checked)
+                  apply({ allowPlaintextSasl: e.target.checked })
+                }}
+              />
+              <span>
+                Send SASL credentials over this unencrypted connection
+                <span className="small muted">
+                  {' '}
+                  — SASL PLAIN is the password with base64 round it, not encryption. Without
+                  this, connecting is refused rather than done quietly in the clear.
+                </span>
+              </span>
+            </label>
+          )}
+        </>
       )}
     </div>
   )
