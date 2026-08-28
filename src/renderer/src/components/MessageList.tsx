@@ -38,6 +38,7 @@ export function MessageList(): JSX.Element {
   const messagesByBuffer = useChat((s) => s.messagesByBuffer)
   const loadingMore = useChat((s) => s.loadingMore)
   const dividerTsByBuffer = useChat((s) => s.dividerTsByBuffer)
+  const jumpTarget = useChat((s) => s.jumpTarget)
   const [relativeTimestamps] = usePref<boolean>('display.relativeTimestamps', false)
   const [comfy] = usePref<string>('display.messageMode', 'comfy')
   const [mediaAutoplay] = usePref<boolean>('media.autoplay', true)
@@ -122,6 +123,8 @@ export function MessageList(): JSX.Element {
   const anchoredRef = useRef(true)
   /** contentHeight before a load-more, so scroll position can be restored. */
   const preLoadHeightRef = useRef(0)
+  /** A jumped-to message to keep in view while the page settles around it. */
+  const holdRef = useRef('')
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = scrollRef.current
@@ -149,12 +152,51 @@ export function MessageList(): JSX.Element {
     const content = contentRef.current
     if (!content || typeof ResizeObserver === 'undefined') return
     const ro = new ResizeObserver(() => {
+      // A jump holds its target the same way the tail is held: rows above it
+      // keep growing as their pictures arrive, and each one pushes the thing
+      // you asked to see further down the page.
+      const held = holdRef.current
+      if (held) {
+        scrollRef.current
+          ?.querySelector(`[data-msg-id="${CSS.escape(held)}"]`)
+          ?.scrollIntoView({ block: 'center' })
+        return
+      }
       if (anchoredRef.current) scrollToBottom()
     })
     ro.observe(content)
     return () => ro.disconnect()
   }, [scrollToBottom])
 
+
+  /**
+   * Somewhere else in the log has been asked for - a search result.
+   *
+   * Un-pinning first is the whole point of doing this here. Newly loaded rows
+   * keep growing for seconds as their pictures arrive, and while the view is
+   * pinned every one of those growths pulls it back to the bottom - so a
+   * scroll issued from outside is undone a moment after it lands.
+   */
+  useEffect(() => {
+    if (!jumpTarget) return
+    const row = scrollRef.current?.querySelector(`[data-msg-id="${CSS.escape(jumpTarget)}"]`)
+    if (!row) return
+    anchor(false)
+    setMissedCount(0)
+    row.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    row.classList.add('found')
+    // Held against the page settling: pictures in the rows above keep landing
+    // for a second or two afterwards, and each one pushes this row down.
+    holdRef.current = jumpTarget
+    // Deliberately not cleaned up on re-run. This effect re-runs whenever the
+    // log changes, which is constantly, and cancelling these each time left
+    // the highlight on the row permanently and the hold on forever.
+    setTimeout(() => row.classList.remove('found'), 2000)
+    setTimeout(() => {
+      if (holdRef.current === jumpTarget) holdRef.current = ''
+    }, 2500)
+    store.setJumpTarget('')
+  }, [jumpTarget, messages, anchor, store])
 
   // A buffer switch is a fresh view: land at the bottom, anchored, with no
   // carried-over "missed messages" count from the previous buffer.

@@ -79,6 +79,15 @@ export interface ChatState {
   voiceSessions: VoiceSession[]
   /** Conversations ringing right now, newest last. */
   incomingCalls: IncomingCall[]
+  /**
+   * A message the view should scroll to once it has rendered.
+   *
+   * Held here rather than scrolled to directly, because the log decides its
+   * own scroll position - it pins itself to the bottom while you are reading
+   * there, and a jump has to turn that off rather than fight it. Cleared by
+   * the log once it has done so.
+   */
+  jumpTarget: string
   activeBufferId: string
   activePanel: ActivePanel
   joinPanelAccountId: string
@@ -131,6 +140,7 @@ const INITIAL: ChatState = {
   voiceGuildId: '',
   voiceSessions: [],
   incomingCalls: [],
+  jumpTarget: '',
   activeBufferId: '',
   activePanel: '',
   joinPanelAccountId: '',
@@ -411,6 +421,11 @@ export class ChatStore {
       // An older daemon has no such method; no calls is the honest answer.
       this.set({ incomingCalls: [] })
     }
+  }
+
+  /** Asks the log to scroll to a message, and to stop following the tail. */
+  setJumpTarget(messageId: string): void {
+    this.set({ jumpTarget: messageId })
   }
 
   private setRinging(call: IncomingCall): void {

@@ -74,37 +74,27 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
     }
   }
 
-  const reveal = (id: string): boolean => {
-    const row = document.querySelector(`[data-msg-id="${CSS.escape(id)}"]`)
-    if (!row) return false
-    row.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    row.classList.add('found')
-    setTimeout(() => row.classList.remove('found'), 2000)
-    return true
-  }
-
   const jumpTo = async (id: string): Promise<void> => {
-    if (reveal(id)) {
-      setResults(null)
-      return
-    }
-    // Not on screen yet: search reads the whole stored conversation while the
-    // view holds only the newest part of it. Load backwards until it is.
-    setJumping(true)
-    try {
-      const found = await store.jumpToMessage(buffer.id, id)
-      if (!found) {
-        store.toast('info', "Couldn't reach that message - it is a long way back")
-        return
+    const loaded = !!document.querySelector(`[data-msg-id="${CSS.escape(id)}"]`)
+    if (!loaded) {
+      // Search reads the whole stored conversation while the view holds only
+      // the newest part of it. Load backwards until the message is there.
+      setJumping(true)
+      try {
+        if (!(await store.jumpToMessage(buffer.id, id))) {
+          store.toast('info', "Couldn't reach that message - it is a long way back")
+          return
+        }
+      } finally {
+        setJumping(false)
       }
-      // One frame for React to render the newly loaded rows before looking
-      // for the one to scroll to.
-      await new Promise((r) => requestAnimationFrame(() => r(null)))
-      if (!reveal(id)) store.toast('info', 'That message could not be shown')
-      setResults(null)
-    } finally {
-      setJumping(false)
     }
+    // The log does the scrolling. It pins itself to the bottom while you are
+    // reading there, and newly loaded rows keep growing as their pictures
+    // arrive - so a scroll from out here is undone a moment later by the very
+    // mechanism that keeps the tail in view.
+    store.setJumpTarget(id)
+    setResults(null)
   }
 
   const call = (): void => {
