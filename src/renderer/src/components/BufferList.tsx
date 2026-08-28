@@ -115,20 +115,28 @@ export function BufferList(): JSX.Element {
   }, [visible, activeGroup, isPinnedPage, isDmPage, pinned])
 
   /**
-   * The channel rows, under their headings.
+   * The rows, under their headings.
    *
-   * Only where headings make sense: the pinned and direct-message pages are
-   * already one flat idea each, and adding a heading over them would be
-   * inventing structure that isn't there. Ordinary channels sort by the
-   * service's own position within a heading, since that is the order the
-   * server arranged them in and the reason it supplies one.
+   * Every page can have them, the pinned and direct-message pages included.
+   * They were left out on the grounds that each is already one flat idea, but
+   * that is exactly backwards for the pages that gather everything: a guild's
+   * channels arrive sorted into the server's own categories, while the direct
+   * message page is one undifferentiated column of every conversation on
+   * every service, which is where a person most wants to impose some order.
+   *
+   * Ordinary channels sort by the service's own position within a heading,
+   * since that is the order the server arranged them in and the reason it
+   * supplies one. The gathered pages have no such order to respect and keep
+   * the recency they were already sorted by.
    */
   const grouped = useMemo(() => {
-    if (!activeGroup || isPinnedPage || isDmPage) return null
+    if (!activeGroup) return null
     const mine = customCats[activeGroup.id] ?? []
     const list = sections(groupBuffers, mine, assignment)
-    for (const s of list) {
-      s.buffers.sort((a, b) => (a.position || 0) - (b.position || 0))
+    if (!isPinnedPage && !isDmPage) {
+      for (const s of list) {
+        s.buffers.sort((a, b) => (a.position || 0) - (b.position || 0))
+      }
     }
     // A heading with nothing under it is still drawn when it is the user's -
     // they just made it, and a heading that vanishes until something is put
