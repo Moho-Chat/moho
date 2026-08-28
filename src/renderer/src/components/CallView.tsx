@@ -34,7 +34,22 @@ export function CallView({ bufferId }: { bufferId: string }): JSX.Element | null
   const [speaking, setSpeaking] = useState<Record<string, number>>({})
   const [folded, setFolded] = useState(false)
 
-  const session = sessions.find((s) => s.bufferId === bufferId)
+  /**
+   * The call this conversation should be showing.
+   *
+   * Two ways to match, because the two kinds of call are anchored
+   * differently. A one-to-one call belongs to the DM it is in, and shows on
+   * that conversation only. A guild's voice channel belongs to no text
+   * conversation at all - it is its own channel, with no buffer - so it shows
+   * on whatever channel of that guild is open, which is where Discord keeps
+   * it too and the only place it could go without inventing a buffer for it.
+   */
+  const buffer = buffers.find((b) => b.id === bufferId)
+  const session = sessions.find(
+    (s) =>
+      s.bufferId === bufferId ||
+      (!!s.guildId && !!buffer?.groupId && buffer.groupId === `${s.accountId}|guild:${s.guildId}`)
+  )
   const accountId = session?.accountId
   const channelId = session?.channelId
 
@@ -91,7 +106,6 @@ export function CallView({ bufferId }: { bufferId: string }): JSX.Element | null
 
   if (!session) return null
 
-  const buffer = buffers.find((b) => b.id === bufferId)
   const talking = (m: VoiceMember): boolean =>
     m.isSelf ? speaking.self !== undefined : (speaking[m.userId] ?? 0) > 0
 
