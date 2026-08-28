@@ -18,6 +18,8 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Message[] | null>(null)
   const [searching, setSearching] = useState(false)
+  /** Loading backwards towards a search result, which can take a moment. */
+  const [jumping, setJumping] = useState(false)
   const [calling, setCalling] = useState(false)
   const box = useRef<HTMLDivElement>(null)
 
@@ -72,18 +74,37 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
     }
   }
 
-  const jumpTo = (id: string): void => {
+  const reveal = (id: string): boolean => {
     const row = document.querySelector(`[data-msg-id="${CSS.escape(id)}"]`)
-    if (!row) {
-      // Search covers the whole stored conversation while the window holds
-      // only part of it, so saying where it is beats scrolling to nothing.
-      store.toast('info', 'That message is further back than the loaded history')
-      return
-    }
+    if (!row) return false
     row.scrollIntoView({ block: 'center', behavior: 'smooth' })
     row.classList.add('found')
     setTimeout(() => row.classList.remove('found'), 2000)
-    setResults(null)
+    return true
+  }
+
+  const jumpTo = async (id: string): Promise<void> => {
+    if (reveal(id)) {
+      setResults(null)
+      return
+    }
+    // Not on screen yet: search reads the whole stored conversation while the
+    // view holds only the newest part of it. Load backwards until it is.
+    setJumping(true)
+    try {
+      const found = await store.jumpToMessage(buffer.id, id)
+      if (!found) {
+        store.toast('info', "Couldn't reach that message - it is a long way back")
+        return
+      }
+      // One frame for React to render the newly loaded rows before looking
+      // for the one to scroll to.
+      await new Promise((r) => requestAnimationFrame(() => r(null)))
+      if (!reveal(id)) store.toast('info', 'That message could not be shown')
+      setResults(null)
+    } finally {
+      setJumping(false)
+    }
   }
 
   const call = (): void => {
@@ -127,10 +148,12 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           <div className="search-results-head small muted">
             {searching
               ? 'Searching…'
-              : `${results.length} ${results.length === 1 ? 'result' : 'results'}`}
+              : jumping
+                ? 'Loading older messages…'
+                : `${results.length} ${results.length === 1 ? 'result' : 'results'}`}
           </div>
           {results.map((m) => (
-            <button key={m.id} type="button" className="search-result" onClick={() => jumpTo(m.id)}>
+            <button key={m.id} type="button" className="search-result" onClick={() => void jumpTo(m.id)}>
               <span className="search-result-head small">
                 <span className="search-result-from">{m.from}</span>
                 <span className="muted">{formatFullTime(m.ts)}</span>

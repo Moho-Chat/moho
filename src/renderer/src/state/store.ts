@@ -1029,6 +1029,38 @@ export class ChatStore {
     }
   }
 
+  /**
+   * Loads backwards until a particular message is on screen.
+   *
+   * Search reads the whole stored conversation while the view holds only the
+   * most recent slice of it, so a result from last month used to be findable
+   * and unreachable at once - which raises the fair question of why it was
+   * offered as a result at all.
+   *
+   * Paging backwards rather than fetching a window around the message: it
+   * reuses the load-more path exactly, including the part that holds the
+   * reading position while older messages are prepended, and for Discord that
+   * same path pulls further history from the server, so a result older than
+   * anything stored locally is still reachable. Bounded, because a message
+   * that is genuinely thousands back is better refused than chased forever.
+   *
+   * Returns whether it got there.
+   */
+  async jumpToMessage(bufferId: string, messageId: string): Promise<boolean> {
+    const loaded = (): boolean =>
+      (this.state.messagesByBuffer[bufferId] || []).some((m) => m.id === messageId)
+    if (loaded()) return true
+
+    for (let page = 0; page < 12; page++) {
+      const before = (this.state.messagesByBuffer[bufferId] || []).length
+      await this.loadMoreHistory(bufferId)
+      if (loaded()) return true
+      // Nothing came back, so there is nothing older to find it in.
+      if ((this.state.messagesByBuffer[bufferId] || []).length === before) return false
+    }
+    return loaded()
+  }
+
   async loadMoreHistory(bufferId: string): Promise<void> {
     if (this.state.loadingMore[bufferId]) return
     const list = this.state.messagesByBuffer[bufferId] || []
