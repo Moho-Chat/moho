@@ -391,6 +391,24 @@ export function dmStatus(
   return 'offline'
 }
 
+/**
+ * What closing this conversation will actually do.
+ *
+ * It used to say "Close" everywhere and mean "stop drawing this", which was
+ * the bug: on Matrix you stayed in the room and it reappeared on the next
+ * sync. Now it leaves for real, so the menu has to say so - and say the right
+ * thing, since what leaving means differs. A guild's channel is the exception
+ * and is honest about it: you are in it because you are in the guild, so there
+ * is nothing to leave and this only hides it.
+ */
+function leaveLabel(buffer: BufferEntry, service?: string): string {
+  if (buffer.kind === 'dm') return service === 'discord' ? 'Close conversation' : 'Leave conversation'
+  if (service === 'matrix') return 'Leave room'
+  if (service === 'irc') return 'Leave channel'
+  if (service === 'discord') return 'Remove from list'
+  return 'Close'
+}
+
 function ConnectionDot({ state }: { state: string }): JSX.Element {
   const color =
     state === 'connected'
@@ -503,7 +521,14 @@ function BufferRow({
     { label: 'Hide', icon: 'visibility_off', onClick: onHide },
     ...(buffer.kind === 'server'
       ? []
-      : ([{ label: 'Close', icon: 'close', danger: true, onClick: onClose }] as MenuEntry[]))
+      : ([
+          {
+            label: leaveLabel(buffer, account?.service),
+            icon: 'close',
+            danger: true,
+            onClick: onClose
+          }
+        ] as MenuEntry[]))
   ]
 
   return (
