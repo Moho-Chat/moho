@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
 import { ContextMenu, useContextMenu } from './ContextMenu'
 import { Icon, IconButton, MaskIcon } from './Icon'
+import { Avatar } from './Avatar'
 import { useChat, usePref, useStore } from '../state/hooks'
-import { classes, nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
+import { bufferDisplayName, classes, nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
 import {
   isFixedEntry,
   orderedGroups,
@@ -200,6 +201,41 @@ function RailTile(props: TileProps): JSX.Element {
   )
 }
 
+/**
+ * A conversation waiting to be read, as its own tile in the column.
+ *
+ * Discord's arrangement, and it earns its place: the direct messages page
+ * gathers every conversation at once, so its tile can only ever say "something
+ * is waiting in there somewhere". Lifting the unread ones out says who, which
+ * is the part worth crossing the room for. They leave again once read, so this
+ * stays a list of things outstanding rather than a second list of people.
+ */
+function DmTile(props: { buffer: BufferEntry; active: boolean; onSelect: () => void }): JSX.Element {
+  const { buffer, active, onSelect } = props
+  const name = bufferDisplayName(buffer.name)
+  const count = buffer.unread
+  return (
+    <button
+      type="button"
+      className={classes('rail-tile', 'rail-dm', active && 'active')}
+      title={`${name} - ${count} unread message${count === 1 ? '' : 's'}`}
+      aria-label={`${name}, ${count} unread`}
+      onClick={onSelect}
+    >
+      <span className={`rail-pill${active ? ' active' : ' unread'}`} />
+      <span className="rail-face">
+        <Avatar name={name} url={buffer.avatarUrl} size={40} />
+      </span>
+      {/* A count rather than a dot: one message from someone and thirty of
+          them are different situations, and this column is where that gets
+          decided. */}
+      <span className={classes('rail-count', buffer.highlight && 'highlight')}>
+        {count > 99 ? '99+' : count}
+      </span>
+    </button>
+  )
+}
+
 export function ServerRail(): JSX.Element | null {
   const store = useStore()
   // One field per call, never a fresh object: useSyncExternalStore compares
@@ -207,6 +243,7 @@ export function ServerRail(): JSX.Element | null {
   // reports a change every time and loops until React gives up.
   const groups = useChat((s) => s.groups)
   const activeGroupId = useChat((s) => s.activeGroupId)
+  const activeBufferId = useChat((s) => s.activeBufferId)
   const buffers = useChat((s) => s.buffers)
   const [railOrder, setRailOrder] = usePref<string[]>('ui.railOrder', [])
   const [pinned] = usePref<string[]>('pinnedBuffers', [])
@@ -311,6 +348,27 @@ export function ServerRail(): JSX.Element | null {
 
   const entries = railEntries(ordered, folders)
 
+  /**
+   * Conversations with something waiting, most recent first.
+   *
+   * Unread ones only: opening one clears its count, which is exactly what
+   * makes its tile go away once it has been dealt with. Muted and hidden
+   * conversations are left out by the same rule the rest of the rail uses - a
+   * muted conversation was told not to ask for attention, and a tile in this
+   * column is asking.
+   */
+  const unreadDms = all
+    .filter(
+      (b) => isDirectMessage(b) && b.unread > 0 && countsTowardRail(b, muted, hidden, mutedGroups)
+    )
+    .sort((a, b) => (b.lastActivityTs || 0) - (a.lastActivityTs || 0))
+
+  // The direct messages and pinned pages lead the column; waiting
+  // conversations go directly beneath them and above the servers, which is
+  // where Discord puts them and where the eye goes first.
+  const leading = entries.filter((e) => e.kind === 'group' && isFixedEntry(e.group))
+  const rest = entries.filter((e) => !(e.kind === 'group' && isFixedEntry(e.group)))
+
   const renderTile = (g: RailGroup): JSX.Element => {
     const t = totals.get(g.id)
     return (
@@ -348,23 +406,7 @@ export function ServerRail(): JSX.Element | null {
     )
   }
 
-  return (
-    <nav className="server-rail" aria-label="Servers">
-      {/* Only the entries scroll; the cog stays pinned to the foot. The empty
-          space below them is where a server is dropped to take it back out of
-          a folder - folders themselves are made by dropping one icon onto
-          another. */}
-      <div
-        className="rail-scroll"
-        onDragOver={(e) => e.target === e.currentTarget && e.preventDefault()}
-        onDrop={(e) => {
-          if (e.target !== e.currentTarget) return
-          const from = draggingRef.current
-          if (from) setFolders(removeFromFolders(folders, from))
-          endDrag()
-        }}
-      >
-      {entries.map((entry) => {
+  const renderEntry = (entry: (typeof entries)[number]): JSX.Element => {
         if (entry.kind === 'folder') {
           const open = isFolderOpen(entry.id)
           return (
@@ -403,7 +445,46 @@ export function ServerRail(): JSX.Element | null {
           )
         }
         return renderTile(entry.group)
-      })}
+  }
+
+  return (
+    <nav className="server-rail" aria-label="Servers">
+      {/* Only the entries scroll; the cog stays pinned to the foot. The empty
+          space below them is where a server is dropped to take it back out of
+          a folder - folders themselves are made by dropping one icon onto
+          another. */}
+      <div
+        className="rail-scroll"
+        onDragOver={(e) => e.target === e.currentTarget && e.preventDefault()}
+        onDrop={(e) => {
+          if (e.target !== e.currentTarget) return
+          const from = draggingRef.current
+          if (from) setFolders(removeFromFolders(folders, from))
+          endDrag()
+        }}
+      >
+      {leading.map(renderEntry)}
+
+      {/* Conversations waiting to be read, between the pages that gather
+          everything and the servers themselves. */}
+      {unreadDms.length > 0 && (
+        <>
+          {unreadDms.map((b) => (
+            <DmTile
+              key={b.id}
+              buffer={b}
+              active={b.id === activeBufferId}
+              // Opens it, and takes the rail to the direct messages page on
+              // the way - that is where the conversation lives once read, and
+              // this tile is about to disappear from under the cursor.
+              onSelect={() => void store.selectBuffer(b.id, true)}
+            />
+          ))}
+          <div className="rail-divider" />
+        </>
+      )}
+
+      {rest.map(renderEntry)}
       </div>
 
       {folderMenu && (

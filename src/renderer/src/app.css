@@ -1960,6 +1960,41 @@ video.lightbox-media {
   display: block;
 }
 
+/* A conversation waiting to be read. Round rather than the squircle a server
+   gets, because it is a person: the same distinction the channel list already
+   makes between an avatar and a guild icon. */
+.rail-dm .rail-face {
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+/* How many are waiting. Sits on the corner like the service mark does, so a
+   column of servers and a column of people line up. */
+.rail-count {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--surface-container-highest);
+  color: var(--surface-text);
+  border: 2px solid var(--surface-container-lowest);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+}
+
+/* Someone said your name. Same escalation the channel rows use, so the two
+   agree about what counts as worth interrupting for. */
+.rail-count.highlight {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+
+
 /* A waiting mention is worth more than a quiet service label. */
 .rail-service.highlight {
   background: var(--primary);
