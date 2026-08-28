@@ -1110,6 +1110,13 @@ img.smilie {
   white-space: pre-wrap;
 }
 
+/* The video or picture the embed is describing, inside the card rather than
+   repeated beneath it. Sits under the title and description, which is the
+   reading order: what it is, then the thing itself. */
+.rich-embed-media {
+  margin-top: var(--spacing-s);
+}
+
 /* --- media embeds ------------------------------------------------------ */
 
 .media-row {

@@ -14,6 +14,7 @@ import {
   extractQuoteBlocks,
   formatMessage,
   normalizeBBCode,
+  youtubeId,
   stripCodeBlocks,
   stripEmbeddedUrls,
   stripQuoteBlocks,
@@ -168,6 +169,35 @@ export function MessageRow({
 
   const timeLabel = relativeTimestamps ? formatRelativeTime(message.ts) : formatTime(message.ts)
 
+  /**
+   * Which unfurled link belongs to which rich embed.
+   *
+   * A posted YouTube link produces both: the link itself, which unfurls to a
+   * thumbnail, and Discord's own embed describing it - title, description,
+   * colour. Drawn separately that is one video shown twice, once as a picture
+   * and once as a headline underneath it. Drawn together it is what Discord
+   * shows and what the person posting meant: a titled card with the video in
+   * it.
+   */
+  const embedMedia = useMemo(() => {
+    const claimed = new Map<number, (typeof parts.media)[number]>()
+    const taken = new Set<string>()
+    ;(message.embeds || []).forEach((embed, i) => {
+      if (!embed.url) return
+      const wanted = youtubeId(embed.url)
+      const match = parts.media.find(
+        (m) =>
+          !taken.has(m.url) &&
+          (m.url === embed.url || (!!wanted && m.youtubeId === wanted))
+      )
+      if (match) {
+        claimed.set(i, match)
+        taken.add(match.url)
+      }
+    })
+    return { claimed, loose: parts.media.filter((m) => !taken.has(m.url)) }
+  }, [message.embeds, parts.media])
+
   return (
     <>
       <div
@@ -299,10 +329,25 @@ export function MessageRow({
                   />
                 </div>
               )}
+              {/* The thing the embed is about, inside the card describing it
+                  rather than repeated below it. */}
+              {embedMedia.claimed.has(i) && (
+                <div className="rich-embed-media">
+                  <MediaEmbed
+                    item={embedMedia.claimed.get(i)!}
+                    autoplay={mediaAutoplay}
+                    loop={mediaLoop}
+                    bufferId={bufferId}
+                    messageId={message.id}
+                    from={message.from}
+                    onOpenInDiscord={(b, m) => void store.openInDiscord(b, m)}
+                  />
+                </div>
+              )}
             </div>
           ))}
 
-          {(attachments.length > 0 || parts.media.length > 0) && (
+          {(attachments.length > 0 || embedMedia.loose.length > 0) && (
             <div className="media-row">
               {/* Files nobilis described: mimetype and dimensions known up
                   front, so these lay out without waiting on bytes. */}
@@ -323,7 +368,7 @@ export function MessageRow({
                   alongside attachments: a pasted image URL is not an
                   attachment, and pre-existing scrollback predates the
                   attachment list and carries its media inline. */}
-              {parts.media.map((item) => (
+              {embedMedia.loose.map((item) => (
                 <MediaEmbed
                   key={item.url}
                   item={item}

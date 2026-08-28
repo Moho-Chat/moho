@@ -374,31 +374,36 @@ export function extractMedia(
   const result: MediaItem[] = []
   // A message legitimately repeating the same link (quoted text plus the
   // original) shouldn't render the same embed twice.
+  //
+  // Keyed by what the link *is* rather than by its text, which for YouTube is
+  // the video: the same video reaches here as a watch URL and an /embed/ one
+  // - two strings, one video - and keying on the string showed it twice.
   const seen = new Set<string>()
 
   for (const raw of urls) {
     const url = raw.replace(/[),.;!?]+$/, '')
-    if (seen.has(url)) continue
-
     const yt = youtubeId(url)
+    const identity = yt ? `yt:${yt}` : url
+    if (seen.has(identity)) continue
+
     if (yt) {
-      seen.add(url)
+      seen.add(identity)
       result.push({ url, kind: 'youtube', youtubeId: yt })
     } else if (IMAGE_EXT_RE.test(url)) {
-      seen.add(url)
+      seen.add(identity)
       result.push({ url, kind: 'image' })
     } else if (VIDEO_EXT_RE.test(url)) {
-      seen.add(url)
+      seen.add(identity)
       result.push({ url, kind: 'video' })
     } else if (OPAQUE_IMAGE_HOSTS.includes(hostnameOf(url))) {
-      seen.add(url)
+      seen.add(identity)
       result.push({ url, kind: 'image' })
     } else if (opts.contentSniffing && /^https?:\/\//i.test(url)) {
       // Nothing else could classify this. Not for file:// URLs: those are
       // always nobilis's own already-classified attachment paths.
       const sniffed = opts.sniffed?.[url]
       if (sniffed === 'image' || sniffed === 'video') {
-        seen.add(url)
+        seen.add(identity)
         result.push({ url, kind: sniffed })
       } else if (sniffed === undefined) {
         opts.onNeedSniff?.(url)
@@ -417,6 +422,18 @@ export function stripEmbeddedUrls(text: string, mediaItems: MediaItem[]): string
   if (!text || mediaItems.length === 0) return text
   let out = text
   for (const item of mediaItems) out = out.split(item.url).join('')
+
+  // A second link to a video already embedded goes too. It renders no second
+  // embed - the same video is shown once - so leaving its URL as text is the
+  // one case where a stripped link would come back as a bare line above the
+  // thing it points at.
+  const shown = new Set(mediaItems.map((m) => m.youtubeId).filter(Boolean))
+  if (shown.size) {
+    for (const raw of out.match(/https?:\/\/[^\s<[\]]+/g) || []) {
+      const id = youtubeId(raw.replace(/[),.;!?]+$/, ''))
+      if (id && shown.has(id)) out = out.split(raw).join('')
+    }
+  }
   return out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
