@@ -104,6 +104,18 @@ export interface VoiceMember {
   userId: string
   nick: string
   isSelf: boolean
+  /**
+   * Sharing a screen or window - Discord's "Go Live". Independent of `video`,
+   * which is a camera; somebody can be doing both, and the two look nothing
+   * alike to whoever is watching.
+   *
+   * All four are optional because a daemon older than this field does not
+   * send them, and a client has to keep working against one.
+   */
+  streaming?: boolean
+  video?: boolean
+  muted?: boolean
+  deafened?: boolean
 }
 
 export interface VoiceChannel {

@@ -973,6 +973,43 @@ img.composer-emoji {
   outline-color: var(--success);
 }
 
+/* Holds the badges against the picture. */
+.call-face {
+  position: relative;
+  display: inline-flex;
+}
+
+.call-badges {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: flex;
+  gap: 1px;
+  padding: 2px;
+  border-radius: 999px;
+  /* Its own plate, because these sit over an avatar that could be any
+     colour and a bare glyph would vanish against half of them. */
+  background: var(--surface-container-highest);
+  color: var(--surface-text);
+}
+
+/* Says a stream exists; deliberately not a button that opens one. */
+.call-watch {
+  padding: 0 var(--spacing-xs);
+  border: 1px solid var(--outline-medium);
+  border-radius: 999px;
+  background: none;
+  color: var(--surface-variant-text);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.call-watch[disabled] {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
 /* The bar that appears while picking people for a group message. */
 .group-dm-bar {
   display: flex;

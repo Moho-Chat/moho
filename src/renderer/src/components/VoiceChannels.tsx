@@ -63,6 +63,19 @@ export function VoiceChannels({ group }: { group: RailGroup }): JSX.Element | nu
                 <span className="voice-member-dot" style={{ background: nickColor(m.nick) }} />
                 <span className="ellipsis">{m.nick}</span>
                 {m.isSelf && <span className="muted voice-you">you</span>}
+                {/* Here as well as in the call view, because this is the list
+                    you read to decide whether to join at all - and somebody
+                    sharing a screen is the commonest reason to. */}
+                {m.streaming && (
+                  <span className="muted" title={`${m.nick} is sharing a screen`}>
+                    <Icon name="screen_share" size={13} />
+                  </span>
+                )}
+                {m.video && (
+                  <span className="muted" title={`${m.nick} has a camera on`}>
+                    <Icon name="videocam" size={13} />
+                  </span>
+                )}
               </div>
             ))}
           </div>

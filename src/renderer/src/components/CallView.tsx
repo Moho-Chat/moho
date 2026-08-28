@@ -139,11 +139,56 @@ export function CallView({ bufferId }: { bufferId: string }): JSX.Element | null
           {members.length === 0 && <div className="small muted">Waiting for the roster…</div>}
           {members.map((m) => (
             <div key={m.userId} className={talking(m) ? 'call-tile talking' : 'call-tile'}>
-              <Avatar name={m.nick} size={56} />
+              <span className="call-face">
+                <Avatar name={m.nick} size={56} />
+                {/* What they are doing, on the picture rather than beside the
+                    name: at this size the name is already the widest thing in
+                    the tile, and a row of words under it would set the tiles
+                    to different widths. */}
+                <span className="call-badges">
+                  {m.streaming && (
+                    <span title={`${m.nick} is sharing a screen`}>
+                      <Icon name="screen_share" size={13} />
+                    </span>
+                  )}
+                  {m.video && (
+                    <span title={`${m.nick} has a camera on`}>
+                      <Icon name="videocam" size={13} />
+                    </span>
+                  )}
+                  {/* Deafened wins over muted: somebody who cannot hear is
+                      also not talking, and showing both says the same thing
+                      twice in a space with room for neither. */}
+                  {m.deafened ? (
+                    <span title={`${m.nick} cannot hear`}>
+                      <Icon name="headset_off" size={13} />
+                    </span>
+                  ) : (
+                    m.muted && (
+                      <span title={`${m.nick} is muted`}>
+                        <Icon name="mic_off" size={13} />
+                      </span>
+                    )
+                  )}
+                </span>
+              </span>
               <span className="small ellipsis">
                 {m.nick}
                 {m.isSelf && <span className="muted"> (you)</span>}
               </span>
+              {m.streaming && (
+                <button
+                  type="button"
+                  className="call-watch small"
+                  // Honest about what it can do. The daemon can see the
+                  // stream exists but cannot carry video, so offering "Watch"
+                  // would open something permanently black.
+                  title="Watching a shared screen is not supported yet - moho's voice connection carries audio only"
+                  disabled
+                >
+                  Live
+                </button>
+              )}
             </div>
           ))}
         </div>
