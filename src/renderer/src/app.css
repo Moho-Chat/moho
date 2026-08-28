@@ -875,6 +875,45 @@ img.composer-emoji {
   color: var(--warning);
 }
 
+/* Confirming something that cannot be undone. Sits on the same backdrop the
+   lightbox uses, so there is one way for this app to say "deal with this
+   first". */
+.leave-confirm {
+  max-width: 420px;
+  padding: var(--spacing-l);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline-medium);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+}
+
+.leave-confirm-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  font-size: var(--font-size-large);
+  font-weight: 600;
+  margin-bottom: var(--spacing-s);
+}
+
+.leave-confirm p {
+  color: var(--surface-variant-text);
+  margin-bottom: var(--spacing-l);
+}
+
+.leave-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-s);
+}
+
+/* The one button in the app that destroys something. Not --error, which is a
+   pale text colour and reads as decorative when used as a fill. */
+.button.danger {
+  background: #c9403c;
+  color: #fff;
+}
+
 /* --- incoming calls ---------------------------------------------------- */
 
 /* Bottom left, above the account plaque, which is where Discord puts it and

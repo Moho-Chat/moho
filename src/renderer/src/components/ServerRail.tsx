@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { ContextMenu, useContextMenu } from './ContextMenu'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { Avatar } from './Avatar'
+import { LeaveConfirm } from './LeaveConfirm'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, classes, nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
 import {
@@ -57,6 +58,8 @@ interface TileProps {
   mergeTarget: boolean
   muted: boolean
   onToggleMute: () => void
+  /** Absent where there is nothing to leave - an account's own entry. */
+  onLeave?: () => void
   onSelect: () => void
   onDragStart: () => void
   onDragOver: (merge: boolean) => void
@@ -181,7 +184,21 @@ function RailTile(props: TileProps): JSX.Element {
               label: muted ? `Unmute ${group.name}` : `Mute ${group.name}`,
               icon: muted ? 'notifications_active' : 'notifications_off',
               onClick: props.onToggleMute
-            }
+            },
+            // Only where there is something to leave. An account's own entry
+            // stands for the connection itself, which is disconnected from
+            // the accounts pane rather than left.
+            ...(props.onLeave
+              ? [
+                  { separator: true } as const,
+                  {
+                    label: group.kind === 'space' ? 'Leave space' : 'Leave server',
+                    icon: 'logout',
+                    danger: true,
+                    onClick: props.onLeave
+                  } as const
+                ]
+              : [])
           ]}
           onClose={close}
         />
@@ -275,6 +292,8 @@ export function ServerRail(): JSX.Element | null {
   const [over, setOver] = useState('')
   // The tile a drop would merge into, as opposed to land beside.
   const [merging, setMerging] = useState('')
+  /** The rail entry a leave has been asked about, pending confirmation. */
+  const [leaving, setLeaving] = useState<RailGroup | null>(null)
 
   const beginDrag = (id: string): void => {
     draggingRef.current = id
@@ -385,6 +404,9 @@ export function ServerRail(): JSX.Element | null {
           )
         }
         active={g.id === activeGroupId}
+        onLeave={
+          g.kind === 'guild' || g.kind === 'space' ? () => setLeaving(g) : undefined
+        }
         unread={t?.unread ?? 0}
         highlight={t?.highlight ?? false}
         // Direct messages and pinned lead the rail by definition, so
@@ -522,6 +544,22 @@ export function ServerRail(): JSX.Element | null {
             setSettings(null)
           }}
           onClose={() => setSettings(null)}
+        />
+      )}
+
+      {leaving && (
+        <LeaveConfirm
+          name={leaving.name}
+          detail={
+            leaving.kind === 'space'
+              ? 'You will leave every room in this space that you joined through it. Getting back in needs a fresh invite unless the space is public.'
+              : "You won't be able to rejoin without a new invite, and its channels and history will go with it."
+          }
+          onCancel={() => setLeaving(null)}
+          onLeave={() => {
+            void store.leaveGroup(leaving.id)
+            setLeaving(null)
+          }}
         />
       )}
 

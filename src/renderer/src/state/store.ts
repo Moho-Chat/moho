@@ -322,6 +322,20 @@ export class ChatStore {
    * downloading. Replaced by id rather than appended, then re-sorted so a
    * late arrival lands in the right place instead of at the end.
    */
+  /**
+   * Takes a rail entry away, after leaving what it stood for.
+   *
+   * Also moves off it if it was the one being read: the pane below would
+   * otherwise be showing the channels of somewhere that no longer exists.
+   */
+  private removeGroup(groupId: string): void {
+    const groups = this.state.groups.filter((g) => g.id !== groupId)
+    this.set({ groups })
+    if (this.state.activeGroupId === groupId) {
+      this.set({ activeGroupId: groups[0]?.id ?? '', activeBufferId: '' })
+    }
+  }
+
   private upsertGroup(group: BufferGroup): void {
     const rest = this.state.groups.filter((g) => g.id !== group.id)
     const groups = [...rest, group].sort(
@@ -420,6 +434,21 @@ export class ChatStore {
     } catch {
       // An older daemon has no such method; no calls is the honest answer.
       this.set({ incomingCalls: [] })
+    }
+  }
+
+  /**
+   * Leaves a guild or space for real.
+   *
+   * The daemon takes the rail entry away once the server has agreed, so
+   * nothing is removed here on optimism - leaving is the one action where
+   * showing it as done before it is would be worse than a moment's delay.
+   */
+  async leaveGroup(groupId: string): Promise<void> {
+    try {
+      await window.moho.rpc('leaveGroup', { groupId })
+    } catch (e) {
+      this.toast('error', `Couldn't leave: ${(e as Error).message}`)
     }
   }
 
@@ -616,7 +645,10 @@ export class ChatStore {
         break
 
       case 'bufferGroupChange':
-        this.upsertGroup(data as BufferGroup)
+        // A leave arrives as a removal rather than a new shape. Passing that
+        // to the upsert would add a rail entry with no name and no service.
+        if (data.removed) this.removeGroup(data.id as string)
+        else this.upsertGroup(data as BufferGroup)
         break
 
       // The call itself came up or went away. Separate from membership
