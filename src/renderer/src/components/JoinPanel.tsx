@@ -1,8 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
 import { useChat, useStore } from '../state/hooks'
-import { resolveMediaUrl } from '../lib/util'
+import { classes, resolveMediaUrl } from '../lib/util'
 import type { Account, DiscordFriend } from '../../../shared/wire'
+
+/**
+ * How many other people a Discord group message holds - ten including you.
+ * Mirrored from the daemon so the picker can stop at the limit rather than
+ * letting somebody choose eleven names and then be told no.
+ */
+const GROUP_DM_MAX = 9
 
 /**
  * Per-protocol join pages rather than one generic "join by name" field: each
@@ -138,6 +145,15 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
   const store = useStore()
   const [friends, setFriends] = useState<DiscordFriend[]>([])
   const [onlineOnly, setOnlineOnly] = useState(true)
+  /**
+   * Who is going into a new group message, or null when not making one.
+   *
+   * A mode rather than a always-on multi-select, because the ordinary thing
+   * to do with a friend is open the conversation you already have with them,
+   * and a list that needed a second click to do that would be worse at the
+   * common case to be better at the rare one.
+   */
+  const [picking, setPicking] = useState<string[] | null>(null)
 
   const refreshFriends = (): void => {
     void window.moho
@@ -196,7 +212,49 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
         <button type="button" className="icon-button" title="Refresh" onClick={refreshFriends}>
           <Icon name="refresh" size={16} />
         </button>
+        <button
+          type="button"
+          className={picking ? 'tab active' : 'tab'}
+          title="Start a message with several people at once"
+          onClick={() => setPicking(picking ? null : [])}
+        >
+          <Icon name="group_add" size={15} />
+          {picking ? 'Cancel' : 'Group'}
+        </button>
       </div>
+
+      {picking && (
+        <div className="group-dm-bar small">
+          <span className="muted">
+            {picking.length === 0
+              ? 'Pick the people to start a group message with.'
+              : `${picking.length} selected${picking.length >= GROUP_DM_MAX ? ' — that is the most Discord allows' : ''}`}
+          </span>
+          <button
+            type="button"
+            className="button"
+            // One person is not a group: Discord would answer the list form
+            // with a brand-new two-person group sitting beside the DM you
+            // already have with them, which is not what picking one name
+            // means.
+            disabled={picking.length < 2}
+            onClick={() =>
+              void window.moho
+                .rpc<{ bufferId: string }>('openDiscordGroupDm', {
+                  accountId: account.id,
+                  userIds: picking
+                })
+                .then((r) => {
+                  setPicking(null)
+                  return store.selectBuffer(r.bufferId)
+                })
+                .catch((e: Error) => store.toast('error', e.message))
+            }
+          >
+            Start group
+          </button>
+        </div>
+      )}
 
       {shown.length === 0 && (
         <p className="small muted">{onlineOnly ? 'No friends online.' : 'No friends yet.'}</p>
@@ -206,14 +264,26 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
         <button
           key={f.userId}
           type="button"
-          className="friend-row"
-          onClick={() =>
+          className={classes('friend-row', picking?.includes(f.userId) && 'picked')}
+          onClick={() => {
+            if (picking) {
+              const has = picking.includes(f.userId)
+              if (!has && picking.length >= GROUP_DM_MAX) {
+                store.toast('info', `A group message holds ${GROUP_DM_MAX + 1} people including you.`)
+                return
+              }
+              setPicking(has ? picking.filter((id) => id !== f.userId) : [...picking, f.userId])
+              return
+            }
             void window.moho
               .rpc<{ bufferId: string }>('openDiscordDm', { accountId: account.id, userId: f.userId })
               .then((r) => store.selectBuffer(r.bufferId))
               .catch((e: Error) => store.toast('error', e.message))
-          }
+          }}
         >
+          {picking && (
+            <Icon name={picking.includes(f.userId) ? 'check_circle' : 'radio_button_unchecked'} size={16} />
+          )}
           {f.avatarUrl ? (
             <img className="friend-avatar" src={resolveMediaUrl(f.avatarUrl)} alt="" />
           ) : (
@@ -225,15 +295,27 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
         </button>
       ))}
 
+      {/* Several ids make a group, one makes the ordinary DM - the same rule
+          the daemon follows, so a comma is the only difference between the
+          two and nobody has to find a second field. */}
       <SubmitField
-        label="DM by user ID"
-        placeholder="numeric user id"
-        onSubmit={(userId) =>
+        label="Message by user ID"
+        placeholder="numeric user id, or several separated by commas"
+        onSubmit={(entered) => {
+          const ids = entered
+            .split(/[,\s]+/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+          if (ids.length === 0) return
+          const [method, params] =
+            ids.length === 1
+              ? ['openDiscordDm', { accountId: account.id, userId: ids[0] }]
+              : ['openDiscordGroupDm', { accountId: account.id, userIds: ids }]
           void window.moho
-            .rpc<{ bufferId: string }>('openDiscordDm', { accountId: account.id, userId })
+            .rpc<{ bufferId: string }>(method as string, params as Record<string, unknown>)
             .then((r) => store.selectBuffer(r.bufferId))
             .catch((e: Error) => store.toast('error', e.message))
-        }
+        }}
       />
     </div>
   )

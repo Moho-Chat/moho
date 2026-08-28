@@ -915,6 +915,21 @@ img.composer-emoji {
   gap: var(--spacing-s);
 }
 
+/* The bar that appears while picking people for a group message. */
+.group-dm-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-s);
+  background: var(--surface-container-high);
+  border-radius: var(--corner-radius-small);
+}
+
+.friend-row.picked {
+  background: var(--primary-selected);
+}
+
 /* The SASL fields read as one decision rather than three loose settings, so
    they are boxed together and indent under the switch that turns them on. */
 .sasl-block {
