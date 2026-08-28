@@ -915,6 +915,64 @@ img.composer-emoji {
   gap: var(--spacing-s);
 }
 
+/* --- the call, while it is happening ------------------------------------ */
+
+.call-view {
+  flex: none;
+  border-bottom: 1px solid var(--outline-medium);
+  background: var(--surface-container-low);
+}
+
+.call-view-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-m);
+}
+
+/* The title takes the slack so the buttons stay at the right edge. */
+.call-view-head > .ellipsis {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+}
+
+.call-view-head .calling {
+  color: var(--error);
+}
+
+.call-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-m);
+  padding: var(--spacing-s) var(--spacing-m) var(--spacing-m);
+}
+
+.call-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 88px;
+  text-align: center;
+}
+
+/* The ring, drawn on the picture rather than the tile so it reads as being
+   around the person and not around a box. Outline rather than border: a
+   border would resize the avatar every time somebody started talking, and
+   the whole row would twitch. */
+.call-tile img,
+.call-tile .avatar-fallback {
+  outline: 3px solid transparent;
+  outline-offset: 2px;
+  transition: outline-color 0.12s ease;
+}
+
+.call-tile.talking img,
+.call-tile.talking .avatar-fallback {
+  outline-color: var(--success);
+}
+
 /* The bar that appears while picking people for a group message. */
 .group-dm-bar {
   display: flex;

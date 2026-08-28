@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { MessageRow, type MessageMode } from './MessageRow'
+import { CallView } from './CallView'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, isChatKind } from '../lib/util'
 import type { ChannelIndex } from '../lib/format'
@@ -273,6 +274,10 @@ export function MessageList(): JSX.Element {
 
   return (
     <div className="messagelist">
+      {/* Above the log and outside the scroller. Who is talking is only
+          useful while it can be seen, and a panel that scrolled away with
+          the backlog would be gone the moment anybody read anything. */}
+      <CallView bufferId={bufferId} />
       <div className="messagelist-scroll" ref={scrollRef} onScroll={onScroll}>
         {/* One wrapper so the whole log has a single measurable height; the
             observer above needs an element that grows with the content, which
