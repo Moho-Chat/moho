@@ -3,6 +3,7 @@ import { Icon, IconButton, MaskIcon } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, resolveMediaUrl, serviceIcon, serviceLabel } from '../lib/util'
+import { IRC_NETWORKS, ircNetworkFor } from '../lib/networks'
 import type { Account } from '../../../shared/wire'
 
 const ADDABLE = ['irc', 'discord', 'sockchat', 'matrix'] as const
@@ -379,6 +380,32 @@ function IrcForm({ onDone }: { onDone: () => void }): JSX.Element {
         <label className="field">
           <span className="small muted">Nickname</span>
           <input className="text-field" value={nick} onChange={(e) => setNick(e.target.value)} />
+        </label>
+        {/* Typing a hostname and port correctly is the one step here where a
+            small mistake looks like the server being down, so the networks
+            people actually join are offered ready-made. Choosing one fills
+            the fields rather than hiding them: they stay editable, and a
+            network not on the list is typed in exactly as before. */}
+        <label className="field">
+          <span className="small muted">Network</span>
+          <select
+            className="text-field"
+            value={ircNetworkFor(host)?.id ?? ''}
+            onChange={(e) => {
+              const n = IRC_NETWORKS.find((x) => x.id === e.target.value)
+              if (!n) return
+              setHost(n.host)
+              setPort(String(n.port))
+              setSsl(n.tls)
+            }}
+          >
+            <option value="">Other…</option>
+            {IRC_NETWORKS.map((n) => (
+              <option key={n.id} value={n.id}>
+                {n.name}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="field">
           <span className="small muted">Server</span>

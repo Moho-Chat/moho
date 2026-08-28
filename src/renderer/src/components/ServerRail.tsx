@@ -3,6 +3,7 @@ import { ContextMenu, useContextMenu } from './ContextMenu'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { Avatar } from './Avatar'
 import { LeaveConfirm } from './LeaveConfirm'
+import { ircNetworkFor } from '../lib/networks'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, classes, nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
 import {
@@ -92,6 +93,19 @@ function GroupFace({ group, customIcon }: { group: RailGroup; customIcon?: strin
     return <img className="rail-mark" src={service.mark} alt="" />
   }
   if (group.kind === 'account') {
+    // A known IRC network gets its own colour and letters rather than the
+    // same generic "#" every network would otherwise share - which is the
+    // one thing the rail exists to avoid. Initials rather than logos: those
+    // belong to the networks that own them, and a wrong-looking copy of
+    // somebody's logo is worse than two clean letters.
+    const network = group.service === 'irc' ? ircNetworkFor(group.name) : null
+    if (network) {
+      return (
+        <span className="rail-initials" style={{ color: network.colour }}>
+          {network.mark}
+        </span>
+      )
+    }
     return service.mark ? <MaskIcon src={service.mark} size={22} /> : <Icon name={service.glyph!} size={22} />
   }
   return (
