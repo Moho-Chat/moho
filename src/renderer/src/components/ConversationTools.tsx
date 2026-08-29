@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
+import { AddToConversation } from './AddToConversation'
 import { useChat, useStore } from '../state/hooks'
 import { formatFullTime } from '../lib/util'
 import type { BufferEntry } from '../state/store'
@@ -117,6 +118,10 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           onClick={call}
         />
       )}
+
+      {/* Beside the call button, for the same reason it is here: it acts on
+          the conversation being read rather than on the window. */}
+      {isDiscord && isDm && <AddToConversation buffer={buffer} />}
 
       <div className="conversation-search">
         <Icon name="search" size={16} />

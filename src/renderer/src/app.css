@@ -3026,6 +3026,47 @@ video.lightbox-media {
 
 /* --- conversation tools ----------------------------------------------- */
 
+/* Adding somebody to a conversation. Anchored to its own button rather than
+   to the toolbar, so it opens under the thing that was clicked however the
+   header is laid out at that width. */
+.add-to-dm {
+  position: relative;
+  display: flex;
+}
+
+.add-to-dm-pop {
+  position: absolute;
+  top: calc(100% + var(--spacing-xxs));
+  right: 0;
+  z-index: 40;
+  width: 280px;
+  max-height: 340px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* Says what the button will actually do, which differs between a group and a
+   one-to-one - so it is a sentence rather than a heading. */
+.add-to-dm-head {
+  color: var(--surface-variant-text);
+  padding-bottom: var(--spacing-xxs);
+  border-bottom: 1px solid var(--outline-light);
+  margin-bottom: var(--spacing-xxs);
+}
+
+.add-to-dm-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--spacing-xs);
+}
+
 .conversation-tools {
   display: flex;
   align-items: center;
