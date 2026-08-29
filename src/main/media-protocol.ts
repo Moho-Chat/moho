@@ -41,26 +41,37 @@ export function allowRoot(dir: string): void {
  * `.cache` directory under the profile that nothing ever writes to, and the
  * check would fail closed and silently.
  */
-function daemonDirs(): { cache: string; config: string } {
+function daemonDirs(): { cache: string; config: string }[] {
   const home = os.homedir()
-  if (process.platform === 'win32') {
-    // dirs::cache_dir is LOCALAPPDATA and dirs::config_dir is APPDATA -
-    // different directories on Windows, unlike the single ~/.config habit.
-    return {
-      cache: process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'),
-      config: process.env.APPDATA || path.join(home, 'AppData', 'Roaming')
-    }
-  }
-  if (process.platform === 'darwin') {
-    return {
-      cache: path.join(home, 'Library', 'Caches'),
-      config: path.join(home, 'Library', 'Application Support')
-    }
-  }
-  return {
+  // The legacy shape, which the daemon still prefers wherever it already
+  // exists so that nobody's accounts move out from under them. Listed on
+  // every platform rather than only on Linux, because a Windows install that
+  // ran an older nobilis really does have one.
+  const legacy = {
     cache: process.env.XDG_CACHE_HOME || path.join(home, '.cache'),
     config: process.env.XDG_CONFIG_HOME || path.join(home, '.config')
   }
+  if (process.platform === 'win32') {
+    // dirs::cache_dir is LOCALAPPDATA and dirs::config_dir is APPDATA -
+    // two different directories, unlike the single ~/.config habit.
+    return [
+      {
+        cache: process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'),
+        config: process.env.APPDATA || path.join(home, 'AppData', 'Roaming')
+      },
+      { cache: legacy.cache, config: path.join(home, '.config') }
+    ]
+  }
+  if (process.platform === 'darwin') {
+    return [
+      {
+        cache: path.join(home, 'Library', 'Caches'),
+        config: path.join(home, 'Library', 'Application Support')
+      },
+      legacy
+    ]
+  }
+  return [legacy]
 }
 
 /**
@@ -71,8 +82,7 @@ function daemonDirs(): { cache: string; config: string } {
  * silently refuses every image the daemon fetches.
  */
 function allowedRoots(): string[] {
-  const { cache, config } = daemonDirs()
-  return [
+  return daemonDirs().flatMap(({ cache, config }) => [
     path.join(cache, 'nobilis'),
     path.join(config, 'nobilis'),
     // The daemon's pre-rename directories. Its migration only moves these
@@ -81,9 +91,9 @@ function allowedRoots(): string[] {
     // messages still naming the old one. Those files are the user's own cache
     // either way; refusing them only blanks the avatars on old scrollback.
     path.join(cache, 'moho'),
-    path.join(config, 'moho'),
-    os.tmpdir()
-  ]
+    path.join(config, 'moho')
+  ])
+    .concat(os.tmpdir())
     .map((p) => path.resolve(p) + path.sep)
     .concat(extraRoots)
 }
