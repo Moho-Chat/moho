@@ -3,7 +3,7 @@ import { Icon, IconButton } from './Icon'
 import { EmojiPicker } from './EmojiPicker'
 import { useActiveBuffer, useChat, useStore } from '../state/hooks'
 import { emojiPreview } from '../lib/format'
-import { bufferDisplayName, fileNameOf, resolveMediaUrl } from '../lib/util'
+import { bufferDisplayName, fileNameOf, isImageFile, resolveMediaUrl } from '../lib/util'
 
 interface StagedAttachment {
   id: number
@@ -11,8 +11,6 @@ interface StagedAttachment {
   name: string
   isImage: boolean
 }
-
-const IMAGE_EXTS = /\.(png|jpe?g|gif|webp|bmp)$/i
 
 /**
  * How often to repeat a typing notice while somebody keeps writing.
@@ -112,7 +110,7 @@ export function Composer(): JSX.Element | null {
 
   const stage = (path: string): void => {
     const name = fileNameOf(path)
-    setStaged((s) => [...s, { id: ++seqRef.current, path, name, isImage: IMAGE_EXTS.test(name) }])
+    setStaged((s) => [...s, { id: ++seqRef.current, path, name, isImage: isImageFile(name) }])
   }
 
   const submit = (): void => {

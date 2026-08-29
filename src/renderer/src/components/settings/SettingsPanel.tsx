@@ -40,31 +40,83 @@ const CATEGORIES = [
  * performs the upload and a client drawing the menu should not hold a second,
  * separately-maintained copy of the answer.
  */
-function UploadHostSetting(): JSX.Element {
-  const [host, setHost] = usePref<string>('uploads.host', 'catbox')
-  const [hosts, setHosts] = useState<{ id: string; label: string }[]>([])
+/**
+ * Which host a service sends a file to, for one kind of file.
+ *
+ * Split two ways because one answer never fitted. By kind, because the hosts
+ * differ in what they will take at all - postimg.cc is images-only, so a
+ * single choice meant either giving up its click-through page for pictures
+ * or having video refused outright. And by service, because the right answer
+ * genuinely differs: postimg is the convention on Sneedchat and means nothing
+ * on IRC.
+ *
+ * Only hosts that will accept this kind are offered. Listing one that would
+ * refuse the file is how somebody ends up picking it and finding out later.
+ */
+function UploadHostSetting({
+  service,
+  kind
+}: {
+  service: 'irc' | 'sockchat'
+  kind: 'images' | 'media'
+}): JSX.Element {
+  // The old single setting, kept as the starting point so nobody who chose a
+  // host before this was split has to choose it again. Not for media on a
+  // host that cannot take any: that would carry a broken choice forward.
+  const [legacy] = usePref<string>('uploads.host', '')
+  // Carried forward only where it can be honoured: postimg takes images only
+  // and is reached through Sneedchat's own transport, so it is not an answer
+  // for media, nor for IRC at all.
+  const legacyUsable =
+    legacy === 'postimg' ? service === 'sockchat' && kind === 'images' : !!legacy
+  const fallback = legacyUsable
+    ? legacy
+    : kind === 'images' && service === 'sockchat'
+      ? 'postimg'
+      : 'catbox'
+
+  const [host, setHost] = usePref<string>(`uploads.${service}.${kind}`, fallback)
+  const [hosts, setHosts] = useState<UploadHost[]>([])
 
   useEffect(() => {
     void window.moho
-      .rpc<{ id: string; label: string }[]>('listUploadHosts')
+      .rpc<UploadHost[]>('listUploadHosts')
       .then(setHosts)
       // An older daemon has no such method; the stored choice still applies.
       .catch(() => setHosts([]))
   }, [])
 
+  // Two reasons a host is not on offer here, and the daemon supplies both:
+  // it will not take this kind of file, or it is reached through one
+  // service's own transport and cannot be posted from another.
+  const usable = hosts.filter(
+    (h) => (kind === 'images' || !h.imagesOnly) && (!h.onlyFor || h.onlyFor === service)
+  )
+
   return (
     <ChoiceSetting
-      label="Upload files to"
-      description="Used when sending a file on IRC or Sneedchat, neither of which can carry one itself. The file is uploaded anonymously and the link is sent. Pick postimg.cc on Sneedchat for the site's own habit of a click-through page - it takes images only, so choose another for video."
+      label={kind === 'images' ? 'Upload images to' : 'Upload other files to'}
+      description={
+        kind === 'images'
+          ? 'Pictures sent here are uploaded anonymously and the link is posted.'
+          : 'Everything that is not a picture - video, archives, documents. Hosts that only take images are not offered.'
+      }
       value={host}
       options={
-        hosts.length
-          ? hosts.map((h) => ({ label: h.label, value: h.id }))
-          : [{ label: host, value: host }]
+        usable.length ? usable.map((h) => ({ label: h.label, value: h.id })) : [{ label: host, value: host }]
       }
       onChange={setHost}
     />
   )
+}
+
+/** What listUploadHosts reports about somewhere a file can go. */
+interface UploadHost {
+  id: string
+  label: string
+  imagesOnly: boolean
+  /** The only service this host can be posted from, if it is not general. */
+  onlyFor: string | null
 }
 
 export function SettingsPanel(): JSX.Element {
@@ -220,10 +272,6 @@ function GeneralSettings(): JSX.Element {
         />
       </SettingsSection>
 
-      <SettingsSection title="Uploads">
-        <UploadHostSetting />
-      </SettingsSection>
-
       <SettingsSection title="Downloads">
         <DirectorySetting
           settingKey="downloads.directory"
@@ -278,6 +326,14 @@ function IrcSettings(): JSX.Element {
       </SettingsSection>
 
       <SettingsSection
+        title="Uploads"
+        description="IRC carries text and nothing else, so a file is uploaded and the link sent - which is what people do by hand there anyway."
+      >
+        <UploadHostSetting service="irc" kind="images" />
+        <UploadHostSetting service="irc" kind="media" />
+      </SettingsSection>
+
+      <SettingsSection
         title="Connection defaults for new accounts"
         description="Applied when you connect a new IRC account. SASL, autojoin and NickServ auto-identify are per-account instead, from that account's own entry in the Accounts pane."
       >
@@ -304,10 +360,20 @@ function useSockchatAccount(): Account | undefined {
  */
 function SneedchatSettings(): JSX.Element {
   return (
-    <SettingsSection
-      title="Sneedchat"
-      description="Channels are set per account - open the Accounts pane and expand the account you want. Sneedchat is Tor-only; transport and circuit options are in the Tor category."
-    />
+    <>
+      <SettingsSection
+        title="Sneedchat"
+        description="Channels are set per account - open the Accounts pane and expand the account you want. Sneedchat is Tor-only; transport and circuit options are in the Tor category."
+      />
+
+      <SettingsSection
+        title="Uploads"
+        description="Sneedchat's own protocol carries no files at all, so one is uploaded elsewhere and posted as a link. postimg.cc is what the site's regulars use and gives a picture a page to click through to - it takes images only, which is why the two are chosen separately."
+      >
+        <UploadHostSetting service="sockchat" kind="images" />
+        <UploadHostSetting service="sockchat" kind="media" />
+      </SettingsSection>
+    </>
   )
 }
 

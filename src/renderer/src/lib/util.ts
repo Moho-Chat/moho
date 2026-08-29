@@ -164,6 +164,20 @@ export const MEDIA_SCHEME = 'moho-media'
  * ordinary character in a filename, and treating it as a separator there
  * would truncate perfectly good names.
  */
+/**
+ * Whether this is a picture, by its name.
+ *
+ * The same list the daemon's own upload code uses, because the two have to
+ * agree: this decides which host a file is offered to, and that one decides
+ * whether the host will take it. A file called an image here and refused
+ * there is the trap the uploads setting used to spring.
+ */
+const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|bmp|avif)$/i
+
+export function isImageFile(nameOrPath: string): boolean {
+  return IMAGE_EXTENSIONS.test(fileNameOf(nameOrPath))
+}
+
 export function fileNameOf(filePath: string): string {
   const windows = /^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith('\\\\')
   const parts = filePath.split(windows ? /[\\/]/ : '/')

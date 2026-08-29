@@ -16,7 +16,7 @@ import type {
   IncomingCall
 } from '../../../shared/wire'
 import { buildSmilieIndex, type SmilieEntry, type SmilieIndex } from '../lib/format'
-import { resolveMediaUrl } from '../lib/util'
+import { isImageFile, resolveMediaUrl } from '../lib/util'
 import { DM_GROUP_ID, isDirectMessage } from '../lib/groups'
 
 /**
@@ -233,10 +233,33 @@ function tidyDetail(detail: string): string {
 }
 
 /** The upload host the person chose, or the default if they never did. */
-async function uploadHost(): Promise<string> {
+/**
+ * Where this file should go, for this service.
+ *
+ * Chosen by service and by whether the file is a picture, because the answer
+ * differs on both counts: postimg.cc is the convention on Sneedchat and
+ * meaningless on IRC, and it takes images only - so sending a video there is
+ * a refusal rather than an upload. Read at send time, since it is a
+ * preference somebody may change between one message and the next.
+ *
+ * The old single setting is the fallback, so a host chosen before this was
+ * split still applies - except for a non-image on an images-only host, where
+ * carrying the choice forward would carry a refusal forward with it.
+ */
+async function uploadHost(service: string | undefined, attachmentPath: string): Promise<string> {
+  const kind = isImageFile(attachmentPath) ? 'images' : 'media'
+  const perService = service === 'sockchat' ? 'sockchat' : 'irc'
   try {
     const prefs = await window.moho.prefs.getAll()
-    return (prefs['uploads.host'] as string) || 'catbox'
+    const chosen = prefs[`uploads.${perService}.${kind}`] as string | undefined
+    if (chosen) return chosen
+    // postimg is reached through Sneedchat's own transport and cannot be
+    // posted from IRC, and it takes images only - so a stored choice of it
+    // is carried forward only where it can actually be honoured.
+    const legacy = prefs['uploads.host'] as string | undefined
+    const legacyUsable = legacy === 'postimg' ? perService === 'sockchat' && kind === 'images' : !!legacy
+    if (legacy && legacyUsable) return legacy
+    return kind === 'images' && perService === 'sockchat' ? 'postimg' : 'catbox'
   } catch {
     return 'catbox'
   }
@@ -1379,7 +1402,7 @@ export class ChatStore {
         // change between one message and the next, and the daemon falls back
         // to its own default if this is absent or unknown to it.
         ...(attachmentPath
-          ? { attachmentPath, uploadHost: await uploadHost() }
+          ? { attachmentPath, uploadHost: await uploadHost(account?.service, attachmentPath) }
           : {}),
         ...(replyToId ? { replyToId } : {})
       })
