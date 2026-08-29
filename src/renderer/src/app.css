@@ -1910,6 +1910,43 @@ img.smilie {
   max-width: 560px;
 }
 
+/* Pending Matrix invitations, above the join field.
+   A row is "what it is" against "what you can do about it", with the name
+   allowed to shrink: a room id is long, and the two buttons must stay
+   reachable rather than being pushed off the edge by it. */
+.invite-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+}
+
+.invite-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-variant);
+}
+
+.invite-what {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.invite-name {
+  font-weight: 600;
+}
+
+.invite-actions {
+  display: flex;
+  gap: var(--spacing-xxs);
+  flex: none;
+}
+
 .join-friends-header {
   display: flex;
   align-items: center;

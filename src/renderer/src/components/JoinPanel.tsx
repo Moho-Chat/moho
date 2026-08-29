@@ -11,6 +11,15 @@ import type { Account, DiscordFriend } from '../../../shared/wire'
  */
 const GROUP_DM_MAX = 9
 
+/** A room this account has been invited to and not yet answered. */
+type MatrixInvite = {
+  roomId: string
+  name: string
+  inviter: string | null
+  avatarUrl: string | null
+  isDirect: boolean
+}
+
 /**
  * Per-protocol join pages rather than one generic "join by name" field: each
  * service's mechanism is genuinely different (IRC joins by channel name,
@@ -106,10 +115,101 @@ function IrcJoin({ account }: { account: Account }): JSX.Element {
   )
 }
 
+/**
+ * Rooms somebody has asked this account to join.
+ *
+ * Shown above the join field because it is the one thing here that arrived
+ * on its own: everything else on this page is a room you already know the
+ * name of and went looking for. An invite was invisible until recently -
+ * the daemon never read them out of sync - so it is worth being plain about
+ * who sent it, since a room with no name of its own shows as its raw id and
+ * the inviter is the only part that makes it answerable.
+ */
+function MatrixInvites({ account }: { account: Account }): JSX.Element | null {
+  const store = useStore()
+  const [invites, setInvites] = useState<MatrixInvite[]>([])
+  const [answering, setAnswering] = useState<string | null>(null)
+
+  useEffect(() => {
+    const load = (): void => {
+      void window.moho
+        .rpc<MatrixInvite[]>('listMatrixInvites', { accountId: account.id })
+        // An older daemon has no such method, and no invites to show.
+        .then(setInvites)
+        .catch(() => setInvites([]))
+    }
+    load()
+    // The daemon pushes the whole set whenever it changes, so accepting from
+    // another client empties this without anybody refreshing.
+    return window.moho.onEvent((frame) => {
+      if (frame.event !== 'matrixInvites') return
+      const data = frame.data as { accountId: string; invites: MatrixInvite[] }
+      if (data.accountId === account.id) setInvites(data.invites ?? [])
+    })
+  }, [account.id])
+
+  if (invites.length === 0) return null
+
+  const answer = (invite: MatrixInvite, accept: boolean): void => {
+    setAnswering(invite.roomId)
+    void window.moho
+      .rpc(accept ? 'acceptMatrixInvite' : 'declineMatrixInvite', {
+        accountId: account.id,
+        roomId: invite.roomId
+      })
+      // Not removed from the list here: the next sync stops listing it,
+      // which is what actually confirms the server agreed.
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setAnswering(null))
+  }
+
+  return (
+    <div className="field">
+      <span className="small muted">
+        {invites.length === 1 ? 'You have been invited to' : `You have ${invites.length} invitations`}
+      </span>
+      <div className="invite-list">
+        {invites.map((invite) => (
+          <div className="invite-row" key={invite.roomId}>
+            <div className="invite-what">
+              <span className="invite-name ellipsis">{invite.name}</span>
+              {invite.inviter && (
+                <span className="small muted ellipsis">
+                  from {invite.inviter}
+                  {invite.isDirect ? ' · direct message' : ''}
+                </span>
+              )}
+            </div>
+            <div className="invite-actions">
+              <button
+                type="button"
+                className="button primary"
+                disabled={answering === invite.roomId}
+                onClick={() => answer(invite, true)}
+              >
+                Accept
+              </button>
+              <button
+                type="button"
+                className="button"
+                disabled={answering === invite.roomId}
+                onClick={() => answer(invite, false)}
+              >
+                Decline
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function MatrixJoin({ account }: { account: Account }): JSX.Element {
   const store = useStore()
   return (
     <div className="panel join-panel">
+      <MatrixInvites account={account} />
       <SubmitField
         label="Join a room or space"
         // A Space is just a room with an m.space creation type, joined through
