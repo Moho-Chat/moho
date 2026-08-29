@@ -23,7 +23,7 @@ const CATEGORIES = [
   { id: 'sockchat', label: 'Sneedchat', available: true },
   { id: 'tor', label: 'Tor', available: true },
   { id: 'matrix', label: 'Matrix', available: true },
-  { id: 'daemon', label: 'Daemon', available: true },
+  { id: 'about', label: 'About', available: true },
   { id: 'discord', label: 'Discord', available: false },
   { id: 'slack', label: 'Slack', available: false }
 ]
@@ -139,7 +139,7 @@ export function SettingsPanel(): JSX.Element {
         {selected === 'sockchat' && <SneedchatSettings />}
         {selected === 'tor' && <TorSettings />}
         {selected === 'matrix' && <MatrixSettings />}
-        {selected === 'daemon' && <DaemonSettings />}
+        {selected === 'about' && <AboutSettings />}
         {(selected === 'discord' || selected === 'slack') && (
           <ComingSoon label={CATEGORIES.find((c) => c.id === selected)!.label} />
         )}
@@ -481,46 +481,91 @@ function MatrixSettings(): JSX.Element {
   )
 }
 
-function DaemonSettings(): JSX.Element {
+/**
+ * One fact about a build, with its value set in the face a hash wants.
+ *
+ * Selectable, because the reason to look at a commit is usually to paste it
+ * somewhere - into a bug report, or next to `git show`.
+ */
+function BuildRow({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <div className="setting-row">
+      <div className="setting-text">
+        <div>{label}</div>
+      </div>
+      <span className="build-value selectable">{value}</span>
+    </div>
+  )
+}
+
+/**
+ * What is actually running, and where.
+ *
+ * The two halves are built and deployed separately and either can be older
+ * than the other with nothing looking wrong. An AppImage also keeps running
+ * from its own mount after the file on disk has been replaced, so "did my
+ * change land" is a real question with no other way to ask it from in here.
+ *
+ * Commits rather than version numbers, for that reason: the version has not
+ * moved in a long time and would answer nothing.
+ */
+function AboutSettings(): JSX.Element {
   const store = useStore()
   const linkUp = useChat((s) => s.linkUp)
   const [status, setStatus] = useState<{ binaryPath: string; available: boolean } | null>(null)
+  const [daemon, setDaemon] = useState<{ version: string; commit: string } | null>(null)
 
   useEffect(() => {
     void window.moho.daemonStatus().then(setStatus)
+    void window.moho
+      .rpc<{ version: string; commit: string }>('version')
+      .then(setDaemon)
+      // A daemon too old to answer cannot say - which is itself the useful
+      // answer, since it means the two are out of step.
+      .catch(() => setDaemon(null))
   }, [linkUp])
 
   return (
-    <SettingsSection
-      title="nobilis"
-      description="The background daemon that actually speaks each protocol. It keeps connections, Tor circuits and Matrix sync alive while this window is closed."
-    >
-      <div className="setting-row">
-        <div className="setting-text">
-          <div>Status</div>
-          <div className="small muted">{status?.binaryPath || '…'}</div>
-        </div>
-        <span className={`daemon-status${linkUp ? ' up' : ''}`}>
-          <Icon name={linkUp ? 'check_circle' : 'cloud_off'} size={15} />
-          {linkUp ? 'connected' : 'not connected'}
-        </span>
-      </div>
-      <button
-        type="button"
-        className="button subtle"
-        onClick={() => {
-          void window.moho.restartDaemon()
-          store.toast('info', 'Restarting nobilis…')
-        }}
+    <>
+      <SettingsSection title="moho" description="This window - the client you are looking at.">
+        <BuildRow label="Version" value={__APP_VERSION__} />
+        <BuildRow label="Build" value={__BUILD_COMMIT__} />
+        <BuildRow label="Built" value={new Date(__BUILD_DATE__).toLocaleString()} />
+      </SettingsSection>
+
+      <SettingsSection
+        title="nobilis"
+        description="The background daemon that actually speaks each protocol. It keeps connections, Tor circuits and Matrix sync alive while this window is closed."
       >
-        Restart daemon
-      </button>
-      {status && !status.available && (
-        <p className="small" style={{ color: 'var(--warning)' }}>
-          The nobilis binary wasn&apos;t found. Run <code>cargo build --release</code>, or start nobilis
-          yourself.
-        </p>
-      )}
-    </SettingsSection>
+        <BuildRow label="Version" value={daemon?.version ?? (linkUp ? 'not reported' : '\u2014')} />
+        <BuildRow label="Build" value={daemon?.commit ?? (linkUp ? 'older than this client' : '\u2014')} />
+        <div className="setting-row">
+          <div className="setting-text">
+            <div>Status</div>
+            <div className="small muted">{status?.binaryPath || '\u2026'}</div>
+          </div>
+          <span className={`daemon-status${linkUp ? ' up' : ''}`}>
+            <Icon name={linkUp ? 'check_circle' : 'cloud_off'} size={15} />
+            {linkUp ? 'connected' : 'not connected'}
+          </span>
+        </div>
+        <button
+          type="button"
+          className="button subtle"
+          onClick={() => {
+            void window.moho.restartDaemon()
+            store.toast('info', 'Restarting nobilis\u2026')
+          }}
+        >
+          Restart daemon
+        </button>
+        {status && !status.available && (
+          <p className="small" style={{ color: 'var(--warning)' }}>
+            The nobilis binary wasn&apos;t found. Run <code>cargo build --release</code>, or start
+            nobilis yourself.
+          </p>
+        )}
+      </SettingsSection>
+    </>
   )
 }

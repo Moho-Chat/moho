@@ -3029,6 +3029,15 @@ video.lightbox-media {
 /* Adding somebody to a conversation. Anchored to its own button rather than
    to the toolbar, so it opens under the thing that was clicked however the
    header is laid out at that width. */
+/* A commit or a version, in the face digits and hashes want - and sized
+   down, since it is a fact to check rather than a heading. */
+.build-value {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: var(--font-size-small);
+  color: var(--surface-variant-text);
+  user-select: text;
+}
+
 .add-to-dm {
   position: relative;
   display: flex;
