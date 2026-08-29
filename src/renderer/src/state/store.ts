@@ -253,11 +253,10 @@ async function uploadHost(service: string | undefined, attachmentPath: string): 
     const prefs = await window.moho.prefs.getAll()
     const chosen = prefs[`uploads.${perService}.${kind}`] as string | undefined
     if (chosen) return chosen
-    // postimg is reached through Sneedchat's own transport and cannot be
-    // posted from IRC, and it takes images only - so a stored choice of it
-    // is carried forward only where it can actually be honoured.
+    // postimg takes images and nothing else, so a stored choice of it is
+    // carried forward for pictures and not for anything else.
     const legacy = prefs['uploads.host'] as string | undefined
-    const legacyUsable = legacy === 'postimg' ? perService === 'sockchat' && kind === 'images' : !!legacy
+    const legacyUsable = legacy === 'postimg' ? kind === 'images' : !!legacy
     if (legacy && legacyUsable) return legacy
     return kind === 'images' && perService === 'sockchat' ? 'postimg' : 'catbox'
   } catch {

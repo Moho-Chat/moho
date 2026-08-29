@@ -64,11 +64,9 @@ function UploadHostSetting({
   // host before this was split has to choose it again. Not for media on a
   // host that cannot take any: that would carry a broken choice forward.
   const [legacy] = usePref<string>('uploads.host', '')
-  // Carried forward only where it can be honoured: postimg takes images only
-  // and is reached through Sneedchat's own transport, so it is not an answer
-  // for media, nor for IRC at all.
-  const legacyUsable =
-    legacy === 'postimg' ? service === 'sockchat' && kind === 'images' : !!legacy
+  // Carried forward only where it can be honoured: postimg takes images and
+  // nothing else, so it is never the answer for media.
+  const legacyUsable = legacy === 'postimg' ? kind === 'images' : !!legacy
   const fallback = legacyUsable
     ? legacy
     : kind === 'images' && service === 'sockchat'
@@ -86,12 +84,10 @@ function UploadHostSetting({
       .catch(() => setHosts([]))
   }, [])
 
-  // Two reasons a host is not on offer here, and the daemon supplies both:
-  // it will not take this kind of file, or it is reached through one
-  // service's own transport and cannot be posted from another.
-  const usable = hosts.filter(
-    (h) => (kind === 'images' || !h.imagesOnly) && (!h.onlyFor || h.onlyFor === service)
-  )
+  // Only what will take this kind of file. Every host is available to every
+  // service - what differs is how the link is posted once it exists, which
+  // is the daemon's business rather than this menu's.
+  const usable = hosts.filter((h) => kind === 'images' || !h.imagesOnly)
 
   return (
     <ChoiceSetting
@@ -115,8 +111,6 @@ interface UploadHost {
   id: string
   label: string
   imagesOnly: boolean
-  /** The only service this host can be posted from, if it is not general. */
-  onlyFor: string | null
 }
 
 export function SettingsPanel(): JSX.Element {
@@ -327,7 +321,7 @@ function IrcSettings(): JSX.Element {
 
       <SettingsSection
         title="Uploads"
-        description="IRC carries text and nothing else, so a file is uploaded and the link sent - which is what people do by hand there anyway."
+        description="IRC carries text and nothing else, so a file is uploaded and the link sent - which is what people do by hand there anyway. postimg.cc posts a plain direct link here rather than the BBCode it gets on Sneedchat, since there is no markup on IRC to wrap it in."
       >
         <UploadHostSetting service="irc" kind="images" />
         <UploadHostSetting service="irc" kind="media" />
