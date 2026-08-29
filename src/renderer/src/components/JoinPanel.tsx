@@ -292,6 +292,20 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
           call('addDiscordFriend', { accountId: account.id, username }, 'Friend request sent')
         }
       />
+      {/* Discord asks for a captcha on friend requests from anything that is
+          not its own client, and there is no honest way to answer one from
+          here - solving it is the automation it exists to stop, and its
+          widget will not render outside discord.com in any case. Doing it
+          where you are already signed in takes a moment and works; the
+          friendship shows up here on the next sync either way. */}
+      <button
+        type="button"
+        className="button subtle join-elsewhere"
+        onClick={() => void window.moho.openExternal('https://discord.com/channels/@me')}
+      >
+        <Icon name="open_in_new" size={14} />
+        Add on discord.com instead
+      </button>
 
       <div className="join-friends-header">
         <span className="setting-text">Friends</span>

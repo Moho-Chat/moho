@@ -2091,6 +2091,16 @@ img.smilie {
   flex: none;
 }
 
+/* Sits under the field it is the alternative to, and reads as the quieter
+   of the two - it is the fallback, not the first thing to reach for. */
+.join-elsewhere {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  align-self: flex-start;
+  font-size: var(--font-size-small);
+}
+
 .join-friends-header {
   display: flex;
   align-items: center;
