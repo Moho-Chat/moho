@@ -31,9 +31,11 @@ const CATEGORIES = [
 /**
  * Where files go on the services that cannot carry them.
  *
- * IRC has no idea of an attachment and Sneedchat's own uploader takes images
- * only, so sharing anything on either means putting it somewhere and sending
- * the link - which is what people do by hand there anyway. The list comes from
+ * Neither IRC nor Sneedchat has any idea of an attachment, so sharing a file
+ * on either means putting it somewhere and sending the link - which is what
+ * people do by hand there anyway. This choice reaches both; it used to reach
+ * IRC alone, while a Sneedchat send went to postimg.cc whatever was picked
+ * here, and so refused every video. The list comes from
  * the daemon rather than being spelled out here, since the daemon is what
  * performs the upload and a client drawing the menu should not hold a second,
  * separately-maintained copy of the answer.
@@ -53,7 +55,7 @@ function UploadHostSetting(): JSX.Element {
   return (
     <ChoiceSetting
       label="Upload files to"
-      description="Used when sending a file on a service that cannot carry one itself - IRC, and anything Sneedchat's own uploader refuses. The file is uploaded anonymously and the link is sent."
+      description="Used when sending a file on IRC or Sneedchat, neither of which can carry one itself. The file is uploaded anonymously and the link is sent. Pick postimg.cc on Sneedchat for the site's own habit of a click-through page - it takes images only, so choose another for video."
       value={host}
       options={
         hosts.length
