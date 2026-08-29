@@ -705,6 +705,17 @@ export class ChatStore {
         this.handleBufferListChange(data)
         break
 
+      // Read on another device. Discord echoes an ack to every session an
+      // account has, including the one that sent it, so this settles our own
+      // count as well as following somebody's phone.
+      case 'bufferRead':
+        this.set({
+          buffers: this.state.buffers.map((b) =>
+            b.id === data.bufferId ? { ...b, unread: 0, highlight: false } : b
+          )
+        })
+        break
+
       case 'bufferGroupChange':
         // A leave arrives as a removal rather than a new shape. Passing that
         // to the upsert would add a rail entry with no name and no service.
@@ -1045,6 +1056,10 @@ export class ChatStore {
     }
     void window.moho.markBufferRead(bufferId)
     bestEffort(this.markRead(bufferId), 'mark read')
+    // And tell the service, where the service has anywhere to put it, so a
+    // conversation read here stops being unread on somebody's phone. A no-op
+    // on protocols with no read state, so it needs no test of which this is.
+    bestEffort(window.moho.rpc('markBufferRead', { bufferId }), 'ack read')
     bestEffort(window.moho.rpc('subscribe', { bufferId }), `subscribe ${bufferId}`)
 
     // Discord only sends a member list for the channel being looked at, and
