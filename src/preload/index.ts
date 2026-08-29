@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { IPC } from '../shared/ipc'
 import type { NobilisEvent } from '../shared/wire'
 
@@ -67,6 +67,17 @@ const api = {
   },
 
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke(IPC.openExternal, url),
+  /**
+   * Where a dropped file actually lives.
+   *
+   * A File from a drop carries no usable path of its own any more - Electron
+   * removed the `path` property it used to have - and this is the sanctioned
+   * replacement. It reads a path the OS already handed us for a file the
+   * person themself dragged in; it cannot be pointed at anything else, so it
+   * opens no door a hostile message body could walk through.
+   */
+  pathForFile: (file: File): string => webUtils.getPathForFile(file),
+
   pickFile: (): Promise<string | null> => ipcRenderer.invoke(IPC.pickFile),
   pickDirectory: (): Promise<string | null> => ipcRenderer.invoke(IPC.pickDirectory),
   importGroupIcon: (groupId: string): Promise<{ path?: string; error?: string }> =>

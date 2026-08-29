@@ -14,6 +14,7 @@ import { SettingsPanel } from './components/settings/SettingsPanel'
 import { JoinPanel } from './components/JoinPanel'
 import { Toasts } from './components/Toasts'
 import { IncomingCallPanel } from './components/IncomingCallPanel'
+import { FileDrop } from './components/FileDrop'
 import { Icon, IconButton } from './components/Icon'
 import { Avatar } from './components/Avatar'
 import { dmStatus } from './components/BufferList'
@@ -163,6 +164,7 @@ export default function App(): JSX.Element {
 
       {/* Over everything: a call arrives while you are looking elsewhere. */}
       <IncomingCallPanel />
+      <FileDrop />
       <Toasts />
     </div>
   )

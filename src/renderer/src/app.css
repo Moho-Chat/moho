@@ -1138,6 +1138,96 @@ img.composer-emoji {
   gap: var(--spacing-s);
 }
 
+/* Confirming a dropped file, on the shape LeaveConfirm already uses. */
+.drop-confirm {
+  max-width: 460px;
+  padding: var(--spacing-l);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline-medium);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+}
+
+.drop-confirm-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  font-size: var(--font-size-large);
+  font-weight: 600;
+  margin-bottom: var(--spacing-m);
+}
+
+.drop-confirm p {
+  color: var(--surface-variant-text);
+  margin: var(--spacing-m) 0 var(--spacing-l);
+}
+
+.drop-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-s);
+}
+
+/* Wraps and scrolls rather than growing: several files at once should not
+   push the buttons off the bottom of the window. */
+.drop-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.drop-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  width: 96px;
+}
+
+.drop-item img,
+.drop-item-file {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 96px;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-variant);
+  /* Contain, not cover: this is being shown so somebody can tell which file
+     it is, and a crop can hide exactly the part that would say. */
+  object-fit: contain;
+}
+
+.drop-item .small {
+  max-width: 96px;
+}
+
+/* Shown while a file is over the window, so it is clear the app will take it
+   rather than the file manager keeping it. Ignores the pointer: it must not
+   become the drop target itself and swallow the event. */
+.drop-hint {
+  position: fixed;
+  top: var(--titlebar-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-s);
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: var(--font-size-large);
+  font-weight: 600;
+  outline: 2px dashed var(--primary);
+  outline-offset: -10px;
+}
+
 /* The one button in the app that destroys something. Not --error, which is a
    pale text colour and reads as decorative when used as a fill. */
 .button.danger {

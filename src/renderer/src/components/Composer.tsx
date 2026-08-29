@@ -273,7 +273,10 @@ export function Composer(): JSX.Element | null {
             }}
             onPaste={onPaste}
             // A drop would bring the source's markup in the same way a paste
-            // would, and nothing here wants dropped content.
+            // would, and nothing goes into this box that way. A file dropped
+            // here still lands somewhere - FileDrop takes it from the window
+            // and asks where it should go - which is why this only refuses
+            // the default rather than stopping the event.
             onDrop={(e) => e.preventDefault()}
           />
           {!text.trim() && (
