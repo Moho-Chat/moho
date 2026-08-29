@@ -351,7 +351,14 @@ export function ServerRail(): JSX.Element | null {
   if (pinned.length > 0) extras.push(pinnedGroup())
   const ordered = orderedGroups([...shown, ...extras], railOrder)
 
-  if (ordered.length <= 1) return null
+  // The rail always draws, even with nothing in it.
+  //
+  // It used to hide itself below two entries, on the grounds that a column
+  // holding one tile is a column with nothing to navigate between. That
+  // reasoning missed what else lives here: the cog at the foot is the way to
+  // Accounts and Settings, so hiding the rail on a fresh install removed the
+  // only route to the screen where an account gets added - exactly when it is
+  // the one thing the user needs.
 
   /**
    * Dropping one server onto another.
