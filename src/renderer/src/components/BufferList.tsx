@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Icon, MaskIcon } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { UserFooter } from './UserFooter'
@@ -80,9 +80,45 @@ export function BufferList(): JSX.Element {
    * had selected.
    */
   const onMentionsPage = activeGroupId === MENTIONS_GROUP_ID
+  /**
+   * Where to go when the selected entry is no longer in the rail.
+   *
+   * Whatever is being read, if it is still somewhere. An account's tile
+   * disappears the moment its first direct message arrives - its buffers now
+   * live on the shared direct messages page rather than in the account, and
+   * that is what the tile was for - so a conversation open at the time would
+   * otherwise take the pane to whichever server happens to sit first in the
+   * rail. Being moved to an unrelated server because somebody sent a message
+   * is a worse answer than any of the alternatives.
+   *
+   * A direct message's own group is folded away in the rail, so it answers
+   * with the page that replaced it.
+   */
+  const openBufferGroup = useMemo(() => {
+    const open = buffers.find((b) => b.id === activeBufferId)
+    if (!open) return undefined
+    return isDirectMessage(open) ? DM_GROUP_ID : open.groupId
+  }, [buffers, activeBufferId])
+
   const activeGroup = onMentionsPage
     ? undefined
-    : shownGroups.find((g) => g.id === activeGroupId) || shownGroups[0]
+    : shownGroups.find((g) => g.id === activeGroupId) ||
+      shownGroups.find((g) => g.id === openBufferGroup) ||
+      shownGroups[0]
+  /**
+   * Settles a selection that had to be resolved by falling back.
+   *
+   * Without this the fallback is re-run on every render, so the pane sits on
+   * a group nothing has actually selected and moves the moment the rail
+   * changes shape - a direct message arriving is enough, since it adds an
+   * entry and can take an account's own tile away. Writing the answer back
+   * once means the next change has a real selection to keep.
+   */
+  useEffect(() => {
+    if (onMentionsPage || !activeGroup) return
+    if (activeGroup.id !== activeGroupId) store.selectGroup(activeGroup.id)
+  }, [activeGroup, activeGroupId, onMentionsPage, store])
+
   const isPinnedPage = activeGroup?.id === PINNED_GROUP_ID
   const isDmPage = activeGroup?.id === DM_GROUP_ID
   /**

@@ -769,9 +769,6 @@ export class ChatStore {
         this.handleBufferListChange(data)
         break
 
-      // Read on another device. Discord echoes an ack to every session an
-      // account has, including the one that sent it, so this settles our own
-      // count as well as following somebody's phone.
       // Somebody is writing. Discord names one person per event and Matrix
       // sends the whole set, including an empty one to say everybody
       // stopped - so a list replaces, and a single nick is merged in.
@@ -787,6 +784,9 @@ export class ChatStore {
         break
       }
 
+      // Read on another device. Discord echoes an ack to every session an
+      // account has, including the one that sent it, so this settles our own
+      // count as well as following somebody's phone.
       case 'bufferRead':
         this.set({
           buffers: this.state.buffers.map((b) =>
