@@ -94,7 +94,7 @@ function UploadHostSetting({
       label={kind === 'images' ? 'Upload images to' : 'Upload other files to'}
       description={
         kind === 'images'
-          ? 'Pictures sent here are uploaded anonymously and the link is posted.'
+          ? 'Pictures sent here are uploaded anonymously and the link is posted. A picture this host will not take - postimg.cc refuses avif, for instance - goes to the one below instead.'
           : 'Everything that is not a picture - video, archives, documents. Hosts that only take images are not offered.'
       }
       value={host}

@@ -234,31 +234,70 @@ function tidyDetail(detail: string): string {
 
 /** The upload host the person chose, or the default if they never did. */
 /**
+ * Every host the daemon offers, fetched once.
+ *
+ * Cached because it is asked on every send with an attachment and cannot
+ * change while the daemon is up - the list is compiled into it.
+ */
+let hostListing: Promise<{ id: string; accepts: string[] | null }[]> | null = null
+
+async function uploadHosts(): Promise<{ id: string; accepts: string[] | null }[]> {
+  if (!hostListing) {
+    hostListing = window.moho
+      .rpc<{ id: string; accepts: string[] | null }[]>('listUploadHosts')
+      // An older daemon says nothing about what a host takes; assume it
+      // takes whatever it is given, which is what happened before this.
+      .catch(() => [])
+  }
+  return hostListing
+}
+
+/** Whether this host will take this file, by the daemon's own account. */
+async function hostAccepts(hostId: string, path: string): Promise<boolean> {
+  const host = (await uploadHosts()).find((h) => h.id === hostId)
+  if (!host || !host.accepts) return true
+  const ext = (path.split(/[\\/]/).pop() || '').split('.').pop()?.toLowerCase() ?? ''
+  return host.accepts.includes(ext)
+}
+
+/**
  * Where this file should go, for this service.
  *
  * Chosen by service and by whether the file is a picture, because the answer
  * differs on both counts: postimg.cc is the convention on Sneedchat and
- * meaningless on IRC, and it takes images only - so sending a video there is
- * a refusal rather than an upload. Read at send time, since it is a
- * preference somebody may change between one message and the next.
+ * meaningless on IRC, and it takes images and nothing else. Read at send
+ * time, since it is a preference somebody may change between one message and
+ * the next.
  *
- * The old single setting is the fallback, so a host chosen before this was
- * split still applies - except for a non-image on an images-only host, where
- * carrying the choice forward would carry a refusal forward with it.
+ * A host that will not take this particular file is routed around rather
+ * than allowed to refuse it - postimg does not accept avif, which is an
+ * image by any ordinary reading. It goes to the host already chosen for
+ * everything else, not to one invented here: that is a decision somebody
+ * made, and a file should not turn up at a third party they never named.
+ *
+ * The old single setting is the fallback for anyone who chose a host before
+ * this was split in two.
  */
 async function uploadHost(service: string | undefined, attachmentPath: string): Promise<string> {
   const kind = isImageFile(attachmentPath) ? 'images' : 'media'
   const perService = service === 'sockchat' ? 'sockchat' : 'irc'
   try {
     const prefs = await window.moho.prefs.getAll()
-    const chosen = prefs[`uploads.${perService}.${kind}`] as string | undefined
-    if (chosen) return chosen
+    const legacy = prefs['uploads.host'] as string | undefined
     // postimg takes images and nothing else, so a stored choice of it is
     // carried forward for pictures and not for anything else.
-    const legacy = prefs['uploads.host'] as string | undefined
     const legacyUsable = legacy === 'postimg' ? kind === 'images' : !!legacy
-    if (legacy && legacyUsable) return legacy
-    return kind === 'images' && perService === 'sockchat' ? 'postimg' : 'catbox'
+    const fallback = kind === 'images' && perService === 'sockchat' ? 'postimg' : 'catbox'
+    const chosen =
+      (prefs[`uploads.${perService}.${kind}`] as string | undefined) ||
+      (legacyUsable ? legacy : undefined) ||
+      fallback
+
+    if (await hostAccepts(chosen, attachmentPath)) return chosen
+
+    const other = prefs[`uploads.${perService}.media`] as string | undefined
+    if (other && other !== chosen && (await hostAccepts(other, attachmentPath))) return other
+    return 'catbox'
   } catch {
     return 'catbox'
   }
