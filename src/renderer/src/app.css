@@ -1914,6 +1914,46 @@ img.smilie {
    A row is "what it is" against "what you can do about it", with the name
    allowed to shrink: a room id is long, and the two buttons must stay
    reachable rather than being pushed off the edge by it. */
+/* Formatting a sender supplied themselves - Matrix's formatted_body.
+   Deliberately restrained: a message is a line in a conversation, so lists
+   and quotes get structure without the vertical space a document would take,
+   and the first and last blocks lose their margins so a formatted message
+   sits on the same baseline as a plain one beside it. */
+.message-body p {
+  margin: 0 0 var(--spacing-xxs);
+}
+
+.message-body p:last-child {
+  margin-bottom: 0;
+}
+
+.message-body ul,
+.message-body ol {
+  margin: var(--spacing-xxs) 0;
+  padding-left: 1.4em;
+}
+
+.message-body blockquote {
+  margin: var(--spacing-xxs) 0;
+  padding-left: var(--spacing-s);
+  border-left: 2px solid var(--outline-medium);
+  color: var(--surface-variant-text);
+}
+
+.message-body pre {
+  margin: var(--spacing-xxs) 0;
+  padding: var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-variant);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.message-body code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.9em;
+}
+
 /* The "X is typing" line. Reserves no height when empty: a row that
    appears and disappears under the composer would shove the message list
    up and down as people start and stop writing. */

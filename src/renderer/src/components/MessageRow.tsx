@@ -127,17 +127,28 @@ export function MessageRow({
     body = stripQuoteBlocks(body)
 
     return {
-      html: formatMessage(body, {
-        revealedSpoilers: revealed,
-        isSockchat,
-        smilies: smilieIndex,
-        channels
-      }),
+      // A sender's own formatting, where the protocol carried any: Matrix
+      // sends a formatted body alongside the plain one. Used instead of the
+      // BBCode/markdown pass rather than as well as it - it is already
+      // markup, and running it through a second syntax would mangle it. Not
+      // trusted for being structured: RichText sanitises it exactly as it
+      // sanitises everything else.
+      //
+      // Media, code and quote extraction still read the plain body above, so
+      // link previews keep working on a formatted message.
+      html:
+        message.html ??
+        formatMessage(body, {
+          revealedSpoilers: revealed,
+          isSockchat,
+          smilies: smilieIndex,
+          channels
+        }),
       media,
       codeBlocks,
       quoteBlocks
     }
-  }, [message.body, contentSniffing, sniffed, revealed, isSockchat, smilieIndex, channels])
+  }, [message.body, message.html, contentSniffing, sniffed, revealed, isSockchat, smilieIndex, channels])
 
   const entries: MenuEntry[] = [
     { label: 'Reply', icon: 'reply', onClick: () => reply() },

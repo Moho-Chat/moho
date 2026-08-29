@@ -229,6 +229,13 @@ export interface Message {
    * their media as URLs inside the body, which link unfurling picks up.
    */
   attachments?: Attachment[]
+  /**
+   * The sender's own formatted version of `body`, where the protocol carries
+   * one (Matrix's `formatted_body`). Restricted HTML, and still untrusted -
+   * render it through RichText's whitelist like anything else. `body` stays
+   * the plain-text fallback and is what search reads.
+   */
+  html?: string
   /** Matrix only - the sender's full MXID, for targeting moderation actions. */
   senderId?: string
 }

@@ -15,7 +15,38 @@ import { MEDIA_SCHEME, resolveMediaUrl } from './util'
  * to its text content.
  */
 
-const ALLOWED_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'SPAN', 'A', 'IMG', 'BR'])
+const ALLOWED_TAGS = new Set([
+  'B',
+  'STRONG',
+  'I',
+  'EM',
+  'U',
+  'S',
+  'STRIKE',
+  'SPAN',
+  'A',
+  'IMG',
+  'BR',
+  // Structure, for the formatting Matrix senders actually use. None of
+  // these can carry behaviour - they are containers, and every attribute is
+  // filtered separately below - so allowing them widens what renders
+  // without widening what can run. Anything still outside the list keeps
+  // degrading to its text.
+  'P',
+  'CODE',
+  'PRE',
+  'BLOCKQUOTE',
+  'UL',
+  'OL',
+  'LI',
+  'DEL',
+  'H1',
+  'H2',
+  'H3',
+  'H4',
+  'H5',
+  'H6'
+])
 
 /**
  * Tags whose text content is markup rather than prose. Everything else that
@@ -197,7 +228,49 @@ function walk(node: Node, handlers: Handlers, depth: number): ReactNode[] {
         break
       case 'STRIKE':
       case 'S':
+      // Matrix's own spelling of the same thing.
+      case 'DEL':
         out.push(<s key={key}>{kids()}</s>)
+        break
+
+      // Structure. These need cases of their own and not just a place on the
+      // whitelist: the switch has no default, so a tag allowed through
+      // without one renders as nothing at all - its children included.
+      case 'P':
+        out.push(<p key={key}>{kids()}</p>)
+        break
+      case 'CODE':
+        out.push(
+          <code key={key} className={className}>
+            {kids()}
+          </code>
+        )
+        break
+      case 'PRE':
+        out.push(<pre key={key}>{kids()}</pre>)
+        break
+      case 'BLOCKQUOTE':
+        out.push(<blockquote key={key}>{kids()}</blockquote>)
+        break
+      case 'UL':
+        out.push(<ul key={key}>{kids()}</ul>)
+        break
+      case 'OL':
+        out.push(<ol key={key}>{kids()}</ol>)
+        break
+      case 'LI':
+        out.push(<li key={key}>{kids()}</li>)
+        break
+      // A heading inside a chat line is emphasis, not document structure -
+      // rendering one at heading size would tower over the conversation
+      // around it.
+      case 'H1':
+      case 'H2':
+      case 'H3':
+      case 'H4':
+      case 'H5':
+      case 'H6':
+        out.push(<b key={key}>{kids()}</b>)
         break
     }
   })
