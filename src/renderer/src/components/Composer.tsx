@@ -161,13 +161,25 @@ export function Composer(): JSX.Element | null {
   }
 
   const onPaste = (e: React.ClipboardEvent): void => {
+    // Nothing is ever pasted into this box by the browser. Whatever the
+    // clipboard holds, what ends up here is decided below.
+    //
+    // Unconditional, where this used to depend on there being text. A
+    // picture with no text alongside it fell through to the default paste
+    // and landed in the input at full size - while also being staged in the
+    // attachment tray - so it had to be backspaced out before anything could
+    // be typed. Refusing the default outright is also steadier than asking
+    // whether the clipboard holds an image: the answer here and the answer
+    // Electron gives the staging call below come from two different views of
+    // the clipboard, and they do not always agree.
+    e.preventDefault()
+
     // Pasting into an editable div would otherwise bring the clipboard's own
     // markup with it - fonts, colours, whole tables. Only the text is wanted.
     // Newlines flattened for the same reason Enter does not make one, and
     // because an input silently did this to a multi-line paste anyway.
     const pasted = e.clipboardData.getData('text/plain').replace(/\s*\n\s*/g, ' ')
     if (pasted) {
-      e.preventDefault()
       // Deprecated, and still the only way to insert at the caret while
       // keeping the box's own undo history intact. Chromium is the only
       // engine this runs on, so its removal is not a live risk.
