@@ -4,6 +4,7 @@ import { MatrixAccountTools } from './MatrixAccountTools'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, resolveMediaUrl, serviceIcon, serviceLabel } from '../lib/util'
 import { IRC_NETWORKS, ircNetworkFor } from '../lib/networks'
+import { KNOWN_SOCKCHAT_ROOMS } from '../lib/sockchat'
 import type { Account } from '../../../shared/wire'
 
 const ADDABLE = ['irc', 'discord', 'sockchat', 'matrix'] as const
@@ -303,6 +304,8 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
             </>
           )}
 
+          {account.service === 'sockchat' && <SneedchatRooms account={account} call={call} />}
+
           {account.service === 'discord' && <DiscordReauth account={account} />}
 
           {account.service === 'matrix' && <MatrixAccountTools account={account} />}
@@ -427,6 +430,59 @@ function IrcSasl({
             </label>
           )}
         </>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Which Sneedchat rooms this account stays connected to.
+ *
+ * On the account rather than in Settings, because it was never a preference -
+ * it is part of an account's configuration, and the daemon has always stored
+ * and addressed it per account. The Settings pane drew one copy and resolved
+ * it with `accounts.find(service === 'sockchat')`, so with two Sneedchat
+ * accounts it silently edited the first and gave the second no way in at all.
+ *
+ * Each enabled room keeps its own permanent connection, but they share the one
+ * embedded Tor circuit, so enabling another costs very little.
+ */
+function SneedchatRooms({
+  account,
+  call
+}: {
+  account: Account
+  call: (method: string, params: Record<string, unknown>) => void
+}): JSX.Element {
+  const enabled = account.sockchatRooms ?? []
+  const toggle = (id: number, on: boolean): void => {
+    const next = on
+      ? enabled.some((r) => r.id === id)
+        ? enabled
+        : [...enabled, KNOWN_SOCKCHAT_ROOMS.find((r) => r.id === id)!]
+      : enabled.filter((r) => r.id !== id)
+    call('setSockChatRooms', { accountId: account.id, rooms: next })
+  }
+
+  return (
+    <div className="sasl-block">
+      <span className="small muted">Channels</span>
+      {KNOWN_SOCKCHAT_ROOMS.map((room) => (
+        <label key={room.id} className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={enabled.some((r) => r.id === room.id)}
+            onChange={(e) => toggle(room.id, e.target.checked)}
+          />
+          <span>#{room.name}</span>
+        </label>
+      ))}
+      {/* An account with none ticked still connects to #general - the daemon
+          falls back to it so a freshly added account is usable before anybody
+          has been here. Worth saying, or an empty list reads as "connected to
+          nothing". */}
+      {enabled.length === 0 && (
+        <span className="small muted">None chosen - this account uses #general.</span>
       )}
     </div>
   )

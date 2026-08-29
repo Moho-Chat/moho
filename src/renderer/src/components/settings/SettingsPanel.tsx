@@ -286,75 +286,26 @@ function IrcSettings(): JSX.Element {
   )
 }
 
-/**
- * No server-side "list every room" endpoint exists, so this is the fixed
- * catalogue the account was originally configured against. Adding a room the
- * site actually has just means it can be toggled on here too.
- */
-const KNOWN_SOCKCHAT_ROOMS = [
-  { id: 1, name: 'general' },
-  { id: 8, name: 'gunt' },
-  { id: 15, name: 'keno-kasino' },
-  { id: 16, name: 'fishtank' },
-  { id: 18, name: 'beauty-parlor' },
-  { id: 19, name: 'sports' }
-]
-
 function useSockchatAccount(): Account | undefined {
   return useChat((s) => s.accounts).find((a) => a.service === 'sockchat')
 }
 
 /**
- * Unlike the IRC panel (pure local preferences), this edits an existing
- * account's live backend config - which rooms it stays connected to - so it
- * writes through nobilis rather than the preference store.
+ * Sneedchat's own settings are per account and live on the account card.
+ *
+ * They used to be here, resolved with accounts.find(service === 'sockchat') -
+ * which silently edited the first Sneedchat account and left a second one with
+ * no way in at all. Which rooms an account is connected to is part of that
+ * account's configuration rather than an application preference, and the
+ * daemon has always stored it per account; this pane was the only thing
+ * pretending there was one of them.
  */
 function SneedchatSettings(): JSX.Element {
-  const store = useStore()
-  const account = useSockchatAccount()
-
-  if (!account) {
-    return (
-      <SettingsSection
-        title="Sneedchat"
-        description="No Sneedchat account configured yet - add one from the Accounts pane first."
-      />
-    )
-  }
-
-  const enabled = account.sockchatRooms || []
-  const setRoom = (id: number, on: boolean): void => {
-    const next = on
-      ? enabled.some((r) => r.id === id)
-        ? enabled
-        : [...enabled, KNOWN_SOCKCHAT_ROOMS.find((r) => r.id === id)!]
-      : enabled.filter((r) => r.id !== id)
-    void window.moho
-      .rpc('setSockChatRooms', { accountId: account.id, rooms: next })
-      .then(() => store.refreshAccounts())
-      .catch((e: Error) => store.toast('error', e.message))
-  }
-
   return (
     <SettingsSection
-      title="Channels"
-      description="Each enabled channel keeps its own permanent connection - all share one embedded Tor circuit, so enabling more costs very little extra memory."
-    >
-      {KNOWN_SOCKCHAT_ROOMS.map((room) => (
-        <label key={room.id} className="setting-row">
-          <div className="setting-text">#{room.name}</div>
-          <input
-            type="checkbox"
-            className="setting-toggle"
-            checked={enabled.some((r) => r.id === room.id)}
-            onChange={(e) => setRoom(room.id, e.target.checked)}
-          />
-        </label>
-      ))}
-      <p className="small muted">
-        Sneedchat is Tor-only - see the Tor category for transport and circuit options.
-      </p>
-    </SettingsSection>
+      title="Sneedchat"
+      description="Channels are set per account - open the Accounts pane and expand the account you want. Sneedchat is Tor-only; transport and circuit options are in the Tor category."
+    />
   )
 }
 
