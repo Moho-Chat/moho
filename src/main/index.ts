@@ -22,7 +22,7 @@ import { Prefs } from './prefs'
 import { Notifier } from './notifications'
 import { browserLogin, LOGIN_FLOWS } from './browser-login'
 import { IPC } from '../shared/ipc'
-import { allowRoot, installMediaHandler, registerMediaScheme } from './media-protocol'
+import { allowPickedFile, allowRoot, installMediaHandler, registerMediaScheme } from './media-protocol'
 import { saveMedia } from './downloads'
 import type { Buffer as ChatBuffer } from '../shared/wire'
 import { log } from './log'
@@ -281,7 +281,13 @@ function wireIpc(): void {
   ipcMain.handle(IPC.pickFile, async () => {
     if (!mainWindow) return null
     const res = await dialog.showOpenDialog(mainWindow, { properties: ['openFile'] })
-    return res.canceled ? null : res.filePaths[0]
+    if (res.canceled || !res.filePaths[0]) return null
+    // The renderer draws a thumbnail of what was staged, and that goes back
+    // through the guarded media scheme like every other local file. Where
+    // somebody keeps their pictures is not an allowed root and should not
+    // become one, so the picked file is permitted on its own.
+    allowPickedFile(res.filePaths[0])
+    return res.filePaths[0]
   })
 
   ipcMain.handle(IPC.pickDirectory, async () => {

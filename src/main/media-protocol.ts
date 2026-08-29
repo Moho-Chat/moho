@@ -31,6 +31,26 @@ export function allowRoot(dir: string): void {
 }
 
 /**
+ * Single files the person themself chose in a native picker this session.
+ *
+ * A file being staged for sending lives wherever they keep their pictures,
+ * which is nowhere near the daemon's cache - so the thumbnail in the composer
+ * was refused and every picked file showed as broken, while a pasted one
+ * worked because the clipboard writes to a temp dir that is already allowed.
+ *
+ * Individual files rather than their directory: picking one image out of a
+ * folder is not consent to read the rest of it, and it is certainly not
+ * consent to read the parent of whatever they picked. Nothing is added here
+ * that did not come back from a picker the person drove themself, which is
+ * why this cannot be reached by a hostile message body.
+ */
+const pickedFiles = new Set<string>()
+
+export function allowPickedFile(filePath: string): void {
+  pickedFiles.add(comparable(path.resolve(filePath)))
+}
+
+/**
  * Where nobilis keeps its cache and config, on whichever system this is.
  *
  * Has to agree with Rust's `dirs` crate, which is what the daemon uses - not
@@ -109,10 +129,11 @@ function allowedRoots(): string[] {
  * call site.
  */
 const CASE_INSENSITIVE_FS = process.platform === 'win32' || process.platform === 'darwin'
+function comparable(p: string): string {
+  return CASE_INSENSITIVE_FS ? p.toLowerCase() : p
+}
 function underRoot(candidate: string, root: string): boolean {
-  const c = CASE_INSENSITIVE_FS ? candidate.toLowerCase() : candidate
-  const r = CASE_INSENSITIVE_FS ? root.toLowerCase() : root
-  return c.startsWith(r)
+  return comparable(candidate).startsWith(comparable(root))
 }
 
 /** Exported for tests: this predicate is the whole security boundary. */
@@ -126,6 +147,7 @@ export function isAllowed(target: string): boolean {
   } catch {
     return false
   }
+  if (pickedFiles.has(comparable(resolved)) || pickedFiles.has(comparable(real))) return true
   if (real !== resolved && !allowedRoots().some((root) => underRoot(real + path.sep, root))) {
     return false
   }

@@ -3,7 +3,7 @@ import { Icon, IconButton } from './Icon'
 import { EmojiPicker } from './EmojiPicker'
 import { useActiveBuffer, useChat, useStore } from '../state/hooks'
 import { emojiPreview } from '../lib/format'
-import { bufferDisplayName, resolveMediaUrl } from '../lib/util'
+import { bufferDisplayName, fileNameOf, resolveMediaUrl } from '../lib/util'
 
 interface StagedAttachment {
   id: number
@@ -86,7 +86,7 @@ export function Composer(): JSX.Element | null {
   if (!buffer) return null
 
   const stage = (path: string): void => {
-    const name = path.split('/').pop() || path
+    const name = fileNameOf(path)
     setStaged((s) => [...s, { id: ++seqRef.current, path, name, isImage: IMAGE_EXTS.test(name) }])
   }
 

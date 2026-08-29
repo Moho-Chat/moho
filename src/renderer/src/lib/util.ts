@@ -151,6 +151,25 @@ export function resolveMediaUrl(url: string): string {
 
 export const MEDIA_SCHEME = 'moho-media'
 
+/**
+ * The filename out of a path the OS handed us.
+ *
+ * These come from the native file picker, so on Windows they are
+ * `C:\Users\...\cat.png` with not a forward slash in them - splitting on
+ * `/` alone hands back the whole path and every staged file is labelled with
+ * its full location instead of its name.
+ *
+ * A backslash is only read as a separator when the path is recognisably a
+ * Windows one (a drive letter, or a UNC share). On Linux a backslash is an
+ * ordinary character in a filename, and treating it as a separator there
+ * would truncate perfectly good names.
+ */
+export function fileNameOf(filePath: string): string {
+  const windows = /^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith('\\\\')
+  const parts = filePath.split(windows ? /[\\/]/ : '/')
+  return parts[parts.length - 1] || filePath
+}
+
 export function formatTime(ts: number): string {
   const d = new Date(ts * 1000)
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
