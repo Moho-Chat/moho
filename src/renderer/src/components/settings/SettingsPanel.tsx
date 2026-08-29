@@ -183,7 +183,7 @@ function GeneralSettings(): JSX.Element {
         <SelectionSetting
           settingKey="display.messageMode"
           label="Display style"
-          description="Classic: a compact IRC-style log, one line per message. Comfy: grouped by author with an avatar and more breathing room. Bubbles: phone-messaging style, yours on the right in blue and theirs on the left in green, with the time inside each bubble."
+          description="Classic: a compact IRC-style log, one line per message. Comfy: grouped by author with an avatar and more breathing room. Bubbles: phone-messaging style, yours on the right in green and theirs on the left in blue, with the time inside each bubble."
           defaultValue="comfy"
           options={[
             { label: 'Classic', value: 'classic' },

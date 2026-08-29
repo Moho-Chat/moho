@@ -40,17 +40,23 @@
   --success: #4caf50;
 
   /*
-   * Bubble mode. Blue for what you said and green for what they said, which
-   * is the phone convention the style is named after.
+   * Bubble mode. Green for what you said, blue for what everyone else did.
    *
-   * The green is deeper than the phone's own. Theirs is the brighter
-   * #34c759, which carries white text at about 2.3:1 - fine glanced at on a
-   * handset held at arm's length, not fine for a wall of chat read at a
-   * desk. This one clears 5:1 and still reads as the same green.
+   * Both are deeper than the phone's own, for the same reason. Its green is
+   * the brighter #34c759, which carries white text at about 2.3:1, and its
+   * blue #0a84ff manages 3.65:1 - fine glanced at on a handset held at arm's
+   * length, not fine for a wall of chat read at a desk. These clear 5:1 and
+   * 4.9:1 and still read as the same two colours.
+   *
+   * The blue is the one that had to move when the sides swapped. It was
+   * previously your own messages, which are the minority of what is on
+   * screen; now it carries everyone else's, so it is held to the same
+   * standard the green already was rather than left where a handful of
+   * bubbles could get away with it.
    */
-  --bubble-me: #0a84ff;
+  --bubble-me: #1f7a3a;
   --bubble-me-text: #ffffff;
-  --bubble-them: #1f7a3a;
+  --bubble-them: #0b6fd8;
   --bubble-them-text: #ffffff;
 
   --spacing-xxs: 2px;
