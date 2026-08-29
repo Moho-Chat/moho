@@ -810,7 +810,11 @@ export class ChatStore {
         break
       case 'sockChatLoginResult':
         this.set({ sockChatLoginStatus: data.error || '' })
-        if (!data.error) void this.refreshAccounts()
+        // Refreshed either way. The daemon now saves the account before it
+        // attempts the login, so a wrong password or a Tor bootstrap that
+        // never finished leaves an account sitting there to correct and
+        // retry - and refreshing only on success was what kept it invisible.
+        void this.refreshAccounts()
         break
 
       // Verification is a multi-step flow whose steps all arrive as pushes:
@@ -848,7 +852,9 @@ export class ChatStore {
         break
       case 'matrixLoginResult':
         this.set({ matrixLoginStatus: data.error || '' })
-        if (!data.error) void this.refreshAccounts()
+        // Same as Sneedchat above: the account exists before the attempt, so
+        // a failure has something to show and something to retry.
+        void this.refreshAccounts()
         break
 
       default:
