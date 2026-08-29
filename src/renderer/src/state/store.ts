@@ -1187,6 +1187,30 @@ export class ChatStore {
     }
   }
 
+  /**
+   * What this account is called in this conversation, for a message being
+   * sent before the service has said anything about it.
+   *
+   * Read from the last message you sent here rather than from the account's
+   * display name, because those are not the same string and the difference
+   * shows. An IRC account with no display name set reports its own id -
+   * "nick@irc.example.org" - while the daemon records what you say under the
+   * bare nick, so the echo was labelled with one and its replacement with the
+   * other. It also broke grouping, since that compares author names: the
+   * message you just sent would not group with the one before it, and then
+   * would the moment it landed.
+   *
+   * The display name is the fallback for the first thing ever said in a
+   * buffer, where there is nothing to copy.
+   */
+  private ownNameIn(bufferId: string): string {
+    const list = this.state.messagesByBuffer[bufferId] || []
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (list[i].isOwn && !list[i].pending && list[i].from) return list[i].from
+    }
+    return this.accountFor(bufferId)?.displayName || 'me'
+  }
+
   private async markRead(bufferId: string): Promise<void> {
     const prefs = await window.moho.prefs.getAll()
     const lastReadTs = { ...((prefs.lastReadTs as Record<string, number>) || {}) }
@@ -1310,13 +1334,26 @@ export class ChatStore {
     const echo: ChatMessage = {
       id: clientId,
       bufferId,
-      from: account?.displayName || 'me',
+      from: this.ownNameIn(bufferId),
       body,
       ts: Math.floor(Date.now() / 1000),
       isAction: false,
       isHighlight: false,
-      kind: 'privmsg',
+      // A real chat kind, and not the "privmsg" this used to invent: nothing
+      // anywhere produces that word, so isChatKind rejected it and every
+      // message being sent was drawn as a system line - no avatar column, an
+      // italic grey body, never grouped, and in bubbles mode on the wrong
+      // side of the pane. It then jumped into place the moment the daemon's
+      // own copy replaced it.
+      //
+      // "chat" and "message" are the two spellings the backends use and the
+      // renderer treats them alike, so either does; this is not claiming to
+      // be the one this account's service will send.
+      kind: 'chat',
       isOwn: true,
+      // Your own face, so the picture is there from the first frame rather
+      // than a coloured initial that swaps to a photograph on arrival.
+      ...(account?.avatarUrl ? { avatarUrl: account.avatarUrl } : {}),
       pending: true,
       pendingBody: body,
       pendingReplyTo: replyToId,
