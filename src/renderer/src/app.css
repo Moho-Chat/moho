@@ -1914,6 +1914,13 @@ img.smilie {
    A row is "what it is" against "what you can do about it", with the name
    allowed to shrink: a room id is long, and the two buttons must stay
    reachable rather than being pushed off the edge by it. */
+/* The "X is typing" line. Reserves no height when empty: a row that
+   appears and disappears under the composer would shove the message list
+   up and down as people start and stop writing. */
+.composer-typing {
+  padding: 0 var(--spacing-s) var(--spacing-xxs);
+}
+
 .invite-list {
   display: flex;
   flex-direction: column;

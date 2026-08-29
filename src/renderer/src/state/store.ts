@@ -52,6 +52,8 @@ export interface ChatMessage extends Message {
 export type ActivePanel = '' | 'accounts' | 'settings' | 'join'
 
 export interface ChatState {
+  /** Who is composing, per buffer, with when to stop believing it. */
+  typingByBuffer: Record<string, { nicks: string[]; until: number }>
   linkUp: boolean
   accounts: Account[]
   buffers: BufferEntry[]
@@ -172,6 +174,7 @@ const INITIAL: ChatState = {
   loadedBuffers: {},
   loadingMore: {},
   dividerTsByBuffer: {},
+    typingByBuffer: {},
   matrixPermissions: {},
   replyingTo: null,
   toasts: [],
@@ -708,6 +711,21 @@ export class ChatStore {
       // Read on another device. Discord echoes an ack to every session an
       // account has, including the one that sent it, so this settles our own
       // count as well as following somebody's phone.
+      // Somebody is writing. Discord names one person per event and Matrix
+      // sends the whole set, including an empty one to say everybody
+      // stopped - so a list replaces, and a single nick is merged in.
+      case 'typing': {
+        const until = Date.now() + (data.expiresInMs ?? 10000)
+        const current = this.state.typingByBuffer[data.bufferId]
+        const nicks: string[] = data.nicks
+          ? data.nicks
+          : Array.from(new Set([...(current && current.until > Date.now() ? current.nicks : []), data.nick]))
+        this.set({
+          typingByBuffer: { ...this.state.typingByBuffer, [data.bufferId]: { nicks, until } }
+        })
+        break
+      }
+
       case 'bufferRead':
         this.set({
           buffers: this.state.buffers.map((b) =>

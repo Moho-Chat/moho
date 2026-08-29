@@ -15,6 +15,15 @@ interface StagedAttachment {
 const IMAGE_EXTS = /\.(png|jpe?g|gif|webp|bmp)$/i
 
 /**
+ * How often to repeat a typing notice while somebody keeps writing.
+ *
+ * Comfortably inside the ten seconds a notice stands for, so the indicator
+ * never lapses mid-sentence, and far enough apart that a fast typist is not
+ * sending a request per character.
+ */
+const TYPING_REPEAT_MS = 4000
+
+/**
  * What the box holds, as the text that will be sent.
  *
  * An emoji sits in the box as a picture and leaves it as the token the service
@@ -62,6 +71,7 @@ export function Composer(): JSX.Element | null {
   const [staged, setStaged] = useState<StagedAttachment[]>([])
   const [pickerOpen, setPickerOpen] = useState(false)
   const seqRef = useRef(0)
+  const typingSentAt = useRef(0)
   const inputRef = useRef<HTMLDivElement>(null)
   const emojiButtonRef = useRef<HTMLButtonElement>(null)
 
@@ -85,6 +95,21 @@ export function Composer(): JSX.Element | null {
 
   if (!buffer) return null
 
+  /**
+   * Tells the service somebody is writing, at most once every few seconds.
+   *
+   * One notice covers about ten seconds on both protocols that have them, so
+   * this is rate-limited rather than sent per keystroke - a request per
+   * character would be a lot of traffic to say one thing. The daemon ignores
+   * it on services with no such notion, so there is nothing to check here.
+   */
+  const noteTyping = (): void => {
+    const now = Date.now()
+    if (now - typingSentAt.current < TYPING_REPEAT_MS) return
+    typingSentAt.current = now
+    void window.moho.rpc('sendTyping', { bufferId: buffer.id }).catch(() => {})
+  }
+
   const stage = (path: string): void => {
     const name = fileNameOf(path)
     setStaged((s) => [...s, { id: ++seqRef.current, path, name, isImage: IMAGE_EXTS.test(name) }])
@@ -106,6 +131,10 @@ export function Composer(): JSX.Element | null {
     }
     if (inputRef.current) inputRef.current.replaceChildren()
     setText('')
+    // Sending is the clearest possible "no longer writing". Matrix can say
+    // so; Discord only expires, and ignores the false.
+    typingSentAt.current = 0
+    void window.moho.rpc('sendTyping', { bufferId: buffer.id, typing: false }).catch(() => {})
     inputRef.current?.focus()
   }
 
@@ -154,6 +183,8 @@ export function Composer(): JSX.Element | null {
   return (
     <div className="composer">
       <div className="divider-h" />
+
+      <TypingLine bufferId={buffer.id} />
 
       {replyingTo && (
         <div className="composer-reply small">
@@ -213,7 +244,10 @@ export function Composer(): JSX.Element | null {
             role="textbox"
             aria-multiline="true"
             aria-label={`Message ${bufferDisplayName(buffer.name)}`}
-            onInput={(e) => setText(composerText(e.currentTarget))}
+            onInput={(e) => {
+              setText(composerText(e.currentTarget))
+              noteTyping()
+            }}
             onKeyDown={(e) => {
               // Enter sends and Shift+Enter does nothing, which is what the
               // input this replaced did. An editable div would happily take a
@@ -276,6 +310,43 @@ export function Composer(): JSX.Element | null {
           onClose={() => setPickerOpen(false)}
         />
       )}
+    </div>
+  )
+}
+
+/**
+ * "Anna is typing…", under the divider and above the box.
+ *
+ * Expiry is on a timer rather than only on the next event, because the last
+ * word somebody types produces no further notice: Discord never says anybody
+ * stopped, and a Matrix client that closes mid-sentence never sends its
+ * cancel. Without this the line would sit there indefinitely.
+ */
+function TypingLine({ bufferId }: { bufferId: string }): JSX.Element | null {
+  const entry = useChat((s) => s.typingByBuffer[bufferId])
+  const [, tick] = useState(0)
+
+  useEffect(() => {
+    if (!entry) return
+    const left = entry.until - Date.now()
+    if (left <= 0) return
+    const t = setTimeout(() => tick((n) => n + 1), left)
+    return () => clearTimeout(t)
+  }, [entry])
+
+  if (!entry || entry.until <= Date.now() || entry.nicks.length === 0) return null
+
+  const names = entry.nicks
+  const who =
+    names.length === 1
+      ? `${names[0]} is typing`
+      : names.length === 2
+        ? `${names[0]} and ${names[1]} are typing`
+        : `${names.length} people are typing`
+
+  return (
+    <div className="composer-typing small muted ellipsis" aria-live="polite">
+      {who}…
     </div>
   )
 }
