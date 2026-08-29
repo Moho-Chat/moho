@@ -2447,6 +2447,19 @@ video.lightbox-media {
   letter-spacing: 0.02em;
 }
 
+/* A network's colour as the tile rather than as the letters. Fills the whole
+   tile so it reads at rail size, and inherits the tile's rounding so it does
+   not sit as a square inside a rounded one. */
+.rail-initials-filled {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  color: #ffffff;
+}
+
 /* Which service a tile belongs to, in the corner. Small and quiet - it
    identifies, it does not demand attention the way a count does. */
 .rail-service {

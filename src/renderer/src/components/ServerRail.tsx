@@ -97,11 +97,19 @@ function GroupFace({ group, customIcon }: { group: RailGroup; customIcon?: strin
     // same generic "#" every network would otherwise share - which is the
     // one thing the rail exists to avoid. Initials rather than logos: those
     // belong to the networks that own them, and a wrong-looking copy of
-    // somebody's logo is worse than two clean letters.
+    // somebody's logo is worse than two clean letters. Anyone who wants the
+    // real one can import it; a custom icon is handled above and outranks
+    // this.
+    //
+    // The colour fills the tile and the letters are white, rather than the
+    // letters carrying the colour on the ordinary tile background. Two thin
+    // glyphs in a mid tone read as almost nothing at this size - Libera
+    // managed 1.7:1 against an active tile - where a filled tile is legible
+    // at a glance, which is the whole job of a rail.
     const network = group.service === 'irc' ? ircNetworkFor(group.name) : null
     if (network) {
       return (
-        <span className="rail-initials" style={{ color: network.colour }}>
+        <span className="rail-initials rail-initials-filled" style={{ background: network.colour }}>
           {network.mark}
         </span>
       )
