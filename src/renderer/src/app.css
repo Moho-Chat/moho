@@ -464,9 +464,16 @@
 }
 
 /* Links and quoted replies have to hold up against a filled background,
-   where the page's own accent and muted colours do not. */
-.message-row.bubbles.own .message-content a,
-.message-row.bubbles.own .reply-preview .ellipsis {
+   where the page's own accent and muted colours do not.
+
+   Every bubble, not just your own. The accent is a mid blue and both fills
+   are saturated, so it lands at 1.9:1 on one and 2.0:1 on the other -
+   unreadable on either, and only obvious once the blue moved to the side
+   carrying most of the conversation. Taking the text colour of the bubble
+   it sits in gives 4.9:1 and 5.4:1, with the underline doing the work of
+   saying it is a link now that the colour no longer can. */
+.message-row.bubbles .message-content a,
+.message-row.bubbles .reply-preview .ellipsis {
   color: inherit;
   text-decoration: underline;
 }
