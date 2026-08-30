@@ -11,6 +11,26 @@ import type { Account, DiscordFriend } from '../../../shared/wire'
  */
 const GROUP_DM_MAX = 9
 
+/** Discord's own app, which is where these actions have to happen. */
+const DISCORD_HOME = 'https://discord.com/channels/@me'
+
+/**
+ * The page for an invite, however it was written down.
+ *
+ * People paste the whole link, the short one, or just the code off the end of
+ * a message, and all three mean the same server. Anything unrecognisable is
+ * treated as a bare code, which is what it usually is - and if it is not,
+ * Discord says so on a page far clearer than anything this could produce.
+ */
+function inviteUrl(entered: string): string {
+  const text = entered.trim()
+  const code = text
+    .replace(/^https?:\/\//i, '')
+    .replace(/^(www\.)?(discord\.gg|discord\.com\/invite|discordapp\.com\/invite)\//i, '')
+    .split(/[?#/]/)[0]
+  return `https://discord.com/invite/${encodeURIComponent(code || text)}`
+}
+
 /** A room this account has been invited to and not yet answered. */
 type MatrixInvite = {
   roomId: string
@@ -264,48 +284,44 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
 
   useEffect(refreshFriends, [account.id])
 
-  const call = (method: string, params: Record<string, unknown>, note?: string): void => {
-    void window.moho
-      .rpc(method, params)
-      .then(() => note && store.toast('info', note))
-      .catch((e: Error) => store.toast('error', e.message))
-  }
-
   const shown = onlineOnly ? friends.filter((f) => f.status && f.status !== 'offline') : friends
 
   return (
     <div className="panel join-panel">
+      {/* All three of these go to Discord's own page rather than its API.
+          Discord asks for a captcha on each of them from anything that is
+          not its own client, and there is no honest way to answer one from
+          here: solving it is the automation it exists to prevent, and its
+          widget will not render outside discord.com in any case. A field
+          that reliably fails is worse than a button that works, and whatever
+          you do over there shows up here on the next sync. */}
       <SubmitField
         label="Join a server"
         placeholder="invite code or discord.gg/…"
-        onSubmit={(invite) => call('joinDiscordGuild', { accountId: account.id, invite }, 'Joining…')}
+        // The only one of the three that can carry what you typed: an invite
+        // has a page of its own, so this lands on the accept button rather
+        // than on Discord's front door.
+        onSubmit={(invite) => void window.moho.openExternal(inviteUrl(invite))}
       />
-      <SubmitField
-        label="Create a server"
-        placeholder="server name"
-        onSubmit={(name) => call('createDiscordGuild', { accountId: account.id, name }, 'Creating…')}
-      />
-      <SubmitField
-        label="Add a friend"
-        placeholder="username"
-        onSubmit={(username) =>
-          call('addDiscordFriend', { accountId: account.id, username }, 'Friend request sent')
-        }
-      />
-      {/* Discord asks for a captcha on friend requests from anything that is
-          not its own client, and there is no honest way to answer one from
-          here - solving it is the automation it exists to stop, and its
-          widget will not render outside discord.com in any case. Doing it
-          where you are already signed in takes a moment and works; the
-          friendship shows up here on the next sync either way. */}
-      <button
-        type="button"
-        className="button subtle join-elsewhere"
-        onClick={() => void window.moho.openExternal('https://discord.com/channels/@me')}
-      >
-        <Icon name="open_in_new" size={14} />
-        Add on discord.com instead
-      </button>
+
+      <div className="join-elsewhere-row">
+        <button
+          type="button"
+          className="button subtle join-elsewhere"
+          onClick={() => void window.moho.openExternal(DISCORD_HOME)}
+        >
+          <Icon name="open_in_new" size={14} />
+          Create a server
+        </button>
+        <button
+          type="button"
+          className="button subtle join-elsewhere"
+          onClick={() => void window.moho.openExternal(DISCORD_HOME)}
+        >
+          <Icon name="open_in_new" size={14} />
+          Add a friend
+        </button>
+      </div>
 
       <div className="join-friends-header">
         <span className="setting-text">Friends</span>

@@ -2091,8 +2091,14 @@ img.smilie {
   flex: none;
 }
 
-/* Sits under the field it is the alternative to, and reads as the quieter
-   of the two - it is the fallback, not the first thing to reach for. */
+/* The actions that have to happen on Discord's own page. Side by side,
+   because they are the same kind of thing and neither is the main event. */
+.join-elsewhere-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+}
+
 .join-elsewhere {
   display: flex;
   align-items: center;
