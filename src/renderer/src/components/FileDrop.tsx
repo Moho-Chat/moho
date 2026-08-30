@@ -31,10 +31,31 @@ export function FileDrop(): JSX.Element | null {
   const [dropped, setDropped] = useState<Dropped[] | null>(null)
 
   useEffect(() => {
-    // Only a drag carrying files. The rail reorders its tiles with drags of
-    // its own, and swallowing those would break moving a server.
+    /**
+     * A drag that started in this window, so it is something being moved
+     * around the app rather than a file arriving from outside.
+     *
+     * Carrying files is not enough on its own to tell those apart. Dragging
+     * a server tile picks up the icon inside it, and Chromium hands a dragged
+     * image to the page as a real file - so reordering the rail, or dropping
+     * a server into a folder, offered to upload the icon.
+     *
+     * dragstart is the discriminator because it only fires for a drag that
+     * began in the document: a file dragged off the desktop never fires one.
+     */
+    let internal = false
+    const onStart = (): void => {
+      internal = true
+    }
+    const onEnd = (): void => {
+      internal = false
+    }
+
+    // Only a drag carrying files, and only one from outside. The rail
+    // reorders its tiles with drags of its own, and swallowing those would
+    // break moving a server.
     const carriesFiles = (e: DragEvent): boolean =>
-      Array.from(e.dataTransfer?.types ?? []).includes('Files')
+      !internal && Array.from(e.dataTransfer?.types ?? []).includes('Files')
 
     // Depth rather than a boolean: dragging across a child fires leave on the
     // one being left before enter on the one being entered, so a flag flickers
@@ -74,11 +95,19 @@ export function FileDrop(): JSX.Element | null {
       if (items.length > 0) setDropped(items)
     }
 
+    // Captured, so the flag is set before anything else in the app sees the
+    // drag, and cleared however it ends - dropped, or abandoned with Escape.
+    window.addEventListener('dragstart', onStart, true)
+    window.addEventListener('dragend', onEnd, true)
+    window.addEventListener('drop', onEnd, true)
     window.addEventListener('dragenter', onEnter)
     window.addEventListener('dragover', onOver)
     window.addEventListener('dragleave', onLeave)
     window.addEventListener('drop', onDrop)
     return () => {
+      window.removeEventListener('dragstart', onStart, true)
+      window.removeEventListener('dragend', onEnd, true)
+      window.removeEventListener('drop', onEnd, true)
       window.removeEventListener('dragenter', onEnter)
       window.removeEventListener('dragover', onOver)
       window.removeEventListener('dragleave', onLeave)

@@ -82,15 +82,20 @@ interface TileProps {
  */
 function GroupFace({ group, customIcon }: { group: RailGroup; customIcon?: string }): JSX.Element {
   const service = serviceIcon(group.service)
-  if (customIcon) return <img className="rail-icon" src={resolveMediaUrl(customIcon)} alt="" />
+  // draggable={false} throughout: a picture is draggable on its own by
+  // default, so taking hold of a tile by its icon dragged the icon rather
+  // than the tile - which is a different gesture with different data behind
+  // it, and Chromium presents that data to the page as a file. The tile is
+  // what moves; its face is not separately grabbable.
+  if (customIcon) return <img className="rail-icon" src={resolveMediaUrl(customIcon)} alt="" draggable={false} />
   if (group.kind === 'pinned') return <Icon name="push_pin" size={22} />
-  if (group.iconUrl) return <img className="rail-icon" src={resolveMediaUrl(group.iconUrl)} alt="" />
+  if (group.iconUrl) return <img className="rail-icon" src={resolveMediaUrl(group.iconUrl)} alt="" draggable={false} />
   if (group.kind === 'dms') return <Icon name="forum" size={22} />
   if (group.kind === 'account' && service.mark && service.colour) {
     // Artwork with colour worth keeping, shown as-is rather than flattened to
     // a silhouette - it sits beside full-colour guild icons here, and this is
     // the one place with room for it.
-    return <img className="rail-mark" src={service.mark} alt="" />
+    return <img className="rail-mark" src={service.mark} alt="" draggable={false} />
   }
   if (group.kind === 'account') {
     // A known IRC network gets its own colour and letters rather than the
@@ -228,7 +233,7 @@ function RailTile(props: TileProps): JSX.Element {
       {badge && (
         <span className={`rail-service${highlight ? ' highlight' : ''}`}>
           {badge.colour && badge.mark ? (
-            <img src={badge.mark} alt="" />
+            <img src={badge.mark} alt="" draggable={false} />
           ) : badge.mark ? (
             <MaskIcon src={badge.mark} size={11} color="var(--surface-text)" />
           ) : (
