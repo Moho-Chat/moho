@@ -1,19 +1,20 @@
 import type {
   Account,
+  AudioDevice,
   Buffer as WireBuffer,
-  NobilisEvent,
+  BufferGroup,
   CustomEmoji,
+  IncomingCall,
+  MatrixVerification,
   Member,
   Message,
-  BufferGroup,
-  MatrixVerification,
+  NobilisEvent,
+  Reaction,
   RoomPermissions,
   SockchatSmilie,
-  AudioDevice,
-  VoicePrefs,
   VoiceChannel,
-  VoiceSession,
-  IncomingCall
+  VoicePrefs,
+  VoiceSession
 } from '../../../shared/wire'
 import { buildSmilieIndex, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { isImageFile, resolveMediaUrl } from '../lib/util'
@@ -301,6 +302,26 @@ async function uploadHost(service: string | undefined, attachmentPath: string): 
   } catch {
     return 'catbox'
   }
+}
+
+/**
+ * This account's own reaction added to or taken off a tally.
+ *
+ * Only ever moves our own vote: the count follows because we are one of the
+ * reactors, and everyone else's stays where it is. A tally that reaches zero
+ * disappears, the same as it does when the service reports it, so an
+ * optimistic row and a real one look alike.
+ */
+function applyOwnReaction(list: Reaction[], emoji: string, add: boolean): Reaction[] {
+  const existing = list.find((r) => r.emoji === emoji)
+  if (!existing) {
+    return add ? [...list, { emoji, count: 1, me: true }] : list
+  }
+  // Already in the state being asked for - the service will say the same.
+  if (existing.me === add) return list
+  const count = Math.max(0, existing.count + (add ? 1 : -1))
+  if (count === 0) return list.filter((r) => r.emoji !== emoji)
+  return list.map((r) => (r.emoji === emoji ? { ...r, count, me: add } : r))
 }
 
 function bestEffort(work: Promise<unknown>, what: string): void {
@@ -1560,10 +1581,29 @@ export class ChatStore {
     }
   }
 
+  /**
+   * Reacting, shown immediately rather than when the service agrees.
+   *
+   * The pill used to change only when the gateway echoed the reaction back,
+   * which made a click on a reaction-role message look like it had done
+   * nothing at all: those bots take the reaction off again the moment they
+   * grant the role, so the add and the removal both arrive and the row ends
+   * up exactly as it started. People click again, and again.
+   *
+   * Showing it at once separates "this did not register" from "this
+   * happened and was undone by somebody else" - and a failure puts the row
+   * back, so an optimistic view never outlives being wrong.
+   */
   async toggleReaction(bufferId: string, messageId: string, emoji: string, add: boolean): Promise<void> {
+    const before = this.state.messagesByBuffer[bufferId]?.find((m) => m.id === messageId)?.reactions
+    this.mapMessage(bufferId, messageId, (m) => ({
+      ...m,
+      reactions: applyOwnReaction(m.reactions ?? [], emoji, add)
+    }))
     try {
       await window.moho.rpc('toggleReaction', { bufferId, messageId, emoji, add })
     } catch (e) {
+      this.mapMessage(bufferId, messageId, (m) => ({ ...m, reactions: before }))
       this.toast('error', (e as Error).message)
     }
   }
