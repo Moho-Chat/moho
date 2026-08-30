@@ -111,6 +111,16 @@ export interface VoiceMember {
   nick: string
   isSelf: boolean
   /**
+   * Their picture, where one has been seen. A call is mostly faces, and a
+   * grid of coloured initials is legible without being who is in the room.
+   *
+   * Absent for somebody we have only ever seen in a voice channel and never
+   * heard from: a direct call's voice states carry no user object to read one
+   * out of, so the fallback initial is the honest answer until they speak in
+   * the conversation.
+   */
+  avatarUrl?: string
+  /**
    * Sharing a screen or window - Discord's "Go Live". Independent of `video`,
    * which is a camera; somebody can be doing both, and the two look nothing
    * alike to whoever is watching.

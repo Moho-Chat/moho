@@ -140,7 +140,7 @@ export function CallView({ bufferId }: { bufferId: string }): JSX.Element | null
           {members.map((m) => (
             <div key={m.userId} className={talking(m) ? 'call-tile talking' : 'call-tile'}>
               <span className="call-face">
-                <Avatar name={m.nick} size={56} />
+                <Avatar name={m.nick} url={m.avatarUrl} size={56} />
                 {/* What they are doing, on the picture rather than beside the
                     name: at this size the name is already the widest thing in
                     the tile, and a row of words under it would set the tiles
