@@ -1138,6 +1138,61 @@ img.composer-emoji {
   gap: var(--spacing-s);
 }
 
+/* "You cannot talk here yet." Sits on the composer's own ground rather than
+   floating, because it belongs to the box below it and scrolls with nothing. */
+.membership-gate {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  border-top: 1px solid var(--outline-medium);
+  background: var(--surface-variant);
+  color: var(--surface-variant-text);
+  font-size: var(--font-size-small);
+}
+
+/* The name takes the space, the button keeps its own - a long server name
+   must not push the only thing that acts off the edge. */
+.membership-gate .ellipsis {
+  flex: 1;
+  min-width: 0;
+}
+
+.membership-gate .button {
+  flex: none;
+}
+
+.membership-rules {
+  max-width: 480px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: var(--spacing-l);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline-medium);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+}
+
+.membership-rules-head {
+  font-size: var(--font-size-large);
+  font-weight: 600;
+  margin-bottom: var(--spacing-s);
+}
+
+/* The server's own words, which may be long and may be a list - kept as
+   written rather than collapsed onto one line. */
+.membership-rules p {
+  white-space: pre-wrap;
+  margin-bottom: var(--spacing-s);
+}
+
+.membership-rules-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-s);
+  padding-top: var(--spacing-s);
+}
+
 /* Confirming a dropped file, on the shape LeaveConfirm already uses. */
 .drop-confirm {
   max-width: 460px;

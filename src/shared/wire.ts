@@ -73,6 +73,12 @@ export interface BufferGroup {
   /** A local path nobilis already fetched, absent when there is no icon. */
   iconUrl?: string
   position: number
+  /**
+   * Set while this account has joined but cannot speak yet - Discord's
+   * membership screening, where a server wants its rules agreed to first.
+   * Absent means no gate, which is the ordinary case.
+   */
+  pending?: boolean
 }
 
 /** A microphone or a set of speakers the sound server offers. */

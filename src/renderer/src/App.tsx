@@ -7,6 +7,7 @@ import { MentionsInbox } from './components/MentionsInbox'
 import { MentionsPage } from './components/MentionsPage'
 import { MENTIONS_GROUP_ID } from './lib/groups'
 import { Composer } from './components/Composer'
+import { MembershipGate } from './components/MembershipGate'
 import { NickList } from './components/NickList'
 import { ConversationTools } from './components/ConversationTools'
 import { AccountsPanel } from './components/AccountsPanel'
@@ -148,7 +149,11 @@ export default function App(): JSX.Element {
           </div>
 
           {activePanel === '' && activeBufferId !== '' && activeGroupId !== MENTIONS_GROUP_ID && (
-            <Composer />
+            <>
+              {/* Above the box, saying why it will not work here yet. */}
+              {buffer && <MembershipGate buffer={buffer} />}
+              <Composer />
+            </>
           )}
         </div>
 
