@@ -134,6 +134,49 @@ export interface VoiceMember {
   deafened?: boolean
 }
 
+/**
+ * A file somebody has offered over IRC, from the offer through to it being
+ * on disk.
+ *
+ * One type for both because they are one thing to whoever is watching - a
+ * file arriving - and being offered is its first state rather than a
+ * different kind of object.
+ */
+export interface DccTransfer {
+  id: string
+  accountId: string
+  /** Who offered it. */
+  from: string
+  /**
+   * What it will be called on disk. Derived by the daemon from what they
+   * said, never taken from it: a name off the network cannot be allowed to
+   * decide where a file lands.
+   */
+  fileName: string
+  /**
+   * What they called it. Shown beside `fileName` where the two differ, so a
+   * name that had to be changed is visible rather than quietly substituted.
+   */
+  rawName: string
+  size: number
+  received: number
+  state: 'offered' | 'receiving' | 'done' | 'declined' | 'failed'
+  /** Where it landed, once it has. */
+  path?: string | null
+  /** Why it failed, or why it was turned down. */
+  error?: string | null
+}
+
+/** What receiving files is allowed to do. Lives with the daemon, which is what writes them. */
+export interface DccPrefs {
+  directory?: string | null
+  maxBytes: number
+  maxTransfers: number
+  autoAccept: boolean
+  /** Where files will actually land, with the platform default filled in. */
+  resolvedDirectory?: string
+}
+
 export interface VoiceChannel {
   id: string
   name: string

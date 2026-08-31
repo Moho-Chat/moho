@@ -28,18 +28,44 @@ export function uniquePath(target: string): string {
 }
 
 /**
+ * Windows keeps these reserved whatever extension follows them, and opening
+ * one talks to a device rather than to a file.
+ */
+const RESERVED = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i
+
+/**
  * A filename safe to join onto the download directory.
  *
  * The name comes from whoever sent the message, so it is hostile input:
  * basename strips any directory part (including "../" traversal), and the
  * remaining separators and Windows-reserved characters are replaced so the
  * result can only ever name a file directly inside the chosen folder.
+ *
+ * The Windows-specific rules are applied on every platform, not only there.
+ * A name that is harmless on Linux can be a device on Windows, and a trailing
+ * dot or space is silently dropped there - so "evil.exe." and "evil.exe" are
+ * one file on one platform and two on the other. Deciding that per-platform
+ * would mean the same message produced a different file depending on where it
+ * was read, which is the kind of difference nobody tests.
+ *
+ * Kept in step with `safe_file_name` in nobilis's backend/irc_dcc.rs, which
+ * does this same job for files arriving over IRC.
  */
 export function safeName(filename: string | undefined, source: string): string {
   const raw = filename || source.split('?')[0] || 'download'
-  const base = path.basename(raw)
-  const cleaned = base.replace(/[/\\:*?"<>|]/g, '_').replace(/^\.+/, '').slice(0, 120)
-  return cleaned || 'download'
+  // Both separators regardless of platform: the name came off the network,
+  // not off this filesystem. path.basename only knows about this one.
+  const base = raw.split(/[/\\]/).pop() ?? ''
+  // Drops a drive letter, and an alternate data stream with it.
+  const withoutDrive = base.split(':').pop() ?? ''
+  const cleaned = withoutDrive
+    // eslint-disable-next-line no-control-regex
+    .replace(/[/\\:*?"<>|\u0000-\u001f\u007f]/g, '_')
+    .replace(/^\.+/, '')
+    .replace(/[. ]+$/, '')
+    .slice(0, 120)
+  if (!cleaned) return 'download'
+  return RESERVED.test(cleaned.split('.')[0]) ? `_${cleaned}` : cleaned
 }
 
 /** A local path if this source is already on disk, else null. */

@@ -9,7 +9,7 @@ import {
 } from './controls'
 import { useChat, usePref, useStore } from '../../state/hooks'
 import { Icon } from '../Icon'
-import type { Account } from '../../../../shared/wire'
+import type { Account, DccPrefs } from '../../../../shared/wire'
 
 /**
  * Structured by service, so adding a protocol later means adding a rail entry
@@ -327,6 +327,8 @@ function IrcSettings(): JSX.Element {
         <UploadHostSetting service="irc" kind="media" />
       </SettingsSection>
 
+      <TransferSettings />
+
       <SettingsSection
         title="Connection defaults for new accounts"
         description="Applied when you connect a new IRC account. SASL, autojoin and NickServ auto-identify are per-account instead, from that account's own entry in the Accounts pane."
@@ -335,6 +337,127 @@ function IrcSettings(): JSX.Element {
         <StringSetting settingKey="irc.quitMessage" label="Quit message" defaultValue="Leaving." />
       </SettingsSection>
     </>
+  )
+}
+
+/**
+ * Receiving files people send over IRC.
+ *
+ * Backed by the daemon rather than by a stored pref, because the daemon is
+ * what writes the files: a download folder held out here would mean a
+ * network-driven write aimed by whichever window happened to ask last.
+ */
+function TransferSettings(): JSX.Element {
+  const [prefs, setPrefs] = useState<DccPrefs | null>(null)
+
+  useEffect(() => {
+    void window.moho
+      .rpc<DccPrefs>('getDccPrefs')
+      .then(setPrefs)
+      .catch(() => undefined)
+  }, [])
+
+  const save = (patch: Partial<DccPrefs>): void => {
+    void window.moho
+      .rpc<DccPrefs>('setDccPrefs', patch)
+      .then(setPrefs)
+      .catch(() => undefined)
+  }
+
+  return (
+    <SettingsSection
+      title="Receiving files"
+      description="XDCC bots and other people on IRC can offer you a file directly. moho asks before taking one, saves it under a name of its own choosing rather than theirs, and never listens for a connection - it only ever dials out, which is also what lets this work on an account routed through Tor."
+    >
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Save files to</div>
+          <div className="small muted ellipsis">{prefs?.resolvedDirectory ?? '…'}</div>
+        </div>
+        <div className="setting-actions">
+          <button
+            type="button"
+            className="button"
+            onClick={() => void window.moho.pickDirectory().then((dir) => dir && save({ directory: dir }))}
+          >
+            Browse…
+          </button>
+          {prefs?.directory && (
+            <button type="button" className="button" onClick={() => save({ directory: '' })}>
+              Reset
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Largest file to accept</div>
+          <div className="small muted">
+            Anything offered above this is turned down without asking. A sender that goes past what it offered is cut
+            off at the same limit.
+          </div>
+        </div>
+        <div className="setting-actions">
+          <select
+            className="text-field"
+            value={String(prefs?.maxBytes ?? 0)}
+            onChange={(e) => save({ maxBytes: Number(e.target.value) })}
+          >
+            {[
+              [100 * 1024 * 1024, '100 MB'],
+              [1024 * 1024 * 1024, '1 GB'],
+              [4 * 1024 * 1024 * 1024, '4 GB'],
+              [16 * 1024 * 1024 * 1024, '16 GB'],
+              [0, 'No limit']
+            ].map(([bytes, label]) => (
+              <option key={String(bytes)} value={String(bytes)}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>At most this many at once</div>
+          <div className="small muted">Further offers are turned down while this many are already going.</div>
+        </div>
+        <div className="setting-actions">
+          <select
+            className="text-field"
+            value={String(prefs?.maxTransfers ?? 3)}
+            onChange={(e) => save({ maxTransfers: Number(e.target.value) })}
+          >
+            {[1, 2, 3, 5, 10].map((n) => (
+              <option key={n} value={String(n)}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Accept offers without asking</div>
+          {/* Worded so what it gives up is plain rather than implied. The
+              limits above still apply - this only removes the question. */}
+          <div className="small muted">
+            Off by default, and worth leaving off: anyone who can message you can offer you a file, and this takes them
+            all. The size and count limits still apply.
+          </div>
+        </div>
+        <div className="setting-actions">
+          <input
+            type="checkbox"
+            checked={prefs?.autoAccept ?? false}
+            onChange={(e) => save({ autoAccept: e.target.checked })}
+          />
+        </div>
+      </div>
+    </SettingsSection>
   )
 }
 

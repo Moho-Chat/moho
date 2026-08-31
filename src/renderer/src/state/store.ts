@@ -5,6 +5,7 @@ import type {
   BufferGroup,
   CustomEmoji,
   IncomingCall,
+  DccTransfer,
   MatrixVerification,
   Member,
   Message,
@@ -82,6 +83,8 @@ export interface ChatState {
   voiceSessions: VoiceSession[]
   /** Conversations ringing right now, newest last. */
   incomingCalls: IncomingCall[]
+  /** Files offered over IRC, newest first, offers and transfers together. */
+  transfers: DccTransfer[]
   /**
    * Everything that has mentioned you, newest first, across every service.
    *
@@ -164,6 +167,7 @@ const INITIAL: ChatState = {
   voiceGuildId: '',
   voiceSessions: [],
   incomingCalls: [],
+  transfers: [],
   mentions: [],
   lastReadTs: {},
   jumpTarget: '',
@@ -571,6 +575,9 @@ export class ChatStore {
   async refreshIncomingCalls(): Promise<void> {
     try {
       this.set({ incomingCalls: await window.moho.rpc<IncomingCall[]>('getIncomingCalls') })
+      // A window opened while a transfer is already running should show it,
+      // not start from empty and only notice the next one.
+      this.set({ transfers: await window.moho.rpc<DccTransfer[]>('listTransfers') })
     } catch {
       // An older daemon has no such method; no calls is the honest answer.
       this.set({ incomingCalls: [] })
@@ -654,6 +661,29 @@ export class ChatStore {
       await this.refreshVoiceSessions()
     } catch (e) {
       this.toast('error', `Couldn't call: ${(e as Error).message}`)
+    }
+  }
+
+  /** Takes a file that has been offered. */
+  async acceptTransfer(id: string): Promise<void> {
+    try {
+      await window.moho.rpc('acceptTransfer', { id })
+    } catch (e) {
+      this.toast('error', `Couldn't accept that file: ${(e as Error).message}`)
+    }
+  }
+
+  /**
+   * Turns down an offer, or stops one already running.
+   *
+   * The same call for both: from where the person is sitting these are one
+   * request - they want it to stop - and the daemon knows which it was.
+   */
+  async cancelTransfer(id: string): Promise<void> {
+    try {
+      await window.moho.rpc('cancelTransfer', { id })
+    } catch (e) {
+      this.toast('error', `Couldn't stop that transfer: ${(e as Error).message}`)
     }
   }
 
@@ -836,6 +866,16 @@ export class ChatStore {
       case 'incomingCall':
         this.setRinging(data as IncomingCall)
         break
+
+      // One event carries every state a transfer passes through, so the list
+      // is updated in place rather than re-fetched on each step of a progress
+      // bar that ticks several times a second.
+      case 'dccTransfer': {
+        const t = data as unknown as DccTransfer
+        const rest = this.state.transfers.filter((x) => x.id !== t.id)
+        this.set({ transfers: [t, ...rest] })
+        break
+      }
 
       // Somebody joined or left a voice channel in a guild we may be showing.
       case 'voiceMembershipChanged':

@@ -3562,3 +3562,84 @@ video.lightbox-media {
   font-weight: 500;
   color: var(--surface-text);
 }
+
+/* --- File transfers --------------------------------------------------- */
+
+/* Sits above the calls rather than beside them: both float bottom-left, and
+   two stacks in the same corner would overlap. A ringing call is the more
+   urgent of the two, so it keeps the corner. */
+.transfer-panel {
+  position: fixed;
+  right: var(--spacing-m);
+  bottom: var(--spacing-m);
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--spacing-s);
+  z-index: 2100;
+  width: 340px;
+  max-width: calc(100vw - var(--spacing-xl));
+}
+
+.transfer-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding: var(--spacing-m);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-highest);
+  border: 1px solid var(--outline-medium);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55);
+}
+
+.transfer-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+/* The name takes the slack so the close button stays at the right edge. */
+.transfer-head > .ellipsis {
+  flex: 1;
+  min-width: 0;
+}
+
+.transfer-file {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-low);
+  min-width: 0;
+}
+
+.transfer-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
+  margin: 0;
+  color: var(--warning);
+}
+
+.transfer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-s);
+}
+
+.transfer-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-container-low);
+  overflow: hidden;
+}
+
+.transfer-bar-fill {
+  height: 100%;
+  background: var(--primary);
+  transition: width 0.2s linear;
+}
+
+.transfer-panel p {
+  margin: 0;
+}

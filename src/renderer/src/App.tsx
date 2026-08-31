@@ -16,6 +16,7 @@ import { JoinPanel } from './components/JoinPanel'
 import { Toasts } from './components/Toasts'
 import { IncomingCallPanel } from './components/IncomingCallPanel'
 import { FileDrop } from './components/FileDrop'
+import { TransferPanel } from './components/TransferPanel'
 import { Icon, IconButton } from './components/Icon'
 import { Avatar } from './components/Avatar'
 import { dmStatus } from './components/BufferList'
@@ -169,6 +170,9 @@ export default function App(): JSX.Element {
 
       {/* Over everything: a call arrives while you are looking elsewhere. */}
       <IncomingCallPanel />
+      {/* Over everything for the same reason: a file is offered while you are
+          reading something else, and often in a conversation you are not. */}
+      <TransferPanel />
       <FileDrop />
       <Toasts />
     </div>
