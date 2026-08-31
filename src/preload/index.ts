@@ -42,6 +42,16 @@ const api = {
     return () => ipcRenderer.off(IPC.link, handler)
   },
 
+  /**
+   * An `irc://` link opened somewhere else on the machine - a browser, a mail
+   * client - that the desktop handed to moho.
+   */
+  onDeepLink(cb: (url: string) => void): () => void {
+    const handler = (_e: unknown, url: string): void => cb(url)
+    ipcRenderer.on(IPC.deepLink, handler)
+    return () => ipcRenderer.off(IPC.deepLink, handler)
+  },
+
   onActivateBuffer(cb: (bufferId: string) => void): () => void {
     const handler = (_e: unknown, id: string): void => cb(id)
     ipcRenderer.on(IPC.activateBuffer, handler)

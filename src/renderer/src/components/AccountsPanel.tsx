@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
 import { useChat, usePref, useStore } from '../state/hooks'
@@ -12,7 +12,16 @@ type AddableService = (typeof ADDABLE)[number]
 
 export function AccountsPanel(): JSX.Element {
   const accounts = useChat((s) => s.accounts)
-  const [adding, setAdding] = useState<AddableService | null>(accounts.length === 0 ? 'irc' : null)
+  const pendingLink = useChat((s) => s.pendingLink)
+  // A link that could not be followed because there is no account on that
+  // network yet opens this page with its form already showing. Nothing else
+  // on the page would explain why you are here.
+  const [adding, setAdding] = useState<AddableService | null>(
+    pendingLink ? 'irc' : accounts.length === 0 ? 'irc' : null
+  )
+  useEffect(() => {
+    if (pendingLink) setAdding('irc')
+  }, [pendingLink])
 
   return (
     <div className="panel">
@@ -520,18 +529,30 @@ function LabeledInput({
 
 function IrcForm({ onDone }: { onDone: () => void }): JSX.Element {
   const store = useStore()
+  // What a link already knew. Everything it carries is filled in; the nick is
+  // the one thing it cannot supply, which is why the form is shown at all
+  // rather than the account simply being made.
+  const link = useChat((s) => s.pendingLink)
   const [nick, setNick] = useState('')
-  const [host, setHost] = useState('')
-  const [port, setPort] = useState('6697')
-  const [ssl, setSsl] = useState(true)
+  const [host, setHost] = useState(link?.host ?? '')
+  const [port, setPort] = useState(String(link?.port ?? (link?.tls === false ? 6667 : 6697)))
+  const [ssl, setSsl] = useState(link?.tls ?? true)
+  const [autojoin, setAutojoin] = useState(link?.channels.join(',') ?? '')
   const [busy, setBusy] = useState(false)
 
   const submit = async (): Promise<void> => {
     if (!nick || !host) return
     setBusy(true)
     try {
-      await window.moho.rpc('addAccount', { nick, host, port: Number(port) || undefined, ssl })
+      await window.moho.rpc('addAccount', {
+        nick,
+        host,
+        port: Number(port) || undefined,
+        ssl,
+        autojoin
+      })
       await store.refreshAccounts()
+      store.clearPendingLink()
       onDone()
     } catch (e) {
       store.toast('error', (e as Error).message)
@@ -587,6 +608,15 @@ function IrcForm({ onDone }: { onDone: () => void }): JSX.Element {
           <input className="text-field" value={port} onChange={(e) => setPort(e.target.value)} />
         </label>
       </div>
+      <label className="field">
+        <span className="small muted">Channels to join</span>
+        <input
+          className="text-field"
+          placeholder="#channel, #another"
+          value={autojoin}
+          onChange={(e) => setAutojoin(e.target.value)}
+        />
+      </label>
       <label className="checkbox-row">
         <input type="checkbox" checked={ssl} onChange={(e) => setSsl(e.target.checked)} />
         <span>Use TLS</span>

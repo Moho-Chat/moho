@@ -20,6 +20,8 @@ import type {
 import { buildSmilieIndex, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { isImageFile, resolveMediaUrl } from '../lib/util'
 import { DM_GROUP_ID, isDirectMessage } from '../lib/groups'
+import { ircNetworkFor } from '../lib/networks'
+import { parseDeepLink, type IrcLink } from '../../../shared/deeplink'
 
 /**
  * The whole client-side model, held in one immutable object that is replaced
@@ -49,6 +51,24 @@ export interface ChatMessage extends Message {
   pendingReplyTo?: string
   /** The staged file, kept for the same reason as the body. */
   pendingAttachment?: string
+}
+
+/**
+ * Whether two hostnames are the same place to chat.
+ *
+ * Not string equality: a network is a pool of servers, and somebody connected
+ * through `irc.eu.libera.chat` who clicks a link to `irc.libera.chat` is
+ * already there. Falls back to comparing the names where neither is a network
+ * this client knows, which is the best that can be said about a host nothing
+ * has ever heard of.
+ */
+export function sameIrcNetwork(a: string, b: string): boolean {
+  const left = a.toLowerCase().replace(/:\d+$/, '')
+  const right = b.toLowerCase().replace(/:\d+$/, '')
+  if (left === right) return true
+  const na = ircNetworkFor(left)
+  const nb = ircNetworkFor(right)
+  return !!na && !!nb && na.id === nb.id
 }
 
 export type ActivePanel = '' | 'accounts' | 'settings' | 'join' | 'downloads'
@@ -83,6 +103,14 @@ export interface ChatState {
   voiceSessions: VoiceSession[]
   /** Conversations ringing right now, newest last. */
   incomingCalls: IncomingCall[]
+  /**
+   * A link waiting for an account to be made for it.
+   *
+   * Set only where following one could not be finished: there is no account
+   * on that network yet, so the accounts page opens with what the link
+   * already knew filled in. Cleared once that form has been through.
+   */
+  pendingLink: IrcLink | null
   /** Files offered over IRC, newest first, offers and transfers together. */
   transfers: DccTransfer[]
   /**
@@ -177,6 +205,7 @@ const INITIAL: ChatState = {
   incomingCalls: [],
   transfers: [],
   minimisedTransfers: [],
+  pendingLink: null,
   mentions: [],
   lastReadTs: {},
   jumpTarget: '',
@@ -388,6 +417,7 @@ export class ChatStore {
     })
     window.moho.onEvent((frame) => this.handleEvent(frame))
     window.moho.onActivateBuffer((id) => void this.selectBuffer(id))
+    window.moho.onDeepLink((url) => this.followDeepLink(url))
 
     this.sweepTimer = setInterval(() => this.sweepPendingSends(), 2000)
 
@@ -700,6 +730,77 @@ export class ChatStore {
     } catch (e) {
       this.toast('error', `Couldn't open a conversation: ${(e as Error).message}`)
     }
+  }
+
+  /**
+   * Acts on an `irc://` link, from a browser or from a message.
+   *
+   * Two outcomes, and which it is depends on whether this is a network the
+   * client is already on. If it is, there is nothing to set up: the channel is
+   * joined on that connection and opened, which is what somebody clicking a
+   * link to a channel wanted. If it is not, the accounts page opens with the
+   * host, port and channel already filled in - the only thing such a link
+   * cannot supply is who you are there.
+   */
+  followDeepLink(url: string): void {
+    const link = parseDeepLink(url)
+    if (!link) {
+      this.toast('error', 'That link is not one moho understands')
+      return
+    }
+
+    // An IRC account is identified as "nick@host", which is the only place the
+    // host survives out here - the wire account carries what to show, not what
+    // it connected to.
+    const existing = this.state.accounts.find(
+      (a) => a.service === 'irc' && sameIrcNetwork(a.id.slice(a.id.indexOf('@') + 1), link.host)
+    )
+    if (!existing) {
+      this.set({ pendingLink: link, activePanel: 'accounts' })
+      return
+    }
+
+    if (link.channels.length === 0) {
+      // A link to the network itself names nothing to join, so it shows the
+      // connection it points at.
+      const group = this.state.groups.find((g) => g.accountId === existing.id && g.kind === 'account')
+      if (group) this.selectGroup(group.id)
+      return
+    }
+
+    this.set({ activePanel: '' })
+    for (const channel of link.channels) {
+      void window.moho
+        .rpc('joinBuffer', { accountId: existing.id, name: channel })
+        .catch((e: Error) => this.toast('error', `Couldn't join ${channel}: ${e.message}`))
+    }
+    // The first one named, being the one they clicked towards.
+    this.awaitBuffer(existing.id, link.channels[0])
+  }
+
+  /** Clears a link once the account form it opened is done with it. */
+  clearPendingLink(): void {
+    if (this.state.pendingLink) this.set({ pendingLink: null })
+  }
+
+  /**
+   * Selects a channel once the server has confirmed the join.
+   *
+   * A join is a request rather than a fact: the buffer appears when the server
+   * says it has, which may be a moment later or never - the channel could be
+   * invite-only. Gives up quietly rather than leaving somebody waiting on a
+   * conversation that was never opened.
+   */
+  awaitBuffer(accountId: string, name: string, tries = 20): void {
+    const found = this.state.buffers.find(
+      (b) => b.accountId === accountId && b.name.toLowerCase() === name.toLowerCase()
+    )
+    if (found) {
+      this.selectBuffer(found.id)
+      return
+    }
+    if (tries <= 0) return
+    setTimeout(() => this.awaitBuffer(accountId, name, tries - 1), 250)
   }
 
   /** Takes a file that has been offered. */

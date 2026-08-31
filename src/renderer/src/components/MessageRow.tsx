@@ -348,6 +348,7 @@ export function MessageRow({
                   // exactly the case where landing on a list that isn't
                   // showing it would be baffling.
                   onOpenChannel={(id) => void store.selectBuffer(id, true)}
+                  onOpenLink={(url) => store.followDeepLink(url)}
                 />
                 {message.edited && <span className="edited-tag small muted"> (edited)</span>}
               </span>
@@ -392,6 +393,7 @@ export function MessageRow({
                   <RichText
                     html={formatMessage(embed.description, { channels })}
                     onOpenChannel={(id) => void store.selectBuffer(id, true)}
+                  onOpenLink={(url) => store.followDeepLink(url)}
                   />
                 </div>
               )}

@@ -46,6 +46,9 @@ Exec=$BIN_DIR/$APP_ID.AppImage %U
 Icon=$APP_ID
 Terminal=false
 Categories=Network;InstantMessaging;Chat;
+# What makes an irc:// link in a browser offer moho at all. Exec already takes
+# %U, so the desktop has somewhere to put the URL once it decides to.
+MimeType=x-scheme-handler/irc;x-scheme-handler/ircs;
 Keywords=chat;irc;discord;matrix;sneedchat;messaging;
 StartupWMClass=moho
 StartupNotify=true

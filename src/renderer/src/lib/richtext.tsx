@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { MEDIA_SCHEME, resolveMediaUrl } from './util'
+import { isDeepLink } from '../../../shared/deeplink'
 
 /**
  * Turns the restricted HTML that format.ts produces into React nodes, through
@@ -75,23 +76,26 @@ export interface RichTextProps {
   onRevealSpoiler?: (index: number) => void
   /** Called with a buffer id when a channel link is clicked. */
   onOpenChannel?: (bufferId: string) => void
+  /** An irc:// link, which moho acts on itself rather than the desktop. */
+  onOpenLink?: (url: string) => void
 }
 
 /** The callbacks walk() carries down, bundled so adding one is a single change. */
 interface Handlers {
   onRevealSpoiler?: RichTextProps['onRevealSpoiler']
   onOpenChannel?: RichTextProps['onOpenChannel']
+  onOpenLink?: RichTextProps['onOpenLink']
 }
 
-export function RichText({ html, onRevealSpoiler, onOpenChannel }: RichTextProps): JSX.Element {
+export function RichText({ html, onRevealSpoiler, onOpenChannel, onOpenLink }: RichTextProps): JSX.Element {
   // DOMParser builds an inert document: no scripts run, no images load, no
   // network requests happen during parsing.
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
-  return <>{walk(doc.body, { onRevealSpoiler, onOpenChannel }, 0)}</>
+  return <>{walk(doc.body, { onRevealSpoiler, onOpenChannel, onOpenLink }, 0)}</>
 }
 
 function walk(node: Node, handlers: Handlers, depth: number): ReactNode[] {
-  const { onRevealSpoiler, onOpenChannel } = handlers
+  const { onRevealSpoiler, onOpenChannel, onOpenLink } = handlers
   const out: ReactNode[] = []
   // Depth guard: deeply nested markup in a hostile body shouldn't be able to
   // blow the stack. Beyond this, render the remaining subtree as flat text.
@@ -177,6 +181,24 @@ function walk(node: Node, handlers: Handlers, depth: number): ReactNode[] {
             >
               {kids()}
             </span>
+          )
+          break
+        }
+
+        // A link to a channel is handled here rather than handed to the OS,
+        // which would bounce it straight back to this window.
+        if (isDeepLink(href)) {
+          out.push(
+            <a
+              key={key}
+              href={href}
+              onClick={(e) => {
+                e.preventDefault()
+                onOpenLink?.(href)
+              }}
+            >
+              {kids()}
+            </a>
           )
           break
         }

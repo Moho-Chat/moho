@@ -26,5 +26,6 @@ export const IPC = {
   link: 'moho:link',
   prefsChanged: 'moho:prefs:changed',
   maximizeChanged: 'moho:window:maximizeChanged',
-  activateBuffer: 'moho:activateBuffer'
+  activateBuffer: 'moho:activateBuffer',
+  deepLink: 'moho:deepLink'
 } as const

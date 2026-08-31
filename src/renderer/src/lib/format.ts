@@ -293,7 +293,9 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   out = out.replace(/(^|\s)_([^_]+)_(?=\s|$)/g, '$1<i>$2</i>')
 
   // Any bare URL not already wrapped by one of the formats above.
-  out = out.replace(/((?:https?|file):\/\/[^\s<]+)/g, '<a href="$1">$1</a>')
+  // ircs? alongside the web schemes: a link to a channel is a link, and one
+  // written in a message means exactly what the same link means in a browser.
+  out = out.replace(/((?:https?|file|ircs?):\/\/[^\s<]+)/g, '<a href="$1">$1</a>')
 
   // Anything else BBCode-shaped that wasn't recognised (e.g. [USER=..]
   // mentions, [sub]/[sup], a typo'd tag) - stripped rather than shown as

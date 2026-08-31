@@ -22,6 +22,7 @@ import { Prefs } from './prefs'
 import { Notifier } from './notifications'
 import { browserLogin, LOGIN_FLOWS } from './browser-login'
 import { IPC } from '../shared/ipc'
+import { DEEP_LINK_SCHEMES, isDeepLink } from '../shared/deeplink'
 import { allowPickedFile, allowRoot, installMediaHandler, registerMediaScheme } from './media-protocol'
 import { defaultDownloadDir, saveMedia } from './downloads'
 import type { Buffer as ChatBuffer } from '../shared/wire'
@@ -46,6 +47,37 @@ registerMediaScheme()
 const isPrimaryInstance = app.requestSingleInstanceLock()
 if (!isPrimaryInstance) {
   app.quit()
+}
+
+/**
+ * An `irc://` link that arrived before there was a window to give it to.
+ *
+ * Clicking one in a browser while moho is closed launches it with the link as
+ * an argument, so the link exists a second or two before anything can act on
+ * it. Held here and handed over once the renderer is listening, rather than
+ * dropped for arriving early.
+ */
+let pendingDeepLink: string | null = null
+
+/** The first argument that is a link this client handles, if any. */
+function deepLinkIn(argv: string[]): string | null {
+  return argv.find((a) => isDeepLink(a)) ?? null
+}
+
+/**
+ * Passes a link to the window, or keeps it until there is one.
+ *
+ * The scheme is checked again here even though the desktop only sends us the
+ * ones we registered for: this comes in as a command-line argument, and an
+ * argument is not a promise about its own contents.
+ */
+function deliverDeepLink(url: string | null): void {
+  if (!url || !isDeepLink(url)) return
+  if (mainWindow && !mainWindow.webContents.isLoading()) {
+    mainWindow.webContents.send(IPC.deepLink, url)
+    return
+  }
+  pendingDeepLink = url
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -138,6 +170,16 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
+
+  // A link that arrived before this window existed - from the click that
+  // launched moho - goes over once the renderer is listening for it. Cleared
+  // as it goes, so it is acted on once rather than again on every reload.
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (!pendingDeepLink) return
+    const url = pendingDeepLink
+    pendingDeepLink = null
+    mainWindow?.webContents.send(IPC.deepLink, url)
+  })
   mainWindow.on('maximize', () => send(IPC.maximizeChanged, true))
   mainWindow.on('unmaximize', () => send(IPC.maximizeChanged, false))
   mainWindow.on('closed', () => {
@@ -416,15 +458,48 @@ app.whenReady().then(() => {
   // Someone tried to launch a second copy: treat it as "show me moho", which
   // is almost always what they meant - especially when the window is hidden
   // to the tray and looks like nothing is running.
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv) => {
+    // The desktop launches a fresh copy to open a link and lets the running
+    // one take it, so the link arrives here rather than at startup on every
+    // click after the first.
+    const link = deepLinkIn(argv)
     if (!mainWindow) {
+      pendingDeepLink = link ?? pendingDeepLink
       createWindow()
       return
     }
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.show()
     mainWindow.focus()
+    deliverDeepLink(link)
   })
+
+  // macOS does not use argv for this; it wakes a running app with an event.
+  app.on('open-url', (event, url) => {
+    event.preventDefault()
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
+    deliverDeepLink(url)
+  })
+
+  // Asks the desktop to send us irc:// links. Registered every start rather
+  // than once: an association can be taken by something else installed later,
+  // and re-registering is how every other client keeps it.
+  for (const scheme of DEEP_LINK_SCHEMES) {
+    // In development the executable is Electron itself, so the entry point has
+    // to be named too or the desktop would launch a bare Electron.
+    if (is.dev && process.platform === 'win32') {
+      app.setAsDefaultProtocolClient(scheme, process.execPath, [path.resolve(process.argv[1] ?? '')])
+    } else {
+      app.setAsDefaultProtocolClient(scheme)
+    }
+  }
+
+  // One that came in on the command line, from a click that started moho.
+  pendingDeepLink = deepLinkIn(process.argv) ?? pendingDeepLink
 
   // Bundled Sneedchat smilies are served through the same guarded scheme as
   // nobilis's cached media, so the renderer needs no file access of its own.
