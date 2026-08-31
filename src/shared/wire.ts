@@ -145,7 +145,13 @@ export interface VoiceMember {
 export interface DccTransfer {
   id: string
   accountId: string
-  /** Who offered it. */
+  /**
+   * Which way it is going. Sending and receiving differ in almost nothing
+   * else, so they share a list - what somebody wants to see is their
+   * transfers, not two separate accounts of them.
+   */
+  outgoing: boolean
+  /** Who offered it, or who it is going to. */
   from: string
   /**
    * What it will be called on disk. Derived by the daemon from what they
@@ -162,7 +168,7 @@ export interface DccTransfer {
   received: number
   /** Bytes a second over the last interval, while it is running. */
   rate: number
-  state: 'offered' | 'receiving' | 'done' | 'declined' | 'failed'
+  state: 'offered' | 'receiving' | 'sending' | 'done' | 'declined' | 'failed'
   /** Where it landed, once it has. */
   path?: string | null
   /** Why it failed, or why it was turned down. */
@@ -177,6 +183,8 @@ export interface DccPrefs {
   /** Bytes a second across every transfer at once; 0 is unlimited. */
   maxRate: number
   autoAccept: boolean
+  /** What to publish as this machine's address when sending; blank is automatic. */
+  advertisedIp?: string | null
   /** Where files will actually land, with the platform default filled in. */
   resolvedDirectory?: string
 }

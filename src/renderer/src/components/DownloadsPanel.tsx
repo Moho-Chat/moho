@@ -28,8 +28,9 @@ export function DownloadsPanel(): JSX.Element {
       .catch(() => undefined)
   }, [])
 
-  const active = transfers.filter((t) => t.state === 'offered' || t.state === 'receiving')
-  const finished = transfers.filter((t) => t.state !== 'offered' && t.state !== 'receiving')
+  const settled = (t: DccTransfer): boolean => t.state === 'done' || t.state === 'declined' || t.state === 'failed'
+  const active = transfers.filter((t) => !settled(t))
+  const finished = transfers.filter(settled)
 
   return (
     <div className="settings">
@@ -37,16 +38,17 @@ export function DownloadsPanel(): JSX.Element {
         {transfers.length === 0 ? (
           <div className="placeholder muted">
             <Icon name="download" size={32} />
-            <span>Nothing has been offered to you yet</span>
+            <span>No files have come or gone yet</span>
             <span className="small">
-              On IRC, people and XDCC bots can send you a file directly. moho asks before taking one.
+              On IRC, people and XDCC bots can send you a file directly, and you can send one back - from a name in the
+              member list, or from something they said. moho asks before taking one.
             </span>
           </div>
         ) : (
           <>
             {active.length > 0 && (
               <section className="settings-section">
-                <h4 className="settings-section-title">Arriving</h4>
+                <h4 className="settings-section-title">In progress</h4>
                 <div className="downloads-list">
                   {active.map((t) => (
                     <Row key={t.id} transfer={t} />
@@ -82,8 +84,10 @@ export function DownloadsPanel(): JSX.Element {
 
 function Row({ transfer }: { transfer: DccTransfer }): JSX.Element {
   const store = useStore()
-  const running = transfer.state === 'receiving'
-  const offered = transfer.state === 'offered'
+  const running = transfer.state === 'receiving' || transfer.state === 'sending'
+  // Only an offer somebody made to us is a question we can answer.
+  const offered = transfer.state === 'offered' && !transfer.outgoing
+  const waiting = transfer.state === 'offered' && transfer.outgoing
 
   return (
     <div className="download-row">
@@ -96,14 +100,16 @@ function Row({ transfer }: { transfer: DccTransfer }): JSX.Element {
           {transfer.fileName}
         </div>
         <div className="small muted download-detail">
-          <span className="download-from">from {transfer.from}</span>
+          <span className="download-from">
+            {transfer.outgoing ? 'to' : 'from'} {transfer.from}
+          </span>
           {/* Titled as well as shown, because the whole of a long failure is
               worth being able to read even where it has been wrapped. */}
           <span className="download-status" title={describe(transfer)}>
             {describe(transfer)}
           </span>
         </div>
-        {(running || offered) && <TransferBar transfer={transfer} />}
+        {running && <TransferBar transfer={transfer} />}
       </div>
 
       <div className="download-actions">
@@ -115,10 +121,10 @@ function Row({ transfer }: { transfer: DccTransfer }): JSX.Element {
         {/* Only while there is something to stop. A finished row has nothing
             this button could do, and one that did nothing would still look
             like it might delete the file. */}
-        {(running || offered) && (
+        {(running || offered || waiting) && (
           <IconButton
             name="close"
-            title={offered ? 'Decline this file' : 'Cancel this transfer'}
+            title={offered ? 'Decline this file' : waiting ? 'Withdraw this offer' : 'Cancel this transfer'}
             className="calling"
             onClick={() => void store.cancelTransfer(transfer.id)}
           />
@@ -132,20 +138,22 @@ function markFor(t: DccTransfer): string {
   if (t.state === 'done') return 'check_circle'
   if (t.state === 'failed') return 'error'
   if (t.state === 'declined') return 'block'
-  if (t.state === 'offered') return 'help'
+  if (t.state === 'offered') return t.outgoing ? 'schedule' : 'help'
+  if (t.state === 'sending') return 'upload'
   return looksExecutable(t.fileName) ? 'warning' : 'download'
 }
 
 /** The one line that says where this transfer got to. */
 function describe(t: DccTransfer): string {
   switch (t.state) {
-    case 'receiving': {
+    case 'receiving':
+    case 'sending': {
       const rate = humanRate(t.rate)
       const moved = `${humanSize(t.received)} of ${humanSize(t.size)}`
       return rate ? `${moved} · ${rate}` : moved
     }
     case 'offered':
-      return `${humanSize(t.size)} · waiting for an answer`
+      return `${humanSize(t.size)} · ${t.outgoing ? 'waiting for them to accept' : 'waiting for an answer'}`
     case 'done':
       return humanSize(t.size)
     // The reason matters more than the word: "failed" on its own sends

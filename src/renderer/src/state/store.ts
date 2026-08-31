@@ -845,6 +845,24 @@ export class ChatStore {
     setTimeout(() => this.awaitBuffer(accountId, name, tries - 1), 250)
   }
 
+  /**
+   * Offers somebody a file, asking for one first.
+   *
+   * The picker is the system's own, so it looks and behaves like every other
+   * open dialog on that machine - and picking a file is consent to send that
+   * one, which is why the path never comes from anywhere but here.
+   */
+  async sendFileTo(accountId: string, nick: string): Promise<void> {
+    const path = await window.moho.pickFile()
+    if (!path) return
+    try {
+      await window.moho.rpc('sendFile', { accountId, nick, path })
+      this.toast('info', `Offering that file to ${nick}…`)
+    } catch (e) {
+      this.toast('error', `Couldn't send to ${nick}: ${(e as Error).message}`)
+    }
+  }
+
   /** Takes a file that has been offered. */
   async acceptTransfer(id: string): Promise<void> {
     try {

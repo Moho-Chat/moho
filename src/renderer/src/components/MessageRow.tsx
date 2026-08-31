@@ -165,6 +165,20 @@ export function MessageRow({
     ...(service === 'sockchat' && !message.isOwn && message.from && !isSystem
       ? ([{ label: `Whisper ${message.from}`, icon: 'lock', onClick: () => store.startWhisper(message.from) }] as MenuEntry[])
       : []),
+    // From the message rather than from a member list, because the person you
+    // want to send something to is usually the one who just said something.
+    ...(service === 'irc' && !message.isOwn && message.from && !isSystem
+      ? ([
+          {
+            label: `Send a file to ${message.from}`,
+            icon: 'upload_file',
+            onClick: () => {
+              const account = store.accountFor(bufferId)
+              if (account) void store.sendFileTo(account.id, message.from)
+            }
+          }
+        ] as MenuEntry[])
+      : []),
     ...(canEditDelete
       ? ([
           {

@@ -367,7 +367,7 @@ function TransferSettings(): JSX.Element {
   return (
     <SettingsSection
       title="XDCC file transfers"
-      description="XDCC bots and other people on IRC can offer you a file directly. moho asks before taking one, saves it under a name of its own choosing rather than theirs, and never listens for a connection - it only ever dials out, which is also what lets this work on an account routed through Tor."
+      description="XDCC bots and other people on IRC can offer you a file directly, and you can send one back from a name in the member list or from something they said. Receiving asks first, saves under a name of moho's own choosing rather than theirs, and only ever dials out - which is what lets it work on an account routed through Tor. Sending has to listen instead, so it is refused on such an account rather than quietly giving the address away."
     >
       <div className="setting-row">
         <div className="setting-text">
@@ -467,6 +467,25 @@ function TransferSettings(): JSX.Element {
               </option>
             ))}
           </select>
+        </div>
+      </div>
+
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Address to give out when sending</div>
+          <div className="small muted">
+            Sending a file means opening a port and telling the other person where to find it. Left blank, moho uses
+            the address this machine reaches the server from - which is right on a machine facing the internet and
+            wrong behind a router, where the address worth giving out is the one the router answers on.
+          </div>
+        </div>
+        <div className="setting-actions">
+          <input
+            className="text-field"
+            placeholder="automatic"
+            defaultValue={prefs?.advertisedIp ?? ''}
+            onBlur={(e) => save({ advertisedIp: e.target.value.trim() })}
+          />
         </div>
       </div>
 

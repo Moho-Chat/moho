@@ -110,6 +110,7 @@ export function NickList(): JSX.Element {
                 blocked={isBlocked(`${buffer?.accountId}|${member.nick}`)}
                 canOpenDm={hasDirectMessages(account?.service)}
                 canWhisper={account?.service === 'sockchat'}
+                canSendFile={account?.service === 'irc'}
                 canCall={canCall && !!member.userId}
                 perms={perms}
                 onToggleBlock={toggleBlocked}
@@ -144,6 +145,7 @@ export function NickList(): JSX.Element {
                     .catch((e: Error) => store.toast('error', `Couldn't call: ${e.message}`))
                 }}
                 onWhisper={() => store.startWhisper(member.nick)}
+                onSendFile={() => account && void store.sendFileTo(account.id, member.nick)}
                 onOpenDm={() => {
                   if (!account) return
                   // Which method each service wants, and whether it can work
@@ -170,12 +172,15 @@ interface MemberRowProps {
   canOpenDm: boolean
   /** Sneedchat has no conversations, but it does have private messages. */
   canWhisper: boolean
+  /** IRC carries a file directly between two people; nothing else here does. */
+  canSendFile: boolean
   perms: { canKick?: boolean; canBan?: boolean; canMute?: boolean }
   onToggleBlock: (key: string) => void
   onMention: () => void
   onModerate: (action: 'kick' | 'ban' | 'mute') => void
   onOpenDm: () => void
   onWhisper: () => void
+  onSendFile: () => void
   /** Only where the protocol supports it and the member is identifiable. */
   canCall: boolean
   onCall: () => void
@@ -187,12 +192,14 @@ function MemberRow({
   blocked,
   canOpenDm,
   canWhisper,
+  canSendFile,
   perms,
   onToggleBlock,
   onMention,
   onModerate,
   onOpenDm,
   onWhisper,
+  onSendFile,
   canCall,
   onCall
 }: MemberRowProps): JSX.Element {
@@ -205,6 +212,7 @@ function MemberRow({
     ...(canCall ? ([{ label: 'Call', icon: 'call', onClick: onCall }] as MenuEntry[]) : []),
     ...(canOpenDm ? ([{ label: 'Open DM', icon: 'chat', onClick: onOpenDm }] as MenuEntry[]) : []),
     ...(canWhisper ? ([{ label: 'Whisper', icon: 'lock', onClick: onWhisper }] as MenuEntry[]) : []),
+    ...(canSendFile ? ([{ label: 'Send a file', icon: 'upload_file', onClick: onSendFile }] as MenuEntry[]) : []),
     { separator: true },
     {
       label: blocked ? 'Unblock' : 'Block',
