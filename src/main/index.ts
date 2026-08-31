@@ -23,7 +23,7 @@ import { Notifier } from './notifications'
 import { browserLogin, LOGIN_FLOWS } from './browser-login'
 import { IPC } from '../shared/ipc'
 import { allowPickedFile, allowRoot, installMediaHandler, registerMediaScheme } from './media-protocol'
-import { saveMedia } from './downloads'
+import { defaultDownloadDir, saveMedia } from './downloads'
 import type { Buffer as ChatBuffer } from '../shared/wire'
 import { log } from './log'
 
@@ -299,15 +299,16 @@ function wireIpc(): void {
   })
 
   // Where downloads land when the user hasn't chosen somewhere. Electron
-  // resolves this per-platform (XDG's Downloads dir on Linux), so there is
-  // nothing to guess at.
-  ipcMain.handle(IPC.defaultDownloadDir, () => app.getPath('downloads'))
+  // resolves this per-platform - XDG_DOWNLOAD_DIR on Linux, FOLDERID_Downloads
+  // on Windows - with one guard for where that lookup degrades; see
+  // defaultDownloadDir.
+  ipcMain.handle(IPC.defaultDownloadDir, () => defaultDownloadDir(app.getPath('downloads')))
 
   ipcMain.handle(IPC.downloadMedia, async (_e, source: string, filename?: string) =>
     saveMedia(
       source,
       filename,
-      String(prefs.get('downloads.directory', '') || app.getPath('downloads')),
+      String(prefs.get('downloads.directory', '') || defaultDownloadDir(app.getPath('downloads'))),
       // Electron's net rather than global fetch: it follows the app's own
       // proxy and certificate settings, which a plain fetch would not.
       async (url) => {

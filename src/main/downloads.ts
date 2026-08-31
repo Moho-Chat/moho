@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 
 /**
@@ -9,6 +10,28 @@ import path from 'node:path'
  * overwriting an existing file, and not letting a name that arrived in a chat
  * message decide where the file lands - are worth testing on their own.
  */
+
+/**
+ * Where downloads go when nobody has said otherwise.
+ *
+ * The platform's own answer, which is what `app.getPath('downloads')` reports:
+ * `XDG_DOWNLOAD_DIR` from user-dirs on Linux, `FOLDERID_Downloads` on Windows.
+ * Passed in rather than read here so this stays testable and so the one call
+ * to Electron lives at the edge.
+ *
+ * Guarded against that answer being the home directory itself, which is what a
+ * degraded lookup produces on a Linux install whose user-dirs has no
+ * `XDG_DOWNLOAD_DIR` line - an ordinary state for a machine that never ran a
+ * desktop's first-run setup. Downloads landing loose in `$HOME` is not a
+ * sensible default, and `$HOME/Downloads` is what the XDG spec names for that
+ * entry when it is unset. nobilis resolves the same question the same way, so
+ * a file saved from a message and a file received over IRC land together.
+ */
+export function defaultDownloadDir(fromPlatform: string): string {
+  const home = os.homedir()
+  if (!fromPlatform || fromPlatform === home) return path.join(home, 'Downloads')
+  return fromPlatform
+}
 
 /**
  * A path that doesn't exist yet, suffixing "(2)", "(3)"... before the
