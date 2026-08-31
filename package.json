@@ -15,7 +15,8 @@
     "pack:dir": "npm run daemon && npm run build && electron-builder --linux dir",
     "daemon": "cargo build --release --manifest-path nobilis/Cargo.toml",
     "deploy": "npm run pack && ./scripts/install-desktop.sh",
-    "pack:win": "npm run daemon && npm run build && electron-builder --win nsis"
+    "daemon:win": "./scripts/build-daemon-win.sh",
+    "pack:win": "npm run daemon:win && npm run build && electron-builder --win nsis"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
