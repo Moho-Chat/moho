@@ -3702,13 +3702,28 @@ video.lightbox-media {
 
 .download-detail {
   display: flex;
-  gap: var(--spacing-s);
+  /* Wrapping, because the second half is a size on most rows and a whole
+     sentence on a failed one. Held on one line it ran off the side of the
+     plate, taking the reason with it - which is the one thing a failed row
+     exists to tell you. */
+  flex-wrap: wrap;
+  column-gap: var(--spacing-s);
+  row-gap: 2px;
+  min-width: 0;
   font-variant-numeric: tabular-nums;
 }
 
-/* The size is the part that moves; letting it wrap would reflow the row. */
-.download-detail > span:last-child {
-  white-space: nowrap;
+/* Who it came from keeps its line: it is short, and it is what the eye needs
+   to find the row again after reading the reason beside it. */
+.download-from {
+  flex: none;
+}
+
+.download-status {
+  min-width: 0;
+  /* An address or a hostname in a failure has nothing to break at, so a
+     line-length limit alone would still overflow. */
+  overflow-wrap: anywhere;
 }
 
 .download-actions {

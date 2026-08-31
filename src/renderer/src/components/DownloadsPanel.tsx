@@ -96,8 +96,12 @@ function Row({ transfer }: { transfer: DccTransfer }): JSX.Element {
           {transfer.fileName}
         </div>
         <div className="small muted download-detail">
-          <span>from {transfer.from}</span>
-          <span>{describe(transfer)}</span>
+          <span className="download-from">from {transfer.from}</span>
+          {/* Titled as well as shown, because the whole of a long failure is
+              worth being able to read even where it has been wrapped. */}
+          <span className="download-status" title={describe(transfer)}>
+            {describe(transfer)}
+          </span>
         </div>
         {(running || offered) && <TransferBar transfer={transfer} />}
       </div>
