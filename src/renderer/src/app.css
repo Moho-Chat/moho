@@ -3764,3 +3764,41 @@ video.lightbox-media {
 .rail-cog {
   position: relative;
 }
+
+/* --- Whispers --------------------------------------------------------- */
+
+/* Said privately rather than to the room. Highlighted like a mention, because
+   somebody speaking to you directly is at least as worth noticing as being
+   named - and then italic on top, so the two are not mistaken for each other
+   at a glance. */
+.message-row.whisper .message-body {
+  font-style: italic;
+}
+
+/* An edge rather than a fill: the highlight already tints the row, and two
+   backgrounds fighting would leave the text harder to read than an ordinary
+   message, which is the wrong way round for one that matters more. */
+.message-row.whisper {
+  border-left: 2px solid var(--secondary);
+}
+
+.whisper-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: var(--spacing-xs);
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--primary-hover);
+  color: var(--secondary);
+  font-style: normal;
+  text-transform: lowercase;
+  vertical-align: middle;
+}
+
+/* The whisper banner reuses the reply banner's shape - it is the same idea,
+   the composer aimed somewhere - but tinted, because sending to one person by
+   mistake is recoverable and sending to the room by mistake is not. */
+.composer-whisper {
+  color: var(--secondary);
+}

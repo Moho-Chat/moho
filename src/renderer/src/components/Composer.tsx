@@ -64,6 +64,7 @@ export function Composer(): JSX.Element | null {
   const store = useStore()
   const buffer = useActiveBuffer()
   const replyingTo = useChat((s) => s.replyingTo)
+  const whisperingTo = useChat((s) => s.whisperingTo)
   const accounts = useChat((s) => s.accounts)
   const [text, setText] = useState('')
   const [staged, setStaged] = useState<StagedAttachment[]>([])
@@ -116,6 +117,18 @@ export function Composer(): JSX.Element | null {
   const submit = (): void => {
     const body = text.trim()
     if (!body && staged.length === 0) return
+
+    // Aimed at one person rather than at the room. Attachments are not
+    // carried: a whisper is a line of text on this service, and silently
+    // posting somebody's picture to the whole room instead would be the worst
+    // possible reading of "send".
+    if (whisperingTo) {
+      const account = store.accountFor(buffer.id)
+      if (account) void store.sendWhisper(account.id, whisperingTo, body)
+      if (inputRef.current) inputRef.current.replaceChildren()
+      setText('')
+      return
+    }
 
     if (staged.length > 0) {
       // Each attachment is its own send; the typed text rides along as the
@@ -195,6 +208,16 @@ export function Composer(): JSX.Element | null {
       <div className="divider-h" />
 
       <TypingLine bufferId={buffer.id} />
+
+      {whisperingTo && (
+        <div className="composer-reply composer-whisper small">
+          <Icon name="lock" size={14} />
+          <span className="ellipsis muted">
+            Whispering to {whisperingTo} - only they will see this
+          </span>
+          <IconButton name="close" size={14} title="Stop whispering" onClick={() => store.cancelWhisper()} />
+        </div>
+      )}
 
       {replyingTo && (
         <div className="composer-reply small">

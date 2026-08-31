@@ -109,6 +109,7 @@ export function NickList(): JSX.Element {
                 blockKey={`${buffer?.accountId}|${member.nick}`}
                 blocked={isBlocked(`${buffer?.accountId}|${member.nick}`)}
                 canOpenDm={hasDirectMessages(account?.service)}
+                canWhisper={account?.service === 'sockchat'}
                 canCall={canCall && !!member.userId}
                 perms={perms}
                 onToggleBlock={toggleBlocked}
@@ -142,6 +143,7 @@ export function NickList(): JSX.Element {
                     .then((r) => store.selectBuffer(r.bufferId))
                     .catch((e: Error) => store.toast('error', `Couldn't call: ${e.message}`))
                 }}
+                onWhisper={() => store.startWhisper(member.nick)}
                 onOpenDm={() => {
                   if (!account) return
                   // Which method each service wants, and whether it can work
@@ -166,11 +168,14 @@ interface MemberRowProps {
   blocked: boolean
   /** The protocol can start a conversation from a member list. */
   canOpenDm: boolean
+  /** Sneedchat has no conversations, but it does have private messages. */
+  canWhisper: boolean
   perms: { canKick?: boolean; canBan?: boolean; canMute?: boolean }
   onToggleBlock: (key: string) => void
   onMention: () => void
   onModerate: (action: 'kick' | 'ban' | 'mute') => void
   onOpenDm: () => void
+  onWhisper: () => void
   /** Only where the protocol supports it and the member is identifiable. */
   canCall: boolean
   onCall: () => void
@@ -181,11 +186,13 @@ function MemberRow({
   blockKey,
   blocked,
   canOpenDm,
+  canWhisper,
   perms,
   onToggleBlock,
   onMention,
   onModerate,
   onOpenDm,
+  onWhisper,
   canCall,
   onCall
 }: MemberRowProps): JSX.Element {
@@ -197,6 +204,7 @@ function MemberRow({
     { label: 'Mention', icon: 'alternate_email', onClick: onMention },
     ...(canCall ? ([{ label: 'Call', icon: 'call', onClick: onCall }] as MenuEntry[]) : []),
     ...(canOpenDm ? ([{ label: 'Open DM', icon: 'chat', onClick: onOpenDm }] as MenuEntry[]) : []),
+    ...(canWhisper ? ([{ label: 'Whisper', icon: 'lock', onClick: onWhisper }] as MenuEntry[]) : []),
     { separator: true },
     {
       label: blocked ? 'Unblock' : 'Block',

@@ -28,6 +28,7 @@ import {
   formatTime,
   hasDirectMessages,
   isChatKind,
+  isWhisper,
   nickColor,
   resolveMediaUrl
 } from '../lib/util'
@@ -98,6 +99,9 @@ export function MessageRow({
     !!message.isOwn && (service === 'discord' || service === 'sockchat' || service === 'matrix')
   const canReact = service === 'discord' || service === 'matrix'
   const isSystem = !isChatKind(message.kind)
+  // Said to you rather than to the room. Drawn differently on purpose: the
+  // whole risk with a private message is reading it as a public one.
+  const whispered = isWhisper(message.kind)
   // Both of the modes that draw an avatar column. Bubbles is otherwise
   // nothing like comfy, but it wants the same picture beside the same first
   // line of a group.
@@ -156,6 +160,11 @@ export function MessageRow({
 
   const entries: MenuEntry[] = [
     { label: 'Reply', icon: 'reply', onClick: () => reply() },
+    // Beside Reply because it is the same gesture aimed somewhere else, and
+    // only where the service has whispers at all.
+    ...(service === 'sockchat' && !message.isOwn && message.from && !isSystem
+      ? ([{ label: `Whisper ${message.from}`, icon: 'lock', onClick: () => store.startWhisper(message.from) }] as MenuEntry[])
+      : []),
     ...(canEditDelete
       ? ([
           {
@@ -260,6 +269,7 @@ export function MessageRow({
         className={classes(
           'message-row',
           message.isHighlight && 'highlight',
+          whispered && 'whisper',
           message.pending && 'pending',
           message.failed && 'failed',
           isSystem && 'system',
@@ -309,6 +319,19 @@ export function MessageRow({
           {!grouped && !isSystem && !own && (
             <span className="message-from" style={{ color: nickColor(message.from) }}>
               {message.isAction ? `* ${message.from}` : message.from}
+            </span>
+          )}
+
+          {/* Said in words as well as in styling. Italics and a tinted edge
+              say "not like the others", which is not the same as saying what
+              it is - and a private message being mistaken for a public one is
+              the failure worth spending a line on. Shown on every whisper,
+              grouped or not, because grouping is exactly when the run of
+              messages above it might have been public. */}
+          {whispered && (
+            <span className="whisper-tag small">
+              <Icon name="lock" size={11} />
+              <span>whisper{own ? ` to ${message.from}` : ''}</span>
             </span>
           )}
 

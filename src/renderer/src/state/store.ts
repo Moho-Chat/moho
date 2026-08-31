@@ -111,6 +111,14 @@ export interface ChatState {
    * already knew filled in. Cleared once that form has been through.
    */
   pendingLink: IrcLink | null
+  /**
+   * Who the next message is being whispered to, if anybody.
+   *
+   * Beside `replyingTo` and behaving like it, because from where somebody is
+   * sitting these are the same kind of thing: a target the composer is aimed
+   * at until they change their mind.
+   */
+  whisperingTo: string | null
   /** Files offered over IRC, newest first, offers and transfers together. */
   transfers: DccTransfer[]
   /**
@@ -206,6 +214,7 @@ const INITIAL: ChatState = {
   transfers: [],
   minimisedTransfers: [],
   pendingLink: null,
+  whisperingTo: null,
   mentions: [],
   lastReadTs: {},
   jumpTarget: '',
@@ -260,6 +269,19 @@ const INITIAL: ChatState = {
  */
 function echoMatches(echo: ChatMessage, real: Message): boolean {
   if (echo.pendingBody === real.body) return true
+  // A file is posted as markup the daemon builds - a BBCode image tag on
+  // Sneedchat, a bare link on IRC - so what comes back is never what was
+  // typed, and usually nothing was typed at all. Matching on the whole body
+  // could not succeed, so every upload sat pending until it was swept up as
+  // having timed out: reported as a failure while the picture was on screen
+  // in the same conversation.
+  //
+  // A caption is still checked where there was one, since it survives into
+  // what was posted; without one, the next message back from us in that
+  // conversation is it.
+  if (echo.pendingAttachment) {
+    return !echo.pendingBody || real.body.includes(echo.pendingBody)
+  }
   return !!echo.pendingReplyTo && !!echo.pendingBody && real.body.endsWith(echo.pendingBody)
 }
 
@@ -776,6 +798,26 @@ export class ChatStore {
     }
     // The first one named, being the one they clicked towards.
     this.awaitBuffer(existing.id, link.channels[0])
+  }
+
+  /**
+   * Sends a private message to one person on Sneedchat.
+   *
+   * Not the same as opening a conversation with them: Sneedchat has no such
+   * thing, and every whisper - sent or received, whoever it was with - lands
+   * in the one Whispers buffer. Going there afterwards is what makes the
+   * message visible, since a whisper is not echoed back into the room it was
+   * sent from.
+   */
+  async sendWhisper(accountId: string, target: string, body: string): Promise<void> {
+    if (!body.trim()) return
+    try {
+      await window.moho.rpc('sendWhisper', { accountId, target, body })
+      const whispers = this.state.buffers.find((b) => b.accountId === accountId && b.name === 'Whispers')
+      if (whispers) this.selectBuffer(whispers.id)
+    } catch (e) {
+      this.toast('error', `Couldn't whisper ${target}: ${(e as Error).message}`)
+    }
   }
 
   /** Clears a link once the account form it opened is done with it. */
@@ -1804,6 +1846,22 @@ export class ChatStore {
 
   cancelReply(): void {
     this.set({ replyingTo: null })
+  }
+
+  /**
+   * Aims the next message at one person, privately.
+   *
+   * Armed the way a reply is rather than asking for the text in a dialog: what
+   * you are about to whisper is written the same way as anything else, with
+   * the same box and the same history, and the only difference is where it
+   * goes. Clears any reply, since a whisper is not a reply to the room.
+   */
+  startWhisper(target: string): void {
+    this.set({ whisperingTo: target, replyingTo: null })
+  }
+
+  cancelWhisper(): void {
+    this.set({ whisperingTo: null })
   }
 
   /**

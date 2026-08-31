@@ -53,9 +53,10 @@ export interface ServiceIcon {
  * here means a service that gains direct messages is added once rather than
  * found by grepping for whichever spelling of the check was used last time.
  *
- * Sneedchat is the absent one, and deliberately: its whispers arrive but
- * cannot be sent, so offering to start one would open a conversation that
- * silently refuses everything typed into it.
+ * Sneedchat is the absent one, and deliberately: it has no conversations to
+ * open. Its whispers are addressed by name and all land in one shared buffer,
+ * which is a different thing wearing a similar hat - offered separately, from
+ * the same menus, as "Whisper".
  */
 export function hasDirectMessages(service: string | undefined): boolean {
   return service === 'irc' || service === 'discord' || service === 'matrix'
@@ -111,7 +112,18 @@ export function serviceLabel(service: string): string {
  * grey system line with no author or avatar.
  */
 export function isChatKind(kind: string | undefined): boolean {
-  return kind === 'chat' || kind === 'message'
+  return kind === 'chat' || kind === 'message' || kind === 'whisper'
+}
+
+/**
+ * A message sent privately to you rather than to the room it arrived through.
+ *
+ * Its own kind rather than a flag, because everything that reads a message
+ * already reads the kind, and a whisper drawn as an ordinary line in a room is
+ * the one mistake here that matters - it reads as public when it is not.
+ */
+export function isWhisper(kind: string | undefined): boolean {
+  return kind === 'whisper'
 }
 
 export function bufferKindGlyph(kind: string): string {
