@@ -3643,3 +3643,109 @@ video.lightbox-media {
 .transfer-panel p {
   margin: 0;
 }
+
+/* Two lines of a card's own stats, pushed apart: what has moved on the left,
+   how fast on the right, so neither jumps as the other's width changes. */
+.transfer-stats {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-s);
+  /* The rate changes several times a second, and a proportional font would
+     make the whole line shuffle sideways with every update. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Downloads -------------------------------------------------------- */
+
+.downloads-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.download-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-m);
+  padding: var(--spacing-s) var(--spacing-m);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-low);
+}
+
+.download-mark {
+  display: inline-flex;
+  flex: none;
+  color: var(--surface-variant-text);
+}
+
+/* The state is carried by colour as well as by the glyph, so a finished row
+   and a failed one are told apart at a glance rather than by reading. */
+.download-mark.done {
+  color: var(--success);
+}
+
+.download-mark.failed {
+  color: var(--error);
+}
+
+.download-mark.receiving {
+  color: var(--primary);
+}
+
+.download-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.download-detail {
+  display: flex;
+  gap: var(--spacing-s);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The size is the part that moves; letting it wrap would reflow the row. */
+.download-detail > span:last-child {
+  white-space: nowrap;
+}
+
+.download-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex: none;
+}
+
+.downloads-folder {
+  margin-top: var(--spacing-l);
+}
+
+/* How many files are arriving, on the cog they are reached through - so a
+   transfer that has been put away is still visibly somewhere. Shaped like the
+   service badge on the tiles above, since it means the same kind of thing:
+   something about this tile you would otherwise have to open it to know. */
+.rail-downloads {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-text);
+  border: 2px solid var(--surface-container-lowest);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The cog holds the badge, the way the tiles hold theirs. */
+.rail-cog {
+  position: relative;
+}

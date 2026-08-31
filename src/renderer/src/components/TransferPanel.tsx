@@ -19,10 +19,14 @@ import type { DccTransfer } from '../../../shared/wire'
 export function TransferPanel(): JSX.Element | null {
   const store = useStore()
   const transfers = useChat((s) => s.transfers)
+  const minimised = useChat((s) => s.minimisedTransfers)
 
-  // Finished ones are history rather than something to answer, and belong in
-  // the list this panel is not - they leave once they are done.
-  const showing = transfers.filter((t) => t.state === 'offered' || t.state === 'receiving')
+  // Finished ones are history rather than something to answer, and belong
+  // under Downloads instead - they leave here once they are done. So does
+  // anything put away, which is still running and still listed there.
+  const showing = transfers.filter(
+    (t) => (t.state === 'offered' || t.state === 'receiving') && !minimised.includes(t.id)
+  )
   if (showing.length === 0) return null
 
   return (
@@ -32,7 +36,11 @@ export function TransferPanel(): JSX.Element | null {
           {t.state === 'offered' ? (
             <Offer transfer={t} onAccept={() => void store.acceptTransfer(t.id)} onDecline={() => void store.cancelTransfer(t.id)} />
           ) : (
-            <Running transfer={t} onCancel={() => void store.cancelTransfer(t.id)} />
+            <Running
+              transfer={t}
+              onCancel={() => void store.cancelTransfer(t.id)}
+              onMinimise={() => store.minimiseTransfer(t.id)}
+            />
           )}
         </div>
       ))}
@@ -84,8 +92,15 @@ function Offer({
   )
 }
 
-function Running({ transfer, onCancel }: { transfer: DccTransfer; onCancel: () => void }): JSX.Element {
-  const pct = transfer.size > 0 ? Math.min(100, (transfer.received / transfer.size) * 100) : 0
+function Running({
+  transfer,
+  onCancel,
+  onMinimise
+}: {
+  transfer: DccTransfer
+  onCancel: () => void
+  onMinimise: () => void
+}): JSX.Element {
   return (
     <>
       <div className="transfer-head">
@@ -93,18 +108,38 @@ function Running({ transfer, onCancel }: { transfer: DccTransfer; onCancel: () =
         <span className="ellipsis">
           Receiving from <b>{transfer.from}</b>
         </span>
-        <IconButton name="close" title="Stop this transfer" onClick={onCancel} />
+        {/* Two buttons rather than one, because they are opposite actions and
+            a single X would have to mean one of them. Putting it away is the
+            harmless one, so it sits first and away from the corner a window's
+            close button trains people to aim at. */}
+        <IconButton name="expand_more" title="Hide this - it keeps going, under Downloads" onClick={onMinimise} />
+        <IconButton name="close" title="Cancel this transfer" className="calling" onClick={onCancel} />
       </div>
 
       <FileLine transfer={transfer} />
-
-      <div className="transfer-bar" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
-        <div className="transfer-bar-fill" style={{ width: `${pct}%` }} />
-      </div>
-      <p className="small muted">
-        {humanSize(transfer.received)} of {humanSize(transfer.size)}
+      <TransferBar transfer={transfer} />
+      <p className="small muted transfer-stats">
+        <span>
+          {humanSize(transfer.received)} of {humanSize(transfer.size)}
+        </span>
+        <span>{humanRate(transfer.rate)}</span>
       </p>
     </>
+  )
+}
+
+export function TransferBar({ transfer }: { transfer: DccTransfer }): JSX.Element {
+  const pct = transfer.size > 0 ? Math.min(100, (transfer.received / transfer.size) * 100) : 0
+  return (
+    <div
+      className="transfer-bar"
+      role="progressbar"
+      aria-valuenow={Math.round(pct)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+    >
+      <div className="transfer-bar-fill" style={{ width: `${pct}%` }} />
+    </div>
   )
 }
 
@@ -141,6 +176,18 @@ export function looksExecutable(name: string): boolean {
     'ps1', 'psm1', 'vbs', 'vbe', 'js', 'jse', 'wsf', 'wsh', 'hta', 'lnk',
     'dll', 'sys', 'sh', 'run', 'deb', 'rpm', 'apk', 'dmg', 'pkg'
   ].includes(ext)
+}
+
+/**
+ * A speed, in whichever unit makes it a small number.
+ *
+ * Nothing rather than "0 KB/s" when a transfer is not moving: a rate of zero
+ * is either a stall or the moment before the first measurement, and neither is
+ * worth a line of its own where the bar above already says nothing changed.
+ */
+export function humanRate(bytesPerSecond: number): string {
+  if (!bytesPerSecond) return ''
+  return `${humanSize(bytesPerSecond)}/s`
 }
 
 export function humanSize(bytes: number): string {

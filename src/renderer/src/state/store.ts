@@ -51,7 +51,7 @@ export interface ChatMessage extends Message {
   pendingAttachment?: string
 }
 
-export type ActivePanel = '' | 'accounts' | 'settings' | 'join'
+export type ActivePanel = '' | 'accounts' | 'settings' | 'join' | 'downloads'
 
 export interface ChatState {
   /** Who is composing, per buffer, with when to stop believing it. */
@@ -85,6 +85,14 @@ export interface ChatState {
   incomingCalls: IncomingCall[]
   /** Files offered over IRC, newest first, offers and transfers together. */
   transfers: DccTransfer[]
+  /**
+   * Transfers put out of the way, by id.
+   *
+   * Only about the floating card - a minimised transfer is still running and
+   * still listed under Downloads. Kept in the store rather than in the panel
+   * so it survives the panel unmounting when the last card goes away.
+   */
+  minimisedTransfers: string[]
   /**
    * Everything that has mentioned you, newest first, across every service.
    *
@@ -168,6 +176,7 @@ const INITIAL: ChatState = {
   voiceSessions: [],
   incomingCalls: [],
   transfers: [],
+  minimisedTransfers: [],
   mentions: [],
   lastReadTs: {},
   jumpTarget: '',
@@ -662,6 +671,18 @@ export class ChatStore {
     } catch (e) {
       this.toast('error', `Couldn't call: ${(e as Error).message}`)
     }
+  }
+
+  /**
+   * Puts a transfer's card away without touching the transfer.
+   *
+   * The distinction the buttons have to make plain: this hides something that
+   * keeps running, and cancelling stops it. Getting those two confused costs
+   * somebody a download they were most of the way through.
+   */
+  minimiseTransfer(id: string): void {
+    if (this.state.minimisedTransfers.includes(id)) return
+    this.set({ minimisedTransfers: [...this.state.minimisedTransfers, id] })
   }
 
   /** Takes a file that has been offered. */

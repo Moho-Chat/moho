@@ -12,6 +12,7 @@ import { NickList } from './components/NickList'
 import { ConversationTools } from './components/ConversationTools'
 import { AccountsPanel } from './components/AccountsPanel'
 import { SettingsPanel } from './components/settings/SettingsPanel'
+import { DownloadsPanel } from './components/DownloadsPanel'
 import { JoinPanel } from './components/JoinPanel'
 import { Toasts } from './components/Toasts'
 import { IncomingCallPanel } from './components/IncomingCallPanel'
@@ -68,6 +69,8 @@ export default function App(): JSX.Element {
       ? 'Accounts'
       : activePanel === 'settings'
         ? 'Settings'
+        : activePanel === 'downloads'
+        ? 'Downloads'
         : activePanel === 'join'
         ? `Join · ${joinAccount?.displayName ?? ''}`
         : onMentionsPage
@@ -210,6 +213,9 @@ function Body({
   activeGroupId: string
 }): JSX.Element {
   if (activePanel === 'settings') return <SettingsPanel />
+  // Above the no-accounts case below: a finished download is still worth
+  // looking at on a machine whose accounts have since been removed.
+  if (activePanel === 'downloads') return <DownloadsPanel />
   // With no accounts at all, the accounts panel is the only useful thing to
   // show - there is nothing to chat in yet.
   if (activePanel === 'accounts' || !hasAccounts) return <AccountsPanel />

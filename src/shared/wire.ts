@@ -160,6 +160,8 @@ export interface DccTransfer {
   rawName: string
   size: number
   received: number
+  /** Bytes a second over the last interval, while it is running. */
+  rate: number
   state: 'offered' | 'receiving' | 'done' | 'declined' | 'failed'
   /** Where it landed, once it has. */
   path?: string | null
@@ -172,6 +174,8 @@ export interface DccPrefs {
   directory?: string | null
   maxBytes: number
   maxTransfers: number
+  /** Bytes a second across every transfer at once; 0 is unlimited. */
+  maxRate: number
   autoAccept: boolean
   /** Where files will actually land, with the platform default filled in. */
   resolvedDirectory?: string

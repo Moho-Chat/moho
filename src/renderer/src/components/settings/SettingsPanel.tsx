@@ -366,7 +366,7 @@ function TransferSettings(): JSX.Element {
 
   return (
     <SettingsSection
-      title="Receiving files"
+      title="XDCC file transfers"
       description="XDCC bots and other people on IRC can offer you a file directly. moho asks before taking one, saves it under a name of its own choosing rather than theirs, and never listens for a connection - it only ever dials out, which is also what lets this work on an account routed through Tor."
     >
       <div className="setting-row">
@@ -433,6 +433,37 @@ function TransferSettings(): JSX.Element {
             {[1, 2, 3, 5, 10].map((n) => (
               <option key={n} value={String(n)}>
                 {n}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Limit the speed</div>
+          <div className="small muted">
+            Across every transfer at once, not each. Worth setting where a download at full speed would make the rest
+            of the connection unusable - which on a home line is most of them.
+          </div>
+        </div>
+        <div className="setting-actions">
+          <select
+            className="text-field"
+            value={String(prefs?.maxRate ?? 0)}
+            onChange={(e) => save({ maxRate: Number(e.target.value) })}
+          >
+            {[
+              [0, 'No limit'],
+              [64 * 1024, '64 KB/s'],
+              [256 * 1024, '256 KB/s'],
+              [512 * 1024, '512 KB/s'],
+              [1024 * 1024, '1 MB/s'],
+              [5 * 1024 * 1024, '5 MB/s'],
+              [20 * 1024 * 1024, '20 MB/s']
+            ].map(([bytes, label]) => (
+              <option key={String(bytes)} value={String(bytes)}>
+                {label}
               </option>
             ))}
           </select>

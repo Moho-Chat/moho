@@ -766,12 +766,15 @@ function FolderSettings({
 function RailMenu(): JSX.Element {
   const store = useStore()
   const { menu, open, close } = useContextMenu()
+  const transfers = useChat((s) => s.transfers)
+  const busy = transfers.filter((t) => t.state === 'offered' || t.state === 'receiving').length
+
   return (
     <>
       <button
         type="button"
         className="rail-tile rail-cog"
-        title="Accounts and settings"
+        title={busy > 0 ? `Accounts and settings - ${busy} file(s) arriving` : 'Accounts and settings'}
         aria-label="Accounts and settings"
         // Opened by left click, unlike the tiles above it - it is a menu
         // button, not a thing being acted upon.
@@ -780,6 +783,10 @@ function RailMenu(): JSX.Element {
         <span className="rail-face">
           <Icon name="settings" size={20} />
         </span>
+        {/* Where a minimised transfer goes, so putting one away does not look
+            like losing it. A count rather than a dot, because the number is
+            the thing you are checking when you look. */}
+        {busy > 0 && <span className="rail-downloads">{busy}</span>}
       </button>
       {menu && (
         <ContextMenu
@@ -787,6 +794,10 @@ function RailMenu(): JSX.Element {
           y={menu.y}
           entries={[
             { label: 'Accounts', icon: 'manage_accounts', onClick: () => store.setActivePanel('accounts') },
+            // Between the two: it is about the app rather than about a server,
+            // which is what this menu is for, and it is the one entry here
+            // that can be busy while you are looking at something else.
+            { label: 'Downloads', icon: 'download', onClick: () => store.setActivePanel('downloads') },
             { label: 'Settings', icon: 'settings', onClick: () => store.setActivePanel('settings') }
           ]}
           onClose={close}
