@@ -26,6 +26,7 @@ import {
   formatFullTime,
   formatRelativeTime,
   formatTime,
+  hasDirectMessages,
   isChatKind,
   nickColor,
   resolveMediaUrl
@@ -85,6 +86,9 @@ export function MessageRow({
   const permissions = useChat((s) => s.matrixPermissions)[bufferId] || {}
   const smilieIndex = useChat((s) => s.smilieIndex)
   const bufferEmoji = useChat((s) => s.bufferEmoji)[bufferId] || []
+  // Already the conversation with this person, so offering to open it would
+  // be a menu entry that reselects the buffer you are reading.
+  const inDirectMessage = useChat((s) => s.buffers).find((b) => b.id === bufferId)?.kind === 'dm'
   const sniffed = useSniffedTypes()
 
   const isSockchat = service === 'sockchat'
@@ -184,6 +188,21 @@ export function MessageRow({
       ? ([{ separator: true } as MenuEntry] as MenuEntry[])
       : []),
     ...moderationEntries(message, permissions, bufferId, store),
+    // Talking to somebody directly, from where they said the thing you want to
+    // talk to them about. Only where the sender is somebody to open one with:
+    // your own messages, and anything the server itself said, are not.
+    ...(hasDirectMessages(service) && !inDirectMessage && !message.isOwn && message.from && !isSystem
+      ? ([
+          {
+            label: `Message ${message.from}`,
+            icon: 'chat',
+            onClick: () => {
+              const account = store.accountFor(bufferId)
+              if (account) void store.openDirectMessage(account.id, message.senderId ?? '', message.from)
+            }
+          }
+        ] as MenuEntry[])
+      : []),
     ...(service === 'discord'
       ? ([
           {

@@ -685,6 +685,23 @@ export class ChatStore {
     this.set({ minimisedTransfers: [...this.state.minimisedTransfers, id] })
   }
 
+  /**
+   * Opens the one-to-one conversation with somebody, and goes to it.
+   *
+   * One call for every service that has them: which method each wants, and
+   * whether it needs an id or a name, is the daemon's business. Both are
+   * passed because IRC has only a nick to go on while Discord and Matrix have
+   * real ids, and a display name is not something to look somebody up by.
+   */
+  async openDirectMessage(accountId: string, userId: string, nick: string): Promise<void> {
+    try {
+      const r = await window.moho.rpc<{ bufferId: string }>('openDirectMessage', { accountId, userId, nick })
+      this.selectBuffer(r.bufferId)
+    } catch (e) {
+      this.toast('error', `Couldn't open a conversation: ${(e as Error).message}`)
+    }
+  }
+
   /** Takes a file that has been offered. */
   async acceptTransfer(id: string): Promise<void> {
     try {

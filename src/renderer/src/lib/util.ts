@@ -45,6 +45,22 @@ export interface ServiceIcon {
   glyph?: string
 }
 
+/**
+ * Whether this service has one-to-one conversations you can start.
+ *
+ * One list rather than a test at each place that offers to open one. Both the
+ * member list and a message's own menu ask this, and a third will; keeping it
+ * here means a service that gains direct messages is added once rather than
+ * found by grepping for whichever spelling of the check was used last time.
+ *
+ * Sneedchat is the absent one, and deliberately: its whispers arrive but
+ * cannot be sent, so offering to start one would open a conversation that
+ * silently refuses everything typed into it.
+ */
+export function hasDirectMessages(service: string | undefined): boolean {
+  return service === 'irc' || service === 'discord' || service === 'matrix'
+}
+
 export function serviceIcon(service: string): ServiceIcon {
   switch (service) {
     case 'discord':

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Icon, IconButton } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { useActiveBuffer, useChat, useIdSetPref, useStore } from '../state/hooks'
-import { classes, nickColor } from '../lib/util'
+import { classes, hasDirectMessages, nickColor } from '../lib/util'
 import type { Member } from '../../../shared/wire'
 
 /**
@@ -35,7 +35,6 @@ export function NickList(): JSX.Element {
   const hasPresence = members.some((m) => m.status !== undefined)
   // Separate question: kick/ban are Matrix-only, so the row still needs to
   // know which service it belongs to.
-  const isMatrix = account?.service === 'matrix'
   // Calling is Discord-only for now, and needs an account id to place from.
   const canCall = account?.service === 'discord'
   const perms = (buffer && permissions[buffer.id]) || {}
@@ -109,7 +108,7 @@ export function NickList(): JSX.Element {
                 member={member}
                 blockKey={`${buffer?.accountId}|${member.nick}`}
                 blocked={isBlocked(`${buffer?.accountId}|${member.nick}`)}
-                canOpenDm={isMatrix || account?.service === 'irc'}
+                canOpenDm={hasDirectMessages(account?.service)}
                 canCall={canCall && !!member.userId}
                 perms={perms}
                 onToggleBlock={toggleBlocked}
@@ -145,19 +144,10 @@ export function NickList(): JSX.Element {
                 }}
                 onOpenDm={() => {
                   if (!account) return
-                  // IRC has no server-side notion of opening one, so it takes
-                  // a nick where Matrix takes a user id.
-                  const [method, params] =
-                    account.service === 'irc'
-                      ? (['openIrcQuery', { accountId: account.id, nick: member.nick }] as const)
-                      : ([
-                          'openMatrixDm',
-                          { accountId: account.id, userId: member.userId || member.nick, displayName: member.nick }
-                        ] as const)
-                  void window.moho
-                    .rpc<{ bufferId: string }>(method, params)
-                    .then((r) => store.selectBuffer(r.bufferId))
-                    .catch((e: Error) => store.toast('error', e.message))
+                  // Which method each service wants, and whether it can work
+                  // from a name or needs an id, is settled in one place rather
+                  // than at every call site that offers this.
+                  void store.openDirectMessage(account.id, member.userId ?? '', member.nick)
                 }}
               />
             ))}
