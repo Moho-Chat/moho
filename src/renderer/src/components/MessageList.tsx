@@ -28,7 +28,13 @@ import type { ChatMessage } from '../state/store'
  * stopped following once you had read it long enough. Height changing is the
  * thing that actually needs answering, so height is what is watched.
  */
-const UNANCHOR_THRESHOLD = 250
+
+/**
+ * How close to the bottom counts as being back at it.
+ *
+ * Only ever consulted about a scroll the reader made downwards, so it decides
+ * "did they mean to come back", not "are they near enough to be dragged".
+ */
 const REANCHOR_THRESHOLD = 100
 
 /**
@@ -40,27 +46,46 @@ const REANCHOR_THRESHOLD = 100
  */
 const SCROLL_JITTER = 2
 
+/** One scroll event, and enough of the one before it to say what happened. */
+export interface ScrollFrame {
+  /** How far the bottom of the content sits below the bottom of the view. */
+  distance: number
+  top: number
+  lastTop: number
+  height: number
+  lastHeight: number
+}
+
 /**
  * What a scroll event means for the pin: to release it, hold it, or take it
  * back.
  *
- * Pulled out of the handler so the rule can be stated once and checked. The
- * distinction it exists to make - reading away from the bottom, against the
- * bottom moving away on its own - is invisible in the numbers unless the
- * previous position is part of the question, and every version of this that
- * asked only "how far from the bottom are we" has eventually let go of a busy
- * channel.
+ * The rule is that the reader decides, in both directions. Scrolling up at all
+ * releases the pin - there is no distance to travel first, because a reader
+ * who has moved the view upwards has said what they want, and making them earn
+ * it over some number of pixels means a channel busy enough to keep firing the
+ * pin's own scroll-to-bottom can undo the attempt before it ever gets there.
+ * That is a fight the reader cannot win, and it is why this is not a threshold.
+ *
+ * Coming back is the same rule the other way: the pin is only taken back by a
+ * scroll the reader made *downwards* that arrives near the bottom. Proximity
+ * on its own is not consent - content is removed from the top of a busy buffer
+ * as it is trimmed, and that alone can carry a stationary reader to within any
+ * distance of the bottom.
+ *
+ * Which leaves telling a reader's scroll from the page moving underneath one.
+ * Height is the tell: when content is removed the browser clamps the position
+ * down by what it lost, which looks exactly like scrolling up and is not, so a
+ * position that fell by no more than the page shrank is not movement at all.
  */
-export function anchorVerdict(
-  distance: number,
-  top: number,
-  lastTop: number
-): 'release' | 'hold' | 'take' {
-  const wentUp = top < lastTop - SCROLL_JITTER
-  if (wentUp && distance > UNANCHOR_THRESHOLD) return 'release'
-  if (distance < REANCHOR_THRESHOLD) return 'take'
+export function anchorVerdict(frame: ScrollFrame): 'release' | 'hold' | 'take' {
+  const shrank = Math.max(0, frame.lastHeight - frame.height)
+  const moved = frame.top - frame.lastTop
+  if (moved < -shrank - SCROLL_JITTER) return 'release'
+  if (moved > SCROLL_JITTER && frame.distance < REANCHOR_THRESHOLD) return 'take'
   return 'hold'
 }
+
 /** Consecutive messages from the same author inside this window are grouped. */
 const GROUP_WINDOW_SECS = 300
 
@@ -159,6 +184,8 @@ export function MessageList(): JSX.Element {
   const holdRef = useRef('')
   /** Where the view was at the last scroll, to tell moving up from growing. */
   const lastTopRef = useRef(0)
+  /** And how tall it was, to tell moving up from the page losing content. */
+  const lastHeightRef = useRef(0)
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = scrollRef.current
@@ -279,20 +306,32 @@ export function MessageList(): JSX.Element {
   const onScroll = useCallback(() => {
     const el = scrollRef.current
     if (!el) return
-    const distance = el.scrollHeight - el.scrollTop - el.clientHeight
     const top = el.scrollTop
-    const verdict = anchorVerdict(distance, top, lastTopRef.current)
+    const height = el.scrollHeight
+    const verdict = anchorVerdict({
+      distance: height - top - el.clientHeight,
+      top,
+      lastTop: lastTopRef.current,
+      height,
+      lastHeight: lastHeightRef.current
+    })
     lastTopRef.current = top
+    lastHeightRef.current = height
 
-    // Only reading away from the bottom un-pins the view, and reading away
-    // means the position moved up - not merely that the bottom got further
-    // off. Those are different things and the distance alone cannot tell them
-    // apart: a message arriving makes the page taller, which puts the bottom
-    // exactly as far away as scrolling up by the height of that message would
-    // have. In a channel busy enough to grow by more than the threshold
-    // between frames, that read as "they have scrolled away", the pin came
-    // off, and the log stopped following with Jump to present offering to fix
-    // something the reader never did.
+    // Reading away un-pins the view, and reading back pins it again; nothing
+    // else moves it. Both halves of that have been got wrong here before, and
+    // in opposite directions.
+    //
+    // Releasing used to be a matter of distance, which cannot tell a reader
+    // moving up from the bottom moving away: a message arriving makes the page
+    // taller, which puts the bottom exactly as far off as scrolling up by the
+    // height of that message would have, so a busy channel un-pinned itself
+    // and offered to fix something nobody had done.
+    //
+    // Then taking it back stayed a matter of distance, which is the same
+    // mistake wearing the other hat - and worse, because while the pin is off
+    // it is holding the reader's place in the history they went looking for.
+    // Being near the bottom is not asking to be dragged to it.
     if (verdict === 'release') anchor(false)
     else if (verdict === 'take') {
       anchor(true)
@@ -313,6 +352,7 @@ export function MessageList(): JSX.Element {
   // jump upwards.
   useEffect(() => {
     lastTopRef.current = scrollRef.current?.scrollTop ?? 0
+    lastHeightRef.current = scrollRef.current?.scrollHeight ?? 0
   }, [bufferId])
 
   const jumpToPresent = (): void => {
