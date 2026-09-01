@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "pack": "npm run daemon && npm run build && electron-builder --linux AppImage",
     "pack:dir": "npm run daemon && npm run build && electron-builder --linux dir",
-    "daemon": "cargo build --release --manifest-path nobilis/Cargo.toml",
+    "daemon": "./scripts/build-daemon.sh",
     "deploy": "npm run pack && ./scripts/install-desktop.sh",
     "daemon:win": "./scripts/build-daemon-win.sh",
     "pack:win": "npm run daemon:win && npm run build && electron-builder --win nsis"

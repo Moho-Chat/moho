@@ -11,26 +11,17 @@
 # daemon, and it is worse here: it only shows up as "unknown method" on
 # somebody else's computer.
 #
-# And the whole toolchain has to be the one rustup manages, which means the
-# PATH rather than just the name of the cargo binary: cargo runs whichever
-# rustc it finds, so pointing at rustup's cargo while a distribution's rustc is
-# first still fails with "can't find crate for `core`" - a message that reads
-# like a broken checkout rather than the wrong compiler.
+# And it has to be a cargo that works, which is not the same as the one named
+# `cargo` - see find-cargo.sh.
 set -eu
 
 TARGET=x86_64-pc-windows-gnu
 SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 MANIFEST="$SRC_DIR/nobilis/Cargo.toml"
 
-# rustup's toolchain ahead of anything the distribution installed, so cargo and
-# the rustc it shells out to agree about which targets exist.
-if [ -d "$HOME/.cargo/bin" ]; then
-  PATH="$HOME/.cargo/bin:$PATH"
-  export PATH
-fi
-CARGO="${CARGO:-cargo}"
+. "$SRC_DIR/scripts/find-cargo.sh"
 
-echo "building the Windows daemon with $(command -v "$CARGO")"
+echo "building the Windows daemon with $CARGO"
 "$CARGO" build --release --target "$TARGET" --manifest-path "$MANIFEST"
 
 BUILT="$SRC_DIR/nobilis/target/$TARGET/release/nobilis.exe"
