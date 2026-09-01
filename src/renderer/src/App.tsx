@@ -19,8 +19,7 @@ import { IncomingCallPanel } from './components/IncomingCallPanel'
 import { FileDrop } from './components/FileDrop'
 import { TransferPanel } from './components/TransferPanel'
 import { Icon, IconButton } from './components/Icon'
-import { Avatar } from './components/Avatar'
-import { dmStatus } from './components/BufferList'
+import { BufferFace } from './components/BufferFace'
 import { useActiveBuffer, useChat, usePref, usePrefsReady, useStore } from './state/hooks'
 import { bufferDisplayName } from './lib/util'
 import type { BufferEntry } from './state/store'
@@ -134,6 +133,12 @@ export default function App(): JSX.Element {
                 onClick={() => setUserListFolded(!userListFolded)}
               />
             )}
+
+            {/* Beside the member list toggle rather than among the
+                conversation's own tools: both of these are about how this
+                conversation is being shown, not about the conversation. Last,
+                because it is the one that opens something. */}
+            {activePanel === '' && !onMentionsPage && buffer && <PopOutButton buffer={buffer} />}
             {activePanel !== '' && (
               <IconButton
                 name="close"
@@ -183,21 +188,23 @@ export default function App(): JSX.Element {
 }
 
 /**
- * The face at the head of a conversation: their picture, and how they are.
+ * Sends this conversation to a window of its own, or raises the one it has.
  *
- * Shown only where there is one person to show. A channel's header has no
- * single face, and inventing one - the first member, the last to speak -
- * would be worse than none.
+ * One window per conversation: two views of the same channel would each mark
+ * it read and each have an opinion about where its window belongs, so asking
+ * again for one that is already out brings it forward instead.
  */
-function BufferFace({ buffer }: { buffer: BufferEntry }): JSX.Element | null {
-  const presence = useChat((s) => s.presenceByBuffer)
-  const buffers = useChat((s) => s.buffers)
-  if (buffer.kind !== 'dm') return null
-
+function PopOutButton({ buffer }: { buffer: BufferEntry }): JSX.Element {
+  const store = useStore()
+  const popouts = useChat((s) => s.popouts)
+  const out = popouts.open.includes(buffer.id)
   return (
-    <span className="header-face">
-      <Avatar name={buffer.name} url={buffer.avatarUrl} size={24} status={dmStatus(buffer, presence, buffers)} />
-    </span>
+    <IconButton
+      name="open_in_new"
+      title={out ? 'Show this conversation’s window' : 'Watch this in a window of its own'}
+      className={out ? 'active' : undefined}
+      onClick={() => store.popOut(buffer.id)}
+    />
   )
 }
 

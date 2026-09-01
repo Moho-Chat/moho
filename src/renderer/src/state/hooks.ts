@@ -31,6 +31,19 @@ export function useChatState(): ChatState {
 let prefsCache: Record<string, unknown> | null = null
 const prefsListeners = new Set<() => void>()
 
+/**
+ * A setting changed in another window.
+ *
+ * Subscribed once for the lifetime of the page rather than per hook: this
+ * cache is the page's, not any one component's, and the windows sharing it are
+ * sharing one file in main.
+ */
+window.moho.prefs.onChange((key, value) => {
+  if (!prefsCache) return
+  prefsCache[key] = value
+  for (const l of prefsListeners) l()
+})
+
 async function ensurePrefsLoaded(): Promise<void> {
   if (prefsCache) return
   prefsCache = await window.moho.prefs.getAll()

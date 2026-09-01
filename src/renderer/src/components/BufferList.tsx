@@ -44,6 +44,7 @@ export function BufferList(): JSX.Element {
   const activeGroupId = useChat((s) => s.activeGroupId)
   const voiceSessions = useChat((s) => s.voiceSessions)
   const presence = useChat((s) => s.presenceByBuffer)
+  const popouts = useChat((s) => s.popouts)
 
   const [pinned, togglePin, isPinned] = useIdSetPref('pinnedBuffers')
   const [muted, toggleMute] = useIdSetPref('mutedBuffers')
@@ -246,6 +247,9 @@ export function BufferList(): JSX.Element {
       onHangUp={() => void store.leaveVoice(b.accountId)}
       categories={activeGroup ? (customCats[activeGroup.id] ?? []) : []}
       onFile={(categoryId) => setAssignment(b.id, categoryId)}
+      poppedOut={popouts.open.includes(b.id)}
+      onPopOut={() => store.popOut(b.id)}
+      onDock={() => store.dock(b.id)}
     />
   )
 
@@ -500,6 +504,10 @@ interface BufferRowProps {
   onFile: (categoryId: string) => void
   /** A call is already up in this conversation. */
   inCall: boolean
+  /** This conversation has a window of its own. */
+  poppedOut: boolean
+  onPopOut: () => void
+  onDock: () => void
   /** The other person's presence, for a direct message. */
   status?: string
 }
@@ -521,7 +529,10 @@ function BufferRow({
   inCall,
   status,
   categories,
-  onFile
+  onFile,
+  poppedOut,
+  onPopOut,
+  onDock
 }: BufferRowProps): JSX.Element {
   const { menu, open, close } = useContextMenu()
   const account = accounts.find((a) => a.id === buffer.accountId)
@@ -563,6 +574,12 @@ function BufferRow({
         ] as MenuEntry[])
       : []),
     ...(canCall ? ([{ separator: true }] as MenuEntry[]) : []),
+    // Above pin and mute because it is the one that opens something: the two
+    // below change how this row behaves, and this one goes somewhere.
+    poppedOut
+      ? { label: 'Close its window', icon: 'close_fullscreen', onClick: onDock }
+      : { label: 'Open in a new window', icon: 'open_in_new', onClick: onPopOut },
+    { separator: true },
     { label: pinned ? 'Unpin' : 'Pin', icon: 'push_pin', onClick: onTogglePin },
     { label: muted ? 'Unmute' : 'Mute', icon: muted ? 'notifications' : 'notifications_off', onClick: onToggleMute },
     { separator: true },
@@ -602,6 +619,9 @@ function BufferRow({
       >
         {leading}
         <span className="ellipsis buffer-name">{bufferDisplayName(buffer.name)}</span>
+        {/* So a conversation with no unread count and no traffic in it is
+            explained rather than merely quiet: it is being read elsewhere. */}
+        {poppedOut && <Icon name="open_in_new" size={13} className="buffer-muted-icon" />}
         {muted && <Icon name="notifications_off" size={13} className="buffer-muted-icon" />}
         {buffer.unread > 0 && !muted && (
           <span className={classes('unread-badge', buffer.highlight && 'highlight')}>

@@ -18,10 +18,11 @@ import type {
   VoiceSession
 } from '../../../shared/wire'
 import { buildSmilieIndex, type SmilieEntry, type SmilieIndex } from '../lib/format'
-import { isImageFile, resolveMediaUrl } from '../lib/util'
+import { bufferDisplayName, isImageFile, resolveMediaUrl } from '../lib/util'
 import { DM_GROUP_ID, isDirectMessage } from '../lib/groups'
 import { ircNetworkFor } from '../lib/networks'
 import { parseDeepLink, type IrcLink } from '../../../shared/deeplink'
+import type { PopoutState } from '../../../shared/ipc'
 
 /**
  * The whole client-side model, held in one immutable object that is replaced
@@ -160,6 +161,16 @@ export interface ChatState {
    */
   jumpTarget: string
   activeBufferId: string
+  /**
+   * Conversations open in a window of their own.
+   *
+   * `open` is every one of them; `watched` is those whose window is on screen,
+   * which is the set that needs no unread badge here because somebody is
+   * already looking at it somewhere else.
+   */
+  popouts: PopoutState
+  /** Set in a popped-out window, naming the one conversation it may show. */
+  pinnedBufferId: string
   activePanel: ActivePanel
   joinPanelAccountId: string
   messagesByBuffer: Record<string, ChatMessage[]>
@@ -219,6 +230,8 @@ const INITIAL: ChatState = {
   lastReadTs: {},
   jumpTarget: '',
   activeBufferId: '',
+  popouts: { open: [], watched: [] },
+  pinnedBufferId: '',
   activePanel: '',
   joinPanelAccountId: '',
   messagesByBuffer: {},
@@ -427,8 +440,41 @@ export class ChatStore {
 
   // --- lifecycle ------------------------------------------------------
 
+  /**
+   * Pins this window to one conversation, for a popped-out window.
+   *
+   * Everything a conversation needs already reads the open buffer, so a popout
+   * is not a second implementation of the log and the composer - it is this
+   * store with the open buffer nailed down. What that nail has to stop is the
+   * handful of things that would otherwise move it: a notification click, a
+   * link from somewhere else on the machine, a jump from a search result in
+   * another window.
+   */
+  pinTo(bufferId: string): void {
+    this.set({ pinnedBufferId: bufferId, activeBufferId: bufferId })
+  }
+
+  /**
+   * Opens a conversation in a window of its own, or raises the one it has.
+   *
+   * The name goes with it only so the window has something to be called before
+   * its renderer has loaded and found the conversation for itself.
+   */
+  popOut(bufferId: string): void {
+    const buffer = this.state.buffers.find((b) => b.id === bufferId)
+    void window.moho.popout.open(bufferId, buffer ? bufferDisplayName(buffer.name) : undefined)
+  }
+
+  /** Puts a popped-out conversation back, optionally opening it here. */
+  dock(bufferId: string, andShow = false): void {
+    void window.moho.popout.close(bufferId, andShow)
+  }
+
   async init(initialBufferId: string, initialGroupId = ''): Promise<void> {
     this.set({ activeBufferId: initialBufferId, activeGroupId: initialGroupId })
+
+    void window.moho.popout.list().then((popouts) => this.set({ popouts }))
+    window.moho.popout.onChange((popouts) => this.set({ popouts }))
 
     const stored = await window.moho.prefs.getAll()
     this.set({ lastReadTs: (stored.lastReadTs as Record<string, number>) ?? {} })
@@ -438,8 +484,13 @@ export class ChatStore {
       if (up) void this.refreshAll()
     })
     window.moho.onEvent((frame) => this.handleEvent(frame))
-    window.moho.onActivateBuffer((id) => void this.selectBuffer(id))
-    window.moho.onDeepLink((url) => this.followDeepLink(url))
+    // Both of these arrive from outside and mean "go and look at this", which
+    // a window pinned to one conversation has no way to honour. The main
+    // window gets them instead; main routes them there.
+    if (!this.state.pinnedBufferId) {
+      window.moho.onActivateBuffer((id) => void this.selectBuffer(id))
+      window.moho.onDeepLink((url) => this.followDeepLink(url))
+    }
 
     this.sweepTimer = setInterval(() => this.sweepPendingSends(), 2000)
 
@@ -946,7 +997,7 @@ export class ChatStore {
   selectGroup(groupId: string): void {
     if (groupId === this.state.activeGroupId) return
     this.set({ activeGroupId: groupId })
-    void window.moho.prefs.set('ui.activeGroupId', groupId)
+    if (!this.state.pinnedBufferId) void window.moho.prefs.set('ui.activeGroupId', groupId)
   }
 
   async refreshBuffers(): Promise<void> {
@@ -1321,7 +1372,10 @@ export class ChatStore {
     const list = [...existing, msg as ChatMessage]
     this.setMessages(bufferId, list.slice(-MAX_MESSAGES_PER_BUFFER))
 
-    if (bufferId !== this.state.activeBufferId) {
+    // Being on screen in a window of its own counts as being open, because it
+    // is: badging a channel somebody is watching in a second window asks them
+    // to go and look at what they are already looking at.
+    if (bufferId !== this.state.activeBufferId && !this.state.popouts.watched.includes(bufferId)) {
       const buffer = this.state.buffers.find((b) => b.id === bufferId)
       this.set({
         buffers: this.state.buffers.map((b) =>
@@ -1359,6 +1413,16 @@ export class ChatStore {
    */
   async selectBuffer(bufferId: string, followGroup = true): Promise<void> {
     if (!this.state.buffers.some((b) => b.id === bufferId)) return
+    // A popped-out window is one conversation, and quietly replacing it would
+    // turn somebody's monitor for #channel into something else while they were
+    // not looking at it. But the things that reach here in such a window are
+    // all deliberate - opening a direct message with someone in the member
+    // list, following a channel link in something they said - so the answer is
+    // a window of its own rather than nothing happening.
+    if (this.state.pinnedBufferId && bufferId !== this.state.pinnedBufferId) {
+      this.popOut(bufferId)
+      return
+    }
 
     // Snapshot the divider before clearing unread, so the "New messages" line
     // lands where the user actually left off rather than at the bottom.
@@ -1382,8 +1446,10 @@ export class ChatStore {
     }
     this.set(patch)
 
-    void window.moho.prefs.set('ui.activeBufferId', bufferId)
-    if (followGroup) {
+    // Which conversation to reopen at startup is the main window's to
+    // remember. A popout writing its own here would decide it for everyone.
+    if (!this.state.pinnedBufferId) void window.moho.prefs.set('ui.activeBufferId', bufferId)
+    if (followGroup && !this.state.pinnedBufferId) {
       const buffer = this.state.buffers.find((b) => b.id === bufferId)
       // A direct message's home group is the per-account one nobilis reports,
       // which the rail folds away in favour of the single cross-service page.

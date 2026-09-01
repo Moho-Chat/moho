@@ -41,7 +41,16 @@ export class Notifier {
     private onAlertChange: (unreadCount: number, hasAlert: boolean) => void,
     private onActivate: (bufferId: string) => void,
     /** The renderer, borrowed only to decode formats nativeImage cannot. */
-    private renderer: () => WebContents | null = () => null
+    private renderer: () => WebContents | null = () => null,
+    /**
+     * Whether this conversation is on screen in a window of its own.
+     *
+     * Somebody who has popped a channel out is looking at it, which is what
+     * popping it out was for - so an alert saying it has traffic is telling
+     * them what they can already see, and a tray badge counting it as unread
+     * is simply wrong.
+     */
+    private isWatched: (bufferId: string) => boolean = () => false
   ) {}
 
   trackBuffer(buffer: ChatBuffer, removed: boolean): void {
@@ -77,6 +86,7 @@ export class Notifier {
 
   async handle(payload: NotificationPayload): Promise<void> {
     if (this.isMuted(payload.accountId, payload.bufferId)) return
+    if (this.isWatched(payload.bufferId)) return
 
     if (!this.unread.has(payload.bufferId)) {
       this.unread.add(payload.bufferId)

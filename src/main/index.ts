@@ -12,6 +12,7 @@ import {
   nativeImage,
   net,
   Menu,
+  screen,
   shell,
   Tray
 } from 'electron'
@@ -21,7 +22,7 @@ import { NobilisProcess } from './nobilis-process'
 import { Prefs } from './prefs'
 import { Notifier } from './notifications'
 import { browserLogin, LOGIN_FLOWS } from './browser-login'
-import { IPC } from '../shared/ipc'
+import { IPC, POPOUT_FLAG, type PopoutState } from '../shared/ipc'
 import { DEEP_LINK_SCHEMES, isDeepLink } from '../shared/deeplink'
 import { allowPickedFile, allowRoot, installMediaHandler, registerMediaScheme } from './media-protocol'
 import { defaultDownloadDir, saveMedia } from './downloads'
@@ -81,6 +82,17 @@ function deliverDeepLink(url: string | null): void {
 }
 
 let mainWindow: BrowserWindow | null = null
+
+/**
+ * Conversations opened in a window of their own, by buffer id.
+ *
+ * One window per conversation rather than a free-for-all: the point of popping
+ * a channel out is to watch it, and two windows watching the same channel
+ * would each mark it read and each argue about where its window belongs. So
+ * asking for one that is already out raises it instead.
+ */
+const popouts = new Map<string, BrowserWindow>()
+
 let tray: Tray | null = null
 let prefs: Prefs
 let nobilis: NobilisProcess
@@ -144,8 +156,53 @@ function sniffImage(head: Buffer): string | null {
   return null
 }
 
+/** Every window with a renderer in it, main and popped-out conversations alike. */
+function liveWindows(): BrowserWindow[] {
+  const all = mainWindow ? [mainWindow, ...popouts.values()] : [...popouts.values()]
+  return all.filter((w) => !w.isDestroyed())
+}
+
+/**
+ * A daemon event, to every window.
+ *
+ * Each window runs its own copy of the renderer's store, so each has to be
+ * told separately - a popped-out channel that only main heard about would sit
+ * there frozen at whatever it held when it opened.
+ */
 function send(channel: string, ...args: unknown[]): void {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, ...args)
+  for (const w of liveWindows()) w.webContents.send(channel, ...args)
+}
+
+/** The window an IPC call came from, so a handler acts on its own caller. */
+function callerWindow(event: Electron.IpcMainInvokeEvent): BrowserWindow | null {
+  return BrowserWindow.fromWebContents(event.sender)
+}
+
+/**
+ * Put a window on screen, once.
+ *
+ * Not `ready-to-show` alone, which is what every one of these used to be.
+ * That event is the first frame the compositor accepted, and a GPU process
+ * that restarts underneath it can leave that frame - and so the event - never
+ * arriving. The window then exists, holds its buffer, answers IPC and is
+ * simply invisible: moho looks like it failed to start, or a conversation
+ * popped out looks like a click that did nothing until a second click finds it
+ * already open and raises it.
+ *
+ * So whichever of "painted" and "loaded" comes first is taken as good enough.
+ * The gap between them is a fraction of a second of the background colour,
+ * which is a far better failure than no window at all.
+ */
+function revealOnce(win: BrowserWindow, focus = false): void {
+  let done = false
+  const reveal = (): void => {
+    if (done || win.isDestroyed()) return
+    done = true
+    win.show()
+    if (focus) win.focus()
+  }
+  win.once('ready-to-show', reveal)
+  win.webContents.once('did-finish-load', reveal)
 }
 
 function createWindow(): void {
@@ -169,7 +226,7 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.on('ready-to-show', () => mainWindow?.show())
+  revealOnce(mainWindow)
 
   // A link that arrived before this window existed - from the click that
   // launched moho - goes over once the renderer is listening for it. Cleared
@@ -180,8 +237,8 @@ function createWindow(): void {
     pendingDeepLink = null
     mainWindow?.webContents.send(IPC.deepLink, url)
   })
-  mainWindow.on('maximize', () => send(IPC.maximizeChanged, true))
-  mainWindow.on('unmaximize', () => send(IPC.maximizeChanged, false))
+  mainWindow.on('maximize', () => mainWindow?.webContents.send(IPC.maximizeChanged, true))
+  mainWindow.on('unmaximize', () => mainWindow?.webContents.send(IPC.maximizeChanged, false))
   mainWindow.on('closed', () => {
     mainWindow = null
   })
@@ -191,11 +248,144 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  loadRenderer(mainWindow)
+}
+
+function loadRenderer(win: BrowserWindow): void {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    void win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
+    void win.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
+}
+
+/** What is popped out, and what of it is actually on screen. */
+function popoutState(): PopoutState {
+  const open: string[] = []
+  const watched: string[] = []
+  for (const [bufferId, win] of popouts) {
+    if (win.isDestroyed()) continue
+    open.push(bufferId)
+    if (win.isVisible() && !win.isMinimized()) watched.push(bufferId)
+  }
+  return { open, watched }
+}
+
+function publishPopouts(): void {
+  send(IPC.popoutsChanged, popoutState())
+  // The tray counts what is unread, and a watched conversation is not.
+  notifier?.publish()
+}
+
+/**
+ * Where this conversation's window was last left.
+ *
+ * Remembered per conversation rather than one size for all of them, because
+ * the reason to pop several out is to arrange them - and an arrangement that
+ * has to be rebuilt every session is not one worth making.
+ *
+ * A remembered position is only honoured if some display still contains it.
+ * Monitors get unplugged, and a window restored onto one that is no longer
+ * there opens somewhere nobody can reach.
+ */
+function savedPopoutBounds(bufferId: string): Partial<Electron.Rectangle> {
+  const all = prefs.get<Record<string, Electron.Rectangle>>('ui.popoutBounds', {}) ?? {}
+  const b = all[bufferId]
+  if (!b || !Number.isFinite(b.width) || !Number.isFinite(b.height)) return {}
+  if (!Number.isFinite(b.x) || !Number.isFinite(b.y)) return { width: b.width, height: b.height }
+
+  const onScreen = screen.getAllDisplays().some((d) => {
+    const a = d.workArea
+    // Overlap rather than containment: half off the edge of a display is a
+    // position somebody chose, and dragging it back is trivial. Entirely
+    // outside every display is not.
+    return b.x < a.x + a.width && b.x + b.width > a.x && b.y < a.y + a.height && b.y + b.height > a.y
+  })
+  return onScreen ? b : { width: b.width, height: b.height }
+}
+
+function rememberPopoutBounds(bufferId: string, win: BrowserWindow): void {
+  // A maximised or minimised window's bounds are the state it is in, not the
+  // size it should come back as.
+  if (win.isDestroyed() || win.isMaximized() || win.isMinimized() || !win.isVisible()) return
+  const all = { ...(prefs.get<Record<string, Electron.Rectangle>>('ui.popoutBounds', {}) ?? {}) }
+  all[bufferId] = win.getBounds()
+  prefs.set('ui.popoutBounds', all)
+}
+
+/**
+ * Opens a conversation in a window of its own, or raises the one it has.
+ *
+ * The window loads the same renderer as everything else and is told which
+ * conversation it is; what makes it a popout is only that its store is pinned
+ * to that one buffer, so every part of a conversation - the log, the composer,
+ * the member list, dropping a file on it - is the same code doing the same job
+ * in a smaller frame.
+ */
+function openPopout(bufferId: string, title?: string): void {
+  const existing = popouts.get(bufferId)
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore()
+    existing.show()
+    existing.focus()
+    return
+  }
+
+  const win = new BrowserWindow({
+    width: 480,
+    height: 640,
+    minWidth: 320,
+    minHeight: 240,
+    ...savedPopoutBounds(bufferId),
+    show: false,
+    frame: false,
+    backgroundColor: '#101418',
+    icon: resourcePath('icons', 'moho.png'),
+    title: title ?? 'moho',
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      additionalArguments: [`${POPOUT_FLAG}${bufferId}`]
+    }
+  })
+  popouts.set(bufferId, win)
+
+  // Focused as well as shown: unlike the main window at startup, this one was
+  // asked for just now.
+  revealOnce(win, true)
+
+  // Sent to this window rather than broadcast: every window draws its own
+  // title bar, and they are not maximised together.
+  win.on('maximize', () => win.webContents.send(IPC.maximizeChanged, true))
+  win.on('unmaximize', () => win.webContents.send(IPC.maximizeChanged, false))
+  // Whether this conversation counts as watched changes with the window, so
+  // every one of these has to be answered - a minimised popout badges and
+  // alerts again, and a restored one stops.
+  win.on('show', publishPopouts)
+  win.on('hide', publishPopouts)
+  win.on('minimize', publishPopouts)
+  win.on('restore', publishPopouts)
+  // Coming back into view is reading it: whatever piled up while this window
+  // was minimised has now been looked at, and should stop lighting the tray.
+  const seen = (): void => notifier?.clear(bufferId)
+  win.on('show', seen)
+  win.on('restore', seen)
+  win.on('focus', seen)
+  win.on('resize', () => rememberPopoutBounds(bufferId, win))
+  win.on('move', () => rememberPopoutBounds(bufferId, win))
+  win.on('closed', () => {
+    popouts.delete(bufferId)
+    publishPopouts()
+  })
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url)
+    return { action: 'deny' }
+  })
+
+  loadRenderer(win)
+  publishPopouts()
 }
 
 function toggleWindow(): void {
@@ -294,8 +484,16 @@ function wireIpc(): void {
   })
 
   ipcMain.handle(IPC.prefsGetAll, () => prefs.all())
-  ipcMain.handle(IPC.prefsSet, (_e, key: string, value: unknown) => {
+  ipcMain.handle(IPC.prefsSet, (e, key: string, value: unknown) => {
     prefs.set(key, value)
+    // Every window keeps its own cache of these, so a setting changed in one
+    // is stale in the others until they are told. That is not cosmetic once
+    // there are several windows: muting a conversation, or switching the log
+    // to compact, would apply to whichever window happened to be asked.
+    // Not echoed to the window that set it - it already knows, and has drawn.
+    for (const w of liveWindows()) {
+      if (w.webContents !== e.sender) w.webContents.send(IPC.prefsChanged, key, value)
+    }
     // Pins and mutes feed the tray/notification rules, which live here.
     if (key === 'pinnedBuffers' || key === 'mutedBuffers') notifier.publish()
     if (key === 'hotkey.toggle') applyHotkey(String(value))
@@ -303,15 +501,43 @@ function wireIpc(): void {
 
   ipcMain.handle(IPC.markBufferRead, (_e, bufferId: string) => notifier.clear(bufferId))
 
-  ipcMain.handle(IPC.windowMinimize, () => mainWindow?.minimize())
-  ipcMain.handle(IPC.windowToggleMaximize, () => {
-    if (!mainWindow) return false
-    if (mainWindow.isMaximized()) mainWindow.unmaximize()
-    else mainWindow.maximize()
-    return mainWindow.isMaximized()
+  // Every window draws its own title bar, so these act on whichever window
+  // asked rather than on the main one - a popout's minimise button used to
+  // minimise the window behind it.
+  ipcMain.handle(IPC.windowMinimize, (e) => callerWindow(e)?.minimize())
+  ipcMain.handle(IPC.windowToggleMaximize, (e) => {
+    const win = callerWindow(e)
+    if (!win) return false
+    if (win.isMaximized()) win.unmaximize()
+    else win.maximize()
+    return win.isMaximized()
   })
-  ipcMain.handle(IPC.windowClose, () => mainWindow?.hide())
-  ipcMain.handle(IPC.windowIsMaximized, () => mainWindow?.isMaximized() ?? false)
+  ipcMain.handle(IPC.windowClose, (e) => {
+    const win = callerWindow(e)
+    if (!win) return
+    // Closing the main window hides it to the tray, which is where moho's
+    // lifetime lives. A popout has no such role: closing one is meant to be
+    // closing it, and hiding it instead would leave a conversation marked as
+    // watched with no window to watch it in.
+    if (win === mainWindow) win.hide()
+    else win.close()
+  })
+  ipcMain.handle(IPC.windowIsMaximized, (e) => callerWindow(e)?.isMaximized() ?? false)
+
+  ipcMain.handle(IPC.popoutOpen, (_e, bufferId: string, title?: string) => {
+    if (typeof bufferId === 'string' && bufferId) openPopout(bufferId, title)
+  })
+  ipcMain.handle(IPC.popoutClose, (_e, bufferId: string, andShow?: boolean) => {
+    const win = popouts.get(bufferId)
+    if (win && !win.isDestroyed()) win.close()
+    // Putting a conversation back means it should still be in front of you.
+    if (!andShow || !mainWindow) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+    mainWindow.webContents.send(IPC.activateBuffer, bufferId)
+  })
+  ipcMain.handle(IPC.popoutList, () => popoutState())
 
   ipcMain.handle(IPC.openExternal, (_e, url: string) => {
     // Only ever hand the OS a real web/mail link - a message body is fully
@@ -320,9 +546,10 @@ function wireIpc(): void {
     if (/^(https?|mailto):/i.test(url)) shell.openExternal(url)
   })
 
-  ipcMain.handle(IPC.pickFile, async () => {
-    if (!mainWindow) return null
-    const res = await dialog.showOpenDialog(mainWindow, { properties: ['openFile'] })
+  ipcMain.handle(IPC.pickFile, async (e) => {
+    const parent = callerWindow(e) ?? mainWindow
+    if (!parent) return null
+    const res = await dialog.showOpenDialog(parent, { properties: ['openFile'] })
     if (res.canceled || !res.filePaths[0]) return null
     // The renderer draws a thumbnail of what was staged, and that goes back
     // through the guarded media scheme like every other local file. Where
@@ -332,9 +559,10 @@ function wireIpc(): void {
     return res.filePaths[0]
   })
 
-  ipcMain.handle(IPC.pickDirectory, async () => {
-    if (!mainWindow) return null
-    const res = await dialog.showOpenDialog(mainWindow, {
+  ipcMain.handle(IPC.pickDirectory, async (e) => {
+    const parent = callerWindow(e) ?? mainWindow
+    if (!parent) return null
+    const res = await dialog.showOpenDialog(parent, {
       properties: ['openDirectory', 'createDirectory']
     })
     return res.canceled ? null : res.filePaths[0]
@@ -373,9 +601,10 @@ function wireIpc(): void {
    * directory is already a permitted media root, so the renderer can load it
    * back through the same guarded scheme as everything else.
    */
-  ipcMain.handle(IPC.importGroupIcon, async (_e, groupId: string) => {
-    if (!mainWindow) return { error: 'no window' }
-    const res = await dialog.showOpenDialog(mainWindow, {
+  ipcMain.handle(IPC.importGroupIcon, async (e, groupId: string) => {
+    const parent = callerWindow(e) ?? mainWindow
+    if (!parent) return { error: 'no window' }
+    const res = await dialog.showOpenDialog(parent, {
       properties: ['openFile'],
       filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'] }]
     })
@@ -515,11 +744,23 @@ app.whenReady().then(() => {
     prefs,
     updateTray,
     (bufferId) => {
+      // If this conversation has a window of its own, that window is what the
+      // click asked for. Raising the main one and switching it would move
+      // somebody away from whatever they were reading in order to show them a
+      // conversation that was already open on their screen.
+      const popout = popouts.get(bufferId)
+      if (popout && !popout.isDestroyed()) {
+        if (popout.isMinimized()) popout.restore()
+        popout.show()
+        popout.focus()
+        return
+      }
       mainWindow?.show()
       mainWindow?.focus()
-      send(IPC.activateBuffer, bufferId)
+      mainWindow?.webContents.send(IPC.activateBuffer, bufferId)
     },
-    () => mainWindow?.webContents ?? null
+    () => mainWindow?.webContents ?? null,
+    (bufferId) => popoutState().watched.includes(bufferId)
   )
 
   client.on('link', (up) => {

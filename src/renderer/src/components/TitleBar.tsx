@@ -6,8 +6,13 @@ import { useChat } from '../state/hooks'
  * The window's own chrome, drawn in the renderer because the BrowserWindow is
  * frameless - same 44px bar with icon, title and window controls the original
  * floating window had.
+ *
+ * A popped-out conversation is named by that conversation rather than by the
+ * app: several of these can be on screen at once, and a row of windows all
+ * called "moho" is a row you have to click through to tell apart - in the
+ * taskbar as much as on the desktop.
  */
-export function TitleBar(): JSX.Element {
+export function TitleBar({ title }: { title?: string } = {}): JSX.Element {
   const [maximized, setMaximized] = useState(false)
   const linkUp = useChat((s) => s.linkUp)
 
@@ -26,7 +31,9 @@ export function TitleBar(): JSX.Element {
 
       <div className="titlebar-brand">
         <Icon name="chat" size={20} color="var(--primary)" />
-        <span className="titlebar-title">moho</span>
+        <span className="titlebar-title ellipsis" title={title}>
+          {title ?? 'moho'}
+        </span>
         {!linkUp && (
           <span className="titlebar-status" title="Not connected to the nobilis daemon">
             <Icon name="cloud_off" size={14} />

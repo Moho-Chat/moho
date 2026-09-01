@@ -20,6 +20,9 @@ export const IPC = {
   smiliesDir: 'moho:smiliesDir',
   markBufferRead: 'moho:markBufferRead',
   browserLogin: 'moho:browserLogin',
+  popoutOpen: 'moho:popout:open',
+  popoutClose: 'moho:popout:close',
+  popoutList: 'moho:popout:list',
 
   // main -> renderer (send)
   event: 'moho:event',
@@ -27,5 +30,30 @@ export const IPC = {
   prefsChanged: 'moho:prefs:changed',
   maximizeChanged: 'moho:window:maximizeChanged',
   activateBuffer: 'moho:activateBuffer',
-  deepLink: 'moho:deepLink'
+  deepLink: 'moho:deepLink',
+  popoutsChanged: 'moho:popout:changed'
 } as const
+
+/**
+ * How a popped-out window is told which conversation it is.
+ *
+ * Passed as an extra argument to that window's preload rather than put in its
+ * URL, so it survives a reload and never has to be encoded into a path that
+ * differs between the dev server and a packaged file.
+ */
+export const POPOUT_FLAG = '--moho-popout='
+
+/** Which conversations have a window of their own, and which are being watched. */
+export interface PopoutState {
+  /** Every conversation with a window open, whether or not it can be seen. */
+  open: string[]
+  /**
+   * Those whose window is actually on screen.
+   *
+   * A conversation someone is looking at needs no unread badge and no desktop
+   * alert - that is the point of having put it in a window of its own - but a
+   * popout that has been minimised is not being looked at, and goes back to
+   * behaving like any other conversation.
+   */
+  watched: string[]
+}

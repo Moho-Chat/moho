@@ -1,6 +1,16 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { IPC } from '../shared/ipc'
+import { IPC, POPOUT_FLAG, type PopoutState } from '../shared/ipc'
 import type { NobilisEvent } from '../shared/wire'
+
+/**
+ * The conversation this window was opened to show, or null in the main window.
+ *
+ * Read from the arguments main gave this window rather than from its URL, so a
+ * reload cannot lose it and the dev server and a packaged build are told the
+ * same way.
+ */
+const popoutBufferId =
+  process.argv.find((a) => a.startsWith(POPOUT_FLAG))?.slice(POPOUT_FLAG.length) || null
 
 /**
  * The entire surface the renderer gets. Deliberately narrow: no `ipcRenderer`
@@ -66,7 +76,13 @@ const api = {
 
   prefs: {
     getAll: (): Promise<Record<string, unknown>> => ipcRenderer.invoke(IPC.prefsGetAll),
-    set: (key: string, value: unknown): Promise<void> => ipcRenderer.invoke(IPC.prefsSet, key, value)
+    set: (key: string, value: unknown): Promise<void> => ipcRenderer.invoke(IPC.prefsSet, key, value),
+    /** A setting changed in one of the other windows. */
+    onChange(cb: (key: string, value: unknown) => void): () => void {
+      const handler = (_e: unknown, key: string, value: unknown): void => cb(key, value)
+      ipcRenderer.on(IPC.prefsChanged, handler)
+      return () => ipcRenderer.off(IPC.prefsChanged, handler)
+    }
   },
 
   window: {
@@ -101,7 +117,24 @@ const api = {
     ipcRenderer.invoke(IPC.daemonStatus),
   smiliesDir: (): Promise<string> => ipcRenderer.invoke(IPC.smiliesDir),
   markBufferRead: (bufferId: string): Promise<void> =>
-    ipcRenderer.invoke(IPC.markBufferRead, bufferId)
+    ipcRenderer.invoke(IPC.markBufferRead, bufferId),
+
+  /** Conversations in windows of their own. */
+  popout: {
+    /** Set only in a popped-out window, naming the conversation it shows. */
+    bufferId: popoutBufferId,
+    open: (bufferId: string, title?: string): Promise<void> =>
+      ipcRenderer.invoke(IPC.popoutOpen, bufferId, title),
+    /** `andShow` opens the conversation in the main window on the way back. */
+    close: (bufferId: string, andShow = false): Promise<void> =>
+      ipcRenderer.invoke(IPC.popoutClose, bufferId, andShow),
+    list: (): Promise<PopoutState> => ipcRenderer.invoke(IPC.popoutList),
+    onChange(cb: (state: PopoutState) => void): () => void {
+      const handler = (_e: unknown, state: PopoutState): void => cb(state)
+      ipcRenderer.on(IPC.popoutsChanged, handler)
+      return () => ipcRenderer.off(IPC.popoutsChanged, handler)
+    }
+  }
 }
 
 contextBridge.exposeInMainWorld('moho', api)
