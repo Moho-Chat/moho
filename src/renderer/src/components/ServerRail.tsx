@@ -18,6 +18,8 @@ import {
   PINNED_GROUP_ID,
   pinnedGroup,
   reorder,
+  reorderFolder,
+  FOLDER_DRAG_PREFIX,
   visibleGroups,
   countsTowardRail,
   dmGroup,
@@ -135,6 +137,20 @@ function GroupFace({ group, customIcon }: { group: RailGroup; customIcon?: strin
  * split Discord uses, and the reason dragging onto an icon can create a folder
  * without taking away the ability to rearrange the column.
  */
+/**
+ * The folder being dragged, if what is being dragged is one.
+ *
+ * Folders and servers travel through the same one-string handle, so a folder
+ * says so in the string rather than by being looked up and hoped for - a
+ * folder id and a group id are both opaque, and mistaking one for the other
+ * files a folder inside itself.
+ */
+function folderBeingDragged(dragged: string, folders: RailFolder[]): RailFolder | null {
+  if (!dragged.startsWith(FOLDER_DRAG_PREFIX)) return null
+  const id = dragged.slice(FOLDER_DRAG_PREFIX.length)
+  return folders.find((f) => f.id === id) ?? null
+}
+
 function isMerge(e: React.DragEvent): boolean {
   const r = e.currentTarget.getBoundingClientRect()
   const y = (e.clientY - r.top) / r.height
@@ -321,12 +337,15 @@ export function ServerRail(): JSX.Element | null {
   const [merging, setMerging] = useState('')
   /** The rail entry a leave has been asked about, pending confirmation. */
   const [leaving, setLeaving] = useState<RailGroup | null>(null)
+  /** Hovering the space below the column, which means "put it last". */
+  const [tailTarget, setTailTarget] = useState(false)
 
   const beginDrag = (id: string): void => {
     draggingRef.current = id
     setDragging(id)
   }
   const endDrag = (): void => {
+    setTailTarget(false)
     draggingRef.current = ''
     setDragging('')
     setOver('')
@@ -383,7 +402,12 @@ export function ServerRail(): JSX.Element | null {
   const onDrop = (targetId: string, merge: boolean): void => {
     const from = draggingRef.current
     if (from && from !== targetId) {
-      if (merge && !isFixedEntry(ordered.find((g) => g.id === targetId) ?? ordered[0])) {
+      const movingFolder = folderBeingDragged(from, folders)
+      if (movingFolder) {
+        // A folder is always placed, never merged: dropping one onto a server
+        // has no second meaning the way dropping a server onto one does.
+        setRailOrder(reorderFolder(ordered, movingFolder, targetId))
+      } else if (merge && !isFixedEntry(ordered.find((g) => g.id === targetId) ?? ordered[0])) {
         setFolders(foldTogether(folders, targetId, from))
       } else {
         setRailOrder(reorder(ordered, from, targetId))
@@ -397,12 +421,23 @@ export function ServerRail(): JSX.Element | null {
   // things into them.
   const onDropInFolder = (folderId: string): void => {
     const from = draggingRef.current
-    if (from) setFolders(fileInFolder(folders, folderId, from))
+    const movingFolder = folderBeingDragged(from, folders)
+    if (movingFolder && movingFolder.id !== folderId) {
+      // One folder onto another means "put it here", not "put it inside":
+      // folders do not nest, and filing a folder into a folder would lose it.
+      const target = folders.find((f) => f.id === folderId)
+      const landOn = target?.members[0]
+      if (landOn) setRailOrder(reorderFolder(ordered, movingFolder, landOn))
+    } else if (from && !movingFolder) {
+      setFolders(fileInFolder(folders, folderId, from))
+    }
     endDrag()
   }
 
 
   const entries = railEntries(ordered, folders)
+  /** The entries that can be moved, in the order they are drawn. */
+  const movable = ordered.filter((g) => !isFixedEntry(g)).map((g) => g.id)
 
   /**
    * Conversations with something waiting, most recent first.
@@ -491,6 +526,8 @@ export function ServerRail(): JSX.Element | null {
               customIcons={customIcons}
               dropTarget={over === entry.id && dragging !== ''}
               onToggle={() => toggleFolder(entry.id)}
+              lifted={dragging === `${FOLDER_DRAG_PREFIX}${entry.id}`}
+              onDragStart={() => beginDrag(`${FOLDER_DRAG_PREFIX}${entry.id}`)}
               onContextMenu={(e) => {
                 e.preventDefault()
                 setFolderMenu({ x: e.clientX, y: e.clientY, folder: entry.folder })
@@ -509,16 +546,40 @@ export function ServerRail(): JSX.Element | null {
   return (
     <nav className="server-rail" aria-label="Servers">
       {/* Only the entries scroll; the cog stays pinned to the foot. The empty
-          space below them is where a server is dropped to take it back out of
-          a folder - folders themselves are made by dropping one icon onto
-          another. */}
+          space below them is where something is dropped to put it last, and to
+          take it back out of a folder on the way - folders themselves are made
+          by dropping one icon onto another.
+
+          It has to mean "last" as well as "out of a folder", because the only
+          other way to reach the end of the column was the bottom third of the
+          last tile, with the merge zone directly above it: aiming for the end
+          and making a folder instead was easier than getting it right. */}
       <div
-        className="rail-scroll"
-        onDragOver={(e) => e.target === e.currentTarget && e.preventDefault()}
+        className={classes('rail-scroll', tailTarget && 'tail-target')}
+        onDragOver={(e) => {
+          if (e.target !== e.currentTarget) return
+          e.preventDefault()
+          if (draggingRef.current) setTailTarget(true)
+        }}
+        onDragLeave={(e) => e.target === e.currentTarget && setTailTarget(false)}
         onDrop={(e) => {
+          setTailTarget(false)
           if (e.target !== e.currentTarget) return
           const from = draggingRef.current
-          if (from) setFolders(removeFromFolders(folders, from))
+          if (from) {
+            const movingFolder = folderBeingDragged(from, folders)
+            const last = movable.at(-1)
+            if (movingFolder) {
+              if (last) setRailOrder(reorderFolder(ordered, movingFolder, last))
+            } else {
+              // Out of whatever folder it was in first: dropping into open
+              // space is how something leaves one, and it cannot be both last
+              // in the column and still filed away.
+              const freed = removeFromFolders(folders, from)
+              setFolders(freed)
+              if (last && last !== from) setRailOrder(reorder(ordered, from, last))
+            }
+          }
           endDrag()
         }}
       >
@@ -618,17 +679,29 @@ function FolderTile(props: {
   members: RailGroup[]
   customIcons: Record<string, string>
   dropTarget: boolean
+  lifted: boolean
   onToggle: () => void
   onContextMenu: (e: React.MouseEvent) => void
+  onDragStart: () => void
   onDragOver: () => void
   onDrop: () => void
   onDragEnd: () => void
 }): JSX.Element {
-  const { folder, members, customIcons, dropTarget } = props
+  const { folder, members, customIcons, dropTarget, lifted } = props
   return (
     <button
       type="button"
-      className={classes('rail-tile', 'rail-folder', dropTarget && 'drop-target')}
+      className={classes('rail-tile', 'rail-folder', dropTarget && 'drop-target', lifted && 'lifted')}
+      // A folder moves like the servers around it. Without this it could be
+      // dropped into but never picked up, which reads as the column having
+      // decided where it lives.
+      draggable
+      onDragStart={(e) => {
+        // Chromium abandons a drag whose dataTransfer was never written to.
+        e.dataTransfer.setData('text/plain', folder.id)
+        e.dataTransfer.effectAllowed = 'move'
+        props.onDragStart()
+      }}
       title={`${folder.name} — ${members.length} ${members.length === 1 ? 'server' : 'servers'}`}
       aria-label={folder.name}
       onClick={props.onToggle}

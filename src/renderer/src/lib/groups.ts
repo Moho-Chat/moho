@@ -154,6 +154,38 @@ export function reorder(groups: RailGroup[], draggedId: string, targetId: string
 }
 
 
+/** How a folder names itself while being dragged, so it is not read as a server. */
+export const FOLDER_DRAG_PREFIX = 'folder:'
+
+/**
+ * The order to persist after dragging a whole folder onto `targetId`.
+ *
+ * A folder has no place of its own in the saved order - that list holds
+ * servers, and a folder is drawn wherever the first of its members falls. So
+ * moving one means moving its members as a block, which is also what keeps the
+ * folder from being torn in half by the move.
+ */
+export function reorderFolder(
+  groups: RailGroup[],
+  folder: RailFolder,
+  targetId: string
+): string[] {
+  const movable = groups.filter((g) => !isFixedEntry(g)).map((g) => g.id)
+  // In the folder's own order, which is the one somebody set by filling it.
+  const block = folder.members.filter((id) => movable.includes(id))
+  if (block.length === 0) return movable
+
+  const rest = movable.filter((id) => !block.includes(id))
+  // Dropping a folder onto something inside itself would mean inserting the
+  // block relative to a member of the block, which has no answer.
+  if (block.includes(targetId)) return movable
+
+  const at = rest.indexOf(targetId)
+  if (at === -1) return movable
+  rest.splice(at, 0, ...block)
+  return rest
+}
+
 /**
  * Whether a buffer is muted, on its own account or by the rail entry it sits
  * under.

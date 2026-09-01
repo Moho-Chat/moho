@@ -30,6 +30,37 @@ import type { ChatMessage } from '../state/store'
  */
 const UNANCHOR_THRESHOLD = 250
 const REANCHOR_THRESHOLD = 100
+
+/**
+ * How far the view has to move before it counts as having moved at all.
+ *
+ * Scroll positions are fractional, and a browser will report a pixel of drift
+ * of its own accord while content settles. Without a floor that drift reads as
+ * a deliberate scroll upwards.
+ */
+const SCROLL_JITTER = 2
+
+/**
+ * What a scroll event means for the pin: to release it, hold it, or take it
+ * back.
+ *
+ * Pulled out of the handler so the rule can be stated once and checked. The
+ * distinction it exists to make - reading away from the bottom, against the
+ * bottom moving away on its own - is invisible in the numbers unless the
+ * previous position is part of the question, and every version of this that
+ * asked only "how far from the bottom are we" has eventually let go of a busy
+ * channel.
+ */
+export function anchorVerdict(
+  distance: number,
+  top: number,
+  lastTop: number
+): 'release' | 'hold' | 'take' {
+  const wentUp = top < lastTop - SCROLL_JITTER
+  if (wentUp && distance > UNANCHOR_THRESHOLD) return 'release'
+  if (distance < REANCHOR_THRESHOLD) return 'take'
+  return 'hold'
+}
 /** Consecutive messages from the same author inside this window are grouped. */
 const GROUP_WINDOW_SECS = 300
 
@@ -126,6 +157,8 @@ export function MessageList(): JSX.Element {
   const preLoadHeightRef = useRef(0)
   /** A jumped-to message to keep in view while the page settles around it. */
   const holdRef = useRef('')
+  /** Where the view was at the last scroll, to tell moving up from growing. */
+  const lastTopRef = useRef(0)
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = scrollRef.current
@@ -247,8 +280,21 @@ export function MessageList(): JSX.Element {
     const el = scrollRef.current
     if (!el) return
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight
-    if (distance > UNANCHOR_THRESHOLD) anchor(false)
-    else if (distance < REANCHOR_THRESHOLD) {
+    const top = el.scrollTop
+    const verdict = anchorVerdict(distance, top, lastTopRef.current)
+    lastTopRef.current = top
+
+    // Only reading away from the bottom un-pins the view, and reading away
+    // means the position moved up - not merely that the bottom got further
+    // off. Those are different things and the distance alone cannot tell them
+    // apart: a message arriving makes the page taller, which puts the bottom
+    // exactly as far away as scrolling up by the height of that message would
+    // have. In a channel busy enough to grow by more than the threshold
+    // between frames, that read as "they have scrolled away", the pin came
+    // off, and the log stopped following with Jump to present offering to fix
+    // something the reader never did.
+    if (verdict === 'release') anchor(false)
+    else if (verdict === 'take') {
       anchor(true)
       setMissedCount(0)
     }
@@ -261,6 +307,13 @@ export function MessageList(): JSX.Element {
       void store.loadMoreHistory(bufferId)
     }
   }, [anchor, bufferId, isLoadingMore, messages.length, store])
+
+  // Reset alongside the buffer: the position in one conversation says nothing
+  // about the next, and a stale one would read the first scroll there as a
+  // jump upwards.
+  useEffect(() => {
+    lastTopRef.current = scrollRef.current?.scrollTop ?? 0
+  }, [bufferId])
 
   const jumpToPresent = (): void => {
     anchor(true)
