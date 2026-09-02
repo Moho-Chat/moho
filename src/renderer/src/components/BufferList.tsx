@@ -41,6 +41,19 @@ import {
  * per guild, because a single guild can easily carry 30+ text channels that
  * would otherwise flood every other account's rows.
  */
+/**
+ * What is being carried in the channel list.
+ *
+ * Two things can be, and they end on the same heading: a heading being put in
+ * a new position, and a channel being filed under one. Tagged rather than
+ * guessed from the payload, because the heading has to know which it is being
+ * offered before it decides whether to take it.
+ */
+interface Dragged {
+  kind: 'category' | 'buffer'
+  id: string
+}
+
 export function BufferList(): JSX.Element {
   const store = useStore()
   const buffers = useChat((s) => s.buffers)
@@ -252,33 +265,69 @@ export function BufferList(): JSX.Element {
       status={dmStatus(b, presence, buffers)}
       onCall={() => void store.callBuffer(b.id)}
       onHangUp={() => void store.leaveVoice(b.accountId)}
-      categories={activeGroup ? (customCats[activeGroup.id] ?? []) : []}
       onFile={(categoryId) => setAssignment(b.id, categoryId)}
       poppedOut={popouts.open.includes(b.id)}
       onPopOut={() => store.popOut(b.id)}
       onDock={() => store.dock(b.id)}
+      // Only where there is somewhere to drop it. A list with no headings of
+      // your own has nothing a channel could be filed under, and a drag that
+      // can only ever be refused is worse than one the row does not offer.
+      draggable={myCategories.length > 0}
+      lifted={dragging?.kind === 'buffer' && dragging.id === b.id}
+      onDragStart={() => beginDrag('buffer', b.id)}
+      onDragEnd={endDrag}
+      filed={!!assignment[b.id] && myCategories.some((c) => c.id === assignment[b.id])}
     />
   )
 
-  // The dragged heading lives in a ref as well as in state, for the reason
-  // the rail's does: dragstart and drop are separate events, and reading the
-  // value out of state means depending on a re-render having happened in
-  // between. State mirrors it only so the headings restyle while dragging.
-  const draggedCategory = useRef('')
-  const [draggingCategory, setDraggingCategory] = useState('')
+  // What is in flight lives in a ref as well as in state, for the reason the
+  // rail's does: dragstart and drop are separate events, and reading the value
+  // out of state means depending on a re-render having happened in between.
+  // State mirrors it only so the list restyles while dragging.
+  //
+  // Tagged rather than two refs, because both kinds of drag end on the same
+  // heading and it has to know which one it is being offered.
+  const draggedRef = useRef<Dragged | null>(null)
+  const [dragging, setDragging] = useState<Dragged | null>(null)
   const [overCategory, setOverCategory] = useState('')
 
-  const endCategoryDrag = (): void => {
-    draggedCategory.current = ''
-    setDraggingCategory('')
+  const beginDrag = (kind: Dragged['kind'], id: string): void => {
+    draggedRef.current = { kind, id }
+    setDragging({ kind, id })
+  }
+
+  const endDrag = (): void => {
+    draggedRef.current = null
+    setDragging(null)
     setOverCategory('')
   }
 
-  const dropCategory = (targetKey: string): void => {
-    const from = draggedCategory.current
-    endCategoryDrag()
-    if (!from || !grouped || !activeGroup || from === targetKey) return
-    setCategoryOrder(activeGroup.id, reorderCategories(grouped, from, targetKey))
+  /**
+   * Whether a heading would take what is currently being dragged.
+   *
+   * A heading always accepts another heading. It only accepts a channel if it
+   * is one somebody made: a service's heading is that server's own grouping,
+   * and moving a channel into a Discord category is a change to the server
+   * rather than to this list. Refusing it here - by declining the drop rather
+   * than accepting and ignoring - is what makes the cursor say so.
+   */
+  const accepts = (section: CategorySection): boolean => {
+    const held = draggedRef.current
+    if (!held) return false
+    return held.kind === 'category' ? section.key !== held.id : section.custom
+  }
+
+  const dropOnCategory = (section: CategorySection): void => {
+    const held = draggedRef.current
+    endDrag()
+    if (!held || !grouped || !activeGroup) return
+    if (held.kind === 'category') {
+      if (held.id === section.key) return
+      setCategoryOrder(activeGroup.id, reorderCategories(grouped, held.id, section.key))
+      return
+    }
+    if (!section.custom) return
+    setAssignment(held.id, section.key)
   }
 
   const hideBuffer = (id: string): void => {
@@ -338,8 +387,8 @@ export function BufferList(): JSX.Element {
                           className={classes(
                             'category-head',
                             'small',
-                            draggingCategory === section.key && 'lifted',
-                            overCategory === section.key && draggingCategory !== section.key && 'drop-target'
+                            dragging?.kind === 'category' && dragging.id === section.key && 'lifted',
+                            overCategory === section.key && 'drop-target'
                           )}
                           onClick={() => toggleCollapsed(key)}
                           onContextMenu={(e) => openCategoryMenu(e, section)}
@@ -353,24 +402,27 @@ export function BufferList(): JSX.Element {
                             // never written to.
                             e.dataTransfer.setData('text/plain', section.key)
                             e.dataTransfer.effectAllowed = 'move'
-                            draggedCategory.current = section.key
-                            setDraggingCategory(section.key)
+                            beginDrag('category', section.key)
                           }}
                           onDragOver={(e) => {
-                            if (!draggedCategory.current) return
-                            // Only a heading is a target. Without this the
-                            // browser refuses the drop and the gesture dies
-                            // where it started.
+                            // Not preventing the default is how a drop is
+                            // refused, and it is the refusal the cursor shows.
+                            if (!accepts(section)) return
                             e.preventDefault()
                             e.dataTransfer.dropEffect = 'move'
                             setOverCategory(section.key)
                           }}
+                          onDragLeave={() => setOverCategory((k) => (k === section.key ? '' : k))}
                           onDrop={(e) => {
                             e.preventDefault()
-                            dropCategory(section.key)
+                            dropOnCategory(section)
                           }}
-                          onDragEnd={endCategoryDrag}
-                          title={section.custom ? 'Your heading — drag to reorder, right-click to rename or remove' : `${section.name} — drag to reorder`}
+                          onDragEnd={endDrag}
+                          title={
+                            section.custom
+                              ? 'Your heading — drop channels here, drag to reorder, right-click to rename or remove'
+                              : `${section.name} — drag to reorder`
+                          }
                         >
                           <Icon name={folded ? 'chevron_right' : 'expand_more'} size={14} />
                           <span className="ellipsis">{section.name}</span>
@@ -386,9 +438,7 @@ export function BufferList(): JSX.Element {
                         .filter((b) => !folded || b.id === activeBufferId)
                         .map((b) => renderRow(b))}
                       {section.custom && section.buffers.length === 0 && !folded && (
-                        <div className="category-empty small muted">
-                          Right-click a channel to file it here
-                        </div>
+                        <div className="category-empty small muted">Drag a channel onto this heading</div>
                       )}
                     </div>
                   )
@@ -560,7 +610,6 @@ interface BufferRowProps {
   onCall: () => void
   onHangUp: () => void
   /** Headings this list offers, so a channel can be filed under one. */
-  categories: CustomCategory[]
   onFile: (categoryId: string) => void
   /** A call is already up in this conversation. */
   inCall: boolean
@@ -568,6 +617,13 @@ interface BufferRowProps {
   poppedOut: boolean
   onPopOut: () => void
   onDock: () => void
+  draggable: boolean
+  /** Being carried right now. */
+  lifted: boolean
+  /** Filed under one of your own headings, so there is something to undo. */
+  filed: boolean
+  onDragStart: () => void
+  onDragEnd: () => void
   /** The other person's presence, for a direct message. */
   status?: string
 }
@@ -588,11 +644,15 @@ function BufferRow({
   onHangUp,
   inCall,
   status,
-  categories,
   onFile,
   poppedOut,
   onPopOut,
-  onDock
+  onDock,
+  draggable,
+  lifted,
+  filed,
+  onDragStart,
+  onDragEnd
 }: BufferRowProps): JSX.Element {
   const { menu, open, close } = useContextMenu()
   const account = accounts.find((a) => a.id === buffer.accountId)
@@ -643,14 +703,17 @@ function BufferRow({
     { label: pinned ? 'Unpin' : 'Pin', icon: 'push_pin', onClick: onTogglePin },
     { label: muted ? 'Unmute' : 'Mute', icon: muted ? 'notifications' : 'notifications_off', onClick: onToggleMute },
     { separator: true },
-    ...(categories.length
+    // Filing is a drag onto the heading now, not an entry per heading. That
+    // list grew with the number of headings and had no ceiling - on a server
+    // with twenty categories the menu was taller than the screen, which made
+    // every other entry on it unreachable.
+    //
+    // Taking a channel back out has no gesture, since the channels under no
+    // heading are drawn without one to drop onto - so it stays here, as the
+    // one entry it always was, and only where there is something to undo.
+    ...(filed
       ? ([
           { separator: true },
-          ...categories.map((c) => ({
-            label: `File under ${c.name}`,
-            icon: 'folder',
-            onClick: () => onFile(c.id)
-          })),
           { label: 'Remove from category', icon: 'folder_off', onClick: () => onFile('') },
           { separator: true }
         ] as MenuEntry[])
@@ -672,10 +735,23 @@ function BufferRow({
     <>
       <button
         type="button"
-        className={classes('buffer-row', active && 'active', buffer.highlight && 'highlight')}
+        className={classes(
+          'buffer-row',
+          active && 'active',
+          buffer.highlight && 'highlight',
+          lifted && 'lifted'
+        )}
         onClick={onSelect}
         onContextMenu={open}
-        title={buffer.name}
+        draggable={draggable}
+        onDragStart={(e) => {
+          // Chromium abandons a drag whose dataTransfer was never written to.
+          e.dataTransfer.setData('text/plain', buffer.id)
+          e.dataTransfer.effectAllowed = 'move'
+          onDragStart()
+        }}
+        onDragEnd={onDragEnd}
+        title={draggable ? `${buffer.name} — drag onto a heading to file it` : buffer.name}
       >
         {leading}
         <span className="ellipsis buffer-name">{bufferDisplayName(buffer.name)}</span>
