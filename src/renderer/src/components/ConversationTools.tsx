@@ -7,13 +7,19 @@ import type { BufferEntry } from '../state/store'
 import type { Message } from '../../../shared/wire'
 
 /**
- * What a channel's mode letters mean, for the ones worth explaining.
+ * What a channel's restrictions mean, for the ones worth explaining.
  *
- * Not a complete table and not trying to be: every network invents its own,
- * and the ones below are the handful that change whether you can say anything.
- * An unknown letter is shown as itself rather than guessed at.
+ * IRC writes them as letters because that is what its server says; Kick has
+ * no such spelling and words them instead, so anything already in words is
+ * passed through rather than read a letter at a time - "followers only" is
+ * not f, o, l, l, o, w.
+ *
+ * The letter table is not complete and is not trying to be: every network
+ * invents its own, and these are the handful that change whether you can say
+ * anything. An unknown letter is shown as itself.
  */
 function describeModes(modes: string): string {
+  if (/[\s]/.test(modes) || !/^\+?[a-z]+$/i.test(modes)) return modes
   const meanings: Record<string, string> = {
     m: 'moderated — only voiced users may speak',
     i: 'invite only',

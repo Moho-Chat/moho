@@ -48,6 +48,21 @@ function shortBadge(prefix: string): string {
 }
 
 /**
+ * What the local user may do in a Kick channel.
+ *
+ * Read off their own badge in the list, which is only there once they have
+ * spoken - so a moderator who has said nothing yet is offered nothing. That
+ * is the honest reading: nothing here knows they are a moderator until Kick
+ * says so, and the alternative is offering actions that come back refused.
+ */
+function kickPermissions(members: Member[], me: string): Record<string, boolean> {
+  if (!me) return {}
+  const mine = members.find((m) => m.nick.toLowerCase() === me.toLowerCase())?.prefix ?? ''
+  const moderator = mine === 'moderator' || mine === 'broadcaster'
+  return { canKick: moderator, canBan: moderator, canMute: moderator }
+}
+
+/**
  * Why the list says what it says, for the one service where it needs saying.
  */
 function rosterNote(service: string | undefined): string | undefined {
@@ -102,8 +117,16 @@ export function NickList(): JSX.Element {
   // prefix, including ours, so what we may do is whatever our own prefix says.
   // Both are advisory - the server re-checks either way and refuses if we were
   // wrong, exactly as any other client would be refused.
+  // Kick answers this from the badges it already sent: the local user is a
+  // moderator of a channel if their own row says so. Same shape as IRC's,
+  // and advisory in the same way - Kick re-checks and refuses if we were
+  // wrong, which it explains far better than a status code would.
   const perms =
-    account?.service === 'irc' ? ircPermissions(members, account.currentNick) : (buffer && permissions[buffer.id]) || {}
+    account?.service === 'irc'
+      ? ircPermissions(members, account.currentNick)
+      : account?.service === 'kick'
+        ? kickPermissions(members, account.currentNick || account.displayName)
+        : (buffer && permissions[buffer.id]) || {}
 
   const groups = useMemo(() => {
     const filtered = query
@@ -192,6 +215,7 @@ export function NickList(): JSX.Element {
                 canSendFile={account?.service === 'irc'}
                 canCall={canCall && !!member.userId}
                 perms={perms}
+                service={account?.service}
                 onToggleBlock={toggleBlocked}
                 onMention={() => store.startReply('', member.nick, '')}
                 onModerate={(action) => {
@@ -208,6 +232,22 @@ export function NickList(): JSX.Element {
                     const command = action === 'mute' ? 'devoice' : action
                     void window.moho
                       .rpc('sendMessage', { bufferId: buffer.id, body: `/${command} ${member.nick}` })
+                      .catch((e: Error) => store.toast('error', e.message))
+                    return
+                  }
+                  if (account.service === 'kick') {
+                    // "Kick" is a timeout on Kick - there is nothing to
+                    // remove somebody from - and "mute" means the same thing,
+                    // so both become the short ban that they are.
+                    const kickAction = action === 'ban' ? 'ban' : 'timeout'
+                    void window.moho
+                      .rpc('moderateKickUser', {
+                        accountId: account.id,
+                        bufferId: buffer.id,
+                        username: member.nick,
+                        action: kickAction,
+                        minutes: 10
+                      })
                       .catch((e: Error) => store.toast('error', e.message))
                     return
                   }
@@ -273,6 +313,8 @@ interface MemberRowProps {
   /** IRC carries a file directly between two people; nothing else here does. */
   canSendFile: boolean
   perms: { canKick?: boolean; canBan?: boolean; canMute?: boolean; canOp?: boolean }
+  /** Which service this row belongs to, so an action is named as it acts. */
+  service: string | undefined
   onToggleBlock: (key: string) => void
   onMention: () => void
   onModerate: (action: ModerationAction) => void
@@ -292,6 +334,7 @@ function MemberRow({
   canWhisper,
   canSendFile,
   perms,
+  service,
   onToggleBlock,
   onMention,
   onModerate,
@@ -321,7 +364,16 @@ function MemberRow({
       ? ([{ label: 'Mute', icon: 'volume_off', onClick: () => onModerate('mute') }] as MenuEntry[])
       : []),
     ...(perms.canKick
-      ? ([{ label: 'Kick', icon: 'logout', danger: true, onClick: () => onModerate('kick') }] as MenuEntry[])
+      ? ([
+          {
+            // Named for what it does on this service. There is nobody to
+            // remove from a livestream chat, so on Kick it is a timeout.
+            label: service === 'kick' ? 'Time out for 10 minutes' : 'Kick',
+            icon: 'logout',
+            danger: true,
+            onClick: () => onModerate('kick')
+          }
+        ] as MenuEntry[])
       : []),
     ...(perms.canBan
       ? ([{ label: 'Ban', icon: 'gavel', danger: true, onClick: () => onModerate('ban') }] as MenuEntry[])
