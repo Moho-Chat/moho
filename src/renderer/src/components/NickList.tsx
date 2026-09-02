@@ -216,6 +216,17 @@ export function NickList(): JSX.Element {
                 canCall={canCall && !!member.userId}
                 perms={perms}
                 service={account?.service}
+                onSetPower={(level) => {
+                  if (!buffer || !account) return
+                  void window.moho
+                    .rpc('setMatrixPowerLevel', {
+                      accountId: account.id,
+                      bufferId: buffer.id,
+                      userId: member.userId || member.nick,
+                      level
+                    })
+                    .catch((e: Error) => store.toast('error', e.message))
+                }}
                 onToggleBlock={toggleBlocked}
                 onMention={() => store.startReply('', member.nick, '')}
                 onModerate={(action) => {
@@ -318,6 +329,8 @@ interface MemberRowProps {
   onToggleBlock: (key: string) => void
   onMention: () => void
   onModerate: (action: ModerationAction) => void
+  /** Matrix only: give this member a power level outright. */
+  onSetPower: (level: number) => void
   onOpenDm: () => void
   onWhisper: () => void
   onSendFile: () => void
@@ -335,6 +348,7 @@ function MemberRow({
   canSendFile,
   perms,
   service,
+  onSetPower,
   onToggleBlock,
   onMention,
   onModerate,
@@ -377,6 +391,18 @@ function MemberRow({
       : []),
     ...(perms.canBan
       ? ([{ label: 'Ban', icon: 'gavel', danger: true, onClick: () => onModerate('ban') }] as MenuEntry[])
+      : []),
+    // Matrix ranks are a number rather than a flag, so they are offered as
+    // the three the protocol's own defaults are built around: 0 is everybody,
+    // 50 is what "moderator" means to every other client, 100 is the room's
+    // owner. Only where this account may change them at all.
+    ...(service === 'matrix' && perms.canMute
+      ? ([
+          { separator: true },
+          { label: 'Make moderator', icon: 'shield', onClick: () => onSetPower(50) },
+          { label: 'Make admin', icon: 'star', onClick: () => onSetPower(100) },
+          { label: 'Reset to default', icon: 'person', onClick: () => onSetPower(0) }
+        ] as MenuEntry[])
       : []),
     // Channel ranks, which only IRC has. Both directions offered rather than
     // one toggle: the member's own prefix says which way round it should be,

@@ -289,6 +289,114 @@ function KickJoin({ account }: { account: Account }): JSX.Element {
 }
 
 /**
+ * Making a room, or a space.
+ *
+ * One form for both, because a space is a room with a different creation type
+ * and nothing else - offering two would be inventing a distinction the
+ * protocol does not have.
+ *
+ * Encryption is offered and defaults to off, which is the choice that can
+ * still be changed: a room can be encrypted later and never un-encrypted, so
+ * the reversible default is the honest one.
+ */
+function CreateMatrixRoom({ account }: { account: Account }): JSX.Element {
+  const store = useStore()
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [topic, setTopic] = useState('')
+  const [isSpace, setIsSpace] = useState(false)
+  const [isPublic, setIsPublic] = useState(false)
+  const [encrypted, setEncrypted] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  if (!open) {
+    return (
+      <div className="field">
+        <button type="button" className="button" onClick={() => setOpen(true)}>
+          Create a room or space
+        </button>
+      </div>
+    )
+  }
+
+  const create = (): void => {
+    if (!name.trim()) return
+    setBusy(true)
+    void window.moho
+      .rpc('createMatrixRoom', { accountId: account.id, name, topic, isSpace, isPublic, encrypted })
+      .then(() => {
+        // Not selected here: the room arrives through the next sync with the
+        // name and kind the server settled on, and jumping at a buffer that
+        // does not exist yet would land on nothing.
+        store.toast('info', `Created ${name}. It will appear once the server confirms it.`)
+        setName('')
+        setTopic('')
+        setOpen(false)
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <div className="field">
+      <span className="small muted">{isSpace ? 'New space' : 'New room'}</span>
+      <input
+        className="text-field"
+        autoFocus
+        placeholder="Name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && create()}
+      />
+      <input
+        className="text-field"
+        placeholder="Topic (optional)"
+        value={topic}
+        onChange={(e) => setTopic(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && create()}
+      />
+      <label className="checkbox-row">
+        <input type="checkbox" checked={isSpace} onChange={(e) => setIsSpace(e.target.checked)} />
+        <span>
+          Make it a space
+          <span className="small muted"> — a container for other rooms rather than a place to talk</span>
+        </span>
+      </label>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
+        <span>
+          Anyone can find and join it
+          <span className="small muted"> — otherwise it is invite only</span>
+        </span>
+      </label>
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={encrypted}
+          disabled={isPublic}
+          onChange={(e) => setEncrypted(e.target.checked)}
+        />
+        <span>
+          Encrypt it
+          <span className="small muted">
+            {' '}
+            — cannot be turned off later, so a room that might need it should have it from the start
+          </span>
+        </span>
+      </label>
+      <div className="field-row">
+        <button type="button" className="button primary" disabled={busy || !name.trim()} onClick={create}>
+          {busy ? 'Creating…' : 'Create'}
+        </button>
+        <button type="button" className="button" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/**
  * Rooms somebody has asked this account to join.
  *
  * Shown above the join field because it is the one thing here that arrived
@@ -404,6 +512,7 @@ function MatrixJoin({ account }: { account: Account }): JSX.Element {
             .catch((e: Error) => store.toast('error', e.message))
         }
       />
+      <CreateMatrixRoom account={account} />
     </div>
   )
 }
