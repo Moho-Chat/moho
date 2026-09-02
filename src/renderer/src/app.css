@@ -4177,3 +4177,106 @@ video.lightbox-media {
 .directory-server {
   flex: 0 1 11em;
 }
+
+/* --- room search --------------------------------------------------------
+   A dialog you type into and leave, so it sits high in the window rather than
+   centred: the list grows downward, and a box centred on its own height jumps
+   as results arrive. */
+.room-search {
+  width: 640px;
+  max-width: calc(100vw - var(--spacing-xl));
+  max-height: 72vh;
+  margin-top: 8vh;
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-container);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.room-search-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  border-bottom: 1px solid var(--outline-light);
+  color: var(--surface-variant-text);
+}
+
+/* The search field is the dialog's whole purpose, so it is drawn as the
+   surface rather than as a control sitting on one. */
+.room-search-input {
+  flex: 1;
+  border: none;
+  background: none;
+  color: var(--surface-text);
+  font-size: var(--font-size-large);
+}
+
+.room-search-input:focus {
+  outline: none;
+}
+
+.room-search-servers {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-m);
+  border-bottom: 1px solid var(--outline-light);
+}
+
+.room-search-servers > span {
+  flex: 1;
+}
+
+.room-search-server {
+  flex: 0 0 14em;
+}
+
+.room-search-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--spacing-xs) 0;
+}
+
+.room-search-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-m);
+}
+
+.room-search-row:hover {
+  background: var(--outline-light);
+}
+
+/* min-width:0 so the ellipsis in the children has something to bite on - a
+   flex child is as wide as its content without it, and a long topic pushes
+   the join button off the edge instead of being cut. */
+.room-search-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.room-search-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-s);
+  min-width: 0;
+}
+
+.room-search-detail,
+.room-search-title > .ellipsis {
+  min-width: 0;
+}
+
+.room-search-empty,
+.room-search-more {
+  margin: var(--spacing-m);
+}

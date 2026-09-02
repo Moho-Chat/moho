@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
+import { RoomSearch } from './RoomSearch'
 import { useChat, useStore } from '../state/hooks'
 import { classes, resolveMediaUrl } from '../lib/util'
 import type { Account, DiscordFriend } from '../../../shared/wire'
@@ -512,129 +513,29 @@ function MatrixJoin({ account }: { account: Account }): JSX.Element {
             .catch((e: Error) => store.toast('error', e.message))
         }
       />
-      <MatrixRoomDirectory account={account} />
+      <FindRoomButton account={account} />
       <CreateMatrixRoom account={account} />
     </div>
   )
 }
 
-interface PublicRoom {
-  roomId: string
-  name: string
-  alias: string
-  topic: string
-  members: number
-  avatarUrl?: string
-  joined: boolean
-}
-
 /**
- * The public room directory - what Element calls exploring rooms.
+ * The way into the room search, which is a dialog rather than a section here.
  *
- * Two fields rather than one, because a directory is per homeserver: without
- * the second, this can only ever find rooms our own server happens to know
- * about, and the ordinary case for finding a community is having been told
- * which server it lives on. Blank means ours.
- *
- * Searching is explicit rather than as-you-type: each keystroke would be a
- * request to somebody else's server, and a directory search is heavy enough
- * that servers rate-limit it.
+ * A search that spans every homeserver returns a great many rooms, and a list
+ * that long inside a page of small fields would push everything else off the
+ * bottom. It also is not really part of joining by address - it is how you
+ * find the address in the first place.
  */
-function MatrixRoomDirectory({ account }: { account: Account }): JSX.Element {
-  const store = useStore()
-  const [query, setQuery] = useState('')
-  const [server, setServer] = useState('')
-  const [rooms, setRooms] = useState<PublicRoom[] | null>(null)
-  const [next, setNext] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  const search = (since = ''): void => {
-    setBusy(true)
-    void window.moho
-      .rpc<{ rooms: PublicRoom[]; next: string }>('searchMatrixRooms', {
-        accountId: account.id,
-        query,
-        server,
-        since
-      })
-      .then((result) => {
-        // A page appends; a fresh search replaces. Same call either way, so
-        // the difference has to be made here.
-        setRooms((current) => (since && current ? [...current, ...result.rooms] : result.rooms))
-        setNext(result.next)
-      })
-      .catch((e: Error) => store.toast('error', e.message))
-      .finally(() => setBusy(false))
-  }
-
+function FindRoomButton({ account }: { account: Account }): JSX.Element {
+  const [open, setOpen] = useState(false)
   return (
     <div className="field">
       <span className="small muted">Find a public room</span>
-      <div className="field-row">
-        <input
-          className="text-field"
-          placeholder="search the directory"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && search()}
-        />
-        <input
-          className="text-field directory-server"
-          placeholder="server (optional)"
-          value={server}
-          onChange={(e) => setServer(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && search()}
-        />
-        <button type="button" className="button" disabled={busy} onClick={() => search()}>
-          {busy ? 'Searching…' : 'Search'}
-        </button>
-      </div>
-
-      {rooms && rooms.length === 0 && (
-        <p className="small muted">
-          Nothing matched. A server only lists rooms it has been asked to publish, so a room can
-          exist and not be here — joining by address still works.
-        </p>
-      )}
-
-      {rooms && rooms.length > 0 && (
-        <div className="channel-browser">
-          {rooms.map((room) => (
-            <button
-              key={room.roomId}
-              type="button"
-              className="channel-browser-row"
-              title={room.topic || room.alias || room.name}
-              disabled={room.joined}
-              onClick={() =>
-                void window.moho
-                  .rpc('joinMatrixRoom', {
-                    accountId: account.id,
-                    // The address where there is one: an alias survives a room
-                    // being upgraded, and a bare room id needs the server to
-                    // already know somebody in it.
-                    roomIdOrAlias: room.alias || room.roomId
-                  })
-                  .catch((e: Error) => store.toast('error', e.message))
-              }
-            >
-              <span className="ellipsis channel-browser-name">
-                {room.name || room.alias || room.roomId}
-              </span>
-              <span className="small muted channel-browser-users">
-                {room.joined ? 'joined' : room.members.toLocaleString()}
-              </span>
-              <span className="small muted ellipsis channel-browser-topic">{room.topic}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {next && (
-        <button type="button" className="button" disabled={busy} onClick={() => search(next)}>
-          Show more
-        </button>
-      )}
+      <button type="button" className="button" onClick={() => setOpen(true)}>
+        <Icon name="search" size={15} /> Search every homeserver
+      </button>
+      {open && <RoomSearch account={account} onClose={() => setOpen(false)} />}
     </div>
   )
 }
