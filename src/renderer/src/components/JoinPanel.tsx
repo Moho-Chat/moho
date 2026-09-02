@@ -134,8 +134,127 @@ function IrcJoin({ account }: { account: Account }): JSX.Element {
         // something is sent, so this joins a buffer named for the nick.
         onSubmit={(nick) => call('joinBuffer', { accountId: account.id, name: nick })}
       />
+      <IrcChannelBrowser account={account} />
     </div>
   )
+}
+
+/**
+ * The network's own channel list.
+ *
+ * Asked for rather than shown, and that is the whole design: a LIST on a real
+ * network answers with tens of thousands of channels and some servers throttle
+ * or refuse it outright, so it is a button somebody presses rather than
+ * something that happens on opening this page.
+ *
+ * Filtered here rather than in the request. The daemon holds the whole answer
+ * and typing narrows it instantly, where a server-side filter would mean a new
+ * LIST per keystroke against something that just rate-limited you.
+ */
+function IrcChannelBrowser({ account }: { account: Account }): JSX.Element {
+  const store = useStore()
+  // The server buffer is where a command with no conversation of its own is
+  // typed. Found rather than assembled from the account id: the daemon names
+  // it after the host it actually connected to, which is not always the host
+  // that was typed into the account form.
+  const serverBuffer = useChat((s) => s.buffers).find(
+    (b) => b.accountId === account.id && b.kind === 'server'
+  )
+  const [channels, setChannels] = useState<IrcChannelListing[] | null>(null)
+  const [asking, setAsking] = useState(false)
+  const [filter, setFilter] = useState('')
+
+  useEffect(() => {
+    return window.moho.onEvent((frame) => {
+      if (frame.event !== 'ircChannelList') return
+      const data = frame.data as { accountId: string; channels: IrcChannelListing[] }
+      if (data.accountId !== account.id) return
+      setAsking(false)
+      setChannels(data.channels)
+    })
+  }, [account.id])
+
+  const ask = (): void => {
+    if (!serverBuffer) {
+      store.toast('error', 'Not connected to this network yet')
+      return
+    }
+    setAsking(true)
+    setChannels(null)
+    void window.moho.rpc('sendMessage', { bufferId: serverBuffer.id, body: '/list' }).catch((e: Error) => {
+      setAsking(false)
+      store.toast('error', e.message)
+    })
+  }
+
+  const shown = channels
+    ? channels.filter((c) => {
+        const q = filter.trim().toLowerCase()
+        if (!q) return true
+        return c.name.toLowerCase().includes(q) || c.topic.toLowerCase().includes(q)
+      })
+    : []
+
+  return (
+    <div className="field">
+      <span className="small muted">Browse the network&apos;s channels</span>
+      <div className="field-row">
+        <input
+          className="text-field"
+          placeholder={channels ? 'filter by name or topic' : 'ask the server for its list first'}
+          value={filter}
+          disabled={!channels}
+          onChange={(e) => setFilter(e.target.value)}
+        />
+        <button type="button" className="button" disabled={asking || !serverBuffer} onClick={ask}>
+          {asking ? 'Asking…' : channels ? 'Refresh' : 'List channels'}
+        </button>
+      </div>
+
+      {asking && (
+        <p className="small muted">
+          A busy network can take a minute to answer, and some refuse the request entirely.
+        </p>
+      )}
+
+      {channels && (
+        <>
+          <p className="small muted">
+            {channels.length.toLocaleString()} channels, busiest first
+            {shown.length !== channels.length ? ` — ${shown.length.toLocaleString()} matching` : ''}
+          </p>
+          <div className="channel-browser">
+            {/* Capped, because a filter that matches nothing in particular
+                still matches forty thousand rows, and drawing them would
+                freeze the window to no purpose. */}
+            {shown.slice(0, 200).map((c) => (
+              <button
+                key={c.name}
+                type="button"
+                className="channel-browser-row"
+                title={c.topic || c.name}
+                onClick={() => join(account.id, c.name, store)}
+              >
+                <span className="ellipsis channel-browser-name">{c.name}</span>
+                <span className="small muted channel-browser-users">{c.users.toLocaleString()}</span>
+                <span className="small muted ellipsis channel-browser-topic">{c.topic}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+interface IrcChannelListing {
+  name: string
+  users: number
+  topic: string
+}
+
+function join(accountId: string, name: string, store: ReturnType<typeof useStore>): void {
+  void window.moho.rpc('joinBuffer', { accountId, name }).catch((e: Error) => store.toast('error', e.message))
 }
 
 /**

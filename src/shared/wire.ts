@@ -55,6 +55,14 @@ export interface Buffer {
   avatarUrl?: string
   /** Matrix only - absent, not false, for protocols with no encryption concept. */
   encrypted?: boolean
+  /**
+   * An IRC channel's own modes, as the server writes them - `+mnt`.
+   *
+   * Absent until the server has said, which it does on join and on every
+   * change. Carried because it answers "why can I not speak here" before the
+   * question is asked: `+m` is moderated, `+i` invite-only.
+   */
+  channelModes?: string
   /** Which rail entry this buffer sits under. */
   groupId?: string
   /** The service's own heading for this buffer - a Discord category. */

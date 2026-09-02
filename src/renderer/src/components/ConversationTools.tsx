@@ -7,6 +7,28 @@ import type { BufferEntry } from '../state/store'
 import type { Message } from '../../../shared/wire'
 
 /**
+ * What a channel's mode letters mean, for the ones worth explaining.
+ *
+ * Not a complete table and not trying to be: every network invents its own,
+ * and the ones below are the handful that change whether you can say anything.
+ * An unknown letter is shown as itself rather than guessed at.
+ */
+function describeModes(modes: string): string {
+  const meanings: Record<string, string> = {
+    m: 'moderated — only voiced users may speak',
+    i: 'invite only',
+    t: 'topic locked to operators',
+    n: 'no messages from outside the channel',
+    s: 'secret — hidden from the channel list',
+    k: 'needs a key',
+    l: 'has a user limit',
+    r: 'registered users only'
+  }
+  const described = [...modes.replace(/[^a-z]/gi, '')].map((letter) => meanings[letter] ?? letter)
+  return described.length ? described.join(', ') : modes
+}
+
+/**
  * The call button and search box at the head of a conversation.
  *
  * Both belong to the conversation rather than to the window, which is why they
@@ -109,6 +131,15 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
 
   return (
     <div className="conversation-tools" ref={box}>
+      {/* What the channel itself is set to. Only where there is something to
+          say - an unmodded channel has no modes worth a badge - and titled
+          with the long form, since the letters are only obvious to people who
+          already knew. */}
+      {buffer.channelModes && (
+        <span className="channel-modes small" title={describeModes(buffer.channelModes)}>
+          {buffer.channelModes}
+        </span>
+      )}
       {isDiscord && isDm && (
         <IconButton
           name={inCall ? 'call_end' : 'call'}

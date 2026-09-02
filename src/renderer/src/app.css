@@ -3253,6 +3253,62 @@ video.lightbox-media {
   color: var(--error);
 }
 
+/* The network's channel list. Scrolls inside itself rather than growing the
+   page, because even a filtered list is hundreds of rows. */
+.channel-browser {
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container);
+}
+
+.channel-browser-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-s);
+  background: none;
+  border: none;
+  text-align: left;
+  color: var(--surface-text);
+}
+
+.channel-browser-row:hover {
+  background: var(--primary-hover-light);
+}
+
+.channel-browser-name {
+  flex: none;
+  max-width: 40%;
+  font-weight: 500;
+}
+
+/* Right-aligned and tabular so the counts line up as a column somebody can
+   scan, which is the one thing this list is sorted by. */
+.channel-browser-users {
+  flex: none;
+  min-width: 4ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.channel-browser-topic {
+  flex: 1;
+  min-width: 0;
+}
+
+.channel-modes {
+  padding: 1px var(--spacing-xs);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-high);
+  color: var(--surface-variant-text);
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.04em;
+}
+
 .conversation-search {
   display: flex;
   align-items: center;
