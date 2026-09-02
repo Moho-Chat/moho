@@ -10,6 +10,7 @@ import type {
   Member,
   Message,
   NobilisEvent,
+  MessageReader,
   Reaction,
   RoomPermissions,
   SockchatSmilie,
@@ -77,6 +78,15 @@ export type ActivePanel = '' | 'accounts' | 'settings' | 'join' | 'downloads'
 export interface ChatState {
   /** Who is composing, per buffer, with when to stop believing it. */
   typingByBuffer: Record<string, { nicks: string[]; until: number }>
+  /**
+   * Who has read up to which message, per buffer.
+   *
+   * Keyed by message id because that is where the marker is drawn, and a
+   * person appears under exactly one of them - the whole set for a room
+   * arrives at once and replaces what was there, so somebody moving forward
+   * cannot leave a copy of themselves behind on an older message.
+   */
+  readersByBuffer: Record<string, Record<string, MessageReader[]>>
   linkUp: boolean
   accounts: Account[]
   buffers: BufferEntry[]
@@ -240,6 +250,7 @@ const INITIAL: ChatState = {
   loadingMore: {},
   dividerTsByBuffer: {},
     typingByBuffer: {},
+  readersByBuffer: {},
   matrixPermissions: {},
   replyingTo: null,
   toasts: [],
@@ -1055,6 +1066,26 @@ export class ChatStore {
 
   // --- push events ----------------------------------------------------
 
+  /**
+   * Tells the service a conversation has been read.
+   *
+   * The preference is read here rather than mirrored into state, because the
+   * window that changes a preference is deliberately not told about its own
+   * change - so a mirror is stale in exactly the window somebody just used
+   * the toggle in, which is the one place it has to be right.
+   *
+   * Off does not mean silence: it asks for a private receipt instead, which
+   * this account's own other devices still see. Saying nothing at all would
+   * leave a room read here unread on your phone forever.
+   */
+  private async ackRead(bufferId: string): Promise<void> {
+    const prefs = await window.moho.prefs.getAll()
+    await window.moho.rpc('markBufferRead', {
+      bufferId,
+      public: prefs['matrix.sendReadReceipts'] !== false
+    })
+  }
+
   private handleEvent(frame: NobilisEvent): void {
     const { event, data } = frame
     switch (event) {
@@ -1108,6 +1139,18 @@ export class ChatStore {
         this.set({
           typingByBuffer: { ...this.state.typingByBuffer, [data.bufferId]: { nicks, until } }
         })
+        break
+      }
+
+      // Where everybody else has read up to. A whole room's markers at
+      // once, replacing what was there: see readersByBuffer.
+      case 'readReceipts': {
+        const byMessage: Record<string, MessageReader[]> = {}
+        for (const reader of (data.readers ?? []) as (MessageReader & { messageId: string })[]) {
+          const list = byMessage[reader.messageId] ?? (byMessage[reader.messageId] = [])
+          list.push({ userId: reader.userId, nick: reader.nick, avatarUrl: reader.avatarUrl })
+        }
+        this.set({ readersByBuffer: { ...this.state.readersByBuffer, [data.bufferId]: byMessage } })
         break
       }
 
@@ -1490,7 +1533,7 @@ export class ChatStore {
     // And tell the service, where the service has anywhere to put it, so a
     // conversation read here stops being unread on somebody's phone. A no-op
     // on protocols with no read state, so it needs no test of which this is.
-    bestEffort(window.moho.rpc('markBufferRead', { bufferId }), 'ack read')
+    bestEffort(this.ackRead(bufferId), 'ack read')
     bestEffort(window.moho.rpc('subscribe', { bufferId }), `subscribe ${bufferId}`)
 
     // Discord only sends a member list for the channel being looked at, and

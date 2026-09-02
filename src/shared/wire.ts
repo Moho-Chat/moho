@@ -265,6 +265,20 @@ export interface ReplyPreview {
   body: string
 }
 
+/**
+ * Somebody who has read a conversation as far as a particular message.
+ *
+ * Matrix calls this a read receipt and is the only protocol here that
+ * publishes one, but nothing in the shape is Matrix's: Discord and Sneedchat
+ * both know the same fact and could fill this in without the frontend
+ * learning a second way to draw it.
+ */
+export interface MessageReader {
+  userId: string
+  nick: string
+  avatarUrl?: string
+}
+
 export interface Reaction {
   emoji: string
   count: number

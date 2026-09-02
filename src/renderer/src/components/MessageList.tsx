@@ -131,7 +131,9 @@ export function MessageList(): JSX.Element {
   const [showPolls] = usePref<boolean>('kick.showPolls', true)
   const [showStream] = usePref<boolean>('kick.showStreamEvents', true)
   const [showKickMod] = usePref<boolean>('kick.showModeration', true)
+  const [showReaders] = usePref<boolean>('matrix.showReadReceipts', true)
   const [blockedNicks] = usePref<string[]>('blockedNicks', [])
+  const readers = useChat((s) => s.readersByBuffer)[bufferId]
 
   const accountId = buffers.find((b) => b.id === bufferId)?.accountId || ''
   const all = messagesByBuffer[bufferId] || []
@@ -415,6 +417,7 @@ export function MessageList(): JSX.Element {
                 mediaAutoplay={mediaAutoplay}
                 mediaLoop={mediaLoop}
                 contentSniffing={contentSniffing}
+                readers={showReaders ? readers?.[msg.id] : undefined}
               />
             </div>
           ))}

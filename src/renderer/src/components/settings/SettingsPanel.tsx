@@ -139,7 +139,12 @@ export function SettingsPanel(): JSX.Element {
         {selected === 'irc' && <IrcSettings />}
         {selected === 'sockchat' && <SneedchatSettings />}
         {selected === 'tor' && <TorSettings />}
-        {selected === 'matrix' && <MatrixSettings />}
+        {selected === 'matrix' && (
+          <>
+            <MatrixSettings />
+            <MatrixReceiptSettings />
+          </>
+        )}
         {selected === 'kick' && <KickSettings />}
         {selected === 'about' && <AboutSettings />}
         {(selected === 'discord' || selected === 'slack') && (
@@ -706,6 +711,38 @@ function MatrixSettings(): JSX.Element {
         defaultValue={true}
       />
       <ToggleSetting settingKey="matrix.showQuitMessages" label="Show quit messages" description='"X left the room"' defaultValue={true} />
+    </SettingsSection>
+  )
+}
+
+/**
+ * The two halves of read receipts, which are separate choices: whether other
+ * people are told where you have got to, and whether you are shown where they
+ * have.
+ *
+ * Turning off sending does not stop moho telling *your own* devices - it sends
+ * a private receipt instead of a public one, so a room read here still stops
+ * being bold on your phone. Sending nothing at all would have been the
+ * simpler code and would have quietly broken that.
+ */
+function MatrixReceiptSettings(): JSX.Element {
+  return (
+    <SettingsSection
+      title="Read receipts"
+      description="Matrix publishes how far each person has read. Both directions are separate: not telling people where you are does not hide where they are."
+    >
+      <ToggleSetting
+        settingKey="matrix.sendReadReceipts"
+        label="Let others see what I have read"
+        description="Off sends a private receipt instead, so your own other devices still agree about what is unread."
+        defaultValue={true}
+      />
+      <ToggleSetting
+        settingKey="matrix.showReadReceipts"
+        label="Show who has read each message"
+        description="Faces in the right margin, beside the last message each person has reached."
+        defaultValue={true}
+      />
     </SettingsSection>
   )
 }

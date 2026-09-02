@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { Icon } from './Icon'
+import { Avatar } from './Avatar'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { MediaEmbed } from './MediaEmbed'
 import { EmojiPicker } from './EmojiPicker'
@@ -7,7 +8,7 @@ import { RichText } from '../lib/richtext'
 import { useChat, useStore } from '../state/hooks'
 import { useSniffedTypes, sniffUrl } from '../lib/sniff'
 import type { ChatMessage } from '../state/store'
-import type { MessageBadge } from '../../../shared/wire'
+import type { MessageBadge, MessageReader } from '../../../shared/wire'
 import {
   embedColor,
   extractCodeBlocks,
@@ -86,6 +87,41 @@ interface Props {
   mediaAutoplay: boolean
   mediaLoop: boolean
   contentSniffing: boolean
+  /**
+   * Who has read the conversation this far, drawn in the right gutter the way
+   * Element does. Absent where the protocol publishes nothing, and where the
+   * reader has turned the markers off.
+   */
+  readers?: MessageReader[]
+}
+
+/** How many faces fit before the row starts costing more than it says. */
+const MAX_READER_FACES = 3
+
+/**
+ * The faces of everybody who has read this far.
+ *
+ * Overlapped rather than spaced, and capped, because this sits in a gutter
+ * beside a message: a room of thirty people would otherwise draw thirty
+ * avatars against one line and push the conversation off the screen. Past the
+ * cap it becomes a count, and the full list of names is the tooltip either
+ * way - which is the part somebody actually reads when they care who.
+ */
+function ReadMarkers({ readers }: { readers: MessageReader[] }): JSX.Element {
+  const names = readers.map((r) => r.nick).join(', ')
+  const shown = readers.slice(0, MAX_READER_FACES)
+  return (
+    <span className="read-markers" title={`Read by ${names}`} aria-label={`Read by ${names}`}>
+      {shown.map((reader) => (
+        <span key={reader.userId} className="read-marker">
+          <Avatar name={reader.nick} url={reader.avatarUrl} size={14} />
+        </span>
+      ))}
+      {readers.length > shown.length && (
+        <span className="read-marker-more small muted">+{readers.length - shown.length}</span>
+      )}
+    </span>
+  )
 }
 
 export function MessageRow({
@@ -99,7 +135,8 @@ export function MessageRow({
   relativeTimestamps,
   mediaAutoplay,
   mediaLoop,
-  contentSniffing
+  contentSniffing,
+  readers
 }: Props): JSX.Element {
   const store = useStore()
   const { menu, open, close } = useContextMenu()
@@ -591,6 +628,12 @@ export function MessageRow({
             </span>
           )}
         </div>
+
+        {/* Who has read this far. Element puts these against the last message
+            each person has reached, which is the only placement that answers
+            the question people actually ask of them - not "did they see this
+            one" but "where has everybody got to". */}
+        {readers && readers.length > 0 && <ReadMarkers readers={readers} />}
 
         {/* Hover toolbar: quick reactions, add-reaction, reply, more. */}
         <div className="hover-toolbar">

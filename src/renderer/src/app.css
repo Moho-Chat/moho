@@ -4043,3 +4043,45 @@ video.lightbox-media {
 .popout .conversation-search input {
   width: 90px;
 }
+
+/* --- read markers -------------------------------------------------------
+   Who else has got this far, in the right gutter. Sized to sit inside a
+   message row's own line height so a row with markers is not taller than one
+   without - otherwise the log visibly reflows as people read it, which is
+   movement nobody asked for on a conversation being scrolled.
+
+   Pushed to the far right by margin-left rather than by justifying the row,
+   which would move the message body too. */
+.read-markers {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: var(--spacing-s);
+  align-self: flex-end;
+}
+
+/* Overlapped, the way every client draws a group of faces - the gutter is
+   narrow and a row of separate circles would not fit three of them. */
+.read-marker + .read-marker,
+.read-markers .read-marker-more {
+  margin-left: -5px;
+}
+
+.read-marker .avatar {
+  /* A ring in the row's own background, so overlapping faces stay separable
+     against each other rather than merging into one shape. */
+  box-shadow: 0 0 0 1.5px var(--surface);
+  border-radius: 50%;
+}
+
+.read-marker-more {
+  padding-left: 7px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The hover toolbar sits in the same corner. It wins - it is the thing being
+   reached for - and the markers are a standing fact that can wait. */
+.message-row:hover .read-markers {
+  opacity: 0.25;
+}
