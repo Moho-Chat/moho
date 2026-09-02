@@ -863,7 +863,14 @@ export class ChatStore {
   async sendWhisper(accountId: string, target: string, body: string): Promise<void> {
     if (!body.trim()) return
     try {
-      await window.moho.rpc('sendWhisper', { accountId, target, body })
+      // Where it was sent from, so it lands in the conversation you were
+      // having rather than in every room this account is in.
+      await window.moho.rpc('sendWhisper', {
+        accountId,
+        target,
+        body,
+        bufferId: this.state.activeBufferId
+      })
     } catch (e) {
       this.toast('error', `Couldn't whisper ${target}: ${(e as Error).message}`)
     }
