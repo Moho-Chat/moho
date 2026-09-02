@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { resolveMediaUrl, nickColor } from '../lib/util'
 import { presenceColor, presenceLabel } from '../lib/presence'
 
@@ -25,10 +26,21 @@ export function Avatar({
   size?: number
   status?: string
 }): JSX.Element {
+  // A picture that will not load falls back to the initial rather than to a
+  // broken-image glyph. Not hypothetical: a room directory lists icons hosted
+  // on servers that may refuse to hand them over, and a column of broken
+  // images is worse than a column of letters.
+  const [broken, setBroken] = useState(false)
+
   return (
     <span className="avatar" style={{ width: size, height: size }}>
-      {url ? (
-        <img src={resolveMediaUrl(url)} alt="" style={{ width: size, height: size }} />
+      {url && !broken ? (
+        <img
+          src={resolveMediaUrl(url)}
+          alt=""
+          style={{ width: size, height: size }}
+          onError={() => setBroken(true)}
+        />
       ) : (
         <span
           className="avatar-fallback"
