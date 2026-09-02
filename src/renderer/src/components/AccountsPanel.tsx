@@ -1083,10 +1083,20 @@ function MatrixForm(): JSX.Element {
         <span className="small muted">Homeserver</span>
         <input
           className="text-field"
+          placeholder="matrix.org"
           value={homeserverUrl}
           onChange={(e) => setHomeserverUrl(e.target.value)}
         />
       </label>
+      {/* Said here because the two ways this goes wrong both look like a
+          wrong password. The daemon asks the server where its client API is,
+          so the domain from your address is usually the right answer even
+          when the API lives elsewhere - and :8448 never is, because that is
+          the port servers talk to each other on. */}
+      <p className="small muted">
+        The domain from your Matrix address is usually right — moho asks the server where its
+        client API actually lives. Not the :8448 port, which is for server-to-server traffic.
+      </p>
       <div className="field-row">
         <label className="field">
           <span className="small muted">Username</span>
