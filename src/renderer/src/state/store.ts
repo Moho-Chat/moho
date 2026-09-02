@@ -854,18 +854,16 @@ export class ChatStore {
   /**
    * Sends a private message to one person on Sneedchat.
    *
-   * Not the same as opening a conversation with them: Sneedchat has no such
-   * thing, and every whisper - sent or received, whoever it was with - lands
-   * in the one Whispers buffer. Going there afterwards is what makes the
-   * message visible, since a whisper is not echoed back into the room it was
-   * sent from.
+   * Stays where you are. This used to go and find a "Whispers" buffer and open
+   * it, which took somebody out of the room they were talking in every time
+   * they answered a whisper - and Sneedchat has no such conversation anyway.
+   * The whisper now appears in the room, marked as one, which is where the
+   * site puts it and where the person who sent it is still looking.
    */
   async sendWhisper(accountId: string, target: string, body: string): Promise<void> {
     if (!body.trim()) return
     try {
       await window.moho.rpc('sendWhisper', { accountId, target, body })
-      const whispers = this.state.buffers.find((b) => b.accountId === accountId && b.name === 'Whispers')
-      if (whispers) this.selectBuffer(whispers.id)
     } catch (e) {
       this.toast('error', `Couldn't whisper ${target}: ${(e as Error).message}`)
     }

@@ -3867,11 +3867,19 @@ video.lightbox-media {
   font-style: italic;
 }
 
-/* An edge rather than a fill: the highlight already tints the row, and two
-   backgrounds fighting would leave the text harder to read than an ordinary
-   message, which is the wrong way round for one that matters more. */
-.message-row.whisper {
-  border-left: 2px solid var(--secondary);
+/* Purple, and its own tint rather than the mention's. Written after the
+   highlight rule so it wins on a whisper that is also highlighted, which every
+   inbound one is - otherwise the two say the same thing in the same colour and
+   a private message is indistinguishable from the room saying your name.
+
+   Styled on the kind rather than the highlight, so a whisper written into a
+   second room - where it is deliberately not highlighted, to keep one whisper
+   to one alert - still reads as a whisper. */
+.message-row.whisper,
+.message-row.whisper.highlight {
+  background: var(--whisper-tint);
+  box-shadow: inset 2px 0 0 var(--whisper);
+  border-left: none;
 }
 
 .whisper-tag {
@@ -3881,8 +3889,8 @@ video.lightbox-media {
   margin-left: var(--spacing-xs);
   padding: 0 6px;
   border-radius: 999px;
-  background: var(--primary-hover);
-  color: var(--secondary);
+  background: var(--whisper-tint);
+  color: var(--whisper);
   font-style: normal;
   text-transform: lowercase;
   vertical-align: middle;

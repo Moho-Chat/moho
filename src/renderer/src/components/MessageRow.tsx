@@ -350,7 +350,11 @@ export function MessageRow({
           {whispered && (
             <span className="whisper-tag small">
               <Icon name="lock" size={11} />
-              <span>whisper{own ? ` to ${message.from}` : ''}</span>
+              {/* Who it went to is in the line itself for one we sent - the
+                  daemon writes the "@name" the site writes - so the tag says
+                  only what kind of message this is. It used to name
+                  `message.from`, which on our own whisper is us. */}
+              <span>whisper</span>
             </span>
           )}
 

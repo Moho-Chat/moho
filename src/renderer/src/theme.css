@@ -30,6 +30,13 @@
   --primary-hover: rgba(66, 165, 245, 0.12);
   --primary-pressed: rgba(66, 165, 245, 0.16);
   --primary-selected: rgba(66, 165, 245, 0.3);
+
+  /* Whispers. Their own colour rather than the mention blue, because they are
+     a different kind of "this one is yours": a mention is the room saying your
+     name, a whisper is somebody speaking only to you, and a row that cannot
+     tell them apart is one where a private message reads as a public one. */
+  --whisper: #b388ff;
+  --whisper-tint: rgba(179, 136, 255, 0.14);
   --surface-hover: rgba(66, 71, 78, 0.08);
   --surface-pressed: rgba(66, 71, 78, 0.12);
   --surface-selected: rgba(66, 71, 78, 0.15);
