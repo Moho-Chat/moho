@@ -73,6 +73,14 @@ export function sameIrcNetwork(a: string, b: string): boolean {
   return !!na && !!nb && na.id === nb.id
 }
 
+/** A thread, as it is being read: what was fetched, and whether it still is. */
+export interface OpenThread {
+  bufferId: string
+  rootId: string
+  messages: ChatMessage[]
+  loading: boolean
+}
+
 export type ActivePanel = '' | 'accounts' | 'settings' | 'join' | 'downloads'
 
 export interface ChatState {
@@ -87,6 +95,14 @@ export interface ChatState {
    * cannot leave a copy of themselves behind on an older message.
    */
   readersByBuffer: Record<string, Record<string, MessageReader[]>>
+  /**
+   * The thread being read, if any.
+   *
+   * One at a time, and held here rather than in the panel's own state so that
+   * opening a thread from a message survives the panel being closed and
+   * reopened, and so the composer can send into it.
+   */
+  openThread: OpenThread | null
   linkUp: boolean
   accounts: Account[]
   buffers: BufferEntry[]
@@ -251,6 +267,7 @@ const INITIAL: ChatState = {
   dividerTsByBuffer: {},
     typingByBuffer: {},
   readersByBuffer: {},
+  openThread: null,
   matrixPermissions: {},
   replyingTo: null,
   toasts: [],
@@ -1086,6 +1103,52 @@ export class ChatStore {
     })
   }
 
+  /**
+   * Opens a thread and reads it from the service.
+   *
+   * The panel shows what is stored the moment it opens and fills in behind
+   * that, because a thread whose replies are already in scrollback should not
+   * blank out while the server confirms them.
+   */
+  async openThreadPanel(bufferId: string, rootId: string): Promise<void> {
+    const known = (this.state.messagesByBuffer[bufferId] || []).filter(
+      (m) => m.id === rootId || (m.replyTo?.thread && m.replyTo.id === rootId)
+    )
+    this.set({ openThread: { bufferId, rootId, messages: known, loading: true } })
+    try {
+      const result = (await window.moho.rpc('fetchThread', { bufferId, rootId })) as {
+        messages?: ChatMessage[]
+      }
+      // Somebody may have closed it, or opened a different one, while this
+      // was in flight - answering into that would swap the thread under them.
+      const open = this.state.openThread
+      if (!open || open.bufferId !== bufferId || open.rootId !== rootId) return
+      this.set({ openThread: { bufferId, rootId, messages: result.messages ?? known, loading: false } })
+    } catch {
+      const open = this.state.openThread
+      if (open && open.bufferId === bufferId && open.rootId === rootId) {
+        this.set({ openThread: { ...open, loading: false } })
+      }
+    }
+  }
+
+  closeThreadPanel(): void {
+    this.set({ openThread: null })
+  }
+
+  /** Says something into a thread, rather than into the room around it. */
+  async sendToThread(body: string): Promise<void> {
+    const open = this.state.openThread
+    if (!open || !body.trim()) return
+    const root = open.messages.find((m) => m.id === open.rootId)
+    await this.dispatchSend(open.bufferId, body, {
+      id: open.rootId,
+      from: root?.from ?? '',
+      body: root?.body ?? '',
+      thread: true
+    })
+  }
+
   private handleEvent(frame: NobilisEvent): void {
     const { event, data } = frame
     switch (event) {
@@ -1783,7 +1846,7 @@ export class ChatStore {
   private async dispatchSend(
     bufferId: string,
     body: string,
-    reply: { id: string; from: string; body: string } | null,
+    reply: { id: string; from: string; body: string; thread?: boolean } | null,
     attachmentPath?: string
   ): Promise<void> {
     if (!body.trim() && !attachmentPath) return
@@ -1841,7 +1904,10 @@ export class ChatStore {
         ...(attachmentPath
           ? { attachmentPath, uploadHost: await uploadHost(account?.service, attachmentPath) }
           : {}),
-        ...(replyToId ? { replyToId } : {})
+        ...(replyToId ? { replyToId } : {}),
+        // Into the thread rather than at the message: the daemon needs to be
+        // told which, because Matrix says them with the same field.
+        ...(reply?.thread ? { thread: true } : {})
       })
       // Success alone doesn't resolve the echo - only the real message event
       // does, since that's what carries nobilis's own id and timestamp.

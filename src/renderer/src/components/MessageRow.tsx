@@ -93,6 +93,14 @@ interface Props {
    * reader has turned the markers off.
    */
   readers?: MessageReader[]
+  /**
+   * How many replies this message has started, where it has started any.
+   * Drawn as the way into the thread, which is the only way into one for a
+   * root that nobody has answered inside the visible log.
+   */
+  threadReplies?: number
+  /** Whether this row is being drawn inside the thread panel itself. */
+  inThread?: boolean
 }
 
 /** How many faces fit before the row starts costing more than it says. */
@@ -136,7 +144,9 @@ export function MessageRow({
   mediaAutoplay,
   mediaLoop,
   contentSniffing,
-  readers
+  readers,
+  threadReplies,
+  inThread
 }: Props): JSX.Element {
   const store = useStore()
   const { menu, open, close } = useContextMenu()
@@ -442,15 +452,30 @@ export function MessageRow({
             </span>
           )}
 
-          {message.replyTo && (
-            <div className="reply-preview small muted">
-              <Icon name="reply" size={13} />
-              <span className="reply-from" style={{ color: nickColor(message.replyTo.from) }}>
-                {message.replyTo.from}
-              </span>
-              <span className="ellipsis">{message.replyTo.body}</span>
-            </div>
-          )}
+          {/* A reply names the message it answers; a threaded message names
+              the thread it is in. The second is a button, because a thread is
+              somewhere you can go - unless this is already the thread, where
+              it would only reopen what is on screen. */}
+          {message.replyTo &&
+            (message.replyTo.thread && !inThread ? (
+              <button
+                type="button"
+                className="reply-preview thread-link small muted"
+                onClick={() => void store.openThreadPanel(bufferId, message.replyTo!.id)}
+              >
+                <Icon name="forum" size={13} />
+                <span>In thread</span>
+                {message.replyTo.body && <span className="ellipsis">{message.replyTo.body}</span>}
+              </button>
+            ) : (
+              <div className="reply-preview small muted">
+                <Icon name={message.replyTo.thread ? 'forum' : 'reply'} size={13} />
+                <span className="reply-from" style={{ color: nickColor(message.replyTo.from) }}>
+                  {message.replyTo.from}
+                </span>
+                <span className="ellipsis">{message.replyTo.body}</span>
+              </div>
+            ))}
 
           {editing ? (
             <input
@@ -626,6 +651,20 @@ export function MessageRow({
             <span className="bubble-time small" title={formatFullTime(message.ts)}>
               {timeLabel}
             </span>
+          )}
+
+          {/* The way into a thread from the message it grew out of. A count
+              rather than a label, because the number is what makes somebody
+              open it - "3 replies" is an invitation and "thread" is furniture. */}
+          {!inThread && !!threadReplies && (
+            <button
+              type="button"
+              className="thread-open small"
+              onClick={() => void store.openThreadPanel(bufferId, message.id)}
+            >
+              <Icon name="forum" size={13} />
+              {threadReplies === 1 ? '1 reply' : `${threadReplies} replies`}
+            </button>
           )}
         </div>
 

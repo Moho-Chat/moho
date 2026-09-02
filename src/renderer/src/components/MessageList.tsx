@@ -135,8 +135,26 @@ export function MessageList(): JSX.Element {
   const [blockedNicks] = usePref<string[]>('blockedNicks', [])
   const readers = useChat((s) => s.readersByBuffer)[bufferId]
 
+
   const accountId = buffers.find((b) => b.id === bufferId)?.accountId || ''
   const all = messagesByBuffer[bufferId] || []
+
+  /**
+   * How many replies each thread has, by the message it grew from.
+   *
+   * Counted from what is loaded rather than asked for: Matrix does send a
+   * summary with the root, but only on the sync that carried it, so a room
+   * read back from scrollback would show nothing. This undercounts a thread
+   * whose replies are older than the loaded window, which is the honest
+   * failure - it says "at least this many", never "none" for a live one.
+   */
+  const threadReplies = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const m of all) {
+      if (m.replyTo?.thread) counts[m.replyTo.id] = (counts[m.replyTo.id] ?? 0) + 1
+    }
+    return counts
+  }, [all])
 
   const messages = useMemo(() => {
     const allowed: Record<string, boolean> = {
@@ -418,6 +436,7 @@ export function MessageList(): JSX.Element {
                 mediaLoop={mediaLoop}
                 contentSniffing={contentSniffing}
                 readers={showReaders ? readers?.[msg.id] : undefined}
+                threadReplies={threadReplies[msg.id]}
               />
             </div>
           ))}

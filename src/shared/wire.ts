@@ -263,6 +263,14 @@ export interface ReplyPreview {
   id: string
   from: string
   body: string
+  /**
+   * Whether `id` names a thread rather than one message being answered.
+   *
+   * The same field carries both because the protocol says both the same way.
+   * What differs is what can be done with it: a reply points at something, a
+   * thread is somewhere, and only the second can be opened and continued.
+   */
+  thread?: boolean
 }
 
 /**

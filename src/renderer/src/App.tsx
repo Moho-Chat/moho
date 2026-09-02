@@ -9,6 +9,7 @@ import { MENTIONS_GROUP_ID } from './lib/groups'
 import { Composer } from './components/Composer'
 import { MembershipGate } from './components/MembershipGate'
 import { NickList } from './components/NickList'
+import { ThreadPanel } from './components/ThreadPanel'
 import { ConversationTools } from './components/ConversationTools'
 import { AccountsPanel } from './components/AccountsPanel'
 import { SettingsPanel } from './components/settings/SettingsPanel'
@@ -57,6 +58,8 @@ export default function App(): JSX.Element {
    * composer all belong to a buffer that is not on screen.
    */
   const onMentionsPage = activePanel === '' && activeGroupId === MENTIONS_GROUP_ID
+
+  const openThread = useChat((s) => s.openThread)
 
   // A stale restored id is harmless: it simply resolves to no buffer and the
   // empty state shows, exactly as it would for "".
@@ -166,7 +169,17 @@ export default function App(): JSX.Element {
           )}
         </div>
 
-        {showNickList && (
+        {/* A thread stands where the member list would, and closes it while
+            it is open: both are a column beside the conversation, and two of
+            them at once leaves the conversation itself too narrow to read. */}
+        {openThread && (
+          <>
+            <div className="divider-v" />
+            <ThreadPanel />
+          </>
+        )}
+
+        {!openThread && showNickList && (
           <>
             <div className="divider-v" />
             <div className="nicklist-pane">

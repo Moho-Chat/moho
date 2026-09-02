@@ -4085,3 +4085,95 @@ video.lightbox-media {
 .message-row:hover .read-markers {
   opacity: 0.25;
 }
+
+/* --- threads ------------------------------------------------------------
+   A thread beside the room, in the column the member list otherwise holds.
+   Wider than that column: this one holds conversation, and a message list
+   squeezed to a name list's width wraps every line to three. */
+.thread-pane {
+  width: 360px;
+  max-width: 45vw;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-container);
+}
+
+.thread-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  border-bottom: 1px solid var(--outline-light);
+}
+
+.thread-title {
+  flex: 1;
+  font-weight: 600;
+}
+
+.thread-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--spacing-s) 0;
+}
+
+.thread-empty {
+  padding: var(--spacing-m);
+  text-align: center;
+}
+
+.thread-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-s);
+  border-top: 1px solid var(--outline-light);
+}
+
+.thread-composer textarea {
+  flex: 1;
+  resize: none;
+  max-height: 8em;
+  padding: var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  color: var(--surface-text);
+  font: inherit;
+}
+
+/* The way in, from the message a thread grew out of. Quiet until pointed at:
+   a busy room has one of these on every few messages, and a row of buttons
+   competing with the text would make the room harder to read than the
+   threads are worth. */
+.thread-open,
+.reply-preview.thread-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  margin-top: 2px;
+  padding: 1px var(--spacing-xs);
+  border: 1px solid var(--outline-light);
+  border-radius: var(--corner-radius-small);
+  color: var(--surface-variant-text);
+  background: transparent;
+  text-align: left;
+  max-width: 100%;
+}
+
+.thread-open:hover,
+.reply-preview.thread-link:hover {
+  border-color: var(--outline-medium);
+  color: var(--surface-text);
+  background: var(--surface-container-high);
+}
+
+/* The homeserver whose directory to ask. Narrower than the search box beside
+   it: a hostname is short and predictable, and the words being searched for
+   are neither. */
+.directory-server {
+  flex: 0 1 11em;
+}
