@@ -142,9 +142,17 @@ export function isWhisper(kind: string | undefined): boolean {
  * fast enough that these are the reason people are watching, a redemption
  * styled like a join message is a redemption nobody sees - so it gets a plate
  * of its own.
+ *
+ * Several kinds rather than one, because they are turned off separately -
+ * somebody who wants redemptions and not raids has to be able to say so, and
+ * a single kind made that a choice between all of them and none.
+ *
+ * Moderation and stream events are deliberately not here: a timeout is not a
+ * thing somebody spent something on, and a plate would give it a weight it
+ * does not have.
  */
 export function isReward(kind: string | undefined): boolean {
-  return kind === 'reward'
+  return kind === 'reward' || kind === 'sub' || kind === 'raid' || kind === 'poll'
 }
 
 export function bufferKindGlyph(kind: string): string {

@@ -822,6 +822,27 @@ export class ChatStore {
       return
     }
 
+    // A kick.com link names a streamer, and watching one needs no more than
+    // that - so it opens the channel rather than the browser. Any Kick
+    // account will do: they all read the same public chat, and the signed-in
+    // one is preferred only because it can also talk.
+    if (link.service === 'kick') {
+      const account =
+        this.state.accounts.find((a) => a.service === 'kick' && a.hasPassword) ??
+        this.state.accounts.find((a) => a.service === 'kick')
+      if (!account) {
+        this.toast('error', 'Add a Kick account to open that link here')
+        void window.moho.openExternal(url)
+        return
+      }
+      this.set({ activePanel: '' })
+      void window.moho
+        .rpc('joinBuffer', { accountId: account.id, name: link.handle })
+        .then(() => this.awaitBuffer(account.id, link.handle))
+        .catch((e: Error) => this.toast('error', `Couldn't open ${link.handle}: ${e.message}`))
+      return
+    }
+
     // An IRC account is identified as "nick@host", which is the only place the
     // host survives out here - the wire account carries what to show, not what
     // it connected to.

@@ -122,6 +122,15 @@ export function MessageList(): JSX.Element {
   const [showMxInvite] = usePref<boolean>('matrix.showInviteMessages', true)
   const [showMxKick] = usePref<boolean>('matrix.showKickMessages', true)
   const [showMxQuit] = usePref<boolean>('matrix.showQuitMessages', true)
+  // Kick's chat carries a great deal nobody said, and on a busy channel it can
+  // outnumber the conversation. Separable for the same reason IRC's join and
+  // part lines are: each is worth having, and not all at once.
+  const [showRedemptions] = usePref<boolean>('kick.showRedemptions', true)
+  const [showSubs] = usePref<boolean>('kick.showSubscriptions', true)
+  const [showRaids] = usePref<boolean>('kick.showRaids', true)
+  const [showPolls] = usePref<boolean>('kick.showPolls', true)
+  const [showStream] = usePref<boolean>('kick.showStreamEvents', true)
+  const [showKickMod] = usePref<boolean>('kick.showModeration', true)
   const [blockedNicks] = usePref<string[]>('blockedNicks', [])
 
   const accountId = buffers.find((b) => b.id === bufferId)?.accountId || ''
@@ -137,7 +146,13 @@ export function MessageList(): JSX.Element {
       matrixJoin: showMxJoin,
       matrixInvite: showMxInvite,
       matrixKick: showMxKick,
-      matrixQuit: showMxQuit
+      matrixQuit: showMxQuit,
+      reward: showRedemptions,
+      sub: showSubs,
+      raid: showRaids,
+      poll: showPolls,
+      stream: showStream,
+      moderation: showKickMod
     }
     return all.filter((m) => {
       if (accountId && blockedNicks.includes(`${accountId}|${m.from}`)) return false
@@ -148,7 +163,8 @@ export function MessageList(): JSX.Element {
   }, [
     all, accountId, blockedNicks,
     showJoin, showPart, showNick, showTopic, showMode,
-    showMxJoin, showMxInvite, showMxKick, showMxQuit
+    showMxJoin, showMxInvite, showMxKick, showMxQuit,
+    showRedemptions, showSubs, showRaids, showPolls, showStream, showKickMod
   ])
 
   /**

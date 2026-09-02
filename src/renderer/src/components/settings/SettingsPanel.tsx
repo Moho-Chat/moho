@@ -23,6 +23,7 @@ const CATEGORIES = [
   { id: 'sockchat', label: 'Sneedchat', available: true },
   { id: 'tor', label: 'Tor', available: true },
   { id: 'matrix', label: 'Matrix', available: true },
+  { id: 'kick', label: 'Kick', available: true },
   { id: 'about', label: 'About', available: true },
   { id: 'discord', label: 'Discord', available: false },
   { id: 'slack', label: 'Slack', available: false }
@@ -139,6 +140,7 @@ export function SettingsPanel(): JSX.Element {
         {selected === 'sockchat' && <SneedchatSettings />}
         {selected === 'tor' && <TorSettings />}
         {selected === 'matrix' && <MatrixSettings />}
+        {selected === 'kick' && <KickSettings />}
         {selected === 'about' && <AboutSettings />}
         {(selected === 'discord' || selected === 'slack') && (
           <ComingSoon label={CATEGORIES.find((c) => c.id === selected)!.label} />
@@ -539,6 +541,60 @@ function SneedchatSettings(): JSX.Element {
       >
         <UploadHostSetting service="sockchat" kind="images" />
         <UploadHostSetting service="sockchat" kind="media" />
+      </SettingsSection>
+    </>
+  )
+}
+
+/**
+ * Kick's chat carries a great deal that nobody said.
+ *
+ * Redemptions, subscriptions, gifted subs, raids and polls all arrive as
+ * events, and on a busy channel they can outnumber the conversation. Each is
+ * worth having and not all are worth having at once, so they are separable -
+ * the same reasoning as IRC's join and part filters, for the same reason.
+ */
+function KickSettings(): JSX.Element {
+  return (
+    <>
+      <SettingsSection
+        title="Kick"
+        description="Channels are watched per account - open the Accounts pane, expand a Kick account and use Sync my follows, or add one by handle with the + beside the account. Kick chat is public, so an account signed out still reads everything."
+      />
+
+      <SettingsSection
+        title="What to show besides chat"
+        description="These are drawn on a plate of their own so they survive being scrolled past, which is also what makes them worth turning off individually."
+      >
+        <ToggleSetting
+          settingKey="kick.showRedemptions"
+          label="Show reward redemptions"
+          description='"someone redeemed CAT PATS"'
+          defaultValue={true}
+        />
+        <ToggleSetting
+          settingKey="kick.showSubscriptions"
+          label="Show subscriptions and gifted subs"
+          defaultValue={true}
+        />
+        <ToggleSetting settingKey="kick.showRaids" label="Show raids" defaultValue={true} />
+        <ToggleSetting
+          settingKey="kick.showPolls"
+          label="Show polls"
+          description="The question and the running tally, as the streamer changes it"
+          defaultValue={true}
+        />
+        <ToggleSetting
+          settingKey="kick.showStreamEvents"
+          label="Show going live and going offline"
+          defaultValue={true}
+        />
+        <ToggleSetting
+          settingKey="kick.showModeration"
+          label="Show timeouts and bans"
+          description="What a moderator did, which everybody in the channel can see happening anyway"
+          defaultValue={true}
+        />
       </SettingsSection>
     </>
   )

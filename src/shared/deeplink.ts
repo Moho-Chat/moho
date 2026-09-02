@@ -21,12 +21,50 @@ export interface IrcLink {
   channels: string[]
 }
 
-/** Schemes this understands. Anything else is not ours and is left alone. */
+/** A Kick channel, named by the handle in a kick.com link. */
+export interface KickLink {
+  service: 'kick'
+  handle: string
+}
+
+export type DeepLink = IrcLink | KickLink
+
+/**
+ * Schemes moho asks the desktop to send it.
+ *
+ * Deliberately not the same list as what `isDeepLink` accepts: a kick.com
+ * link is an ordinary web address, and registering for `https` would mean
+ * volunteering to be the system browser.
+ */
 export const DEEP_LINK_SCHEMES = ['irc', 'ircs']
 
 /** Whether a string is a link this client would act on. */
 export function isDeepLink(value: string): boolean {
-  return DEEP_LINK_SCHEMES.some((s) => value.toLowerCase().startsWith(`${s}:`))
+  const lower = value.toLowerCase()
+  return DEEP_LINK_SCHEMES.some((s) => lower.startsWith(`${s}:`)) || !!kickHandle(value)
+}
+
+/**
+ * The handle in a kick.com link, if it is one that names a channel.
+ *
+ * Only the bare `kick.com/<handle>` form. A link to a clip, a video or a
+ * category is a page moho cannot show, and opening the channel instead would
+ * quietly take somebody somewhere they did not ask to go - those keep going
+ * to the browser.
+ */
+export function kickHandle(value: string): string | null {
+  let url: URL
+  try {
+    url = new URL(value.trim())
+  } catch {
+    return null
+  }
+  if (!/^https?:$/.test(url.protocol)) return null
+  if (url.hostname.replace(/^www\./, '').toLowerCase() !== 'kick.com') return null
+  const parts = url.pathname.split('/').filter(Boolean)
+  if (parts.length !== 1) return null
+  const handle = parts[0]
+  return /^[A-Za-z0-9_-]+$/.test(handle) ? handle : null
 }
 
 /**
@@ -50,7 +88,10 @@ export function isDeepLink(value: string): boolean {
  * - `ircs://` means TLS. `irc://` on port 6697 does too, whatever it says,
  *   because that port is TLS everywhere and a link that names it means it.
  */
-export function parseDeepLink(value: string): IrcLink | null {
+export function parseDeepLink(value: string): DeepLink | null {
+  const kick = kickHandle(value)
+  if (kick) return { service: 'kick', handle: kick }
+
   let url: URL
   try {
     url = new URL(value.trim())
