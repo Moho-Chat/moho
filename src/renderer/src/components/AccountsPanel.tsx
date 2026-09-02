@@ -361,7 +361,13 @@ function IrcSasl({
   const [password, setPassword] = useState('')
   const [allowPlaintext, setAllowPlaintext] = useState(account.allowPlaintextSasl)
 
-  const apply = (patch: { enabled?: boolean; saslUser?: string; allowPlaintextSasl?: boolean }): void =>
+  const apply = (patch: {
+    enabled?: boolean
+    saslUser?: string
+    allowPlaintextSasl?: boolean
+    saslMechanism?: string
+    saslCertPath?: string
+  }): void =>
     call('setAccountSasl', {
       accountId: account.id,
       enabled: account.saslEnabled,
@@ -417,6 +423,46 @@ function IrcSasl({
               })
             }}
           />
+
+          {/* How the password is proved, where it is proved at all.
+              Defaulted rather than chosen, because the default is right for
+              nearly everyone and the alternatives each need something the
+              network has to support first. */}
+          <label className="field">
+            <span className="small muted">Mechanism</span>
+            <select
+              className="text-field"
+              value={account.saslMechanism}
+              onChange={(e) => apply({ saslMechanism: e.target.value })}
+            >
+              <option value="">Automatic — a certificate if set, otherwise PLAIN</option>
+              <option value="plain">PLAIN — the password, inside TLS</option>
+              <option value="scram-sha-256">SCRAM-SHA-256 — proves the password without sending it</option>
+              <option value="external">EXTERNAL — the client certificate, no password at all</option>
+            </select>
+          </label>
+
+          {/* Only where the mechanism needs one. EXTERNAL is the certificate;
+              everything else ignores it, and a path field beside PLAIN would
+              read as something that does nothing. */}
+          {(account.saslMechanism === 'external' || account.hasSaslCertificate) && (
+            <LabeledInput
+              label="Client certificate"
+              defaultValue={account.hasSaslCertificate ? '(set)' : ''}
+              placeholder="/path/to/cert.pem on the daemon's machine"
+              onCommit={(value) => apply({ saslCertPath: value === '(set)' ? undefined : value })}
+            />
+          )}
+
+          {/* SCRAM proves the password to the server without sending it, and
+              proves the server knew it too - worth saying, because that second
+              half is the part people do not expect from a login. */}
+          {account.saslMechanism === 'scram-sha-256' && (
+            <p className="small muted">
+              Few IRC networks offer SCRAM — Ergo does, Libera and Rizon do not. If this server
+              refuses it and says what it does accept, moho falls back to that automatically.
+            </p>
+          )}
 
           {/* Only where it is a live question. On a TLS connection the
               allowance decides nothing, and offering it there would be a

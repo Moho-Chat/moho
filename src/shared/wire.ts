@@ -16,6 +16,16 @@ export interface Account {
   saslEnabled: boolean
   saslUsername: string
   allowPlaintextSasl: boolean
+  /** Which SASL mechanism this account is pinned to, or '' for the default. */
+  saslMechanism: string
+  /**
+   * Whether a TLS client certificate is configured for SASL EXTERNAL.
+   *
+   * The path itself is deliberately not reported: a frontend never needs it,
+   * and it names a file on whichever machine the daemon runs on rather than
+   * this one.
+   */
+  hasSaslCertificate: boolean
   /**
    * Whether the connection is encrypted. Only IRC is ever false - every other
    * service here is HTTPS or WSS by construction.
