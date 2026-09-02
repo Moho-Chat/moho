@@ -57,6 +57,16 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
           <div className="small muted">
             Your other logged-in devices. Verify one to let encrypted history decrypt across both.
           </div>
+          {/* Said because the tick is otherwise a promise this cannot keep.
+              moho does no cross-signing, so a verification here is recorded
+              between these two sessions and never published - Element will
+              still show the device as unverified, and somebody who was not
+              told that would reasonably conclude one of the two clients is
+              broken. */}
+          <div className="small muted">
+            Verifying marks a session as trusted <em>in moho</em>. moho does not do cross-signing,
+            so other clients will still show it unverified.
+          </div>
         </div>
         <button type="button" className="icon-button" title="Refresh" onClick={refresh}>
           <Icon name="refresh" size={16} />

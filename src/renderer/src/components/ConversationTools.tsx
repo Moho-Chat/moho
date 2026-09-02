@@ -7,6 +7,63 @@ import type { BufferEntry } from '../state/store'
 import type { Message } from '../../../shared/wire'
 
 /**
+ * Asking somebody into a Matrix room.
+ *
+ * A field rather than a picker, because a Matrix address names a person
+ * globally - there is no roster to choose from and nobody to look up first.
+ * Offered on every Matrix room rather than gated on permission: the server
+ * decides, and it says so plainly enough that guessing here would only mean
+ * hiding the action from somebody who could have used it.
+ */
+function InviteToRoom({ buffer }: { buffer: BufferEntry }): JSX.Element {
+  const store = useStore()
+  const [open, setOpen] = useState(false)
+  const [who, setWho] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const invite = (): void => {
+    const userId = who.trim()
+    if (!userId) return
+    setBusy(true)
+    void window.moho
+      .rpc('inviteMatrixMember', { accountId: buffer.accountId, bufferId: buffer.id, userId })
+      .then(() => {
+        store.toast('info', `Invited ${userId}`)
+        setWho('')
+        setOpen(false)
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+
+  if (!open) {
+    return <IconButton name="person_add" title="Invite somebody to this room" onClick={() => setOpen(true)} />
+  }
+
+  return (
+    <div className="conversation-search">
+      <Icon name="person_add" size={16} />
+      <input
+        autoFocus
+        type="text"
+        value={who}
+        placeholder="@someone:server"
+        disabled={busy}
+        onChange={(e) => setWho(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            setWho('')
+            setOpen(false)
+          }
+          if (e.key === 'Enter') invite()
+        }}
+        onBlur={() => !who.trim() && setOpen(false)}
+      />
+    </div>
+  )
+}
+
+/**
  * What a channel's restrictions mean, for the ones worth explaining.
  *
  * IRC writes them as letters because that is what its server says; Kick has
@@ -159,6 +216,11 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
       {/* Beside the call button, for the same reason it is here: it acts on
           the conversation being read rather than on the window. */}
       {isDiscord && isDm && <AddToConversation buffer={buffer} />}
+
+      {/* The same job on Matrix, where it needs no picker: a Matrix address
+          names somebody whether or not this account has ever met them, so
+          there is no friend list to choose from and nothing to look up. */}
+      {buffer.accountId.startsWith('matrix:') && <InviteToRoom buffer={buffer} />}
 
       <div className="conversation-search">
         <Icon name="search" size={16} />
