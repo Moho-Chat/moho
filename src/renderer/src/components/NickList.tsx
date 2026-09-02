@@ -29,6 +29,15 @@ import type { Member } from '../../../shared/wire'
 export type ModerationAction = 'kick' | 'ban' | 'mute' | 'op' | 'deop' | 'voice'
 
 /**
+ * Why the list says what it says, for the one service where it needs saying.
+ */
+function rosterNote(service: string | undefined): string | undefined {
+  return service === 'kick'
+    ? 'Kick has no viewer list — this is everybody who has spoken here recently'
+    : undefined
+}
+
+/**
  * What the local user may do in an IRC channel, read off their own prefix.
  *
  * `~` founder, `&` admin, `@` operator, `%` halfop, `+` voice - the ranks in
@@ -95,7 +104,15 @@ export function NickList(): JSX.Element {
     // Guard the empty prefix explicitly: indexOf('') is 0, which is the
     // owner slot, so every unranked member - all of Sneedchat, and any
     // ordinary IRC user - was being filed under Owners.
-    const rank = (m: Member): number => (m.prefix ? '~&@%+'.indexOf(m.prefix) : -1)
+    //
+    // Kick says the same thing in words rather than symbols, since its badges
+    // have names and no agreed sigils. Mapped onto the same ranks so one
+    // grouping serves both rather than each protocol growing its own.
+    const rank = (m: Member): number => {
+      if (!m.prefix) return -1
+      const named: Record<string, number> = { broadcaster: 0, moderator: 2, vip: 3, og: 4, founder: 4, subscriber: 4 }
+      return m.prefix in named ? named[m.prefix] : '~&@%+'.indexOf(m.prefix)
+    }
     return [
       { label: 'Owners', members: filtered.filter((m) => rank(m) === 0).sort(byName) },
       { label: 'Moderators', members: filtered.filter((m) => rank(m) > 0 && rank(m) < 4).sort(byName) },
@@ -121,7 +138,12 @@ export function NickList(): JSX.Element {
             }}
           />
         ) : (
-          <span className="small muted ellipsis">{members.length} members</span>
+          // Named for what the list actually is. Kick has no viewer list to
+          // ask for - it is built from who has spoken - and calling that
+          // "members" would claim to know something nobody here can know.
+          <span className="small muted ellipsis" title={rosterNote(account?.service)}>
+            {members.length} {account?.service === 'kick' ? 'recently talking' : 'members'}
+          </span>
         )}
         <IconButton
           name={searchActive ? 'close' : 'search'}

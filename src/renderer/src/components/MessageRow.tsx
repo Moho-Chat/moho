@@ -367,8 +367,12 @@ export function MessageRow({
               Badges beside it, because on Kick who is talking is half the
               message: a moderator, a two-year subscriber and a stranger read
               as three different things. */}
+          {/* Name and badges in one element, because the name is a block in
+              comfy and bubble layouts - badges as siblings of it fell to the
+              next line and sat in with the message text. They belong to the
+              byline, so they live in it. */}
           {!grouped && !isSystem && !own && (
-            <>
+            <span className="message-byline">
               <span className="message-from" style={{ color: message.senderColor || nickColor(message.from) }}>
                 {message.isAction ? `* ${message.from}` : message.from}
               </span>
@@ -381,7 +385,7 @@ export function MessageRow({
                   {badgeLabel(badge)}
                 </span>
               ))}
-            </>
+            </span>
           )}
 
           {/* Said in words as well as in styling. Italics and a tinted edge

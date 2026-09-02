@@ -470,9 +470,12 @@
 
 /* A name above the bubble, not inside it: it labels who is speaking, and
    inside it would read as part of what they said. */
-.message-row.bubbles .message-from {
+.message-row.bubbles .message-byline {
   display: block;
   margin: 0 0 2px;
+}
+
+.message-row.bubbles .message-from {
   font-size: 12px;
 }
 
@@ -568,12 +571,20 @@
   word-break: break-word;
 }
 
-.message-from {
-  font-weight: 600;
+/* The name and whatever sits with it. One element so a layout that puts the
+   name on its own line takes the badges with it - as siblings they dropped to
+   the next line and read as part of the message. */
+.message-byline {
   margin-right: var(--spacing-s);
 }
 
-.message-row.comfy .message-from {
+.message-from {
+  font-weight: 600;
+}
+
+/* Comfy and bubble layouts give the byline its own line; the compact log
+   keeps it inline, where the name has always run into the text. */
+.message-row.comfy .message-byline {
   display: block;
   margin-right: 0;
 }
