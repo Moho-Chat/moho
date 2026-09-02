@@ -320,6 +320,8 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
 
           {account.service === 'matrix' && <MatrixAccountTools account={account} />}
 
+          {account.service === 'kick' && <KickFollowSync account={account} />}
+
           <button
             type="button"
             className="button danger"
@@ -838,6 +840,67 @@ function DiscordForm({ accountId }: { accountId?: string }): JSX.Element {
         </>
       )}
       {status && <p className="small muted">{status}</p>}
+    </div>
+  )
+}
+
+/**
+ * Reads this account's Kick follows again.
+ *
+ * Here rather than automatic, and that is the trade being made explicit: the
+ * follows are read once, when the account is first connected, because a list
+ * re-read on every connect would put back every channel the person had closed.
+ * The cost of that is a streamer followed later never turning up on its own -
+ * so this is the way to ask, and it is the person asking.
+ *
+ * Adds only. By now the list belongs to whoever is using it, and a sync that
+ * also removed things would be the same overreach in the other direction - so
+ * un-following on Kick closes nothing here.
+ *
+ * It will, though, reopen a channel that was closed earlier, because from
+ * here that channel is simply one you follow and are not watching. That is
+ * what the button says it does, and it is said plainly below rather than left
+ * to be discovered: the automatic sync is the one that must never resurrect a
+ * closed channel, since nobody asked it to run.
+ */
+function KickFollowSync({ account }: { account: Account }): JSX.Element {
+  const store = useStore()
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState('')
+
+  const sync = (): void => {
+    setBusy(true)
+    setResult('')
+    void window.moho
+      .rpc<{ added: number; channels: string[]; connected: boolean }>('syncKickFollows', {
+        accountId: account.id
+      })
+      .then((r) => {
+        // Named rather than counted where there are few enough to read: "3
+        // added" sends somebody looking for which three.
+        if (r.added === 0) setResult('Already watching everything you follow.')
+        else if (r.channels.length <= 4) setResult(`Now watching ${r.channels.join(', ')}.`)
+        else setResult(`Now watching ${r.added} more channels.`)
+        // Persisted either way, so this is a note about when rather than an
+        // error about whether.
+        if (r.added > 0 && !r.connected) setResult((s) => `${s} They will open when the account reconnects.`)
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <div className="sasl-block">
+      <span className="small muted">Follows</span>
+      <p className="small muted">
+        Your follows were read in when this account was added, and not since — so anyone you have
+        followed after that is not here yet. This opens them, along with any followed channel you
+        closed earlier. Un-following on Kick closes nothing here.
+      </p>
+      <button type="button" className="button" disabled={busy} onClick={sync}>
+        {busy ? 'Reading your follows…' : 'Sync my follows'}
+      </button>
+      {result && <p className="small muted">{result}</p>}
     </div>
   )
 }
