@@ -381,7 +381,23 @@ export function BufferList(): JSX.Element {
                   const folded = isCollapsed(key)
                   return (
                     <div key={section.key} className="category">
-                      {section.name && (
+                      {naming?.id === section.key ? (
+                        <CategoryNameField
+                          value={naming.name}
+                          onChange={(name) => setNaming({ id: naming.id, name })}
+                          onCommit={() => {
+                            const name = naming.name.trim()
+                            if (name) {
+                              writeCategories(
+                                myCategories.map((c) => (c.id === naming.id ? { ...c, name } : c))
+                              )
+                            }
+                            setNaming(null)
+                          }}
+                          onCancel={() => setNaming(null)}
+                        />
+                      ) : (
+                        section.name && (
                         <button
                           type="button"
                           className={classes(
@@ -430,7 +446,9 @@ export function BufferList(): JSX.Element {
                             <span className="muted category-count">{section.buffers.length}</span>
                           )}
                         </button>
+                        )
                       )}
+
                       {/* A collapsed heading still shows the channel you are
                           reading, or selecting it from elsewhere would appear
                           to do nothing. */}
@@ -462,7 +480,17 @@ export function BufferList(): JSX.Element {
               icon: 'create_new_folder',
               onClick: () => {
                 const id = `cat-${Date.now().toString(36)}`
-                writeCategories([...myCategories, { id, name: 'New category' }])
+                // At the top, not the end. The command was given from the
+                // group's own title at the top of this list, and a heading
+                // that appears twenty rows below where it was asked for is a
+                // heading somebody has to go and find. It can be dragged
+                // anywhere afterwards.
+                writeCategories([{ id, name: 'New category' }, ...myCategories])
+                // Named in the saved order too, or the ordering rule would
+                // sort a heading nobody has placed to the bottom - which is
+                // exactly where this one must not go.
+                const order = categoryOrder[activeGroup.id]
+                if (order?.length) setCategoryOrder(activeGroup.id, [id, ...order])
                 // Straight into renaming it: a heading called "New category"
                 // is not one anybody meant to keep.
                 setNaming({ id, name: 'New category' })
@@ -497,28 +525,6 @@ export function BufferList(): JSX.Element {
         />
       )}
 
-      {naming && (
-        <div className="category-naming">
-          <input
-            autoFocus
-            className="text-field"
-            value={naming.name}
-            onChange={(e) => setNaming({ ...naming, name: e.target.value })}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') setNaming(null)
-              if (e.key === 'Enter') {
-                const name = naming.name.trim()
-                if (name) {
-                  writeCategories(myCategories.map((c) => (c.id === naming.id ? { ...c, name } : c)))
-                }
-                setNaming(null)
-              }
-            }}
-            onBlur={() => setNaming(null)}
-          />
-        </div>
-      )}
-
       {/* Outside the group above, so a call stays visible and hangable-up
           wherever you navigate. */}
       <VoicePanel />
@@ -526,6 +532,53 @@ export function BufferList(): JSX.Element {
       <div className="divider-h" />
       <UserFooter account={groupAccount} />
     </div>
+  )
+}
+
+/**
+ * Naming a heading, where the heading is.
+ *
+ * In the flow rather than floating over the list, which is what the box that
+ * used to do this got wrong twice over: it sat at a fixed offset from the
+ * bottom, so renaming a heading at the top of a long list meant crossing the
+ * window to type - and it was positioned against nothing, so it spanned the
+ * whole viewport. Both stop being possible once the field simply takes the
+ * heading's place.
+ *
+ * That also settles where a brand new heading is named: it is made at the top
+ * of the list, right under the group title the command was given from, so the
+ * field appears where the cursor already is.
+ */
+function CategoryNameField({
+  value,
+  onChange,
+  onCommit,
+  onCancel
+}: {
+  value: string
+  onChange: (value: string) => void
+  onCommit: () => void
+  onCancel: () => void
+}): JSX.Element {
+  return (
+    <input
+      autoFocus
+      className="category-name-field"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      // Selected on focus, because the name it opens with is either the old
+      // one being replaced or the placeholder nobody meant to keep. Either
+      // way the first keystroke should replace it rather than append to it.
+      onFocus={(e) => e.currentTarget.select()}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onCancel()
+        if (e.key === 'Enter') onCommit()
+      }}
+      // Clicking away keeps what was typed rather than discarding it: the
+      // field is in the list rather than over it, so a click elsewhere reads
+      // as moving on, not as calling it off. Escape is the way to call it off.
+      onBlur={onCommit}
+    />
   )
 }
 
