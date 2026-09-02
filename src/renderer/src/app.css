@@ -849,6 +849,14 @@ img.composer-emoji {
   width: 8px;
 }
 
+/* A badge in the member list. Pushed to the right and never shrunk, so a long
+   name ellipsises rather than the badge being squeezed into nothing - the
+   badge is the shorter and the more scannable of the two. */
+.nick-row .sender-badge {
+  flex: none;
+  margin-left: auto;
+}
+
 /* --- panels ----------------------------------------------------------- */
 
 .panel {

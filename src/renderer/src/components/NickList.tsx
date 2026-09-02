@@ -29,6 +29,25 @@ import type { Member } from '../../../shared/wire'
 export type ModerationAction = 'kick' | 'ban' | 'mute' | 'op' | 'deop' | 'voice'
 
 /**
+ * A rank word shortened to something that fits beside a name.
+ *
+ * Deliberately the same abbreviations the message byline uses, so the same
+ * person reads the same way in both places. An unfamiliar word keeps its own
+ * first letters rather than being dropped.
+ */
+function shortBadge(prefix: string): string {
+  const short: Record<string, string> = {
+    broadcaster: 'HOST',
+    moderator: 'MOD',
+    subscriber: 'SUB',
+    founder: 'FDR',
+    og: 'OG',
+    vip: 'VIP'
+  }
+  return short[prefix] ?? prefix.slice(0, 3).toUpperCase()
+}
+
+/**
  * Why the list says what it says, for the one service where it needs saying.
  */
 function rosterNote(service: string | undefined): string | undefined {
@@ -328,10 +347,22 @@ function MemberRow({
         onClick={onMention}
         title={member.userId || member.nick}
       >
-        {member.prefix && <span className="nick-prefix">{member.prefix}</span>}
+        {/* IRC's rank is one character and sits in a fixed slot before the
+            name. Kick's is a word - "moderator", "subscriber" - which
+            overflowed that eight-pixel slot and painted straight over the
+            nick beside it. A word is drawn as a badge instead, after the
+            name, the same way it is drawn in a message. */}
+        {member.prefix && member.prefix.length === 1 && (
+          <span className="nick-prefix">{member.prefix}</span>
+        )}
         <span className="ellipsis" style={{ color: nickColor(member.nick) }}>
           {member.nick}
         </span>
+        {member.prefix && member.prefix.length > 1 && (
+          <span className={`sender-badge small ${member.prefix}`} title={member.prefix}>
+            {shortBadge(member.prefix)}
+          </span>
+        )}
         {blocked && <Icon name="block" size={12} />}
       </button>
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={entries} onClose={close} />}
