@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon, MaskIcon } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { UserFooter } from './UserFooter'
@@ -26,7 +26,13 @@ import {
 } from '../lib/util'
 import type { Account, Member } from '../../../shared/wire'
 import { Avatar } from './Avatar'
-import { categoryKey, sections, type CategorySection, type CustomCategory } from '../lib/categories'
+import {
+  categoryKey,
+  reorderCategories,
+  sections,
+  type CategorySection,
+  type CustomCategory
+} from '../lib/categories'
 
 /**
  * Buffers grouped under a collapsible header per account, rather than one flat
@@ -55,6 +61,7 @@ export function BufferList(): JSX.Element {
   // something any other client of the same account would agree about.
   const [customCats, setCustomCats] = useMapPref<CustomCategory[]>('customCategories')
   const [assignment, setAssignment] = useMapPref<string>('channelCategory')
+  const [categoryOrder, setCategoryOrder] = useMapPref<string[]>('categoryOrder')
   const [, toggleCollapsed, isCollapsed] = useIdSetPref('collapsedCategories')
   const [, setHidden] = usePref<string[]>('hiddenBuffers', [])
 
@@ -191,7 +198,7 @@ export function BufferList(): JSX.Element {
   const grouped = useMemo(() => {
     if (!activeGroup) return null
     const mine = customCats[activeGroup.id] ?? []
-    const list = sections(groupBuffers, mine, assignment)
+    const list = sections(groupBuffers, mine, assignment, categoryOrder[activeGroup.id] ?? [])
     if (!isPinnedPage && !isDmPage) {
       for (const s of list) {
         s.buffers.sort((a, b) => (a.position || 0) - (b.position || 0))
@@ -201,7 +208,7 @@ export function BufferList(): JSX.Element {
     // they just made it, and a heading that vanishes until something is put
     // in it cannot have anything put in it.
     return list.filter((s) => s.custom || s.buffers.length > 0)
-  }, [activeGroup, isPinnedPage, isDmPage, groupBuffers, customCats, assignment])
+  }, [activeGroup, isPinnedPage, isDmPage, groupBuffers, customCats, assignment, categoryOrder])
 
   // The menu still toggles a buffer's *own* flag independently of a muted
   // rail entry above it, the same way muting a channel inside an
@@ -252,6 +259,27 @@ export function BufferList(): JSX.Element {
       onDock={() => store.dock(b.id)}
     />
   )
+
+  // The dragged heading lives in a ref as well as in state, for the reason
+  // the rail's does: dragstart and drop are separate events, and reading the
+  // value out of state means depending on a re-render having happened in
+  // between. State mirrors it only so the headings restyle while dragging.
+  const draggedCategory = useRef('')
+  const [draggingCategory, setDraggingCategory] = useState('')
+  const [overCategory, setOverCategory] = useState('')
+
+  const endCategoryDrag = (): void => {
+    draggedCategory.current = ''
+    setDraggingCategory('')
+    setOverCategory('')
+  }
+
+  const dropCategory = (targetKey: string): void => {
+    const from = draggedCategory.current
+    endCategoryDrag()
+    if (!from || !grouped || !activeGroup || from === targetKey) return
+    setCategoryOrder(activeGroup.id, reorderCategories(grouped, from, targetKey))
+  }
 
   const hideBuffer = (id: string): void => {
     if (!isHidden(id)) setHidden([...hidden, id])
@@ -307,10 +335,42 @@ export function BufferList(): JSX.Element {
                       {section.name && (
                         <button
                           type="button"
-                          className="category-head small"
+                          className={classes(
+                            'category-head',
+                            'small',
+                            draggingCategory === section.key && 'lifted',
+                            overCategory === section.key && draggingCategory !== section.key && 'drop-target'
+                          )}
                           onClick={() => toggleCollapsed(key)}
                           onContextMenu={(e) => openCategoryMenu(e, section)}
-                          title={section.custom ? 'Your heading — right-click to rename or remove' : section.name}
+                          // Every heading moves, the service's included. Its
+                          // own order is the server's opinion about its own
+                          // categories, which is a fine default and no reason
+                          // to be stuck with it here.
+                          draggable
+                          onDragStart={(e) => {
+                            // Chromium abandons a drag whose dataTransfer was
+                            // never written to.
+                            e.dataTransfer.setData('text/plain', section.key)
+                            e.dataTransfer.effectAllowed = 'move'
+                            draggedCategory.current = section.key
+                            setDraggingCategory(section.key)
+                          }}
+                          onDragOver={(e) => {
+                            if (!draggedCategory.current) return
+                            // Only a heading is a target. Without this the
+                            // browser refuses the drop and the gesture dies
+                            // where it started.
+                            e.preventDefault()
+                            e.dataTransfer.dropEffect = 'move'
+                            setOverCategory(section.key)
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault()
+                            dropCategory(section.key)
+                          }}
+                          onDragEnd={endCategoryDrag}
+                          title={section.custom ? 'Your heading — drag to reorder, right-click to rename or remove' : `${section.name} — drag to reorder`}
                         >
                           <Icon name={folded ? 'chevron_right' : 'expand_more'} size={14} />
                           <span className="ellipsis">{section.name}</span>

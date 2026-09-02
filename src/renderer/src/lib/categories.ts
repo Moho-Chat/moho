@@ -26,6 +26,14 @@ export interface CategorySection {
   buffers: BufferEntry[]
 }
 
+/**
+ * The unheaded section, which holds the channels that sit above every heading.
+ *
+ * Never reordered and never dragged: it has no heading to take hold of, and
+ * "the ones under nothing" only means anything at the top.
+ */
+export const LOOSE_KEY = '~loose'
+
 /** The key a collapse state is stored under. */
 export function categoryKey(groupId: string, section: { key: string }): string {
   return `${groupId}|${section.key}`
@@ -41,7 +49,13 @@ export function categoryKey(groupId: string, section: { key: string }): string {
 export function sections(
   buffers: BufferEntry[],
   custom: CustomCategory[],
-  assignment: Record<string, string>
+  assignment: Record<string, string>,
+  /**
+   * The order somebody dragged these into, by key. Partial by nature: a
+   * heading the service added since is not in it, and lands after the ones
+   * that are rather than somewhere arbitrary among them.
+   */
+  order: string[] = []
 ): CategorySection[] {
   const loose: BufferEntry[] = []
   const byCustom = new Map<string, BufferEntry[]>(custom.map((c) => [c.id, []]))
@@ -74,5 +88,48 @@ export function sections(
   for (const [name, list] of byService) {
     out.push({ key: `svc:${name}`, name, custom: false, buffers: list })
   }
-  return out
+  return applyOrder(out, order)
+}
+
+/**
+ * Puts the sections in the order somebody chose, as far as that order goes.
+ *
+ * Named keys first in the order they were named, then everything else in the
+ * order it would have had anyway. A dragged list is saved whole, so the second
+ * half is empty until a heading appears that nobody has placed yet - a new
+ * Discord category, or a heading just created - and one of those arriving at
+ * the end is both predictable and easy to undo by dragging it.
+ *
+ * The unheaded section is exempt and stays first whatever the order says.
+ */
+function applyOrder(list: CategorySection[], order: string[]): CategorySection[] {
+  if (order.length === 0) return list
+  const rank = new Map(order.map((key, i) => [key, i]))
+  const loose = list.filter((s) => s.key === LOOSE_KEY)
+  const rest = list.filter((s) => s.key !== LOOSE_KEY)
+  const placed = order.map((key) => rest.find((s) => s.key === key)).filter((s): s is CategorySection => !!s)
+  const unplaced = rest.filter((s) => !rank.has(s.key))
+  return [...loose, ...placed, ...unplaced]
+}
+
+/**
+ * The order to save after dragging one heading onto another.
+ *
+ * The same rule the server rail uses, and for the same reason: the dragged
+ * thing takes the target's place, and whatever was there shuffles aside in
+ * the direction the drag came from. Dropping onto the last heading therefore
+ * means "put it last", which is the gesture people try first and the one the
+ * rail had to grow a separate drop zone for.
+ */
+export function reorderCategories(
+  list: CategorySection[],
+  draggedKey: string,
+  targetKey: string
+): string[] {
+  const keys = list.filter((s) => s.key !== LOOSE_KEY).map((s) => s.key)
+  const from = keys.indexOf(draggedKey)
+  const to = keys.indexOf(targetKey)
+  if (from === -1 || to === -1 || from === to) return keys
+  keys.splice(to, 0, keys.splice(from, 1)[0])
+  return keys
 }
