@@ -43,9 +43,10 @@ type MatrixInvite = {
 /**
  * Per-protocol join pages rather than one generic "join by name" field: each
  * service's mechanism is genuinely different (IRC joins by channel name,
- * Discord accepts an invite, Matrix takes a room id or alias, Sneedchat's
- * rooms are a fixed set edited in Settings), and flattening them into one box
- * would just mean a field that silently means four things.
+ * Discord accepts an invite, Matrix takes a room id or alias, Kick names a
+ * streamer, Sneedchat's rooms are a fixed set edited in Settings), and
+ * flattening them into one box would just mean a field that silently means
+ * five things.
  *
  * The page always targets the single account whose "+" was clicked, so there
  * is no account picker here.
@@ -63,6 +64,8 @@ export function JoinPanel(): JSX.Element {
       return <MatrixJoin account={account} />
     case 'discord':
       return <DiscordJoin account={account} />
+    case 'kick':
+      return <KickJoin account={account} />
     case 'sockchat':
       return (
         <div className="panel">
@@ -131,6 +134,37 @@ function IrcJoin({ account }: { account: Account }): JSX.Element {
         // something is sent, so this joins a buffer named for the nick.
         onSubmit={(nick) => call('joinBuffer', { accountId: account.id, name: nick })}
       />
+    </div>
+  )
+}
+
+/**
+ * Kick has nothing to join: a channel is a streamer, and naming one is all
+ * there is to it. So this is the shortest page here - a handle, and it starts
+ * following that chat.
+ *
+ * The field takes a handle in any form somebody is likely to have it, because
+ * a channel is something you arrive at from a link far more often than from
+ * memory: a pasted kick.com URL, an @handle, or the bare name all name the
+ * same streamer, and the daemon takes the handle out of whatever arrives.
+ */
+function KickJoin({ account }: { account: Account }): JSX.Element {
+  const store = useStore()
+  return (
+    <div className="panel join-panel">
+      <SubmitField
+        label="Watch a streamer's chat"
+        placeholder="handle, or a kick.com link"
+        onSubmit={(name) =>
+          void window.moho
+            .rpc('joinBuffer', { accountId: account.id, name })
+            .catch((e: Error) => store.toast('error', e.message))
+        }
+      />
+      <p className="small muted">
+        Kick chat is public, so this works signed out. Signing in adds talking, and your
+        subscriber emotes for the channels you subscribe to.
+      </p>
     </div>
   )
 }

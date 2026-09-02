@@ -378,6 +378,34 @@
   font-style: italic;
 }
 
+/* Something somebody did rather than said - a reward redeemed, a subscription,
+   a raid. These are usually what the stream is about to react to, and in a
+   chat moving fast they have to survive being scrolled past: a plate does that
+   where a colour alone does not, because the eye catches the shape before it
+   reads any of the words. Deliberately not the mention highlight, which means
+   "this is about you" and would be a lie here. */
+.message-row.reward .message-body {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xxs) var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  color: var(--surface-text);
+  font-style: normal;
+}
+
+/* The plate is the emphasis; a second one on the same line reads as shouting.
+   Left as a normal weight so a long redemption still scans as a sentence. */
+.message-row.reward .message-body::before {
+  content: '★';
+  color: var(--primary);
+  font-size: var(--font-size-small);
+  line-height: 1;
+}
+
 .message-row.comfy {
   align-items: flex-start;
   padding-top: var(--spacing-xxs);
@@ -1888,6 +1916,24 @@ img.smilie {
   max-width: 26px;
   max-height: 26px;
   object-fit: contain;
+}
+
+/* A subscriber emote this account cannot send. Still legible rather than a
+   ghost - the point of showing it is that somebody can see what subscribing
+   to the channel would get them - so this dims it enough to read as
+   unavailable and no further. */
+.emoji-cell.locked img {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+
+.emoji-cell.locked {
+  cursor: default;
+  position: relative;
+}
+
+.emoji-cell.locked:hover {
+  background: none;
 }
 
 /* A recent that resolves to no picture is a shortcode belonging to a service

@@ -1,6 +1,7 @@
 import discordSvg from '../assets/discord.svg'
 import sneedchatMark from '../assets/sneedchat.png'
 import matrixSvg from '../assets/matrix.svg'
+import kickSvg from '../assets/kick.svg'
 
 /**
  * Discord channel buffers are named "GuildName/#channel" internally - that's
@@ -77,6 +78,11 @@ export function serviceIcon(service: string): ServiceIcon {
       return { glyph: 'forum' }
     case 'sockchat':
       return { mark: sneedchatMark, colour: true }
+    // Coloured, like Sneedchat's: the mark is a green K on its own dark
+    // ground, and drawing it as a monochrome mask would throw away the one
+    // thing that makes it recognisable at rail size.
+    case 'kick':
+      return { mark: kickSvg, colour: true }
     default:
       return { glyph: 'chat' }
   }
@@ -92,6 +98,8 @@ export function serviceLabel(service: string): string {
       return 'Matrix'
     case 'sockchat':
       return 'Sneedchat'
+    case 'kick':
+      return 'Kick'
     case 'slack':
       return 'Slack'
     case 'jabber':
@@ -124,6 +132,19 @@ export function isChatKind(kind: string | undefined): boolean {
  */
 export function isWhisper(kind: string | undefined): boolean {
   return kind === 'whisper'
+}
+
+/**
+ * Something somebody did rather than said: a reward redeemed, a subscription,
+ * a gifted sub, a raid arriving.
+ *
+ * Neither chatter nor system noise, and drawn as neither. In a chat moving
+ * fast enough that these are the reason people are watching, a redemption
+ * styled like a join message is a redemption nobody sees - so it gets a plate
+ * of its own.
+ */
+export function isReward(kind: string | undefined): boolean {
+  return kind === 'reward'
 }
 
 export function bufferKindGlyph(kind: string): string {

@@ -3,7 +3,7 @@
 
 export interface Account {
   id: string
-  service: 'irc' | 'discord' | 'sockchat' | 'matrix' | 'jabber' | 'slack'
+  service: 'irc' | 'discord' | 'sockchat' | 'matrix' | 'kick' | 'jabber' | 'slack'
   displayName: string
   /**
    * How the user is presenting: "online" | "idle". Distinct from
@@ -337,6 +337,26 @@ export interface CustomEmoji {
   id: string
   name: string
   animated: boolean
+  /**
+   * Where the picture is, for a service whose emote ids do not imply it.
+   *
+   * Discord's do - the id alone builds a CDN URL - so its emoji carry no
+   * `url` and the client derives one. Kick's are on a different host with a
+   * different shape, so the daemon says outright rather than the client
+   * keeping a second rule about a second service's CDN.
+   */
+  url?: string
+  /**
+   * Subscriber-only, and this account is not subscribed to that channel.
+   *
+   * Shown rather than hidden: knowing what a subscription would get you is
+   * most of the reason the tier exists. It gates sending only - a locked emote
+   * still renders in everybody's messages, including this account's view of
+   * them.
+   */
+  locked?: boolean
+  /** Which set it belongs to, as a heading in the picker. */
+  set?: string
 }
 
 export interface SockchatSmilie {

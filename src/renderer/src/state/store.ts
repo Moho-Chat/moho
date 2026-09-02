@@ -1477,7 +1477,11 @@ export class ChatStore {
 
     const service = this.accountFor(bufferId)?.service
     if (service === 'sockchat') void this.fetchSmilies()
-    if (service === 'discord') void this.fetchBufferEmoji(bufferId)
+    // Both services answer the same question about the open conversation -
+    // what can go in a message here that isn't text - so both ask it the same
+    // way. Kick's answer also depends on who is asking, since it carries which
+    // of the streamer's emotes this account is subscribed to.
+    if (service === 'discord' || service === 'kick') void this.fetchBufferEmoji(bufferId)
   }
 
   /**

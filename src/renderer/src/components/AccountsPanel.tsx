@@ -7,7 +7,7 @@ import { IRC_NETWORKS, ircNetworkFor } from '../lib/networks'
 import { KNOWN_SOCKCHAT_ROOMS } from '../lib/sockchat'
 import type { Account } from '../../../shared/wire'
 
-const ADDABLE = ['irc', 'discord', 'sockchat', 'matrix'] as const
+const ADDABLE = ['irc', 'discord', 'sockchat', 'matrix', 'kick'] as const
 type AddableService = (typeof ADDABLE)[number]
 
 export function AccountsPanel(): JSX.Element {
@@ -60,6 +60,7 @@ export function AccountsPanel(): JSX.Element {
         {adding === 'discord' && <DiscordForm />}
         {adding === 'sockchat' && <SockChatForm />}
         {adding === 'matrix' && <MatrixForm />}
+        {adding === 'kick' && <KickForm onDone={() => setAdding(null)} />}
       </div>
     </div>
   )
@@ -837,6 +838,70 @@ function DiscordForm({ accountId }: { accountId?: string }): JSX.Element {
         </>
       )}
       {status && <p className="small muted">{status}</p>}
+    </div>
+  )
+}
+
+/**
+ * Kick is the only account here that is useful without signing in, so this
+ * form offers both and puts watching first.
+ *
+ * That ordering is the honest one rather than a nudge: Kick's chat is public,
+ * so a reader needs no credential and asking for one before showing them
+ * anything would be asking for a password that buys nothing they came for.
+ * Signing in buys two specific things, and they are named rather than implied.
+ */
+function KickForm({ onDone }: { onDone: () => void }): JSX.Element {
+  const store = useStore()
+  const [busy, setBusy] = useState(false)
+
+  const add = (token?: string): void => {
+    setBusy(true)
+    void window.moho
+      .rpc('addKickAccount', token ? { token } : {})
+      .then(() => onDone())
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <div className="add-form">
+      <p className="small muted">
+        Kick chat is public, so you can watch any streamer without an account. Signing in adds
+        two things: talking, and the subscriber emotes of the channels you subscribe to.
+      </p>
+      <div className="field-row">
+        <button
+          type="button"
+          className="button primary"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true)
+            void window.moho
+              .browserLogin('kick')
+              .then((r) => {
+                setBusy(false)
+                // Closing the window is a decision, not a failure worth
+                // shouting about - the same rule as Discord's above.
+                if (r.ok) onDone()
+                else if (r.error && r.error !== 'cancelled') store.toast('error', r.error)
+              })
+              .catch((e: Error) => {
+                setBusy(false)
+                store.toast('error', e.message)
+              })
+          }}
+        >
+          {busy ? 'Waiting…' : 'Sign in with a browser'}
+        </button>
+        <button type="button" className="button" disabled={busy} onClick={() => add()}>
+          Just watch
+        </button>
+      </div>
+      <p className="small muted">
+        Signing in opens Kick&apos;s own page in a browser window. Your password goes into their
+        form and never passes through moho, and the window is thrown away afterwards.
+      </p>
     </div>
   )
 }

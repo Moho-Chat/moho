@@ -28,6 +28,7 @@ import {
   formatTime,
   hasDirectMessages,
   isChatKind,
+  isReward,
   isWhisper,
   nickColor,
   resolveMediaUrl
@@ -102,6 +103,7 @@ export function MessageRow({
   // Said to you rather than to the room. Drawn differently on purpose: the
   // whole risk with a private message is reading it as a public one.
   const whispered = isWhisper(message.kind)
+  const reward = isReward(message.kind)
   // Both of the modes that draw an avatar column. Bubbles is otherwise
   // nothing like comfy, but it wants the same picture beside the same first
   // line of a group.
@@ -287,6 +289,7 @@ export function MessageRow({
           message.pending && 'pending',
           message.failed && 'failed',
           isSystem && 'system',
+          reward && 'reward',
           grouped && 'grouped',
           comfy && 'comfy',
           bubbles && 'bubbles',

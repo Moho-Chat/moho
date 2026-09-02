@@ -77,6 +77,21 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     // signed in, so the first authenticated request is the answer.
     capture: { kind: 'header', name: 'authorization' },
     finish: { method: 'addDiscordAccountToken', param: 'token' }
+  },
+  kick: {
+    label: 'Kick',
+    url: 'https://kick.com/',
+    // Kick's own API and nothing else. The page pulls in Cloudflare's
+    // challenge, a video player and an ad network, none of which are ours to
+    // read - and the challenge in particular is the reason this is a real
+    // browser rather than an HTTP client.
+    watch: ['https://kick.com/api/*'],
+    // The session travels as a bearer header on every API call the page makes
+    // once signed in, so the first authenticated request is the answer - the
+    // same shape as Discord's, and the reason both are one table entry rather
+    // than two code paths.
+    capture: { kind: 'header', name: 'authorization' },
+    finish: { method: 'addKickAccount', param: 'token' }
   }
 }
 

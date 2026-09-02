@@ -53,6 +53,24 @@ const COMMON_EMOJI: { emoji: string; name: string }[] = [
   { emoji: '🤖', name: 'robot bot' }
 ]
 
+/**
+ * The text that stands for an emoji in a message, in the form its own service
+ * reads back.
+ *
+ * Kick's carries the id first and the name second, so a client that cannot
+ * draw the picture still shows something readable; Discord's is the other way
+ * round and flags animation. Neither is negotiable - the server parses it.
+ */
+function emojiToken(e: CustomEmoji): string {
+  if (e.url) return `[emote:${e.id}:${e.name}]`
+  return `<${e.animated ? 'a' : ''}:${e.name}:${e.id}>`
+}
+
+/** Where its picture is: said outright where the service gives one. */
+function emojiImage(e: CustomEmoji): string {
+  return e.url ?? discordEmojiUrl(e.id)
+}
+
 const MAX_RECENT = 16
 
 /**
@@ -156,6 +174,20 @@ export function EmojiPicker({
     () => (q ? customEmoji.filter((e) => e.name.toLowerCase().includes(q)) : customEmoji),
     [q, customEmoji]
   )
+
+  // Grouped in the order the daemon listed them, so a channel's own emotes
+  // stay above the global sets rather than being alphabetised away from where
+  // whoever is watching expects them.
+  const customSections = useMemo<[string, CustomEmoji[]][]>(() => {
+    const groups: [string, CustomEmoji[]][] = []
+    for (const e of custom) {
+      const title = e.set ?? 'Server emoji'
+      const found = groups.find(([t]) => t === title)
+      if (found) found[1].push(e)
+      else groups.push([title, [e]])
+    }
+    return groups
+  }, [custom])
   const smilieList = useMemo(
     () =>
       q
@@ -239,23 +271,34 @@ export function EmojiPicker({
           </Section>
         )}
 
-        {custom.length > 0 && (
-          <Section title="Server emoji">
-            {custom.map((e) => (
+        {/* One section per set where the service supplies sets, which Kick
+            does - a channel's own emotes and Kick's global ones are worth
+            telling apart, since an unfamiliar name is then attributable to
+            whoever supplied it. Discord sends none, so its emoji stay under
+            the one heading they always had. */}
+        {customSections.map(([title, list]) => (
+          <Section key={title} title={title}>
+            {list.map((e) => (
               <button
                 key={e.id}
                 type="button"
-                className="emoji-cell"
-                title={`:${e.name}:`}
-                // Discord's own inline form for a custom emoji; the server
-                // renders it, so it must go out as this literal text.
-                onClick={() => pick(`<${e.animated ? 'a' : ''}:${e.name}:${e.id}>`)}
+                className={`emoji-cell${e.locked ? ' locked' : ''}`}
+                // A locked emote is shown and not offered. Sending it would
+                // come back refused by Kick, and finding that out after
+                // pressing send is worse than seeing it greyed out - while
+                // hiding it entirely would leave no way to learn that
+                // subscribing gets you anything.
+                disabled={e.locked}
+                title={e.locked ? `:${e.name}: - subscribers only` : `:${e.name}:`}
+                // Each service's own inline form, since the server is what
+                // renders it and it goes out as this literal text.
+                onClick={() => pick(emojiToken(e))}
               >
-                <img src={discordEmojiUrl(e.id)} alt={e.name} />
+                <img src={emojiImage(e)} alt={e.name} />
               </button>
             ))}
           </Section>
-        )}
+        ))}
 
         {smilieList.length > 0 && (
           <Section title="Smilies">

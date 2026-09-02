@@ -35,6 +35,17 @@ export function discordEmojiUrl(id: string, size = 44): string {
   return `https://cdn.discordapp.com/emojis/${id}.webp?size=${size}&animated=true`
 }
 
+/**
+ * The picture for a Kick emote.
+ *
+ * One size only. The `/default` and `/small` variants other emote hosts serve
+ * are a 403 here, so asking for anything but fullsize is a broken image in
+ * every message rather than a smaller one.
+ */
+export function kickEmoteUrl(id: string): string {
+  return `https://files.kick.com/emotes/${id}/fullsize`
+}
+
 /** What something picked out of the emoji list looks like, when it isn't text. */
 export interface EmojiPreview {
   /** Possibly a local path - run it through resolveMediaUrl before use. */
@@ -46,21 +57,24 @@ export interface EmojiPreview {
  * The picture behind a piece of text that stands in for an emoji, or null when
  * the text is the emoji.
  *
- * A Unicode emoji is its own picture and needs nothing. The other two kinds are
- * stand-ins - Discord's `<:name:id>` and a Sneedchat shortcode - and anywhere
- * they are shown to a person rather than sent to a server, they should be shown
- * as what they stand for. The composer and the picker's recent list both showed
+ * A Unicode emoji is its own picture and needs nothing. The others are
+ * stand-ins - Discord's `<:name:id>`, Kick's `[emote:id:name]`, a Sneedchat
+ * shortcode - and anywhere they are shown to a person rather than sent to a
+ * server, they should be shown as what they stand for. The composer and the picker's recent list both showed
  * the stand-in, so choosing an emoji put `<:lettyCrazy:1413156421880647762>` in
  * the message box and left it there in the recents afterwards.
  *
- * Discord's form carries its own id, so it resolves anywhere. A shortcode only
- * resolves where the smilie table is loaded, which is a Sneedchat buffer -
+ * Discord's and Kick's forms carry their own ids, so they resolve anywhere. A
+ * shortcode only resolves where the smilie table is loaded, which is a
+ * Sneedchat buffer -
  * elsewhere the shortcode is genuinely all that is known, and showing it is
  * honest rather than broken.
  */
 export function emojiPreview(text: string, smilies: SmilieEntry[] = []): EmojiPreview | null {
   const custom = text.match(/^<a?:([A-Za-z0-9_~]{2,32}):(\d+)>$/)
   if (custom) return { src: discordEmojiUrl(custom[2]), label: `:${custom[1]}:` }
+  const kick = text.match(/^\[emote:(\d+):([^\]]{0,64})\]$/)
+  if (kick) return { src: kickEmoteUrl(kick[1]), label: `:${kick[2]}:` }
   const smilie = smilies.find((s) => s.aliases?.includes(text))
   if (smilie?.url) return { src: smilie.url, label: smilie.label }
   return null
@@ -215,6 +229,16 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   // account is not in.
   out = out.replace(/<(a?):([A-Za-z0-9_~]{2,32}):(\d+)>/g, (_m, _anim: string, name: string, id: string) =>
     stow(`<img src="${discordEmojiUrl(id, 48)}" class="custom-emoji" alt=":${escapeHtml(name)}:">`)
+  )
+
+  // Kick emotes, which arrive as `[emote:1082364:xqcAM]`. Like Discord's
+  // above, no lookup is needed: the id is in the token and the picture is
+  // public, so this draws every emote in a channel - including the
+  // subscriber-only ones, which is the point. Gating what somebody can *see*
+  // on what they have paid for would leave a newcomer reading a chat that is
+  // half raw tokens, and the tier gates sending, not looking.
+  out = out.replace(/\[emote:(\d+):([^\]]{0,64})\]/g, (_m, id: string, name: string) =>
+    stow(`<img src="${kickEmoteUrl(id)}" class="custom-emoji" alt=":${escapeHtml(name)}:">`)
   )
 
   // Discord channel links. What arrives is `<#1393001234568164748>` and
