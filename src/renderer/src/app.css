@@ -140,6 +140,11 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  /* The naming box floats over this list and is positioned against it. Without
+     a containing block here it resolved against the viewport instead, so
+     "left and right, inset a little" meant the width of the whole window - a
+     rename box stretching across the message list and the member list. */
+  position: relative;
   /* Without this a flex item's automatic minimum size is its content's
      min-content width, so a long name makes the whole list wider than the
      sidebar instead of ellipsising inside it. */
@@ -3066,6 +3071,13 @@ video.lightbox-media {
   right: var(--spacing-s);
   bottom: 84px;
   z-index: 30;
+}
+
+/* Belt and braces on the width, so this cannot spill again if something above
+   it stops being a containing block: the sidebar is the widest it should ever
+   be, whatever it is measured against. */
+.category-naming input {
+  max-width: 100%;
 }
 
 .category-naming input {
