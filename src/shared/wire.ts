@@ -27,6 +27,14 @@ export interface Account {
    */
   hasSaslCertificate: boolean
   /**
+   * The nick this account is using right now, for IRC.
+   *
+   * Not the configured one: a session that landed on the alt nick is using
+   * that until GHOST reclaims the real one. Needed to tell which row in a
+   * member list is you, and therefore whether you hold op.
+   */
+  currentNick: string
+  /**
    * Whether the connection is encrypted. Only IRC is ever false - every other
    * service here is HTTPS or WSS by construction.
    */
@@ -415,6 +423,8 @@ export interface MatrixVerification {
 export interface RoomPermissions {
   canRedactOthers?: boolean
   canKick?: boolean
+  /** IRC only: whether the local user may give or take channel ranks. */
+  canOp?: boolean
   canBan?: boolean
   canMute?: boolean
 }

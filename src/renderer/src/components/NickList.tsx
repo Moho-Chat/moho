@@ -19,6 +19,40 @@ import type { Member } from '../../../shared/wire'
  * Chosen from the data rather than from the service name, so a protocol that
  * starts reporting presence needs no change here.
  */
+/**
+ * What a member-list menu can ask for.
+ *
+ * `mute` is the one that means different things: on Matrix it lowers somebody
+ * below the send threshold, on IRC it takes their voice in a moderated
+ * channel. Same intent, so the same word, resolved where it is sent.
+ */
+export type ModerationAction = 'kick' | 'ban' | 'mute' | 'op' | 'deop' | 'voice'
+
+/**
+ * What the local user may do in an IRC channel, read off their own prefix.
+ *
+ * `~` founder, `&` admin, `@` operator, `%` halfop, `+` voice - the ranks in
+ * descending order, of which the top three can throw somebody out and halfop
+ * usually can. Deliberately generous at the halfop boundary: networks disagree
+ * about what a halfop may do, and offering an action the server then refuses
+ * is a better failure than hiding one it would have allowed.
+ */
+function ircPermissions(members: Member[], currentNick: string): Record<string, boolean> {
+  if (!currentNick) return {}
+  const me = members.find((m) => m.nick.toLowerCase() === currentNick.toLowerCase())
+  const prefix = me?.prefix ?? ''
+  const operator = /[~&@]/.test(prefix)
+  const halfop = prefix.includes('%')
+  return {
+    canKick: operator || halfop,
+    canBan: operator || halfop,
+    // "Mute" on IRC is taking somebody's voice in a moderated channel, which
+    // is an operator's job rather than a halfop's on most networks.
+    canMute: operator,
+    canOp: operator
+  }
+}
+
 export function NickList(): JSX.Element {
   const store = useStore()
   const buffer = useActiveBuffer()
@@ -33,11 +67,15 @@ export function NickList(): JSX.Element {
   const account = buffer && accounts.find((a) => a.id === buffer.accountId)
   // Any protocol that reports presence gets the online/offline split.
   const hasPresence = members.some((m) => m.status !== undefined)
-  // Separate question: kick/ban are Matrix-only, so the row still needs to
-  // know which service it belongs to.
   // Calling is Discord-only for now, and needs an account id to place from.
   const canCall = account?.service === 'discord'
-  const perms = (buffer && permissions[buffer.id]) || {}
+  // Matrix answers this from the server, which is where its power levels live.
+  // IRC's answer is already on screen: the member list carries every nick's
+  // prefix, including ours, so what we may do is whatever our own prefix says.
+  // Both are advisory - the server re-checks either way and refuses if we were
+  // wrong, exactly as any other client would be refused.
+  const perms =
+    account?.service === 'irc' ? ircPermissions(members, account.currentNick) : (buffer && permissions[buffer.id]) || {}
 
   const groups = useMemo(() => {
     const filtered = query
@@ -117,6 +155,25 @@ export function NickList(): JSX.Element {
                 onMention={() => store.startReply('', member.nick, '')}
                 onModerate={(action) => {
                   if (!buffer || !account) return
+                  // Each protocol says this its own way. Matrix has an RPC per
+                  // action because power levels are state events; IRC has the
+                  // commands it has always had, typed into the channel - which
+                  // is exactly what this menu existed to save somebody doing
+                  // by hand, and did not, because it only ever spoke Matrix.
+                  if (account.service === 'irc') {
+                    // "Mute" on IRC is taking somebody's voice, which is what
+                    // it means in a moderated channel - there is no separate
+                    // mute to give.
+                    const command = action === 'mute' ? 'devoice' : action
+                    void window.moho
+                      .rpc('sendMessage', { bufferId: buffer.id, body: `/${command} ${member.nick}` })
+                      .catch((e: Error) => store.toast('error', e.message))
+                    return
+                  }
+                  if (action === 'op' || action === 'deop' || action === 'voice') {
+                    store.toast('error', 'Only IRC has channel ranks')
+                    return
+                  }
                   const method =
                     action === 'kick'
                       ? 'kickMatrixMember'
@@ -174,10 +231,10 @@ interface MemberRowProps {
   canWhisper: boolean
   /** IRC carries a file directly between two people; nothing else here does. */
   canSendFile: boolean
-  perms: { canKick?: boolean; canBan?: boolean; canMute?: boolean }
+  perms: { canKick?: boolean; canBan?: boolean; canMute?: boolean; canOp?: boolean }
   onToggleBlock: (key: string) => void
   onMention: () => void
-  onModerate: (action: 'kick' | 'ban' | 'mute') => void
+  onModerate: (action: ModerationAction) => void
   onOpenDm: () => void
   onWhisper: () => void
   onSendFile: () => void
@@ -227,6 +284,16 @@ function MemberRow({
       : []),
     ...(perms.canBan
       ? ([{ label: 'Ban', icon: 'gavel', danger: true, onClick: () => onModerate('ban') }] as MenuEntry[])
+      : []),
+    // Channel ranks, which only IRC has. Both directions offered rather than
+    // one toggle: the member's own prefix says which way round it should be,
+    // and a menu that guessed wrong would take op from somebody by accident.
+    ...(perms.canOp
+      ? ([
+          { separator: true },
+          { label: member.prefix?.includes('@') ? 'Take operator' : 'Give operator', icon: 'shield', onClick: () => onModerate(member.prefix?.includes('@') ? 'deop' : 'op') },
+          { label: member.prefix?.includes('+') ? 'Take voice' : 'Give voice', icon: 'campaign', onClick: () => onModerate(member.prefix?.includes('+') ? 'mute' : 'voice') }
+        ] as MenuEntry[])
       : [])
   ]
 
