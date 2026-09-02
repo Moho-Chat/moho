@@ -4280,3 +4280,62 @@ video.lightbox-media {
 .room-search-more {
   margin: var(--spacing-m);
 }
+
+/* --- spinner ------------------------------------------------------------
+   Something is happening and there is no way to say how far along it is: a
+   Matrix room joined and not yet synced, where the server decides how long it
+   takes. A ring rather than a bar for exactly that reason - a bar promises a
+   proportion nothing here knows.
+
+   currentColor, so it belongs to whatever it sits beside: dim against a muted
+   buffer row, and the text colour in a notice. */
+.spinner {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  opacity: 0.7;
+  animation: spinner-turn 0.8s linear infinite;
+}
+
+.messagelist-empty .spinner {
+  width: 15px;
+  height: 15px;
+}
+
+/* Two things on one line, centred together, since the empty state is centred
+   text and a bare inline-block would sit on the baseline rather than beside
+   the words. */
+.messagelist-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-s);
+}
+
+@keyframes spinner-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Somebody who has asked not to be moved is not asking for a still image of a
+   spinner either - it fades in place instead, which still reads as "working"
+   without anything travelling across the screen. */
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: spinner-fade 1.4s ease-in-out infinite;
+  }
+
+  @keyframes spinner-fade {
+    0%,
+    100% {
+      opacity: 0.25;
+    }
+    50% {
+      opacity: 0.9;
+    }
+  }
+}

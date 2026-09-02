@@ -810,6 +810,10 @@ function BufferRow({
         <span className="ellipsis buffer-name">{bufferDisplayName(buffer.name)}</span>
         {/* So a conversation with no unread count and no traffic in it is
             explained rather than merely quiet: it is being read elsewhere. */}
+        {/* Still filling in - a Matrix room between joining it and the server
+            saying what is in it. A moving thing rather than a static mark,
+            because what it says is "wait", not "note". */}
+        {buffer.syncing && <span className="spinner" aria-label="Synchronising" />}
         {poppedOut && <Icon name="open_in_new" size={13} className="buffer-muted-icon" />}
         {muted && <Icon name="notifications_off" size={13} className="buffer-muted-icon" />}
         {buffer.unread > 0 && !muted && (

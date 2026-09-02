@@ -83,6 +83,13 @@ export interface Buffer {
   remoteId?: string
   /** Where the service orders it: category rank and channel rank folded. */
   position?: number
+  /**
+   * Set while the buffer exists but the service has not yet said what is in
+   * it - a Matrix room between joining it and its first sync. The list draws
+   * a spinner against it and the empty room says so rather than looking like
+   * a room with nothing in it.
+   */
+  syncing?: boolean
 }
 
 /**

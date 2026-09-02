@@ -137,6 +137,7 @@ export function MessageList(): JSX.Element {
 
 
   const accountId = buffers.find((b) => b.id === bufferId)?.accountId || ''
+  const syncing = !!buffers.find((b) => b.id === bufferId)?.syncing
   const all = messagesByBuffer[bufferId] || []
 
   /**
@@ -440,9 +441,18 @@ export function MessageList(): JSX.Element {
               />
             </div>
           ))}
-          {messages.length === 0 && (
-            <div className="messagelist-empty muted">No messages here yet.</div>
-          )}
+          {/* A room that has been joined but not yet heard from is not an
+              empty room, and saying "no messages here yet" of one would be a
+              claim about its contents that nothing has established. */}
+          {messages.length === 0 &&
+            (syncing ? (
+              <div className="messagelist-empty muted">
+                <span className="spinner" />
+                <span>Synchronising with the server…</span>
+              </div>
+            ) : (
+              <div className="messagelist-empty muted">No messages here yet.</div>
+            ))}
         </div>
       </div>
 
