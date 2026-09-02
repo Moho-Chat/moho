@@ -3300,6 +3300,38 @@ video.lightbox-media {
   min-width: 0;
 }
 
+/* A badge beside a name. Small, uppercase and abbreviated: the full word is
+   the tooltip, because a row of them spelled out would be wider than the
+   message they sit above. */
+.sender-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--spacing-xxs);
+  padding: 0 4px;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-highest);
+  color: var(--surface-variant-text);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+/* The two that mean authority get colour; the rest stay quiet. Colouring
+   every badge would make a name with four of them the loudest thing on the
+   screen, which is the opposite of what a badge is for. */
+.sender-badge.broadcaster,
+.sender-badge.moderator {
+  background: var(--primary-hover);
+  color: var(--primary);
+}
+
+.sender-badge.verified {
+  background: none;
+  padding: 0;
+  color: var(--primary);
+}
+
 .channel-modes {
   padding: 1px var(--spacing-xs);
   border-radius: var(--corner-radius-small);

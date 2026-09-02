@@ -7,6 +7,7 @@ import { RichText } from '../lib/richtext'
 import { useChat, useStore } from '../state/hooks'
 import { useSniffedTypes, sniffUrl } from '../lib/sniff'
 import type { ChatMessage } from '../state/store'
+import type { MessageBadge } from '../../../shared/wire'
 import {
   embedColor,
   extractCodeBlocks,
@@ -33,6 +34,29 @@ import {
   nickColor,
   resolveMediaUrl
 } from '../lib/util'
+
+/**
+ * A badge, short enough to sit beside a name.
+ *
+ * Abbreviated rather than spelled out: a row of full words beside every nick
+ * would be wider than the messages. The full text is the tooltip, and a badge
+ * nobody here has a short form for keeps its own first letters rather than
+ * being dropped - an unfamiliar badge still says the person has one.
+ */
+function badgeLabel(badge: MessageBadge): string {
+  const short: Record<string, string> = {
+    broadcaster: 'HOST',
+    moderator: 'MOD',
+    verified: '✓',
+    subscriber: 'SUB',
+    founder: 'FDR',
+    og: 'OG',
+    vip: 'VIP',
+    staff: 'STAFF',
+    sub_gifter: 'GIFT'
+  }
+  return short[badge.type] ?? badge.text.slice(0, 3).toUpperCase()
+}
 
 /** A handful of one-click reactions on the hover toolbar. */
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '🔥']
@@ -325,7 +349,7 @@ export function MessageRow({
               (message.avatarUrl ? (
                 <img src={resolveMediaUrl(message.avatarUrl)} alt="" />
               ) : (
-                <span className="avatar-fallback" style={{ background: nickColor(message.from) }}>
+                <span className="avatar-fallback" style={{ background: message.senderColor || nickColor(message.from) }}>
                   {message.from.slice(0, 1).toUpperCase()}
                 </span>
               ))}
@@ -335,10 +359,29 @@ export function MessageRow({
         <div className="message-content">
           {/* Your own bubble is not labelled with your own name - the side it
               is on already says it, which is the point of having sides. */}
+          {/* The service's own colour where it gives one, and the one derived
+              from the nick where it does not. Kick sets everybody's, and a
+              chat where every name is the same colour is one nobody can
+              follow.
+
+              Badges beside it, because on Kick who is talking is half the
+              message: a moderator, a two-year subscriber and a stranger read
+              as three different things. */}
           {!grouped && !isSystem && !own && (
-            <span className="message-from" style={{ color: nickColor(message.from) }}>
-              {message.isAction ? `* ${message.from}` : message.from}
-            </span>
+            <>
+              <span className="message-from" style={{ color: message.senderColor || nickColor(message.from) }}>
+                {message.isAction ? `* ${message.from}` : message.from}
+              </span>
+              {message.badges?.map((badge) => (
+                <span
+                  key={badge.type}
+                  className={`sender-badge small ${badge.type}`}
+                  title={badge.count ? `${badge.text} — ${badge.count} months` : badge.text}
+                >
+                  {badgeLabel(badge)}
+                </span>
+              ))}
+            </>
           )}
 
           {/* Said in words as well as in styling. Italics and a tinted edge

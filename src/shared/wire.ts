@@ -335,6 +335,16 @@ export interface Message {
   html?: string
   /** Matrix only - the sender's full MXID, for targeting moderation actions. */
   senderId?: string
+  /**
+   * The colour this service says the sender's name should be.
+   *
+   * Kick gives everybody one and it is half of how a busy chat is read.
+   * Overrides the colour the client derives from the nick, rather than
+   * replacing that mechanism — IRC has no such thing and still needs it.
+   */
+  senderColor?: string
+  /** What the sender has earned in this channel. Empty where the service has no such idea. */
+  badges?: MessageBadge[]
 }
 
 /** presenceChange's member shape. `userId`/`powerLevel` are Matrix-only. */
@@ -359,6 +369,15 @@ export interface Protocol {
 }
 
 /** One custom Discord emoji usable in a given buffer's guild. */
+export interface MessageBadge {
+  /** `moderator`, `subscriber`, `verified`, `og`, `vip`, `founder`… */
+  type: string
+  /** What the service calls it, which is what a tooltip should say. */
+  text: string
+  /** Months subscribed, for the badges that count. */
+  count?: number
+}
+
 export interface CustomEmoji {
   id: string
   name: string
