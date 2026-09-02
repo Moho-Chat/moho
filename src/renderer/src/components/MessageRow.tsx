@@ -243,8 +243,10 @@ export function MessageRow({
   ]
 
   function reply(): void {
-    // Sneedchat's own convention is an "@username," mention rather than IRC's
-    // "nick: " prefix; Discord and Matrix have real native replies.
+    // What this becomes is the protocol's business, decided in the daemon:
+    // Sneedchat's convention is an "@username," mention rather than IRC's
+    // "nick: " prefix, while Discord, Matrix and Kick have real native
+    // replies. All this does is name what is being answered.
     store.startReply(message.id, message.from, message.body)
   }
 
