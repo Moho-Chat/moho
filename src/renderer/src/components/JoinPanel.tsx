@@ -498,8 +498,11 @@ function MatrixJoin({ account }: { account: Account }): JSX.Element {
         // this same endpoint - no separate mechanism needed.
         placeholder="#room:server or !roomid:server"
         onSubmit={(roomIdOrAlias) =>
-          void window.moho
-            .rpc('joinMatrixRoom', { accountId: account.id, roomIdOrAlias })
+          // Named by what was typed until the room says otherwise: an address
+          // is what somebody has in hand here, and a row called by it is
+          // better than no row while the join happens.
+          void store
+            .joinMatrixRoom(account.id, roomIdOrAlias, roomIdOrAlias)
             .catch((e: Error) => store.toast('error', e.message))
         }
       />

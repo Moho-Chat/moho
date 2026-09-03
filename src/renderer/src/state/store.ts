@@ -81,6 +81,22 @@ export interface OpenThread {
   loading: boolean
 }
 
+/**
+ * Buffer ids for rooms being joined, which exist only in this window.
+ *
+ * Prefixed rather than flagged so that anything walking the list can tell one
+ * from a real buffer without being taught about joining at all - and so an id
+ * can never collide with a daemon's, which are "account|name".
+ */
+const JOINING_PREFIX = 'joining:'
+
+/** How long a stand-in waits for its room before admitting nothing came. */
+const JOIN_GIVE_UP_MS = 30_000
+
+export function isJoining(buffer: { id: string }): boolean {
+  return buffer.id.startsWith(JOINING_PREFIX)
+}
+
 export type ActivePanel = '' | 'accounts' | 'settings' | 'join' | 'downloads'
 
 export interface ChatState {
@@ -1395,11 +1411,65 @@ export class ChatStore {
     }
   }
 
+  /**
+   * Puts a room in the list the moment somebody asks to join it.
+   *
+   * Joining is two round trips before the daemon can name the room - the join
+   * itself, then the room's state - and until they finished the click had
+   * produced nothing anywhere on screen. This is the same optimistic echo an
+   * outgoing message gets, and for the same reason: the wait is real and the
+   * silence is what makes it feel broken.
+   *
+   * The stand-in is replaced by the real buffer when it arrives, matched on
+   * the room id. It is not selectable in any useful sense yet - there is
+   * nothing behind it - but it is visible, named, and plainly working.
+   */
+  async joinMatrixRoom(accountId: string, roomIdOrAlias: string, name: string, via: string[] = []): Promise<void> {
+    const stand_in: BufferEntry = {
+      id: `${JOINING_PREFIX}${accountId}|${roomIdOrAlias}`,
+      accountId,
+      kind: 'channel',
+      name,
+      lastActivityTs: Math.floor(Date.now() / 1000),
+      groupId: `account:${accountId}`,
+      remoteId: roomIdOrAlias,
+      syncing: true,
+      unread: 0,
+      highlight: false
+    }
+    this.set({ buffers: [...this.state.buffers, stand_in] })
+    try {
+      await window.moho.rpc('joinMatrixRoom', { accountId, roomIdOrAlias, via })
+    } catch (e) {
+      // The row goes with the failure. Leaving it there would say the room is
+      // still arriving, which is the one thing it is definitely not doing.
+      this.dropJoining(stand_in.id)
+      throw e
+    }
+    // A join that succeeded but whose room never turned up - a server that
+    // accepted it and then said nothing - leaves the stand-in stranded, so it
+    // gives up on the same schedule the daemon's own sync mark does.
+    setTimeout(() => this.dropJoining(stand_in.id), JOIN_GIVE_UP_MS)
+  }
+
+  private dropJoining(id: string): void {
+    if (!this.state.buffers.some((b) => b.id === id)) return
+    this.set({ buffers: this.state.buffers.filter((b) => b.id !== id) })
+  }
+
   private handleBufferListChange(data: WireBuffer & { removed?: boolean }): void {
-    const { buffers } = this.state
+    let { buffers } = this.state
     if (data.removed) {
       this.set({ buffers: buffers.filter((b) => b.id !== data.id) })
       return
+    }
+    // The room somebody asked to join has arrived for real. The stand-in goes
+    // now rather than on its own timer, matched on the room id because the
+    // real buffer's own id is derived from a name nothing knew when the join
+    // was asked for.
+    if (data.remoteId && buffers.some((b) => isJoining(b) && b.remoteId === data.remoteId)) {
+      buffers = buffers.filter((b) => !isJoining(b) || b.remoteId !== data.remoteId)
+      this.set({ buffers })
     }
     const known = buffers.find((b) => b.id === data.id)
     if (known) {

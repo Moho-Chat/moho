@@ -16,7 +16,7 @@ import {
   visibleGroups,
   type RailGroup
 } from '../lib/groups'
-import type { BufferEntry } from '../state/store'
+import { isJoining, type BufferEntry } from '../state/store'
 import {
   bufferDisplayName,
   bufferKindGlyph,
@@ -255,8 +255,10 @@ export function BufferList(): JSX.Element {
       muted={isEffectivelyMuted(b)}
       pinned={isPinned(b.id)}
       accounts={accounts}
-      // Already on the page being shown; keep the rail where it is.
-      onSelect={() => void store.selectBuffer(b.id, false)}
+      // Already on the page being shown; keep the rail where it is. A room
+      // still being joined has nothing behind it to select - it exists in
+      // this window only - so the row is there to be seen rather than opened.
+      onSelect={() => !isJoining(b) && void store.selectBuffer(b.id, false)}
       onTogglePin={() => togglePin(b.id)}
       onToggleMute={() => toggleMute(b.id)}
       onHide={() => hideBuffer(b.id)}

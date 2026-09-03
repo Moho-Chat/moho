@@ -162,15 +162,16 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
 
   const join = (room: PublicRoom): void => {
     setJoining((j) => ({ ...j, [room.roomId]: true }))
-    void window.moho
-      .rpc('joinMatrixRoom', {
-        accountId: account.id,
-        // An alias where there is one: it carries its own server and survives
-        // the room being upgraded. A bare room id needs to be told where to
-        // ask, which is the server that listed it.
-        roomIdOrAlias: room.alias || room.roomId,
-        via: room.alias ? [] : [room.via]
-      })
+    void store
+      // An alias where there is one: it carries its own server and survives
+      // the room being upgraded. A bare room id needs to be told where to
+      // ask, which is the server that listed it.
+      .joinMatrixRoom(
+        account.id,
+        room.alias || room.roomId,
+        room.name || room.alias || room.roomId,
+        room.alias ? [] : [room.via]
+      )
       .then(() => onClose())
       .catch((e: Error) => {
         setJoining((j) => ({ ...j, [room.roomId]: false }))
