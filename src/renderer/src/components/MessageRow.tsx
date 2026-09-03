@@ -721,16 +721,6 @@ export function MessageRow({
           <button type="button" className="toolbar-button" title="Reply" onClick={reply}>
             <Icon name="reply" size={15} />
           </button>
-          {message.from && !isSystem && !message.isOwn && (
-            <button
-              type="button"
-              className="toolbar-button"
-              title={`Who is ${message.from}?`}
-              onClick={() => store.showProfile(bufferId, message.from, message.senderId)}
-            >
-              <Icon name="person_search" size={15} />
-            </button>
-          )}
           <button type="button" className="toolbar-button" title="More" onClick={open}>
             <Icon name="more_horiz" size={15} />
           </button>
