@@ -4220,16 +4220,56 @@ video.lightbox-media {
   outline: none;
 }
 
+/* A row of its own, so the servers have the width to be read and to grow -
+   sharing a line with a text field capped them at about four before the rest
+   were pushed out of sight, which defeats the point of naming them. */
 .room-search-servers {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--spacing-s);
+  gap: var(--spacing-xs);
   padding: var(--spacing-xs) var(--spacing-m);
   border-bottom: 1px solid var(--outline-light);
 }
 
-.room-search-servers > span {
-  flex: 1;
+.server-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  padding: 1px var(--spacing-xs);
+  border: 1px solid var(--outline-light);
+  border-radius: var(--corner-radius-small);
+  background: none;
+  color: var(--surface-variant-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.server-chip:hover {
+  border-color: var(--outline-medium);
+  color: var(--surface-text);
+}
+
+/* Switched off: still legible, still countable, plainly not counted. Struck
+   through rather than merely faded, because faded is what disabled means and
+   this is a choice somebody made rather than something unavailable. */
+.server-chip.off {
+  opacity: 0.55;
+  text-decoration: line-through;
+  border-style: dashed;
+}
+
+/* A server that would not answer is marked rather than dropped: it is why a
+   room somebody expected is not in the list, and its absence from the line
+   would read as the room not existing. */
+.server-chip.failed {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.server-chip-count {
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
 }
 
 .room-search-server {
@@ -4276,8 +4316,11 @@ video.lightbox-media {
   min-width: 0;
 }
 
-.room-search-empty,
-.room-search-more {
+.room-search-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-s);
   margin: var(--spacing-m);
 }
 
