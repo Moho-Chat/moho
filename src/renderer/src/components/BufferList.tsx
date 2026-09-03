@@ -260,7 +260,17 @@ export function BufferList(): JSX.Element {
       // this window only - so the row is there to be seen rather than opened.
       onSelect={() => !isJoining(b) && void store.selectBuffer(b.id, false)}
       onTogglePin={() => togglePin(b.id)}
-      onToggleMute={() => toggleMute(b.id)}
+      onToggleMute={() => {
+        toggleMute(b.id)
+        // On Matrix the account itself can hold the answer, so muting here
+        // mutes on a phone too. Everywhere else this stays what it always
+        // was: a preference belonging to this window.
+        if (accounts.find((a) => a.id === b.accountId)?.service === 'matrix') {
+          void window.moho
+            .rpc('setMatrixRoomMuted', { bufferId: b.id, muted: !isEffectivelyMuted(b) })
+            .catch((e: Error) => store.toast('error', e.message))
+        }
+      }}
       onToggleAutojoin={
         b.kind === 'channel' && accounts.find((a) => a.id === b.accountId)?.service === 'irc'
           ? () => store.toggleAutojoin(b.accountId, bufferDisplayName(b.name))
