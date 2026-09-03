@@ -5,7 +5,7 @@ import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { MediaEmbed } from './MediaEmbed'
 import { EmojiPicker } from './EmojiPicker'
 import { RichText } from '../lib/richtext'
-import { useChat, useStore } from '../state/hooks'
+import { useChat, usePref, useStore } from '../state/hooks'
 import { useSniffedTypes, sniffUrl } from '../lib/sniff'
 import type { ChatMessage } from '../state/store'
 import type { MessageBadge, MessageReader } from '../../../shared/wire'
@@ -163,6 +163,10 @@ export function MessageRow({
   // be a menu entry that reselects the buffer you are reading.
   const inDirectMessage = useChat((s) => s.buffers).find((b) => b.id === bufferId)?.kind === 'dm'
   const sniffed = useSniffedTypes()
+  // Colour is how IRC has always been written, and it is also how a bot
+  // shouts. Somebody who wants the words without the decoration says so here
+  // and the codes are removed instead of drawn.
+  const [ircColours] = usePref<boolean>('irc.renderColours', true)
 
   const isSockchat = service === 'sockchat'
   // Discord, Sneedchat and Matrix support editing and deleting your own
@@ -223,16 +227,31 @@ export function MessageRow({
           revealedSpoilers: revealed,
           isSockchat,
           smilies: smilieIndex,
-          channels
+          channels,
+          // Only IRC's own traffic is drawn with IRC's codes. Elsewhere they
+          // are stripped, which is what the formatter does when not told.
+          ircFormatting: service === 'irc' && ircColours ? 'render' : 'strip'
         }),
       media,
       codeBlocks,
       quoteBlocks
     }
-  }, [message.body, message.html, contentSniffing, sniffed, revealed, isSockchat, smilieIndex, channels])
+  }, [message.body, message.html, contentSniffing, sniffed, revealed, isSockchat, smilieIndex, channels, service, ircColours])
 
   const entries: MenuEntry[] = [
     { label: 'Reply', icon: 'reply', onClick: () => reply() },
+    // From the line itself, because the person somebody wants to look up is
+    // almost always the one who just said something - and finding them in a
+    // member list of four hundred to do it is work nobody should have to do.
+    ...(message.from && !isSystem && !message.isOwn
+      ? ([
+          {
+            label: `Profile of ${message.from}`,
+            icon: 'person_search',
+            onClick: () => store.showProfile(bufferId, message.from, message.senderId)
+          }
+        ] as MenuEntry[])
+      : []),
     // Beside Reply because it is the same gesture aimed somewhere else, and
     // only where the service has whispers at all.
     ...(service === 'sockchat' && !message.isOwn && message.from && !isSystem
@@ -702,6 +721,16 @@ export function MessageRow({
           <button type="button" className="toolbar-button" title="Reply" onClick={reply}>
             <Icon name="reply" size={15} />
           </button>
+          {message.from && !isSystem && !message.isOwn && (
+            <button
+              type="button"
+              className="toolbar-button"
+              title={`Who is ${message.from}?`}
+              onClick={() => store.showProfile(bufferId, message.from, message.senderId)}
+            >
+              <Icon name="person_search" size={15} />
+            </button>
+          )}
           <button type="button" className="toolbar-button" title="More" onClick={open}>
             <Icon name="more_horiz" size={15} />
           </button>

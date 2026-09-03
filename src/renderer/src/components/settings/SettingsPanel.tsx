@@ -319,6 +319,12 @@ function IrcSettings(): JSX.Element {
         <ToggleSetting settingKey="irc.showNickChanges" label="Show nick changes" description='"X is now known as Y"' defaultValue={true} />
         <ToggleSetting settingKey="irc.showTopicChanges" label="Show topic changes" defaultValue={true} />
         <ToggleSetting
+          settingKey="irc.renderColours"
+          label="Show colours and formatting"
+          description="IRC's own bold, italic, underline and colour codes. Off removes them rather than showing the control characters."
+          defaultValue={true}
+        />
+        <ToggleSetting
           settingKey="irc.showModeChanges"
           label="Show mode changes"
           description="Channel and user mode notices (+o, +m, …) - often noisy on busy channels"

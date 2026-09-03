@@ -69,6 +69,37 @@ const ALLOWED_CLASSES = new Set([
 
 /** Hex or a plain CSS colour keyword - nothing that could carry a url() or expression. */
 const SAFE_COLOR = /^#[0-9a-f]{3,8}$|^[a-z]{3,20}$/i
+const SAFE_WEIGHT = /^(bold|[1-9]00)$/i
+const SAFE_FONT_STYLE = /^italic$/i
+const SAFE_DECORATION = /^underline$/i
+
+/**
+ * The handful of style properties a message is allowed to set on a span.
+ *
+ * Named individually rather than passed through: this is markup derived from
+ * what somebody said, and a style attribute is a large surface - `position`,
+ * `content` and a URL in a `background` are all ways to make a message do
+ * something to the page around it.
+ */
+function safeSpanStyle(attr: string | null): React.CSSProperties | undefined {
+  if (!attr) return undefined
+  const read = (prop: string): string | undefined =>
+    attr.match(new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`, 'i'))?.[1]?.trim()
+
+  const style: React.CSSProperties = {}
+  const color = read('color')
+  if (color && SAFE_COLOR.test(color)) style.color = color
+  const background = read('background')
+  if (background && SAFE_COLOR.test(background)) style.background = background
+  const weight = read('font-weight')
+  if (weight && SAFE_WEIGHT.test(weight)) style.fontWeight = weight
+  const fontStyle = read('font-style')
+  if (fontStyle && SAFE_FONT_STYLE.test(fontStyle)) style.fontStyle = 'italic'
+  const decoration = read('text-decoration')
+  if (decoration && SAFE_DECORATION.test(decoration)) style.textDecoration = 'underline'
+
+  return Object.keys(style).length ? style : undefined
+}
 
 export interface RichTextProps {
   html: string
@@ -227,8 +258,11 @@ function walk(node: Node, handlers: Handlers, depth: number): ReactNode[] {
       }
 
       case 'SPAN': {
-        const color = el.getAttribute('style')?.match(/(?:^|;)\s*color\s*:\s*([^;]+)/i)?.[1]?.trim()
-        const style = color && SAFE_COLOR.test(color) ? { color } : undefined
+        // IRC's formatting codes arrive as inline styles on a span (see
+        // format.ts's ircFormat), so the four properties they can produce are
+        // read back here - each against its own pattern, because a style
+        // attribute from a message is somebody else's text.
+        const style = safeSpanStyle(el.getAttribute('style'))
         out.push(
           <span key={key} className={className} style={style}>
             {kids()}

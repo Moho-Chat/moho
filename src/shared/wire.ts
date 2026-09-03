@@ -377,6 +377,48 @@ export interface Message {
 }
 
 /** presenceChange's member shape. `userId`/`powerLevel` are Matrix-only. */
+/**
+ * What is known about a person, from whichever service they belong to.
+ *
+ * Every field is optional because every service answers a different subset:
+ * IRC knows an idle time and no account age, Discord knows the day the
+ * account was made and nothing about idleness, Matrix knows a power level.
+ * The card draws what it was given rather than a fixed form with holes in it.
+ */
+export interface Profile {
+  service: string
+  accountId: string
+  /** The service's own id, where it has one distinct from the name. */
+  id?: string
+  /** What to call them - the display name if there is one, else the handle. */
+  name: string
+  /** The handle underneath the display name, when they differ. */
+  handle?: string
+  avatarUrl?: string
+  /** Unix seconds. When the account itself came into being. */
+  createdTs?: number
+  /** Unix seconds. When they joined this server, guild or room. */
+  joinedTs?: number
+  /** Unix seconds. When they were last seen doing anything. */
+  lastActiveTs?: number
+  /** Seconds since they last spoke or typed, where the service counts that. */
+  idleSeconds?: number
+  /** Their standing here, in the service's own words - "Moderator", "Op". */
+  roles?: string[]
+  /** Whether that standing includes moderating this place. */
+  isModerator?: boolean
+  /** The away message, for a service with away. */
+  away?: string
+  /** Presence word - "online", "idle", "dnd", "offline". */
+  status?: string
+  /** Rooms or channels shared with them, where the service will say. */
+  channels?: string[]
+  /** Anything else worth showing, already phrased for a person to read. */
+  extra?: { label: string; value: string }[]
+  /** Set while the service is still being asked; the card fills in. */
+  pending?: boolean
+}
+
 export interface Member {
   nick: string
   prefix?: string

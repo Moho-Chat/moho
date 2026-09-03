@@ -4,6 +4,7 @@ import { EmojiPicker } from './EmojiPicker'
 import { useActiveBuffer, useChat, useStore } from '../state/hooks'
 import { emojiPreview } from '../lib/format'
 import { bufferDisplayName, fileNameOf, isImageFile, resolveMediaUrl } from '../lib/util'
+import { completeNick, cyclePrefix, type Completion } from '../lib/completion'
 
 interface StagedAttachment {
   id: number
@@ -71,7 +72,19 @@ export function Composer(): JSX.Element | null {
   const [pickerOpen, setPickerOpen] = useState(false)
   const seqRef = useRef(0)
   const typingSentAt = useRef(0)
+  /**
+   * Who is in this conversation, for completion. Most recent speakers first
+   * would be better still; the roster's own order is what is in hand, and a
+   * name that matches is far more use than no completion at all.
+   */
+  const nicks = useChat((s) => s.presenceByBuffer)[buffer?.id ?? '']?.map((m) => m.nick) ?? []
+
   const inputRef = useRef<HTMLDivElement>(null)
+  /**
+   * Where a completion cycle has got to, or null. A ref rather than state:
+   * changing it must not redraw the box somebody is typing in.
+   */
+  const cycle = useRef<{ last: Completion; attempt: number } | null>(null)
   const emojiButtonRef = useRef<HTMLButtonElement>(null)
 
   const smilies = useChat((s) => s.smilies)
@@ -203,6 +216,48 @@ export function Composer(): JSX.Element | null {
     })
   }
 
+  /**
+   * Replaces the word before the caret with a roster name.
+   *
+   * Works on the text node the caret is in rather than on the component's
+   * `text` state, because the box is contenteditable and may hold emoji
+   * images: the state is the whole line, and what has to be replaced is a few
+   * characters inside one node of it.
+   */
+  const completeAtCaret = (): void => {
+    const selection = window.getSelection()
+    const node = selection?.anchorNode
+    if (!selection || !node || node.nodeType !== Node.TEXT_NODE) return
+
+    const offset = selection.anchorOffset
+    const before = (node.textContent ?? '').slice(0, offset)
+
+    // A second Tab continues from the same prefix - the text now ends in the
+    // last completion, not in what was typed.
+    const continuing = cyclePrefix(before, cycle.current?.last ?? null)
+    const source = continuing ?? before
+    const attempt = continuing === null ? 0 : (cycle.current?.attempt ?? 0) + 1
+
+    const completion = completeNick(source, nicks, attempt)
+    if (!completion) return
+
+    const range = document.createRange()
+    const start = (continuing === null ? offset : offset - (cycle.current?.last.insert.length ?? 0)) - completion.replace
+    if (start < 0) return
+    range.setStart(node, start)
+    range.setEnd(node, offset)
+    range.deleteContents()
+    const inserted = document.createTextNode(completion.insert)
+    range.insertNode(inserted)
+    range.setStartAfter(inserted)
+    range.collapse(true)
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    cycle.current = { last: completion, attempt }
+    if (inputRef.current) setText(composerText(inputRef.current))
+  }
+
   return (
     <div className="composer">
       <div className="divider-h" />
@@ -290,6 +345,16 @@ export function Composer(): JSX.Element | null {
               if (e.key === 'Enter') {
                 e.preventDefault()
                 if (!e.shiftKey) submit()
+                return
+              }
+              // Tab completes the name being typed, and completes it again on
+              // the next press. Every IRC client does this and nothing here
+              // did: on a network where people are called `[Fish]tank_` or
+              // `nick|away`, typing a name exactly is most of the work of
+              // saying anything to anyone.
+              if (e.key === 'Tab' && !e.shiftKey) {
+                e.preventDefault()
+                completeAtCaret()
               }
             }}
             onPaste={onPaste}

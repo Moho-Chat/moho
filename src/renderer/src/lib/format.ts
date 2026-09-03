@@ -175,6 +175,14 @@ export interface FormatOptions {
   smilies?: SmilieIndex | null
   /** Resolves Discord's `<#id>` channel links; without it they stay literal. */
   channels?: ChannelIndex | null
+  /**
+   * What to do with IRC's own formatting codes: render them, or strip them.
+   *
+   * Absent means strip, which is what every non-IRC protocol wants - a stray
+   * \x02 in a Discord message is a control character somebody pasted, not
+   * bold.
+   */
+  ircFormatting?: 'render' | 'strip'
 }
 
 /**
@@ -182,9 +190,138 @@ export interface FormatOptions {
  * numbered in the order they appear here, so the same message always maps the
  * same index to the same run.
  */
+/** mIRC's sixteen colours, in their numbered order. */
+const MIRC_COLOURS = [
+  '#ffffff', '#000000', '#00007f', '#009300', '#ff0000', '#7f0000', '#9c009c', '#fc7f00',
+  '#ffff00', '#00fc00', '#009393', '#00ffff', '#0000fc', '#ff00ff', '#7f7f7f', '#d2d2d2'
+]
+
+/** Every code IRC uses to mark up a line. */
+const IRC_CODES = /[\u0002\u001d\u001f\u0016\u000f\u0003\u0004]/
+
+/**
+ * Turns IRC's formatting codes into markup, or removes them.
+ *
+ * These are the oldest formatting in chat and moho showed them as control
+ * characters: `\x02` bold, `\x1d` italic, `\x1f` underline, `\x16` reverse,
+ * `\x0f` reset, and `\x03fg,bg` colour. On a channel where anyone uses colour
+ * - which is every channel with a bot in it - the text arrived with invisible
+ * junk in the middle of it.
+ *
+ * Rendered with inline styles rather than classes because the colours are
+ * numbered by the protocol, not chosen by this client; the palette is mIRC's
+ * own, which is what every other client draws.
+ */
+export function ircFormat(text: string, mode: 'render' | 'strip'): string {
+  if (!IRC_CODES.test(text)) return text
+
+  if (mode === 'strip') {
+    return text
+      // Colour: the code plus up to "99,99" of digits.
+      .replace(/\u0003\d{0,2}(,\d{1,2})?/g, '')
+      .replace(/\u0004[0-9a-fA-F]{6}(,[0-9a-fA-F]{6})?/g, '')
+      .replace(/[\u0002\u001d\u001f\u0016\u000f]/g, '')
+  }
+
+  let out = ''
+  let open = 0
+  let bold = false
+  let italic = false
+  let underline = false
+  let colour: string | null = null
+  let background: string | null = null
+
+  const restyle = (): void => {
+    // One span per change rather than nesting each attribute: the codes
+    // toggle independently and in any order, so a stack would have to be
+    // unwound out of order - which is not a thing HTML can do.
+    while (open > 0) {
+      out += '</span>'
+      open--
+    }
+    const styles: string[] = []
+    if (bold) styles.push('font-weight:600')
+    if (italic) styles.push('font-style:italic')
+    if (underline) styles.push('text-decoration:underline')
+    if (colour) styles.push(`color:${colour}`)
+    if (background) styles.push(`background:${background}`)
+    if (styles.length) {
+      out += `<span style="${styles.join(';')}">`
+      open++
+    }
+  }
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    switch (ch) {
+      case '\u0002':
+        bold = !bold
+        restyle()
+        break
+      case '\u001d':
+        italic = !italic
+        restyle()
+        break
+      case '\u001f':
+        underline = !underline
+        restyle()
+        break
+      case '\u0016':
+        // Reverse video: swap the two, which is what it means and is far
+        // more legible than trying to invert whatever theme is in use.
+        [colour, background] = [background ?? MIRC_COLOURS[0], colour ?? MIRC_COLOURS[1]]
+        restyle()
+        break
+      case '\u000f':
+        bold = italic = underline = false
+        colour = background = null
+        restyle()
+        break
+      case '\u0003': {
+        const match = /^(\d{1,2})?(?:,(\d{1,2}))?/.exec(text.slice(i + 1))
+        const [whole, fg, bg] = match ?? ['', undefined, undefined]
+        // A bare \x03 with no digits turns colour off, which is how a line
+        // ends a coloured run without resetting bold along with it.
+        colour = fg === undefined ? null : MIRC_COLOURS[Number(fg) % 16]
+        if (bg !== undefined) background = MIRC_COLOURS[Number(bg) % 16]
+        if (fg === undefined) background = null
+        i += whole.length
+        restyle()
+        break
+      }
+      // Hex colour, the newer extension: \x04RRGGBB.
+      case '\u0004': {
+        const match = /^([0-9a-fA-F]{6})(?:,([0-9a-fA-F]{6}))?/.exec(text.slice(i + 1))
+        if (!match) {
+          colour = background = null
+        } else {
+          colour = `#${match[1]}`
+          if (match[2]) background = `#${match[2]}`
+          i += match[0].length
+        }
+        restyle()
+        break
+      }
+      default:
+        out += ch
+    }
+  }
+  while (open > 0) {
+    out += '</span>'
+    open--
+  }
+  return out
+}
+
 export function formatMessage(text: string, opts: FormatOptions = {}): string {
   if (!text) return text
   const revealed = opts.revealedSpoilers || {}
+  // First, because the codes are invisible characters sitting anywhere in the
+  // line: a colour code inside a URL or between a pair of asterisks would
+  // otherwise break the pass that reads it. Stripped rather than rendered for
+  // every protocol that does not use them, where a control character is
+  // something somebody pasted rather than formatting.
+  text = ircFormat(text, opts.ircFormatting === 'render' ? 'render' : 'strip')
 
   // Stash already-formed markup so later passes don't re-touch its contents,
   // then restore at the end. Wrapped in a word marker rather than bare digits:

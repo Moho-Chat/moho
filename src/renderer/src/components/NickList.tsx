@@ -294,6 +294,9 @@ export function NickList(): JSX.Element {
                     .catch((e: Error) => store.toast('error', `Couldn't call: ${e.message}`))
                 }}
                 onWhisper={() => store.startWhisper(member.nick)}
+                onProfile={
+                  buffer ? () => store.showProfile(buffer.id, member.nick, member.userId) : undefined
+                }
                 onSendFile={() => account && void store.sendFileTo(account.id, member.nick)}
                 onOpenDm={() => {
                   if (!account) return
@@ -336,6 +339,8 @@ interface MemberRowProps {
   onSendFile: () => void
   /** Only where the protocol supports it and the member is identifiable. */
   canCall: boolean
+  /** Ask the service who this is. Every service answers something. */
+  onProfile?: () => void
   onCall: () => void
 }
 
@@ -356,7 +361,8 @@ function MemberRow({
   onWhisper,
   onSendFile,
   canCall,
-  onCall
+  onCall,
+  onProfile
 }: MemberRowProps): JSX.Element {
   const { menu, open, close } = useContextMenu()
 
@@ -364,6 +370,7 @@ function MemberRow({
   // work; the server is still the actual authority and re-checks regardless.
   const entries: MenuEntry[] = [
     { label: 'Mention', icon: 'alternate_email', onClick: onMention },
+    ...(onProfile ? ([{ label: 'Profile', icon: 'person_search', onClick: onProfile }] as MenuEntry[]) : []),
     ...(canCall ? ([{ label: 'Call', icon: 'call', onClick: onCall }] as MenuEntry[]) : []),
     ...(canOpenDm ? ([{ label: 'Open DM', icon: 'chat', onClick: onOpenDm }] as MenuEntry[]) : []),
     ...(canWhisper ? ([{ label: 'Whisper', icon: 'lock', onClick: onWhisper }] as MenuEntry[]) : []),

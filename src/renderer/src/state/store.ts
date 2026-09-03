@@ -11,6 +11,7 @@ import type {
   Message,
   NobilisEvent,
   MessageReader,
+  Profile,
   Reaction,
   RoomPermissions,
   SockchatSmilie,
@@ -223,6 +224,14 @@ export interface ChatState {
   /** Per-buffer "New messages" divider timestamp, snapshotted on open. */
   dividerTsByBuffer: Record<string, number>
   matrixPermissions: Record<string, RoomPermissions>
+  /**
+   * The profile being shown, or null.
+   *
+   * One at a time, and held here rather than in the card: the answer arrives
+   * from the daemon as an event some time after the question was asked, so
+   * whatever draws it cannot be the thing that asked.
+   */
+  profile: Profile | null
   replyingTo: { id: string; from: string; body: string } | null
   toasts: Toast[]
 
@@ -285,6 +294,7 @@ const INITIAL: ChatState = {
   readersByBuffer: {},
   openThread: null,
   matrixPermissions: {},
+  profile: null,
   replyingTo: null,
   toasts: [],
   smilies: [],
@@ -1165,6 +1175,25 @@ export class ChatStore {
     })
   }
 
+  /**
+   * Asks who somebody is, and opens the card on what is known meanwhile.
+   *
+   * The card opens before the answer arrives because the answer is a request
+   * over a network - to a homeserver, to Discord, to an IRC server that may
+   * take a second to reply - and a menu item that appears to do nothing for
+   * a second is a menu item people press twice.
+   */
+  showProfile(bufferId: string, nick: string, userId?: string): void {
+    void window.moho
+      .rpc<Profile>('requestProfile', { bufferId, nick, ...(userId ? { userId } : {}) })
+      .then((opening) => this.set({ profile: opening }))
+      .catch((e: Error) => this.toast('error', e.message))
+  }
+
+  closeProfile(): void {
+    this.set({ profile: null })
+  }
+
   private handleEvent(frame: NobilisEvent): void {
     const { event, data } = frame
     switch (event) {
@@ -1304,6 +1333,19 @@ export class ChatStore {
       case 'voicePrefsChanged':
         this.set({ voicePrefs: data as VoicePrefs })
         break
+
+      // Somebody looked up. Shown as a card rather than as lines in the
+      // buffer: it is an answer to a question, not part of the conversation.
+      //
+      // Ignored when it is not about whoever is on screen - two lookups in
+      // quick succession would otherwise have the slower one win.
+      case 'profile': {
+        const answer = data as unknown as Profile
+        const open = this.state.profile
+        if (open && open.name.toLowerCase() !== answer.name.toLowerCase() && !answer.handle?.toLowerCase().includes(open.name.toLowerCase())) break
+        this.set({ profile: answer })
+        break
+      }
 
       case 'presenceChange':
         this.set({

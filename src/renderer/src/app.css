@@ -4382,3 +4382,100 @@ video.lightbox-media {
     }
   }
 }
+
+/* --- profile -------------------------------------------------------------
+   An answer to a question, not a document: narrow, high in the window, and
+   gone on Escape. */
+.profile-card {
+  width: 420px;
+  max-width: calc(100vw - var(--spacing-xl));
+  margin-top: 12vh;
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding: var(--spacing-m);
+  background: var(--surface-container);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+.profile-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-name {
+  font-size: var(--font-size-large);
+  font-weight: 600;
+}
+
+.profile-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xxs);
+}
+
+.profile-role {
+  padding: 1px var(--spacing-xs);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  color: var(--surface-variant-text);
+}
+
+/* Label and value on one line, labels aligned, so the card is read down its
+   left edge rather than hunted through. */
+.profile-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.profile-row {
+  display: grid;
+  grid-template-columns: 7em 1fr;
+  gap: var(--spacing-s);
+  align-items: baseline;
+}
+
+.profile-row dd {
+  min-width: 0;
+}
+
+.profile-channels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+/* Wraps, because a well-connected nick is in thirty channels and a row that
+   scrolled sideways would hide most of them. */
+.profile-channel-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xxs);
+  max-height: 8em;
+  overflow-y: auto;
+}
+
+.profile-channel {
+  padding: 1px var(--spacing-xs);
+  border: 1px solid var(--outline-light);
+  border-radius: var(--corner-radius-small);
+  color: var(--surface-variant-text);
+}
+
+.profile-waiting {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+}
