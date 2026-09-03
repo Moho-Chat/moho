@@ -117,7 +117,14 @@ function GroupFace({ group, customIcon }: { group: RailGroup; customIcon?: strin
     if (network) {
       return (
         <span className="rail-initials rail-initials-filled" style={{ background: network.colour }}>
-          {network.mark}
+          {/* The network's own logo where it has one. On the network's own
+              colour rather than on nothing: several of these are wordmarks
+              with a transparent background, drawn for a white page. */}
+          {network.logo ? (
+            <img className="rail-network-logo" src={network.logo} alt="" />
+          ) : (
+            network.mark
+          )}
         </span>
       )
     }

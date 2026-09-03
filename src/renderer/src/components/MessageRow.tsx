@@ -168,11 +168,11 @@ export function MessageRow({
   // and the codes are removed instead of drawn.
   const [ircColours] = usePref<boolean>('irc.renderColours', true)
 
-  const isSockchat = service === 'sockchat'
+  const isSneedchat = service === 'sneedchat'
   // Discord, Sneedchat and Matrix support editing and deleting your own
   // messages; IRC has no such concept.
   const canEditDelete =
-    !!message.isOwn && (service === 'discord' || service === 'sockchat' || service === 'matrix')
+    !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix')
   const canReact = service === 'discord' || service === 'matrix'
   const isSystem = !isChatKind(message.kind)
   // Said to you rather than to the room. Drawn differently on purpose: the
@@ -225,7 +225,7 @@ export function MessageRow({
         message.html ??
         formatMessage(body, {
           revealedSpoilers: revealed,
-          isSockchat,
+          isSneedchat,
           smilies: smilieIndex,
           channels,
           // Only IRC's own traffic is drawn with IRC's codes. Elsewhere they
@@ -236,7 +236,7 @@ export function MessageRow({
       codeBlocks,
       quoteBlocks
     }
-  }, [message.body, message.html, contentSniffing, sniffed, revealed, isSockchat, smilieIndex, channels, service, ircColours])
+  }, [message.body, message.html, contentSniffing, sniffed, revealed, isSneedchat, smilieIndex, channels, service, ircColours])
 
   const entries: MenuEntry[] = [
     // First, above what to do about the message: the question a right click
@@ -254,7 +254,7 @@ export function MessageRow({
     { label: 'Reply', icon: 'reply', onClick: () => reply() },
     // Beside Reply because it is the same gesture aimed somewhere else, and
     // only where the service has whispers at all.
-    ...(service === 'sockchat' && !message.isOwn && message.from && !isSystem
+    ...(service === 'sneedchat' && !message.isOwn && message.from && !isSystem
       ? ([{ label: `Whisper ${message.from}`, icon: 'lock', onClick: () => store.startWhisper(message.from) }] as MenuEntry[])
       : []),
     // From the message rather than from a member list, because the person you

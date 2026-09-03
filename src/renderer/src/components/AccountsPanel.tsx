@@ -1,14 +1,23 @@
 import { useEffect, useState } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
-import { useChat, usePref, useStore } from '../state/hooks'
-import { bufferDisplayName, resolveMediaUrl, serviceIcon, serviceLabel } from '../lib/util'
+import { useChat, useMapPref, usePref, useStore } from '../state/hooks'
+import { bufferDisplayName, classes, resolveMediaUrl, serviceIcon, serviceLabel } from '../lib/util'
 import { IRC_NETWORKS, ircNetworkFor } from '../lib/networks'
-import { KNOWN_SOCKCHAT_ROOMS } from '../lib/sockchat'
 import type { Account } from '../../../shared/wire'
 
-const ADDABLE = ['irc', 'discord', 'sockchat', 'matrix', 'kick'] as const
+const ADDABLE = ['irc', 'discord', 'sneedchat', 'matrix', 'kick'] as const
 type AddableService = (typeof ADDABLE)[number]
+
+/**
+ * Account states that make a service's group open itself.
+ *
+ * "connecting" is in here as well as the outright failures: an account that
+ * is still trying is the other thing somebody opens this page to look at, and
+ * it settles into "connected" on its own a moment later - at which point the
+ * group folds away again without anybody doing anything.
+ */
+const TROUBLE_STATES = ['connecting', 'auth_failed', 'error']
 
 export function AccountsPanel(): JSX.Element {
   const accounts = useChat((s) => s.accounts)
@@ -23,20 +32,37 @@ export function AccountsPanel(): JSX.Element {
     if (pendingLink) setAdding('irc')
   }, [pendingLink])
 
+  /**
+   * Whether each service's accounts are shown, where somebody has said.
+   *
+   * A preference rather than component state: folding four IRC accounts away
+   * is a decision about how this page should look, and having to make it
+   * again on every visit is worse than not being able to make it at all.
+   *
+   * Absent means "decide for me", and the answer is closed - the pane is for
+   * the things you do rarely, and a dozen accounts across five services made
+   * it one long column - except for a service with an account in trouble.
+   * Those open themselves, because an account that cannot connect is the one
+   * reason to be on this page that nobody navigated here for.
+   *
+   * An explicit choice outranks that, in both directions: closing a group
+   * that opened itself keeps it closed, which is somebody saying they know.
+   */
+  const [openGroups, setOpenGroups] = useMapPref<boolean>('accountGroupOpen')
+
+  // Grouped by service, in the order the picker offers them, so the two
+  // halves of this page agree about what order services come in.
+  const byService = ADDABLE.map((service) => ({
+    service,
+    accounts: accounts.filter((a) => a.service === service)
+  })).filter((group) => group.accounts.length > 0)
+
   return (
     <div className="panel">
-      <div className="panel-section">
-        {accounts.length === 0 && (
-          <p className="muted">
-            No accounts yet. Pick a service below to connect one — nobilis keeps the connection alive
-            in the background, so it survives closing this window.
-          </p>
-        )}
-        {accounts.map((account) => (
-          <AccountRow key={account.id} account={account} />
-        ))}
-      </div>
-
+      {/* Adding comes first now. It is the thing somebody opens this page to
+          do that has no other route - an existing account can be reached by
+          its own rail tile, and reading down a list of them to find the add
+          section was the page's shape rather than anybody's intent. */}
       <div className="panel-section">
         <h3 className="panel-heading">Add an account</h3>
         <div className="service-picker">
@@ -58,9 +84,43 @@ export function AccountsPanel(): JSX.Element {
 
         {adding === 'irc' && <IrcForm onDone={() => setAdding(null)} />}
         {adding === 'discord' && <DiscordForm />}
-        {adding === 'sockchat' && <SockChatForm />}
+        {adding === 'sneedchat' && <SneedChatForm />}
         {adding === 'matrix' && <MatrixForm />}
         {adding === 'kick' && <KickForm onDone={() => setAdding(null)} />}
+      </div>
+
+      <div className="panel-section">
+        {accounts.length === 0 && (
+          <p className="muted">
+            No accounts yet. Pick a service above to connect one — nobilis keeps the connection
+            alive in the background, so it survives closing this window.
+          </p>
+        )}
+
+        {byService.map(({ service, accounts: mine }) => {
+          const icon = serviceIcon(service)
+          // A service worth looking at even unasked: something in it is not
+          // working, or is on its way to working.
+          const troubled = mine.some((a) => TROUBLE_STATES.includes(a.state))
+          const shut = !(openGroups[service] ?? troubled)
+          return (
+            <div key={service} className="account-group">
+              <button
+                type="button"
+                className="account-group-head"
+                aria-expanded={!shut}
+                onClick={() => setOpenGroups(service, shut)}
+              >
+                <Icon name={shut ? 'chevron_right' : 'expand_more'} size={18} />
+                {icon.mark ? <MaskIcon src={icon.mark} size={16} /> : <Icon name={icon.glyph!} size={16} />}
+                <span className="account-group-name">{serviceLabel(service)}</span>
+                {/* The count is what makes a folded heading worth reading. */}
+                <span className="small muted">{mine.length}</span>
+              </button>
+              {!shut && mine.map((account) => <AccountRow key={account.id} account={account} />)}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -314,8 +374,6 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
             </>
           )}
 
-          {account.service === 'sockchat' && <SneedchatRooms account={account} call={call} />}
-
           {account.service === 'discord' && <DiscordReauth account={account} />}
 
           {account.service === 'matrix' && <MatrixAccountTools account={account} />}
@@ -493,111 +551,6 @@ function IrcSasl({
   )
 }
 
-/**
- * Which Sneedchat rooms this account stays connected to.
- *
- * On the account rather than in Settings, because it was never a preference -
- * it is part of an account's configuration, and the daemon has always stored
- * and addressed it per account. The Settings pane drew one copy and resolved
- * it with `accounts.find(service === 'sockchat')`, so with two Sneedchat
- * accounts it silently edited the first and gave the second no way in at all.
- *
- * Each enabled room keeps its own permanent connection, but they share the one
- * embedded Tor circuit, so enabling another costs very little.
- */
-function SneedchatRooms({
-  account,
-  call
-}: {
-  account: Account
-  call: (method: string, params: Record<string, unknown>) => void
-}): JSX.Element {
-  const enabled = account.sockchatRooms ?? []
-  /**
-   * The catalogue, from the site.
-   *
-   * It used to be six rooms written into this client, which is how #lolcows
-   * came to be unreachable without editing the source. The daemon reads the
-   * room switcher off the chat page - the same list a person sees down the
-   * side of the site - and this asks for it when the account's settings are
-   * opened.
-   *
-   * The built-in list is the fallback rather than the source: the site is
-   * behind a proof-of-work gate over Tor and the fetch can fail, and six
-   * rooms somebody can still tick is a better answer than none.
-   */
-  const [rooms, setRooms] = useState(KNOWN_SOCKCHAT_ROOMS)
-  const [asking, setAsking] = useState(true)
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    let live = true
-    setAsking(true)
-    // The answer to this is whatever the daemon read last, which may be
-    // nothing on a fresh start; the live read happens behind it and arrives
-    // as an event, because it takes about fifteen seconds through Tor and the
-    // site's gate and the daemon answers one request at a time.
-    void window.moho
-      .rpc<{ rooms: { id: number; name: string }[] }>('listSockChatRooms', { accountId: account.id })
-      .then((r) => live && r.rooms?.length && setRooms(r.rooms))
-      .catch((e: Error) => live && setError(e.message))
-
-    const stop = window.moho.onEvent((frame) => {
-      if (frame.event !== 'sockchatRooms') return
-      const data = frame.data as { accountId: string; rooms: { id: number; name: string }[] }
-      if (!live || data.accountId !== account.id || !data.rooms.length) return
-      setRooms(data.rooms)
-      setAsking(false)
-      setError('')
-    })
-    return () => {
-      live = false
-      stop()
-    }
-  }, [account.id])
-
-  const toggle = (id: number, on: boolean): void => {
-    const next = on
-      ? enabled.some((r) => r.id === id)
-        ? enabled
-        : [...enabled, rooms.find((r) => r.id === id)!]
-      : enabled.filter((r) => r.id !== id)
-    call('setSockChatRooms', { accountId: account.id, rooms: next })
-  }
-
-  return (
-    <div className="sasl-block">
-      <span className="small muted">
-        Channels{asking ? ' — asking the site…' : ''}
-      </span>
-      {rooms.map((room) => (
-        <label key={room.id} className="checkbox-row">
-          <input
-            type="checkbox"
-            checked={enabled.some((r) => r.id === room.id)}
-            onChange={(e) => toggle(room.id, e.target.checked)}
-          />
-          <span>#{room.name}</span>
-        </label>
-      ))}
-      {/* Said rather than hidden: this list is the one this client shipped
-          with, and the site may well have rooms that are not in it. */}
-      {error && (
-        <span className="small muted">
-          Could not read the site&apos;s room list ({error}) — showing the rooms this client knows.
-        </span>
-      )}
-      {/* An account with none ticked still connects to #general - the daemon
-          falls back to it so a freshly added account is usable before anybody
-          has been here. Worth saying, or an empty list reads as "connected to
-          nothing". */}
-      {enabled.length === 0 && (
-        <span className="small muted">None chosen - this account uses #general.</span>
-      )}
-    </div>
-  )
-}
-
 function LabeledInput({
   label,
   defaultValue,
@@ -638,8 +591,29 @@ function IrcForm({ onDone }: { onDone: () => void }): JSX.Element {
   const [host, setHost] = useState(link?.host ?? '')
   const [port, setPort] = useState(String(link?.port ?? (link?.tls === false ? 6667 : 6697)))
   const [ssl, setSsl] = useState(link?.tls ?? true)
-  const [autojoin, setAutojoin] = useState(link?.channels.join(',') ?? '')
+  // What a link asked to join, carried straight through. There is no field
+  // for it: which channels an account joins on connect is a property of the
+  // channels, and is set on them - see the buffer list's own menu.
+  const autojoin = link?.channels.join(',') ?? ''
+  /**
+   * How this account proves who it is, if at all.
+   *
+   * Asked here rather than left to the account's settings afterwards, because
+   * a nick that is registered and not identified is a nick you lose to the
+   * ghost of your last session - which happens on the first connection, well
+   * before anybody goes looking for a settings pane.
+   *
+   * SASL and NickServ are both offered because networks differ: SASL
+   * identifies before anything else happens, which is what a channel with
+   * +r wants, and the older networks have only NickServ.
+   */
+  const [auth, setAuth] = useState<'none' | 'sasl' | 'nickserv'>('none')
+  const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
+  // Only a network nobody picked from the tiles needs its address typed, and
+  // showing those fields for one that was picked invites editing a hostname
+  // that is already right.
+  const chosen = ircNetworkFor(host)
 
   const submit = async (): Promise<void> => {
     if (!nick || !host) return
@@ -650,8 +624,18 @@ function IrcForm({ onDone }: { onDone: () => void }): JSX.Element {
         host,
         port: Number(port) || undefined,
         ssl,
-        autojoin
+        autojoin,
+        // SASL's own password field is the account password; NickServ's is
+        // sent as a message after connecting, which is a different thing and
+        // a different call.
+        ...(auth === 'sasl' ? { sasl: true, saslUser: nick, password } : {})
       })
+      if (auth === 'nickserv' && password) {
+        await window.moho.rpc('setAccountNickservPassword', {
+          accountId: `${nick}@${host}`,
+          password
+        })
+      }
       await store.refreshAccounts()
       store.clearPendingLink()
       onDone()
@@ -664,64 +648,127 @@ function IrcForm({ onDone }: { onDone: () => void }): JSX.Element {
 
   return (
     <div className="add-form">
+      {/* Typing a hostname and port correctly is the one step here where a
+          small mistake looks like the server being down, so the networks
+          people actually join are offered ready-made. Choosing one fills
+          the fields rather than hiding them: they stay editable, and a
+          network not on the list is typed in exactly as before. */}
+      <div className="field">
+        <span className="small muted">Network</span>
+        {/* Tiles rather than a dropdown, now that these carry the networks'
+            own logos: a list of names says nothing a person recognises,
+            and a wall of marks is how anybody actually finds the network
+            they are on. "Other" stays first, because a network not on the
+            list is typed in exactly as before. */}
+        <div className="network-grid">
+          <button
+            type="button"
+            className={classes('network-tile', !ircNetworkFor(host) && 'active')}
+            onClick={() => setHost('')}
+          >
+            <span className="network-mark network-mark-other">
+              <Icon name="add" size={18} />
+            </span>
+            <span className="small ellipsis">Other</span>
+          </button>
+          {IRC_NETWORKS.map((n) => (
+            <button
+              key={n.id}
+              type="button"
+              className={classes('network-tile', ircNetworkFor(host)?.id === n.id && 'active')}
+              title={`${n.host}:${n.port}`}
+              onClick={() => {
+                setHost(n.host)
+                setPort(String(n.port))
+                setSsl(n.tls)
+              }}
+            >
+              <span className="network-mark" style={{ background: n.colour }}>
+                {n.logo ? <img src={n.logo} alt="" /> : n.mark}
+              </span>
+              <span className="small ellipsis">{n.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="field-row">
         <label className="field">
           <span className="small muted">Nickname</span>
           <input className="text-field" value={nick} onChange={(e) => setNick(e.target.value)} />
         </label>
-        {/* Typing a hostname and port correctly is the one step here where a
-            small mistake looks like the server being down, so the networks
-            people actually join are offered ready-made. Choosing one fills
-            the fields rather than hiding them: they stay editable, and a
-            network not on the list is typed in exactly as before. */}
-        <label className="field">
-          <span className="small muted">Network</span>
-          <select
-            className="text-field"
-            value={ircNetworkFor(host)?.id ?? ''}
-            onChange={(e) => {
-              const n = IRC_NETWORKS.find((x) => x.id === e.target.value)
-              if (!n) return
-              setHost(n.host)
-              setPort(String(n.port))
-              setSsl(n.tls)
-            }}
-          >
-            <option value="">Other…</option>
-            {IRC_NETWORKS.map((n) => (
-              <option key={n.id} value={n.id}>
-                {n.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span className="small muted">Server</span>
+        {/* Only for a network that was not picked. A chosen one has its
+            address already, and a field showing it invites editing something
+            that is right. */}
+        {!chosen && (
+          <>
+            <label className="field">
+              <span className="small muted">Server</span>
+              <input
+                className="text-field"
+                placeholder="irc.example.net"
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+              />
+            </label>
+            <label className="field port">
+              <span className="small muted">Port</span>
+              <input className="text-field" value={port} onChange={(e) => setPort(e.target.value)} />
+            </label>
+          </>
+        )}
+      </div>
+      {/* How to identify. Three choices rather than two switches, because
+          they are alternatives: a network wants one or the other, and asking
+          for both would be asking somebody to type their password twice. */}
+      <div className="field">
+        <span className="small muted">Sign in</span>
+        <div className="field-row">
+          {(
+            [
+              ['none', 'No account'],
+              ['sasl', 'SASL'],
+              ['nickserv', 'NickServ']
+            ] as const
+          ).map(([value, label]) => (
+            <label key={value} className="checkbox-row">
+              <input
+                type="radio"
+                name="irc-auth"
+                checked={auth === value}
+                onChange={() => setAuth(value)}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+        {auth !== 'none' && (
           <input
             className="text-field"
-            placeholder="irc.libera.chat"
-            value={host}
-            onChange={(e) => setHost(e.target.value)}
+            type="password"
+            placeholder={auth === 'sasl' ? 'Account password' : 'NickServ password'}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
           />
-        </label>
-        <label className="field port">
-          <span className="small muted">Port</span>
-          <input className="text-field" value={port} onChange={(e) => setPort(e.target.value)} />
-        </label>
+        )}
+        {auth === 'sasl' && (
+          <span className="small muted">
+            Identifies before joining anything, using your nickname as the account name.
+          </span>
+        )}
+        {auth === 'nickserv' && (
+          <span className="small muted">
+            Sent to NickServ after connecting, and used to reclaim your nick from a stale session.
+          </span>
+        )}
       </div>
-      <label className="field">
-        <span className="small muted">Channels to join</span>
-        <input
-          className="text-field"
-          placeholder="#channel, #another"
-          value={autojoin}
-          onChange={(e) => setAutojoin(e.target.value)}
-        />
-      </label>
-      <label className="checkbox-row">
-        <input type="checkbox" checked={ssl} onChange={(e) => setSsl(e.target.checked)} />
-        <span>Use TLS</span>
-      </label>
+
+      {!chosen && (
+        <label className="checkbox-row">
+          <input type="checkbox" checked={ssl} onChange={(e) => setSsl(e.target.checked)} />
+          <span>Use TLS</span>
+        </label>
+      )}
       <button type="button" className="button" disabled={busy || !nick || !host} onClick={() => void submit()}>
         Connect
       </button>
@@ -1072,9 +1119,9 @@ function KickForm({ onDone }: { onDone: () => void }): JSX.Element {
  * site's proof-of-work gate, so it can take anywhere from instant to over a
  * minute - hence the same async-kickoff shape as Discord's QR flow.
  */
-function SockChatForm(): JSX.Element {
+function SneedChatForm(): JSX.Element {
   const store = useStore()
-  const status = useChat((s) => s.sockChatLoginStatus)
+  const status = useChat((s) => s.sneedChatLoginStatus)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [totpSecret, setTotpSecret] = useState('')
@@ -1106,12 +1153,12 @@ function SockChatForm(): JSX.Element {
         disabled={!username || !password}
         onClick={() =>
           void window.moho
-            .rpc('addSockChatAccount', {
+            .rpc('addSneedChatAccount', {
               username,
               password,
               ...(totpSecret ? { totpSecret } : {})
             })
-            .then(() => store.setSockChatLoginStatus('Bootstrapping Tor…'))
+            .then(() => store.setSneedChatLoginStatus('Bootstrapping Tor…'))
             .catch((e: Error) => store.toast('error', e.message))
         }
       >

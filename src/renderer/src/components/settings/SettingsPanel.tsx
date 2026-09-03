@@ -20,7 +20,7 @@ import type { Account, DccPrefs } from '../../../../shared/wire'
 const CATEGORIES = [
   { id: 'general', label: 'General', available: true },
   { id: 'irc', label: 'IRC', available: true },
-  { id: 'sockchat', label: 'Sneedchat', available: true },
+  { id: 'sneedchat', label: 'Sneedchat', available: true },
   { id: 'tor', label: 'Tor', available: true },
   { id: 'matrix', label: 'Matrix', available: true },
   { id: 'kick', label: 'Kick', available: true },
@@ -58,7 +58,7 @@ function UploadHostSetting({
   service,
   kind
 }: {
-  service: 'irc' | 'sockchat'
+  service: 'irc' | 'sneedchat'
   kind: 'images' | 'media'
 }): JSX.Element {
   // The old single setting, kept as the starting point so nobody who chose a
@@ -70,7 +70,7 @@ function UploadHostSetting({
   const legacyUsable = legacy === 'postimg' ? kind === 'images' : !!legacy
   const fallback = legacyUsable
     ? legacy
-    : kind === 'images' && service === 'sockchat'
+    : kind === 'images' && service === 'sneedchat'
       ? 'postimg'
       : 'catbox'
 
@@ -137,7 +137,7 @@ export function SettingsPanel(): JSX.Element {
       <div className="settings-content">
         {selected === 'general' && <GeneralSettings />}
         {selected === 'irc' && <IrcSettings />}
-        {selected === 'sockchat' && <SneedchatSettings />}
+        {selected === 'sneedchat' && <SneedchatSettings />}
         {selected === 'tor' && <TorSettings />}
         {selected === 'matrix' && (
           <>
@@ -524,14 +524,14 @@ function TransferSettings(): JSX.Element {
   )
 }
 
-function useSockchatAccount(): Account | undefined {
-  return useChat((s) => s.accounts).find((a) => a.service === 'sockchat')
+function useSneedchatAccount(): Account | undefined {
+  return useChat((s) => s.accounts).find((a) => a.service === 'sneedchat')
 }
 
 /**
  * Sneedchat's own settings are per account and live on the account card.
  *
- * They used to be here, resolved with accounts.find(service === 'sockchat') -
+ * They used to be here, resolved with accounts.find(service === 'sneedchat') -
  * which silently edited the first Sneedchat account and left a second one with
  * no way in at all. Which rooms an account is connected to is part of that
  * account's configuration rather than an application preference, and the
@@ -550,8 +550,8 @@ function SneedchatSettings(): JSX.Element {
         title="Uploads"
         description="Sneedchat's own protocol carries no files at all, so one is uploaded elsewhere and posted as a link. postimg.cc is what the site's regulars use and gives a picture a page to click through to - it takes images only, which is why the two are chosen separately."
       >
-        <UploadHostSetting service="sockchat" kind="images" />
-        <UploadHostSetting service="sockchat" kind="media" />
+        <UploadHostSetting service="sneedchat" kind="images" />
+        <UploadHostSetting service="sneedchat" kind="media" />
       </SettingsSection>
     </>
   )
@@ -617,7 +617,7 @@ function KickSettings(): JSX.Element {
  */
 function TorSettings(): JSX.Element {
   const store = useStore()
-  const account = useSockchatAccount()
+  const account = useSneedchatAccount()
   const [useProxy, setUseProxy] = useState(account?.torMode === 'proxy')
   const [proxy, setProxy] = useState(account?.torProxy || '')
 

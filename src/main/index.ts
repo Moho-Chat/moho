@@ -134,8 +134,8 @@ function resourcePath(...parts: string[]): string {
  */
 function smiliesPath(): string {
   return app.isPackaged
-    ? path.join(process.resourcesPath, 'sockchat-smilies')
-    : path.join(app.getAppPath(), 'nobilis', 'resources', 'sockchat-smilies')
+    ? path.join(process.resourcesPath, 'sneedchat-smilies')
+    : path.join(app.getAppPath(), 'nobilis', 'resources', 'sneedchat-smilies')
 }
 
 /**

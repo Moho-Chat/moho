@@ -97,7 +97,7 @@ export function Composer(): JSX.Element | null {
   // which is what people do by hand on IRC anyway, and is why it is offered
   // here rather than left as the one service where the button is dead.
   const supportsAttachments =
-    service === 'discord' || service === 'sockchat' || service === 'matrix' || service === 'irc'
+    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc'
 
   // Refocus on buffer switch so typing works immediately after clicking a
   // channel, without a second click into the field.
@@ -166,7 +166,7 @@ export function Composer(): JSX.Element | null {
   const insertEmoji = (token: string): void => {
     const el = inputRef.current
     if (!el) return
-    const preview = emojiPreview(token, service === 'sockchat' ? smilies : [])
+    const preview = emojiPreview(token, service === 'sneedchat' ? smilies : [])
     if (preview) {
       const img = document.createElement('img')
       img.className = 'composer-emoji'
@@ -403,7 +403,7 @@ export function Composer(): JSX.Element | null {
           accountId={account?.id}
           // Smilies are Sneedchat-only; posting a shortcode anywhere else
           // would just send literal text nobody renders.
-          smilies={service === 'sockchat' ? smilies : []}
+          smilies={service === 'sneedchat' ? smilies : []}
           onSelect={(emoji) => {
             insertEmoji(emoji)
             setPickerOpen(false)

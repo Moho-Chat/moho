@@ -76,7 +76,7 @@ export function serviceIcon(service: string): ServiceIcon {
     case 'jabber':
     case 'xmpp':
       return { glyph: 'forum' }
-    case 'sockchat':
+    case 'sneedchat':
       return { mark: sneedchatMark, colour: true }
     // Coloured, like Sneedchat's: the mark is a green K on its own dark
     // ground, and drawing it as a monochrome mask would throw away the one
@@ -96,7 +96,7 @@ export function serviceLabel(service: string): string {
       return 'Discord'
     case 'matrix':
       return 'Matrix'
-    case 'sockchat':
+    case 'sneedchat':
       return 'Sneedchat'
     case 'kick':
       return 'Kick'

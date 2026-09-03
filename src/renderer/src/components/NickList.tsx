@@ -211,7 +211,7 @@ export function NickList(): JSX.Element {
                 blockKey={`${buffer?.accountId}|${member.nick}`}
                 blocked={isBlocked(`${buffer?.accountId}|${member.nick}`)}
                 canOpenDm={hasDirectMessages(account?.service)}
-                canWhisper={account?.service === 'sockchat'}
+                canWhisper={account?.service === 'sneedchat'}
                 canSendFile={account?.service === 'irc'}
                 canCall={canCall && !!member.userId}
                 perms={perms}

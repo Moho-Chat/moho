@@ -56,6 +56,33 @@ export class Prefs extends EventEmitter {
       // Missing or corrupt: start from defaults rather than refusing to run.
       this.data = {}
     }
+    this.renameSneedchat()
+  }
+
+  /**
+   * Sneedchat account ids used to be spelled "sockchat:", after an
+   * implementation of the protocol rather than after the chat itself.
+   *
+   * Almost everything in here is keyed by buffer id, and a buffer id is built
+   * from the account id - so without this every pin, mute, category, read
+   * marker and popout size for Sneedchat would point at conversations that no
+   * longer exist under any name, and the rename would look like the client
+   * quietly forgetting a year of arrangement.
+   *
+   * A blunt string rewrite over the whole file, because the ids appear as
+   * keys, as values, and inside longer strings ("account:sockchat:name"), and
+   * "sockchat" is not a word that occurs in this file for any other reason.
+   */
+  private renameSneedchat(): void {
+    const before = JSON.stringify(this.data)
+    if (!before.includes('sockchat')) return
+    // Both spellings it appears in: an account id ends in a colon, and the
+    // per-service upload host is keyed "uploads.sockchat.media".
+    this.data = JSON.parse(
+      before.replaceAll('sockchat:', 'sneedchat:').replaceAll('uploads.sockchat.', 'uploads.sneedchat.')
+    )
+    log.info('prefs: renamed sockchat: ids to sneedchat:')
+    this.scheduleFlush()
   }
 
   /** Debounced - a burst of writes (scroll markers, collapse toggles) is one flush. */

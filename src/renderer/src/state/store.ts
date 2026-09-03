@@ -14,7 +14,7 @@ import type {
   Profile,
   Reaction,
   RoomPermissions,
-  SockchatSmilie,
+  SneedchatSmilie,
   VoiceChannel,
   VoicePrefs,
   VoiceSession
@@ -96,6 +96,14 @@ const JOIN_GIVE_UP_MS = 30_000
 
 export function isJoining(buffer: { id: string }): boolean {
   return buffer.id.startsWith(JOINING_PREFIX)
+}
+
+/** The channels in an account's autojoin string, however it was written. */
+function autojoinList(autojoin: string | undefined): string[] {
+  return (autojoin ?? '')
+    .split(/[,\s]+/)
+    .map((c) => c.trim())
+    .filter(Boolean)
 }
 
 export type ActivePanel = '' | 'accounts' | 'settings' | 'join' | 'downloads'
@@ -250,7 +258,7 @@ export interface ChatState {
   discordMfa: { loginId: string; totp: boolean; sms: boolean; backup: boolean } | null
   /** The account being re-authenticated, or '' for a brand-new one. */
   discordReauthAccountId: string
-  sockChatLoginStatus: string
+  sneedChatLoginStatus: string
   matrixLoginStatus: string
 }
 
@@ -305,7 +313,7 @@ const INITIAL: ChatState = {
   discordLoginStatus: '',
   discordMfa: null,
   discordReauthAccountId: '',
-  sockChatLoginStatus: '',
+  sneedChatLoginStatus: '',
   matrixLoginStatus: ''
 }
 
@@ -412,14 +420,14 @@ async function hostAccepts(hostId: string, path: string): Promise<boolean> {
  */
 async function uploadHost(service: string | undefined, attachmentPath: string): Promise<string> {
   const kind = isImageFile(attachmentPath) ? 'images' : 'media'
-  const perService = service === 'sockchat' ? 'sockchat' : 'irc'
+  const perService = service === 'sneedchat' ? 'sneedchat' : 'irc'
   try {
     const prefs = await window.moho.prefs.getAll()
     const legacy = prefs['uploads.host'] as string | undefined
     // postimg takes images and nothing else, so a stored choice of it is
     // carried forward for pictures and not for anything else.
     const legacyUsable = legacy === 'postimg' ? kind === 'images' : !!legacy
-    const fallback = kind === 'images' && perService === 'sockchat' ? 'postimg' : 'catbox'
+    const fallback = kind === 'images' && perService === 'sneedchat' ? 'postimg' : 'catbox'
     const chosen =
       (prefs[`uploads.${perService}.${kind}`] as string | undefined) ||
       (legacyUsable ? legacy : undefined) ||
@@ -1194,6 +1202,32 @@ export class ChatStore {
     this.set({ profile: null })
   }
 
+  /**
+   * Whether an IRC account rejoins this channel when it connects.
+   *
+   * The daemon keeps it as one comma-separated string on the account, which
+   * is how IRC clients have always stored it; this reads that string as the
+   * list it is.
+   */
+  autojoins(accountId: string, channel: string): boolean {
+    const account = this.state.accounts.find((a) => a.id === accountId)
+    return autojoinList(account?.autojoin).some((c) => c.toLowerCase() === channel.toLowerCase())
+  }
+
+  /** Adds this channel to that list, or takes it out. */
+  toggleAutojoin(accountId: string, channel: string): void {
+    const account = this.state.accounts.find((a) => a.id === accountId)
+    if (!account) return
+    const current = autojoinList(account.autojoin)
+    const has = current.some((c) => c.toLowerCase() === channel.toLowerCase())
+    const next = has ? current.filter((c) => c.toLowerCase() !== channel.toLowerCase()) : [...current, channel]
+    void window.moho
+      .rpc('setAccountAutojoin', { accountId, channels: next.join(',') })
+      .then(() => this.refreshAccounts())
+      .then(() => this.toast('info', has ? `Will not rejoin ${channel}` : `Will rejoin ${channel} on connect`))
+      .catch((e: Error) => this.toast('error', e.message))
+  }
+
   private handleEvent(frame: NobilisEvent): void {
     const { event, data } = frame
     switch (event) {
@@ -1396,11 +1430,11 @@ export class ChatStore {
         this.set({ discordLoginStatus: data.detail || '' })
         break
 
-      case 'sockChatLoginStatus':
-        this.set({ sockChatLoginStatus: data.detail || '' })
+      case 'sneedChatLoginStatus':
+        this.set({ sneedChatLoginStatus: data.detail || '' })
         break
-      case 'sockChatLoginResult':
-        this.set({ sockChatLoginStatus: data.error || '' })
+      case 'sneedChatLoginResult':
+        this.set({ sneedChatLoginStatus: data.error || '' })
         // Refreshed either way. The daemon now saves the account before it
         // attempts the login, so a wrong password or a Tor bootstrap that
         // never finished leaves an account sitting there to correct and
@@ -1720,7 +1754,7 @@ export class ChatStore {
     void this.refreshMatrixPermissions(bufferId)
 
     const service = this.accountFor(bufferId)?.service
-    if (service === 'sockchat') void this.fetchSmilies()
+    if (service === 'sneedchat') void this.fetchSmilies()
     // Both services answer the same question about the open conversation -
     // what can go in a message here that isn't text - so both ask it the same
     // way. Kick's answer also depends on who is asking, since it carries which
@@ -1740,7 +1774,7 @@ export class ChatStore {
     this.smiliesFetched = true
     try {
       const [rows, dir] = await Promise.all([
-        window.moho.rpc<SockchatSmilie[]>('listSockchatSmilies'),
+        window.moho.rpc<SneedchatSmilie[]>('listSneedchatSmilies'),
         window.moho.smiliesDir()
       ])
       const smilies: SmilieEntry[] = rows.map((s) => ({
@@ -2257,8 +2291,8 @@ export class ChatStore {
   clearDiscordMfa(): void {
     this.set({ discordMfa: null })
   }
-  setSockChatLoginStatus(status: string): void {
-    this.set({ sockChatLoginStatus: status })
+  setSneedChatLoginStatus(status: string): void {
+    this.set({ sneedChatLoginStatus: status })
   }
   setMatrixLoginStatus(status: string): void {
     this.set({ matrixLoginStatus: status })

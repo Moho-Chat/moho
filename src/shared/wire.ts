@@ -3,7 +3,7 @@
 
 export interface Account {
   id: string
-  service: 'irc' | 'discord' | 'sockchat' | 'matrix' | 'kick' | 'jabber' | 'slack'
+  service: 'irc' | 'discord' | 'sneedchat' | 'matrix' | 'kick' | 'jabber' | 'slack'
   displayName: string
   /**
    * How the user is presenting: "online" | "idle". Distinct from
@@ -41,14 +41,14 @@ export interface Account {
   ssl: boolean
   hasPassword: boolean
   avatarUrl?: string
-  sockchatRooms?: SockChatRoom[]
+  sneedchatRooms?: SneedChatRoom[]
   torMode?: string
   torProxy?: string
   useTor: boolean
   hasKeyBackup: boolean
 }
 
-export interface SockChatRoom {
+export interface SneedChatRoom {
   id: number
   name: string
 }
@@ -475,10 +475,10 @@ export interface CustomEmoji {
   set?: string
 }
 
-export interface SockchatSmilie {
+export interface SneedchatSmilie {
   label: string
   aliases: string[]
-  /** Filename within the client's bundled sockchat-smilies/ resource dir. */
+  /** Filename within the client's bundled sneedchat-smilies/ resource dir. */
   file: string
 }
 

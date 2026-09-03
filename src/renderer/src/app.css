@@ -4479,3 +4479,105 @@ video.lightbox-media {
   align-items: center;
   gap: var(--spacing-s);
 }
+
+/* --- IRC network picker --------------------------------------------------
+   The networks, as their own marks. A dropdown of names asks somebody to
+   recognise a word; a wall of logos is how they actually find the network
+   they are on. */
+.network-grid {
+  display: grid;
+  /* Full width of the field it sits in, not the width of its own content:
+     inside a flex column it took its content width, so `auto-fill` had room
+     for exactly one column and eleven networks became a column 877px tall. */
+  width: 100%;
+  grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+  gap: var(--spacing-xs);
+}
+
+.network-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  padding: var(--spacing-xs);
+  border: 1px solid transparent;
+  border-radius: var(--corner-radius);
+  background: none;
+  color: var(--surface-variant-text);
+}
+
+.network-tile:hover {
+  background: var(--surface-container-high);
+}
+
+.network-tile.active {
+  border-color: var(--primary);
+  color: var(--surface-text);
+}
+
+/* The mark sits on the network's own colour, because several of these logos
+   are wordmarks with transparent backgrounds drawn for a white page. */
+.network-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--corner-radius);
+  color: #fff;
+  font-weight: 600;
+  overflow: hidden;
+}
+
+.network-mark img {
+  /* Contain rather than cover: a wordmark cropped to a square is a wordmark
+     with its ends cut off. */
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 3px;
+}
+
+.network-mark-other {
+  background: var(--surface-container-high);
+  color: var(--surface-variant-text);
+}
+
+/* Same reasoning as the picker, at rail size. */
+.rail-network-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 2px;
+}
+
+/* --- accounts, by service ------------------------------------------------
+   A dozen accounts across five services was one long column, so each service
+   folds. Open by default: somebody with one account of a kind should not have
+   to open anything to see it. */
+.account-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.account-group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-xs);
+  background: none;
+  border: none;
+  border-radius: var(--corner-radius-small);
+  color: var(--surface-variant-text);
+  text-align: left;
+}
+
+.account-group-head:hover {
+  background: var(--surface-container-high);
+  color: var(--surface-text);
+}
+
+.account-group-name {
+  flex: 1;
+  font-weight: 600;
+}

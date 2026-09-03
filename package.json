@@ -43,8 +43,8 @@
     ],
     "extraResources": [
       {
-        "from": "nobilis/resources/sockchat-smilies",
-        "to": "sockchat-smilies"
+        "from": "nobilis/resources/sneedchat-smilies",
+        "to": "sneedchat-smilies"
       },
       {
         "from": "resources/icons",

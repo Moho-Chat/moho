@@ -261,6 +261,12 @@ export function BufferList(): JSX.Element {
       onSelect={() => !isJoining(b) && void store.selectBuffer(b.id, false)}
       onTogglePin={() => togglePin(b.id)}
       onToggleMute={() => toggleMute(b.id)}
+      onToggleAutojoin={
+        b.kind === 'channel' && accounts.find((a) => a.id === b.accountId)?.service === 'irc'
+          ? () => store.toggleAutojoin(b.accountId, bufferDisplayName(b.name))
+          : undefined
+      }
+      autojoins={store.autojoins(b.accountId, bufferDisplayName(b.name))}
       onHide={() => hideBuffer(b.id)}
       onClose={() => void store.closeBuffer(b.id)}
       inCall={voiceSessions.some((s) => s.bufferId === b.id)}
@@ -660,6 +666,10 @@ interface BufferRowProps {
   onSelect: () => void
   onTogglePin: () => void
   onToggleMute: () => void
+  /** IRC channels only: rejoin this on every connect, or stop doing so. */
+  onToggleAutojoin?: () => void
+  /** Whether it is in that list now. */
+  autojoins?: boolean
   onHide: () => void
   onClose: () => void
   onCall: () => void
@@ -693,6 +703,8 @@ function BufferRow({
   onSelect,
   onTogglePin,
   onToggleMute,
+  onToggleAutojoin,
+  autojoins,
   onHide,
   onClose,
   onCall,
@@ -755,6 +767,18 @@ function BufferRow({
       ? { label: 'Close its window', icon: 'close_fullscreen', onClick: onDock }
       : { label: 'Open in a new window', icon: 'open_in_new', onClick: onPopOut },
     { separator: true },
+    // Which channels an account rejoins on connect is a property of the
+    // channels, so it is set on one - it used to be a comma-separated field
+    // in the add-account form, typed once and never seen again.
+    ...(onToggleAutojoin
+      ? ([
+          {
+            label: autojoins ? 'Do not join automatically' : 'Join automatically',
+            icon: autojoins ? 'bookmark_remove' : 'bookmark_add',
+            onClick: onToggleAutojoin
+          }
+        ] as MenuEntry[])
+      : []),
     { label: pinned ? 'Unpin' : 'Pin', icon: 'push_pin', onClick: onTogglePin },
     { label: muted ? 'Unmute' : 'Mute', icon: muted ? 'notifications' : 'notifications_off', onClick: onToggleMute },
     { separator: true },

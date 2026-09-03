@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
 import { RoomSearch } from './RoomSearch'
+import { KNOWN_SNEEDCHAT_ROOMS } from '../lib/sneedchat'
 import { useChat, useStore } from '../state/hooks'
 import { classes, resolveMediaUrl } from '../lib/util'
 import type { Account, DiscordFriend } from '../../../shared/wire'
@@ -67,15 +68,8 @@ export function JoinPanel(): JSX.Element {
       return <DiscordJoin account={account} />
     case 'kick':
       return <KickJoin account={account} />
-    case 'sockchat':
-      return (
-        <div className="panel">
-          <p className="muted">
-            Sneedchat&apos;s rooms are a fixed set — add or remove them from the Sneedchat category
-            in Settings rather than joining ad hoc here.
-          </p>
-        </div>
-      )
+    case 'sneedchat':
+      return <SneedchatRooms account={account} />
     default:
       return <div className="panel muted">Joining isn&apos;t supported for this service yet.</div>
   }
@@ -539,6 +533,104 @@ function FindRoomButton({ account }: { account: Account }): JSX.Element {
         <Icon name="search" size={15} /> Search every homeserver
       </button>
       {open && <RoomSearch account={account} onClose={() => setOpen(false)} />}
+    </div>
+  )
+}
+
+/**
+ * Which Sneedchat rooms this account stays connected to.
+ *
+ * Here rather than in the account's own settings, now that the list comes
+ * from the site: this is the page for "join something", and a room being
+ * ticked is exactly that. The account pane is for what an account *is* -
+ * its name, its picture, how it signs in - and a catalogue of rooms was
+ * never that.
+ *
+ * Each room keeps its own permanent connection, but they share the one
+ * embedded Tor circuit, so joining another costs very little.
+ */
+function SneedchatRooms({ account }: { account: Account }): JSX.Element {
+  const store = useStore()
+  const enabled = account.sneedchatRooms ?? []
+  /**
+   * The catalogue, from the site.
+   *
+   * The daemon reads the room switcher off the chat page - the same list a
+   * person sees down the side of the site - and answers with whatever it read
+   * last, then sends the fresh one as an event a few seconds later. The
+   * built-in list is the fallback rather than the source: the site is behind
+   * a proof-of-work gate over Tor and the read can fail, and rooms somebody
+   * can still tick beat an empty page.
+   */
+  const [rooms, setRooms] = useState(KNOWN_SNEEDCHAT_ROOMS)
+  const [asking, setAsking] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let live = true
+    setAsking(true)
+    void window.moho
+      .rpc<{ rooms: { id: number; name: string }[] }>('listSneedChatRooms', { accountId: account.id })
+      .then((r) => live && r.rooms?.length && setRooms(r.rooms))
+      .catch((e: Error) => live && setError(e.message))
+
+    const stop = window.moho.onEvent((frame) => {
+      if (frame.event !== 'sneedchatRooms') return
+      const data = frame.data as { accountId: string; rooms: { id: number; name: string }[] }
+      if (!live || data.accountId !== account.id || !data.rooms.length) return
+      setRooms(data.rooms)
+      setAsking(false)
+      setError('')
+    })
+    return () => {
+      live = false
+      stop()
+    }
+  }, [account.id])
+
+  const toggle = (id: number, on: boolean): void => {
+    const next = on
+      ? enabled.some((r) => r.id === id)
+        ? enabled
+        : [...enabled, rooms.find((r) => r.id === id)!]
+      : enabled.filter((r) => r.id !== id)
+    void window.moho
+      .rpc('setSneedChatRooms', { accountId: account.id, rooms: next })
+      .catch((e: Error) => store.toast('error', e.message))
+  }
+
+  return (
+    <div className="panel join-panel">
+      <div className="field">
+        <span className="small muted">
+          Rooms{asking ? ' — asking the site…' : ''}
+        </span>
+        {rooms.map((room) => (
+          <label key={room.id} className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={enabled.some((r) => r.id === room.id)}
+              onChange={(e) => toggle(room.id, e.target.checked)}
+            />
+            <span>#{room.name}</span>
+          </label>
+        ))}
+        {/* Said rather than hidden: this list is the one this client shipped
+            with, and the site may well have rooms that are not in it. */}
+        {error && (
+          <span className="small muted">
+            Could not read the site&apos;s room list ({error}) — showing the rooms this client
+            knows.
+          </span>
+        )}
+        {/* An account with none ticked still connects to #general - the daemon
+            falls back to it so a freshly added account is usable before
+            anybody has been here. Worth saying, or an empty list reads as
+            "connected to nothing". */}
+        {enabled.length === 0 && (
+          <span className="small muted">None chosen - this account uses #general.</span>
+        )}
+      </div>
     </div>
   )
 }

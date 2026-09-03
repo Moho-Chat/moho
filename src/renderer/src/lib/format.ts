@@ -1,4 +1,4 @@
-import type { SockchatSmilie } from '../../../shared/wire'
+import type { SneedchatSmilie } from '../../../shared/wire'
 
 /**
  * Message body formatting, ported from the QML frontend's MessageList.
@@ -145,7 +145,7 @@ export interface SmilieIndex {
   regex: RegExp | null
 }
 
-export interface SmilieEntry extends SockchatSmilie {
+export interface SmilieEntry extends SneedchatSmilie {
   url: string
 }
 
@@ -171,7 +171,7 @@ export type ChannelIndex = Record<string, { bufferId: string; name: string }>
 
 export interface FormatOptions {
   revealedSpoilers?: Record<number, boolean>
-  isSockchat?: boolean
+  isSneedchat?: boolean
   smilies?: SmilieIndex | null
   /** Resolves Discord's `<#id>` channel links; without it they stay literal. */
   channels?: ChannelIndex | null
@@ -402,7 +402,7 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   // below, since several real shortcodes ("*sigh*", "*YAWN*") are shaped like
   // markdown emphasis and would otherwise be mangled into <i>sigh</i> before
   // ever being recognised as a smiley.
-  if (opts.isSockchat && opts.smilies?.regex) {
+  if (opts.isSneedchat && opts.smilies?.regex) {
     out = out.replace(new RegExp(opts.smilies.regex.source, 'g'), (m: string) => {
       const s = opts.smilies!.byAlias[m]
       // An empty url only happens if resource-path resolution failed - leave

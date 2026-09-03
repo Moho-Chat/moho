@@ -1,6 +1,6 @@
 # moho
 
-A unified desktop chat client: IRC, Discord, Sneedchat (SockChat, the Tor-only XenForo chat
+A unified desktop chat client: IRC, Discord, Sneedchat (SneedChat, the Tor-only XenForo chat
 feature), and Matrix in one window, with XMPP/Slack landing protocol by protocol without
 frontend changes. The architecture is deliberately service-agnostic - the UI only ever sees a
 unified account/buffer/message model, never a protocol-specific concept.
@@ -17,7 +17,7 @@ Keeping the protocol work in a separate long-lived daemon means connections, Tor
 Matrix sync survive the UI being closed, restarted, or reloaded during development.
 
 ```
-chatd/src/backend/      one module per protocol (irc, discord, sockchat, matrix, ...)
+chatd/src/backend/      one module per protocol (irc, discord, sneedchat, matrix, ...)
 chatd/src/rpc/          the Unix-socket JSON-RPC server
 chatd/src/store.rs      SQLite-backed scrollback persistence
 chatd/src/runtime.rs    protocol-agnostic connection/buffer/message state
@@ -147,12 +147,12 @@ Core methods: `listAccounts`, `listBuffers`, `listProtocols`, `addAccount`, `rem
 `setAccountConnected`, `joinBuffer`, `partBuffer`, `sendMessage`, `editMessage`, `deleteMessage`,
 `subscribe`/`unsubscribe`, `getBacklog` (SQLite-backed, persists across `chatd` restarts). Each
 protocol also has its own account-creation method (`addAccount` for IRC, `addDiscordAccount`,
-`addSockChatAccount`, `addMatrixAccount`).
+`addSneedChatAccount`, `addMatrixAccount`).
 
 Push events: `message`, `messageUpdated`, `messageDeleted`, `reactionsChanged`, `presenceChange`,
 `bufferListChange`, `connectionState`, `notification`, plus per-protocol login-flow events
-(`discordLoginQr`/`discordLoginScanned`/`discordLoginResult`, `sockChatLoginStatus`/
-`sockChatLoginResult`, `matrixLoginStatus`/`matrixLoginResult`). `message`, `presenceChange`,
+(`discordLoginQr`/`discordLoginScanned`/`discordLoginResult`, `sneedChatLoginStatus`/
+`sneedChatLoginResult`, `matrixLoginStatus`/`matrixLoginResult`). `message`, `presenceChange`,
 `messageUpdated`, `messageDeleted` and `reactionsChanged` are only delivered to clients that
 called `subscribe` for that buffer.
 
@@ -161,7 +161,7 @@ called `subscribe` for that buffer.
 - **IRC** - TLS with SASL PLAIN, NickServ auto-identify, autojoin, optional SOCKS5 proxying.
 - **Discord** - official cross-device QR login (the same one discord.com/app offers), a real-time
   gateway client, message edit/delete/reactions/replies sync.
-- **Sneedchat (SockChat)** - the Tor-only chat built into Kiwi Farms. Runs over an embedded Tor
+- **Sneedchat (SneedChat)** - the Tor-only chat built into Kiwi Farms. Runs over an embedded Tor
   client (or an external SOCKS5 proxy), solves the site's own proof-of-work anti-bot gate, and
   connects to every configured room simultaneously (one persistent websocket per room, sharing a
   single login). Supports message edit/delete and avatars (fetched through the same Tor session
