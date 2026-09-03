@@ -513,19 +513,64 @@ function SneedchatRooms({
   call: (method: string, params: Record<string, unknown>) => void
 }): JSX.Element {
   const enabled = account.sockchatRooms ?? []
+  /**
+   * The catalogue, from the site.
+   *
+   * It used to be six rooms written into this client, which is how #lolcows
+   * came to be unreachable without editing the source. The daemon reads the
+   * room switcher off the chat page - the same list a person sees down the
+   * side of the site - and this asks for it when the account's settings are
+   * opened.
+   *
+   * The built-in list is the fallback rather than the source: the site is
+   * behind a proof-of-work gate over Tor and the fetch can fail, and six
+   * rooms somebody can still tick is a better answer than none.
+   */
+  const [rooms, setRooms] = useState(KNOWN_SOCKCHAT_ROOMS)
+  const [asking, setAsking] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let live = true
+    setAsking(true)
+    // The answer to this is whatever the daemon read last, which may be
+    // nothing on a fresh start; the live read happens behind it and arrives
+    // as an event, because it takes about fifteen seconds through Tor and the
+    // site's gate and the daemon answers one request at a time.
+    void window.moho
+      .rpc<{ rooms: { id: number; name: string }[] }>('listSockChatRooms', { accountId: account.id })
+      .then((r) => live && r.rooms?.length && setRooms(r.rooms))
+      .catch((e: Error) => live && setError(e.message))
+
+    const stop = window.moho.onEvent((frame) => {
+      if (frame.event !== 'sockchatRooms') return
+      const data = frame.data as { accountId: string; rooms: { id: number; name: string }[] }
+      if (!live || data.accountId !== account.id || !data.rooms.length) return
+      setRooms(data.rooms)
+      setAsking(false)
+      setError('')
+    })
+    return () => {
+      live = false
+      stop()
+    }
+  }, [account.id])
+
   const toggle = (id: number, on: boolean): void => {
     const next = on
       ? enabled.some((r) => r.id === id)
         ? enabled
-        : [...enabled, KNOWN_SOCKCHAT_ROOMS.find((r) => r.id === id)!]
+        : [...enabled, rooms.find((r) => r.id === id)!]
       : enabled.filter((r) => r.id !== id)
     call('setSockChatRooms', { accountId: account.id, rooms: next })
   }
 
   return (
     <div className="sasl-block">
-      <span className="small muted">Channels</span>
-      {KNOWN_SOCKCHAT_ROOMS.map((room) => (
+      <span className="small muted">
+        Channels{asking ? ' — asking the site…' : ''}
+      </span>
+      {rooms.map((room) => (
         <label key={room.id} className="checkbox-row">
           <input
             type="checkbox"
@@ -535,6 +580,13 @@ function SneedchatRooms({
           <span>#{room.name}</span>
         </label>
       ))}
+      {/* Said rather than hidden: this list is the one this client shipped
+          with, and the site may well have rooms that are not in it. */}
+      {error && (
+        <span className="small muted">
+          Could not read the site&apos;s room list ({error}) — showing the rooms this client knows.
+        </span>
+      )}
       {/* An account with none ticked still connects to #general - the daemon
           falls back to it so a freshly added account is usable before anybody
           has been here. Worth saying, or an empty list reads as "connected to
