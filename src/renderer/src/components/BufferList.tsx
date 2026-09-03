@@ -277,6 +277,11 @@ export function BufferList(): JSX.Element {
           : undefined
       }
       autojoins={store.autojoins(b.accountId, bufferDisplayName(b.name))}
+      onOpenInBrowser={
+        b.accountId.startsWith('kick:')
+          ? () => void window.moho.openExternal(`https://kick.com/${bufferDisplayName(b.name)}`)
+          : undefined
+      }
       onHide={() => hideBuffer(b.id)}
       onClose={() => void store.closeBuffer(b.id)}
       inCall={voiceSessions.some((s) => s.bufferId === b.id)}
@@ -678,6 +683,8 @@ interface BufferRowProps {
   onToggleMute: () => void
   /** IRC channels only: rejoin this on every connect, or stop doing so. */
   onToggleAutojoin?: () => void
+  /** Kick channels only: watch the stream where streams are watched. */
+  onOpenInBrowser?: () => void
   /** Whether it is in that list now. */
   autojoins?: boolean
   onHide: () => void
@@ -715,6 +722,7 @@ function BufferRow({
   onToggleMute,
   onToggleAutojoin,
   autojoins,
+  onOpenInBrowser,
   onHide,
   onClose,
   onCall,
@@ -776,6 +784,12 @@ function BufferRow({
     poppedOut
       ? { label: 'Close its window', icon: 'close_fullscreen', onClick: onDock }
       : { label: 'Open in a new window', icon: 'open_in_new', onClick: onPopOut },
+    // A Kick channel is a stream as well as a chat, and the stream is not
+    // something this client shows - so the way to watch it belongs on the
+    // row, next to the way to open its chat in a window.
+    ...(onOpenInBrowser
+      ? ([{ label: 'Open in browser', icon: 'public', onClick: onOpenInBrowser }] as MenuEntry[])
+      : []),
     { separator: true },
     // Which channels an account rejoins on connect is a property of the
     // channels, so it is set on one - it used to be a comma-separated field

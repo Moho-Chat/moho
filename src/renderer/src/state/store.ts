@@ -884,17 +884,24 @@ export class ChatStore {
       return
     }
 
-    // A kick.com link names a streamer, and watching one needs no more than
-    // that - so it opens the channel rather than the browser. Any Kick
-    // account will do: they all read the same public chat, and the signed-in
-    // one is preferred only because it can also talk.
+    // A kick.com link names a streamer, and clicking one means both things:
+    // the stream goes to the browser, which is where video is watched, and
+    // the chat opens here, which is what this client is for. Doing only the
+    // second was the old behaviour and it swallowed the link - somebody
+    // clicking through to watch ended up with a chat and no stream.
+    //
+    // Any Kick account will do for the chat: they all read the same public
+    // one, and the signed-in one is preferred only because it can also talk.
     if (link.service === 'kick') {
+      void window.moho.openExternal(url)
       const account =
         this.state.accounts.find((a) => a.service === 'kick' && a.hasPassword) ??
         this.state.accounts.find((a) => a.service === 'kick')
       if (!account) {
-        this.toast('error', 'Add a Kick account to open that link here')
-        void window.moho.openExternal(url)
+        // The stream is already opening; only the chat is missing, and
+        // saying so is better than a silence that looks like half of it
+        // failed.
+        this.toast('info', 'Add a Kick account to open that chat here too')
         return
       }
       this.set({ activePanel: '' })

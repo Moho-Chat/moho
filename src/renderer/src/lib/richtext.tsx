@@ -216,8 +216,11 @@ function walk(node: Node, handlers: Handlers, depth: number): ReactNode[] {
           break
         }
 
-        // A link to a channel is handled here rather than handed to the OS,
-        // which would bounce it straight back to this window.
+        // A link to a channel is acted on here rather than handed straight to
+        // the OS. What that means differs by service: an irc: link belongs to
+        // this client alone, while a kick.com link is a web page as well as a
+        // channel, so following it opens the stream in the browser *and* the
+        // chat here - see the store's followDeepLink.
         if (isDeepLink(href)) {
           out.push(
             <a
