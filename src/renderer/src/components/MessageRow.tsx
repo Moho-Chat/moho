@@ -239,10 +239,9 @@ export function MessageRow({
   }, [message.body, message.html, contentSniffing, sniffed, revealed, isSockchat, smilieIndex, channels, service, ircColours])
 
   const entries: MenuEntry[] = [
-    { label: 'Reply', icon: 'reply', onClick: () => reply() },
-    // From the line itself, because the person somebody wants to look up is
-    // almost always the one who just said something - and finding them in a
-    // member list of four hundred to do it is work nobody should have to do.
+    // First, above what to do about the message: the question a right click
+    // on somebody's line usually asks is who they are, and finding them in a
+    // member list of four hundred to ask it is work nobody should have to do.
     ...(message.from && !isSystem && !message.isOwn
       ? ([
           {
@@ -252,6 +251,7 @@ export function MessageRow({
           }
         ] as MenuEntry[])
       : []),
+    { label: 'Reply', icon: 'reply', onClick: () => reply() },
     // Beside Reply because it is the same gesture aimed somewhere else, and
     // only where the service has whispers at all.
     ...(service === 'sockchat' && !message.isOwn && message.from && !isSystem

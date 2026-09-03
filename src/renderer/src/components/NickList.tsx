@@ -369,8 +369,11 @@ function MemberRow({
   // Moderation is only *offered* where the cached permissions say it would
   // work; the server is still the actual authority and re-checks regardless.
   const entries: MenuEntry[] = [
-    { label: 'Mention', icon: 'alternate_email', onClick: onMention },
+    // First, because it is what a right click on a person is usually for -
+    // and because everything under it acts on somebody, which is a thing to
+    // decide after seeing who they are rather than before.
     ...(onProfile ? ([{ label: 'Profile', icon: 'person_search', onClick: onProfile }] as MenuEntry[]) : []),
+    { label: 'Mention', icon: 'alternate_email', onClick: onMention },
     ...(canCall ? ([{ label: 'Call', icon: 'call', onClick: onCall }] as MenuEntry[]) : []),
     ...(canOpenDm ? ([{ label: 'Open DM', icon: 'chat', onClick: onOpenDm }] as MenuEntry[]) : []),
     ...(canWhisper ? ([{ label: 'Whisper', icon: 'lock', onClick: onWhisper }] as MenuEntry[]) : []),
