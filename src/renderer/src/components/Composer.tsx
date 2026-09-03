@@ -1,10 +1,18 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
+import { Avatar } from './Avatar'
 import { EmojiPicker } from './EmojiPicker'
 import { useActiveBuffer, useChat, useStore } from '../state/hooks'
 import { emojiPreview } from '../lib/format'
-import { bufferDisplayName, fileNameOf, isImageFile, resolveMediaUrl } from '../lib/util'
+import { bufferDisplayName, classes, fileNameOf, isImageFile, resolveMediaUrl } from '../lib/util'
 import { completeNick, cyclePrefix, type Completion } from '../lib/completion'
+import {
+  mentionInsert,
+  mentionKeywords,
+  mentionQuery,
+  rankMentions,
+  type MentionTarget
+} from '../lib/mentions'
 
 interface StagedAttachment {
   id: number
@@ -77,7 +85,22 @@ export function Composer(): JSX.Element | null {
    * would be better still; the roster's own order is what is in hand, and a
    * name that matches is far more use than no completion at all.
    */
-  const nicks = useChat((s) => s.presenceByBuffer)[buffer?.id ?? '']?.map((m) => m.nick) ?? []
+  useEffect(() => {
+    if (!buffer) return
+    let live = true
+    void window.moho
+      .rpc<{ roles: { id: string; name: string; colour?: string }[] }>('listMentionRoles', {
+        bufferId: buffer.id
+      })
+      .then((r) => live && setRoles(r.roles ?? []))
+      .catch(() => live && setRoles([]))
+    return () => {
+      live = false
+    }
+  }, [buffer?.id])
+
+  const roster = useChat((s) => s.presenceByBuffer)[buffer?.id ?? '']
+  const nicks = roster?.map((m) => m.nick) ?? []
 
   const inputRef = useRef<HTMLDivElement>(null)
   /**
@@ -85,6 +108,10 @@ export function Composer(): JSX.Element | null {
    * changing it must not redraw the box somebody is typing in.
    */
   const cycle = useRef<{ last: Completion; attempt: number } | null>(null)
+  /** The "@..." being typed, and which suggestion is selected. */
+  const [mention, setMention] = useState<{ query: string; index: number } | null>(null)
+  /** Discord's mentionable roles here; empty everywhere else. */
+  const [roles, setRoles] = useState<{ id: string; name: string; colour?: string }[]>([])
   const emojiButtonRef = useRef<HTMLButtonElement>(null)
 
   const smilies = useChat((s) => s.smilies)
@@ -104,6 +131,36 @@ export function Composer(): JSX.Element | null {
   useEffect(() => {
     inputRef.current?.focus()
   }, [buffer?.id])
+
+  /**
+   * Everything that can be tagged here: the people in the conversation, the
+   * roles the service lets anybody ping, and its whole-room keywords.
+   */
+  const mentionTargets = useMemo((): MentionTarget[] => {
+    const members: MentionTarget[] = (roster ?? []).map((m) => ({
+      name: m.nick,
+      detail: m.userId && m.userId !== m.nick ? undefined : undefined,
+      kind: 'member' as const,
+      userId: m.userId
+    }))
+    const roleTargets: MentionTarget[] = roles.map((r) => ({
+      name: r.name,
+      detail: 'Role',
+      colour: r.colour,
+      kind: 'role' as const
+    }))
+    const keywords: MentionTarget[] = mentionKeywords(service).map((k) => ({
+      name: k.word,
+      detail: k.detail,
+      kind: 'keyword' as const
+    }))
+    return [...members, ...roleTargets, ...keywords]
+  }, [roster, roles, service])
+
+  const suggestions = useMemo(
+    () => (mention ? rankMentions(mentionTargets, mention.query) : []),
+    [mention, mentionTargets]
+  )
 
   if (!buffer) return null
 
@@ -216,6 +273,56 @@ export function Composer(): JSX.Element | null {
     })
   }
 
+  /** Reads the "@..." at the caret, so the list follows what is being typed. */
+  const noteMention = (): void => {
+    const selection = window.getSelection()
+    const node = selection?.anchorNode
+    if (!selection || !node || node.nodeType !== Node.TEXT_NODE) {
+      setMention(null)
+      return
+    }
+    const before = (node.textContent ?? '').slice(0, selection.anchorOffset)
+    const query = mentionQuery(before)
+    setMention(query === null ? null : { query, index: 0 })
+  }
+
+  /**
+   * Puts a chosen name in the box, in the form its service wants.
+   *
+   * Replaces the "@query" that was being typed rather than appending, so the
+   * half-typed name does not survive its own completion.
+   */
+  const takeMention = (target: MentionTarget): void => {
+    const selection = window.getSelection()
+    const node = selection?.anchorNode
+    if (!selection || !node || node.nodeType !== Node.TEXT_NODE || !mention) return
+
+    const offset = selection.anchorOffset
+    const text = node.textContent ?? ''
+    const start = offset - mention.query.length - 1
+    if (start < 0) return
+
+    const atLineStart = text.slice(0, start).trim() === ''
+    // A keyword is the service's own word and is always written with the "@",
+    // even on IRC's own convention - though no IRC service offers one.
+    const insert =
+      target.kind === 'keyword' ? `@${target.name} ` : mentionInsert(service, target.name, atLineStart)
+
+    const range = document.createRange()
+    range.setStart(node, start)
+    range.setEnd(node, offset)
+    range.deleteContents()
+    const inserted = document.createTextNode(insert)
+    range.insertNode(inserted)
+    range.setStartAfter(inserted)
+    range.collapse(true)
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    setMention(null)
+    if (inputRef.current) setText(composerText(inputRef.current))
+  }
+
   /**
    * Replaces the word before the caret with a roster name.
    *
@@ -261,6 +368,43 @@ export function Composer(): JSX.Element | null {
   return (
     <div className="composer">
       <div className="divider-h" />
+
+      {/* Who can be tagged, above the box - the same place Discord and Element
+          put it, and the only place it can go without covering what is being
+          typed. Members first, then roles, then the service's whole-room
+          words, because that is the order of how often each is meant. */}
+      {mention && suggestions.length > 0 && (
+        <div className="mention-picker" role="listbox" aria-label="Tag somebody">
+          {suggestions.map((target, i) => (
+            <button
+              key={`${target.kind}:${target.name}`}
+              type="button"
+              role="option"
+              aria-selected={i === mention.index}
+              className={classes('mention-option', i === mention.index && 'active')}
+              // Chosen on mousedown rather than click: a click would first
+              // move focus out of the box, and the caret with it.
+              onMouseDown={(e) => {
+                e.preventDefault()
+                takeMention(target)
+              }}
+              onMouseEnter={() => setMention({ ...mention, index: i })}
+            >
+              {target.kind === 'member' ? (
+                <Avatar name={target.name} size={20} />
+              ) : (
+                <span className="mention-glyph" style={target.colour ? { color: target.colour } : undefined}>
+                  <Icon name={target.kind === 'role' ? 'group' : 'campaign'} size={16} />
+                </span>
+              )}
+              <span className="ellipsis" style={target.colour ? { color: target.colour } : undefined}>
+                {target.kind === 'keyword' ? `@${target.name}` : target.name}
+              </span>
+              {target.detail && <span className="small muted ellipsis mention-detail">{target.detail}</span>}
+            </button>
+          ))}
+        </div>
+      )}
 
       <TypingLine bufferId={buffer.id} />
 
@@ -335,6 +479,7 @@ export function Composer(): JSX.Element | null {
             onInput={(e) => {
               setText(composerText(e.currentTarget))
               noteTyping()
+              noteMention()
             }}
             onKeyDown={(e) => {
               // Enter sends and Shift+Enter does nothing, which is what the
@@ -342,6 +487,27 @@ export function Composer(): JSX.Element | null {
               // second line, but a newline reaching IRC is a malformed
               // PRIVMSG - nothing between here and the socket splits one - so
               // multi-line is a separate change with its own thinking to do.
+              // While the mention list is up it owns the keys somebody is
+              // already using to drive it - a list you steer with the arrows
+              // and take with Enter is one nobody has to be taught.
+              if (mention && suggestions.length > 0) {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  const step = e.key === 'ArrowDown' ? 1 : suggestions.length - 1
+                  setMention({ ...mention, index: (mention.index + step) % suggestions.length })
+                  return
+                }
+                if (e.key === 'Enter' || e.key === 'Tab') {
+                  e.preventDefault()
+                  takeMention(suggestions[mention.index])
+                  return
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setMention(null)
+                  return
+                }
+              }
               if (e.key === 'Enter') {
                 e.preventDefault()
                 if (!e.shiftKey) submit()
