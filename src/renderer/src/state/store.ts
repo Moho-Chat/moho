@@ -152,7 +152,16 @@ export interface LiveCard {
   yourReturn?: number | null
   /** "open", "locked", "resolved" - whatever the service calls it. */
   state?: string | null
-  /** Client clock, in milliseconds, for the countdown. */
+  /**
+   * When the daemon heard this, in unix seconds.
+   *
+   * The countdown reads from here rather than from when the event happened
+   * to arrive: `remaining` was true at a moment, and a card replayed into a
+   * window that opened later would otherwise appear to have its whole time
+   * still left.
+   */
+  asOf?: number
+  /** The same moment on the client's own clock, in milliseconds. */
   receivedAt: number
   /** When it happened, on history rows read back from storage. */
   ts?: number
@@ -165,6 +174,19 @@ export interface LiveCard {
    * saw the answer to.
    */
   closed?: boolean
+}
+
+/**
+ * When a card was true, on this machine's clock.
+ *
+ * The daemon stamps every card with the second it heard it, so a card that
+ * has been sitting in the daemon - replayed into a window opening now, or
+ * read back out of storage - counts down from when it happened rather than
+ * from when it arrived here. Falls back to now for anything unstamped, which
+ * is the old behaviour and the best guess available.
+ */
+export function cardHeardAt(card: LiveCard): number {
+  return card.asOf ? card.asOf * 1000 : Date.now()
 }
 
 /** Where a card lives in state: one poll and one prediction per channel. */
@@ -1360,7 +1382,9 @@ export class ChatStore {
   async listPolls(bufferId: string, kind: 'poll' | 'prediction'): Promise<LiveCard[]> {
     try {
       const rows = await window.moho.rpc<LiveCard[]>('listPolls', { bufferId, kind, limit: 25 })
-      return rows.map((card) => ({ ...card, receivedAt: Date.now(), closed: true }))
+      // Read back rather than live: every one of these is over, whatever
+      // seconds it was carrying when it was written down.
+      return rows.map((card) => ({ ...card, receivedAt: cardHeardAt(card), closed: true }))
     } catch (e) {
       this.toast('error', (e as Error).message)
       return []
@@ -1559,7 +1583,12 @@ export class ChatStore {
           // folded away.
           if (had) polls[slot] = { ...had, closed: true }
         } else {
-          polls[slot] = { ...card, bufferId, kind: kind as LiveCard['kind'], receivedAt: Date.now() }
+          polls[slot] = {
+            ...card,
+            bufferId,
+            kind: kind as LiveCard['kind'],
+            receivedAt: cardHeardAt(card)
+          }
         }
         this.set({ livePolls: polls })
         break
