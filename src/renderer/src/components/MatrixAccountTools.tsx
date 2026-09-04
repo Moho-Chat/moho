@@ -3,6 +3,22 @@ import { Icon } from './Icon'
 import { useChat, useStore } from '../state/hooks'
 import type { Account, MatrixDevice } from '../../../shared/wire'
 
+/** Where an account stands on cross-signing, as the daemon reports it. */
+interface CrossSigningStatus {
+  accountId: string
+  /** An identity exists on the homeserver, made by this client or another. */
+  hasIdentity: boolean
+  hasMaster: boolean
+  /** This client holds the key that signs your own devices. */
+  canSignDevices: boolean
+  /** This client holds the key that signs other people. */
+  canSignOthers: boolean
+  /** This session has been signed by that identity. */
+  thisDeviceSigned: boolean
+  /** There is a stored password to answer the homeserver's challenge with. */
+  canBootstrap: boolean
+}
+
 /**
  * Per-account Matrix security tools: session verification (SAS "compare
  * emoji"), server-side key backup, and logging out other sessions.
@@ -23,6 +39,9 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
   const [busy, setBusy] = useState('')
   const [deleting, setDeleting] = useState<string | null>(null)
   const [deletePassword, setDeletePassword] = useState('')
+  const [crossSigning, setCrossSigning] = useState<CrossSigningStatus | null>(null)
+  const [bootstrapPassword, setBootstrapPassword] = useState('')
+  const [bootstrapping, setBootstrapping] = useState(false)
 
   const active = verification && verification.accountId === account.id ? verification : null
 
@@ -33,6 +52,12 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
       .then(setDevices)
       .catch((e: Error) => store.toast('error', e.message))
       .finally(() => setLoading(false))
+    void window.moho
+      .rpc<CrossSigningStatus>('matrixCrossSigningStatus', { accountId: account.id })
+      .then(setCrossSigning)
+      // Quietly: an account still connecting has no answer yet, and a toast
+      // for that on every panel open would be noise.
+      .catch(() => setCrossSigning(null))
   }
 
   useEffect(refresh, [account.id])
@@ -57,21 +82,96 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
           <div className="small muted">
             Your other logged-in devices. Verify one to let encrypted history decrypt across both.
           </div>
-          {/* Said because the tick is otherwise a promise this cannot keep.
-              moho does no cross-signing, so a verification here is recorded
-              between these two sessions and never published - Element will
-              still show the device as unverified, and somebody who was not
-              told that would reasonably conclude one of the two clients is
-              broken. */}
+          {/* What a verification here is actually worth, which depends on
+              whether this account has a cross-signing identity: with one, the
+              agreement is published and every client sees it; without one, it
+              is a private note between these two sessions. Saying which is
+              the difference between a tick that means something and a tick
+              somebody reasonably reads as a broken client. */}
           <div className="small muted">
-            Verifying marks a session as trusted <em>in moho</em>. moho does not do cross-signing,
-            so other clients will still show it unverified.
+            {crossSigning?.thisDeviceSigned
+              ? 'Verifying publishes the result, so other clients see it too.'
+              : crossSigning?.hasIdentity
+                ? 'This session is not signed by your identity yet. Verify it against another session to publish it.'
+                : 'Without cross-signing, verifying is a private note between two sessions.'}
           </div>
         </div>
         <button type="button" className="icon-button" title="Refresh" onClick={refresh}>
           <Icon name="refresh" size={16} />
         </button>
       </div>
+
+      {/* Setting it up, where there is nothing to set up against. Never
+          offered as a reset: replacing an existing identity un-verifies
+          every device you have, everywhere, for everyone. */}
+      {crossSigning && !crossSigning.hasIdentity && (
+        <div className="device-row">
+          <Icon name="key" size={18} color="var(--warning)" />
+          <div className="setting-text">
+            <div>Cross-signing is not set up</div>
+            <div className="small muted">
+              An identity of your own, so a session verified here is verified everywhere. Your
+              homeserver asks for your password before it will publish the keys.
+            </div>
+          </div>
+          {crossSigning.canBootstrap ? (
+            <button
+              type="button"
+              className="button subtle"
+              disabled={bootstrapping}
+              onClick={() => {
+                setBootstrapping(true)
+                void rpc('matrixBootstrapCrossSigning', { accountId: account.id })
+                  .then(() => store.toast('info', 'Cross-signing is set up'))
+                  .then(refresh)
+                  .finally(() => setBootstrapping(false))
+              }}
+            >
+              {bootstrapping ? 'Setting up…' : 'Set up'}
+            </button>
+          ) : (
+            <div className="field-row">
+              <input
+                className="text-field"
+                type="password"
+                placeholder="Account password"
+                value={bootstrapPassword}
+                onChange={(e) => setBootstrapPassword(e.target.value)}
+              />
+              <button
+                type="button"
+                className="button subtle"
+                disabled={bootstrapping || !bootstrapPassword}
+                onClick={() => {
+                  setBootstrapping(true)
+                  void rpc('matrixBootstrapCrossSigning', {
+                    accountId: account.id,
+                    password: bootstrapPassword
+                  })
+                    .then(() => {
+                      setBootstrapPassword('')
+                      store.toast('info', 'Cross-signing is set up')
+                    })
+                    .then(refresh)
+                    .finally(() => setBootstrapping(false))
+                }}
+              >
+                Set up
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Set up, but this client cannot sign with it - the private keys live
+          on whichever session created them, and arrive here over a
+          verification rather than out of thin air. */}
+      {crossSigning?.hasIdentity && !crossSigning.canSignOthers && (
+        <p className="small muted">
+          Verify this session against one that has your cross-signing keys to be able to verify
+          other people from here.
+        </p>
+      )}
 
       {loading && <p className="small muted">Loading sessions…</p>}
       {devices?.length === 0 && <p className="small muted">No other sessions signed in.</p>}
