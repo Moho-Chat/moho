@@ -1787,6 +1787,11 @@ export class ChatStore {
 
       case 'matrixLoginStatus':
         this.set({ matrixLoginStatus: data.detail || '' })
+        // An SSO sign-in arrives with the address of the server's own login
+        // page. Opened in the real browser rather than in a window of ours:
+        // it is where somebody's password manager, passkey and second factor
+        // already live, and none of that should have to work in here.
+        if (typeof data.url === 'string' && data.url) void window.moho.openExternal(data.url)
         break
       case 'matrixLoginResult':
         this.set({ matrixLoginStatus: data.error || '' })

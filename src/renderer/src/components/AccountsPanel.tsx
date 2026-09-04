@@ -1228,25 +1228,44 @@ function MatrixForm(): JSX.Element {
           />
         </label>
       </div>
-      <button
-        type="button"
-        className="button"
-        disabled={!userId || !password}
-        onClick={() =>
-          void window.moho
-            .rpc('addMatrixAccount', {
-              homeserverUrl,
-              // Tolerate a pasted full MXID as well as a bare username: strip
-              // the leading @ and anything from the first ':' onward.
-              userId: userId.replace(/^@/, '').split(':')[0],
-              password
-            })
-            .then(() => store.setMatrixLoginStatus('Logging in…'))
-            .catch((e: Error) => store.toast('error', e.message))
-        }
-      >
-        Log in
-      </button>
+      <div className="field-row">
+        <button
+          type="button"
+          className="button"
+          disabled={!userId || !password}
+          onClick={() =>
+            void window.moho
+              .rpc('addMatrixAccount', {
+                homeserverUrl,
+                // Tolerate a pasted full MXID as well as a bare username:
+                // strip the leading @ and anything from the first ':' onward.
+                userId: userId.replace(/^@/, '').split(':')[0],
+                password
+              })
+              .then(() => store.setMatrixLoginStatus('Logging in…'))
+              .catch((e: Error) => store.toast('error', e.message))
+          }
+        >
+          Log in
+        </button>
+        {/* The other way in, and for many homeservers the only way: the
+            server's own web login in a browser, coming back with a one-time
+            token. Needs no username or password here because the point is
+            that somebody else asks for them. */}
+        <button
+          type="button"
+          className="button subtle"
+          disabled={!homeserverUrl}
+          onClick={() =>
+            void window.moho
+              .rpc('addMatrixAccountSso', { homeserverUrl })
+              .then(() => store.setMatrixLoginStatus('Opening your browser…'))
+              .catch((e: Error) => store.toast('error', e.message))
+          }
+        >
+          Sign in with SSO
+        </button>
+      </div>
       {status && <p className="small muted">{status}</p>}
       <p className="small muted">
         New sessions start unverified. Once logged in, verify this device from another signed-in
