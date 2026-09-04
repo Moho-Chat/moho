@@ -382,6 +382,17 @@
   color: var(--surface-variant-text);
 }
 
+/* Where to look, for the one protocol whose server will answer. */
+.search-scope {
+  display: flex;
+  gap: var(--spacing-s);
+}
+
+.search-scope .link-button.active {
+  color: var(--primary);
+  font-weight: 600;
+}
+
 /* Inside a panel the results are the panel, so they drop the floating shell
    the old inline box needed. */
 .header-popover .search-results {

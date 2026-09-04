@@ -3,9 +3,19 @@ import { Icon, IconButton } from './Icon'
 import { AddToConversation } from './AddToConversation'
 import { HeaderPopover } from './HeaderPopover'
 import { useChat, useStore } from '../state/hooks'
-import { classes, formatFullTime } from '../lib/util'
+import { bufferDisplayName, classes, formatFullTime } from '../lib/util'
 import type { BufferEntry, LiveCard } from '../state/store'
 import type { Message } from '../../../shared/wire'
+
+/** What the homeserver answered, alongside this window's own results. */
+interface MatrixSearch {
+  results: Message[]
+  /** Names for the rooms hits came from, so a cross-room result reads. */
+  roomNames: Record<string, string>
+  count: number
+  /** The room searched is encrypted, so the server could not read it. */
+  encrypted?: boolean
+}
 
 /**
  * Asking somebody into a Matrix room.
@@ -191,10 +201,15 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   const [jumping, setJumping] = useState(false)
   const [calling, setCalling] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  /** This room, or every room this account is in. */
+  const [scope, setScope] = useState<'room' | 'account'>('room')
+  const [roomNames, setRoomNames] = useState<Record<string, string>>({})
+  const [encrypted, setEncrypted] = useState(false)
   const box = useRef<HTMLDivElement>(null)
   const searchButton = useRef<HTMLSpanElement>(null)
 
   const isDiscord = buffer.accountId.startsWith('discord:')
+  const isMatrix = buffer.accountId.startsWith('matrix:')
   const stream = useChat((s) => s.kickStreams)[buffer.id]
   const isDm = buffer.kind === 'dm'
   // This conversation's call, not merely a call on the same account: one
@@ -208,13 +223,41 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
     const text = query.trim()
     if (!text) {
       setResults(null)
+      setRoomNames({})
+      setEncrypted(false)
       return
     }
     setSearching(true)
     const timer = setTimeout(() => {
+      // Local first, and shown as soon as it answers: this window's own copy
+      // is instant and offline, and waiting for a round trip before showing
+      // any of it would make every search feel like the network.
       void window.moho
         .rpc<Message[]>('searchMessages', { bufferId: buffer.id, query: text, limit: 50 })
-        .then(setResults)
+        .then((local) => {
+          setResults(local)
+          if (!isMatrix) return
+          // Then the homeserver, which has what this client never downloaded
+          // - including everything said before this account joined.
+          return window.moho
+            .rpc<MatrixSearch>('searchMatrixMessages', {
+              bufferId: buffer.id,
+              query: text,
+              scope,
+              limit: 25
+            })
+            .then((answer) => {
+              setRoomNames(answer.roomNames || {})
+              setEncrypted(!!answer.encrypted)
+              const seen = new Set(local.map((m) => m.id))
+              setResults([...local, ...answer.results.filter((m) => !seen.has(m.id))])
+            })
+            .catch((e: Error) => {
+              // The local results stand: half an answer beats a toast that
+              // replaces one.
+              store.toast('error', `The server could not search: ${e.message}`)
+            })
+        })
         .catch((e: Error) => {
           store.toast('error', `Couldn't search: ${e.message}`)
           setResults([])
@@ -222,7 +265,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
         .finally(() => setSearching(false))
     }, 250)
     return () => clearTimeout(timer)
-  }, [query, buffer.id, store])
+  }, [query, buffer.id, store, isMatrix, scope])
 
   // A viewer count that never moves is worse than none, and Kick pushes a
   // stream starting and stopping but never the count. The followed channels
@@ -252,14 +295,29 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
     }
   }
 
-  const jumpTo = async (id: string): Promise<void> => {
+  /**
+   * Goes to a result, which may not be in this conversation at all.
+   *
+   * A server search reaches across every room the account is in, so a hit can
+   * name a room that is not on screen - the row is only useful if pressing it
+   * goes there rather than looking in the wrong log for an id it will never
+   * find.
+   */
+  const jumpToResult = async (message: Message): Promise<void> => {
+    if (message.bufferId && message.bufferId !== buffer.id) {
+      await store.selectBuffer(message.bufferId)
+    }
+    await jumpTo(message.id, message.bufferId || buffer.id)
+  }
+
+  const jumpTo = async (id: string, inBuffer: string = buffer.id): Promise<void> => {
     const loaded = !!document.querySelector(`[data-msg-id="${CSS.escape(id)}"]`)
     if (!loaded) {
       // Search reads the whole stored conversation while the view holds only
       // the newest part of it. Load backwards until the message is there.
       setJumping(true)
       try {
-        if (!(await store.jumpToMessage(buffer.id, id))) {
+        if (!(await store.jumpToMessage(inBuffer, id))) {
           store.toast('info', "Couldn't reach that message - it is a long way back")
           return
         }
@@ -412,6 +470,38 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
             />
           </div>
 
+          {/* Where to look. Only on Matrix, because it is the only protocol
+              here whose server will answer the question - and the room is
+              often exactly what somebody searching has forgotten. */}
+          {isMatrix && (
+            <div className="search-scope small">
+              <button
+                type="button"
+                className={classes('link-button', scope === 'room' && 'active')}
+                onClick={() => setScope('room')}
+              >
+                This room
+              </button>
+              <button
+                type="button"
+                className={classes('link-button', scope === 'account' && 'active')}
+                onClick={() => setScope('account')}
+              >
+                Everywhere
+              </button>
+            </div>
+          )}
+
+          {/* Why an encrypted room finds only what this window already had:
+              the server holds ciphertext and cannot read it. Element says the
+              same thing, and silence here reads as a broken search. */}
+          {isMatrix && encrypted && results && (
+            <div className="small muted">
+              This room is encrypted, so the server cannot search it - these are from what this
+              window has downloaded.
+            </div>
+          )}
+
           {results && (
             <div className="search-results">
               <div className="search-results-head small muted">
@@ -422,9 +512,14 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
                     : `${results.length} ${results.length === 1 ? 'result' : 'results'}`}
               </div>
               {results.map((m) => (
-                <button key={m.id} type="button" className="search-result" onClick={() => void jumpTo(m.id)}>
+                <button key={m.id} type="button" className="search-result" onClick={() => void jumpToResult(m)}>
                   <span className="search-result-head small">
                     <span className="search-result-from">{m.from}</span>
+                    {m.bufferId && m.bufferId !== buffer.id && (
+                      <span className="muted ellipsis">
+                        in {roomNames[m.bufferId] || bufferDisplayName(m.bufferId)}
+                      </span>
+                    )}
                     <span className="muted">{formatFullTime(m.ts)}</span>
                   </span>
                   <span className="search-result-body small ellipsis">{m.body}</span>
