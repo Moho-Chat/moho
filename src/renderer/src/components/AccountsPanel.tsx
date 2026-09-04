@@ -325,12 +325,20 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
 
       {expanded && (
         <div className="account-card-body">
+          {/* Local, and it says so: the service is never told, and being
+              addressed is still decided against the name the service knows
+              you by - so calling yourself "You" cannot stop anyone reaching
+              you. It changes what moho calls you, mentions of you included. */}
           <LabeledInput
             label="Display name"
             defaultValue={account.displayName}
-            placeholder="Shown in the sidebar"
+            placeholder="What moho calls you here"
             onCommit={(name) => call('setAccountDisplayName', { accountId: account.id, name })}
           />
+          <div className="small muted">
+            Only here. Mentions of you are shown with this name; who can ping
+            you does not change.
+          </div>
 
           <GroupIcons accountId={account.id} />
           <HiddenAndMuted accountId={account.id} />
