@@ -166,6 +166,14 @@ export interface LiveCard {
   /** "open", "locked", "resolved" - whatever the service calls it. */
   state?: string | null
   /**
+   * Whether it is still taking answers, where the service says so outright.
+   *
+   * Kick's polls run on a clock and this is absent; a Matrix poll runs until
+   * somebody ends it, so the countdown would never start and the card would
+   * open closed.
+   */
+  open?: boolean
+  /**
    * When the daemon heard this, in unix seconds.
    *
    * The countdown reads from here rather than from when the event happened
@@ -1385,8 +1393,11 @@ export class ChatStore {
    * Kick's broadcast catches up.
    */
   votePoll(bufferId: string, optionId: string | number): void {
+    // Both spellings of the same answer: Kick numbers its options and Matrix
+    // gives them ids of their own, and which one the daemon reads follows
+    // from which service the conversation belongs to.
     void window.moho
-      .rpc('votePoll', { bufferId, optionId: Number(optionId) })
+      .rpc('votePoll', { bufferId, optionId: Number(optionId), answerId: String(optionId) })
       .catch((e: Error) => this.toast('error', e.message))
   }
 

@@ -53,7 +53,10 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
 
   const elapsed = Math.max(0, (now - card.receivedAt) / 1000)
   const left = reviewing || card.closed ? 0 : Math.max(0, card.remaining - elapsed)
-  const open = left > 0
+  // A clock where the service runs one, and its own word where it does not:
+  // a Matrix poll runs until somebody ends it, so a card that worked the
+  // answer out from a countdown would open closed.
+  const open = reviewing || card.closed ? false : (card.open ?? left > 0)
   const isPrediction = card.kind === 'prediction'
   const total = card.options.reduce((sum, o) => sum + o.votes, 0)
   const share = (votes: number): number => (total > 0 ? Math.round((votes / total) * 100) : 0)
@@ -216,7 +219,7 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
 
       {/* Time, draining right to left the way the services' own do. Left out
           on something being read back: it has no time left to show. */}
-      {!reviewing && (
+      {!reviewing && card.duration > 0 && (
         <div className="poll-timer" aria-hidden="true">
           <span
             className="poll-timer-fill"
