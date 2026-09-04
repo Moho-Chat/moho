@@ -107,52 +107,69 @@ function autojoinList(autojoin: string | undefined): string[] {
 }
 
 /** What a Kick channel is broadcasting, as the daemon last asked. */
-/** One option in a Kick poll, with the votes it has so far. */
-export interface KickPollOption {
+/**
+ * One option in a poll, or one outcome in a prediction.
+ *
+ * `votes` carries both: a poll counts people, a prediction counts points, and
+ * the card draws the same bar either way.
+ */
+export interface LiveCardOption {
   id: number
   label: string
   votes: number
+  /** How many people are behind it, where the service counts that too. */
+  backers?: number | null
+  /** A prediction's payout, as the service words it: "1:2.8". */
+  odds?: string | null
+  winner?: boolean
 }
 
 /**
- * The poll running in a Kick channel.
+ * A poll or a prediction: one question, a set of answers, and a clock.
+ *
+ * Not named for any service. Kick is the first to send one, but Discord and
+ * Matrix both have polls of their own, and the card that draws this is
+ * whatever the protocol underneath it happens to be.
  *
  * `remaining` is the seconds left when the daemon heard about it, and
  * `receivedAt` is when that was - the card counts down from the pair rather
- * than asking Kick every second.
+ * than asking every second.
  */
-export interface KickPoll {
+export interface LiveCard {
   bufferId: string
+  kind: 'poll' | 'prediction'
+  id: string
   title: string
-  options: KickPollOption[]
+  options: LiveCardOption[]
   duration: number
   remaining: number
   resultDisplayDuration: number
   hasVoted: boolean
   votedOptionId: number | null
+  /** A prediction's pot, in points. */
+  total?: number | null
+  /** What this account stands to get back, where the service says. */
+  yourReturn?: number | null
+  /** "open", "locked", "resolved" - whatever the service calls it. */
+  state?: string | null
   /** Client clock, in milliseconds, for the countdown. */
   receivedAt: number
+  /** When it happened, on history rows read back from storage. */
+  ts?: number
   /**
-   * Kick has taken the poll down.
+   * The service has taken it down.
    *
    * The card stays anyway, showing how it went, until the reader folds it
    * away - a result nobody has looked at yet is worth more than the space it
-   * occupies, and a poll that vanishes the instant it closes is one you never
+   * occupies, and one that vanishes the instant it closes is one you never
    * saw the answer to.
    */
   closed?: boolean
 }
 
-/**
- * What identifies one poll for as long as it runs.
- *
- * The title alone would carry a fold across two polls that happen to ask the
- * same question; the moment it started separates them, and stays put as the
- * votes come in.
- */
-export function pollKey(poll: KickPoll): string {
-  const started = Math.round((poll.receivedAt - (poll.duration - poll.remaining) * 1000) / 1000)
-  return `${poll.bufferId}|${poll.title}|${started}`
+/** Where a card lives in state: one poll and one prediction per channel. */
+export function cardSlot(bufferId: string, kind: string): string {
+  return `${bufferId}|${kind}`
 }
 
 export interface KickStream {
@@ -306,10 +323,12 @@ export interface ChatState {
    * most of what a viewer wants to know, were nowhere.
    */
   kickStreams: Record<string, KickStream>
-  /** The poll in each Kick channel, absent where there is none. */
-  kickPolls: Record<string, KickPoll>
-  /** Polls the reader has folded away, by buffer and title. */
+  /** The poll and prediction running in each channel, by `cardSlot`. */
+  livePolls: Record<string, LiveCard>
+  /** Cards the reader has folded away, by card id. */
   hiddenPolls: string[]
+  /** An old poll or prediction being read back, over the conversation. */
+  reviewCard: LiveCard | null
   /**
    * The profile being shown, or null.
    *
@@ -381,8 +400,9 @@ const INITIAL: ChatState = {
   openThread: null,
   matrixPermissions: {},
   kickStreams: {},
-  kickPolls: {},
+  livePolls: {},
   hiddenPolls: [],
+  reviewCard: null,
   profile: null,
   replyingTo: null,
   toasts: [],
@@ -1323,17 +1343,33 @@ export class ChatStore {
    * this vote already in it - so the bars move on the click rather than when
    * Kick's broadcast catches up.
    */
-  voteKickPoll(bufferId: string, optionId: number): void {
+  votePoll(bufferId: string, optionId: number): void {
     void window.moho
-      .rpc('voteKickPoll', { bufferId, optionId })
+      .rpc('votePoll', { bufferId, optionId })
       .catch((e: Error) => this.toast('error', e.message))
   }
 
-  /** Takes the poll down, which Kick allows its streamer and moderators. */
-  endKickPoll(bufferId: string): void {
+  /** Takes the poll down, which the service allows whoever it allows. */
+  endPoll(bufferId: string): void {
     void window.moho
-      .rpc('endKickPoll', { bufferId })
+      .rpc('endPoll', { bufferId })
       .catch((e: Error) => this.toast('error', e.message))
+  }
+
+  /** What this conversation has voted on before, newest first. */
+  async listPolls(bufferId: string, kind: 'poll' | 'prediction'): Promise<LiveCard[]> {
+    try {
+      const rows = await window.moho.rpc<LiveCard[]>('listPolls', { bufferId, kind, limit: 25 })
+      return rows.map((card) => ({ ...card, receivedAt: Date.now(), closed: true }))
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+      return []
+    }
+  }
+
+  /** Puts an old one back on screen, to be read rather than answered. */
+  reviewPoll(card: LiveCard | null): void {
+    this.set({ reviewCard: card })
   }
 
   /**
@@ -1511,19 +1547,21 @@ export class ChatStore {
         break
       }
 
-      case 'kickPoll': {
+      case 'pollCard': {
         const bufferId = data.bufferId as string
-        const poll = data.poll as unknown as KickPoll | null
-        const polls = { ...this.state.kickPolls }
-        const had = polls[bufferId]
-        if (!poll) {
+        const kind = (data.kind as string) || 'poll'
+        const card = data.poll as unknown as LiveCard | null
+        const polls = { ...this.state.livePolls }
+        const slot = cardSlot(bufferId, kind)
+        const had = polls[slot]
+        if (!card) {
           // Taken down, not forgotten: the card holds the result until it is
           // folded away.
-          if (had) polls[bufferId] = { ...had, closed: true }
+          if (had) polls[slot] = { ...had, closed: true }
         } else {
-          polls[bufferId] = { ...poll, bufferId, receivedAt: Date.now() }
+          polls[slot] = { ...card, bufferId, kind: kind as LiveCard['kind'], receivedAt: Date.now() }
         }
-        this.set({ kickPolls: polls })
+        this.set({ livePolls: polls })
         break
       }
 

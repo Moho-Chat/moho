@@ -110,10 +110,27 @@
   gap: var(--spacing-xs);
   padding: var(--spacing-xs);
   flex: none;
+  /* Both of these, and for different failures: without the first the row
+     lays itself out at the width its contents want and pushes them over the
+     member list and off the window; without the second anything that still
+     will not fit spills out of the column instead of being cut off at it.
+     The floating panels are hung off the window rather than laid out in
+     here, so clipping this row costs nothing they need. */
+  min-width: 0;
+  overflow: hidden;
 }
 
+/* Buttons keep their size; the two rules below name the things that give
+   ground instead. Squashed icons are worse than a cut-off title. */
+.main-header > * {
+  flex: none;
+}
+
+/* The name gives up its width first: it has a tooltip and a channel list to
+   fall back on, and the buttons beside it do not. */
 .main-header-title {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   font-weight: 500;
 }
 
@@ -314,6 +331,69 @@
 }
 
 
+
+/* --- panels hanging off the header -------------------------------------
+   Fixed to the window rather than laid out in the header, because the header
+   is a row that has to compact: a panel inside it either widens the row past
+   the window or gets clipped by it. Hung off its button and clamped to the
+   viewport, a panel can be as wide as it needs while the row stays narrow. */
+.header-popover {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  max-height: min(60vh, 460px);
+  overflow-y: auto;
+  padding: var(--spacing-s);
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--corner-radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.popover-field {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 3px var(--spacing-s);
+  background: var(--surface-container-highest);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  color: var(--surface-variant-text);
+}
+
+.popover-field:focus-within {
+  border-color: var(--primary);
+}
+
+.popover-field input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--surface-text);
+  font-family: inherit;
+  font-size: var(--font-size-small);
+}
+
+.popover-field input::placeholder {
+  color: var(--surface-variant-text);
+}
+
+/* Inside a panel the results are the panel, so they drop the floating shell
+   the old inline box needed. */
+.header-popover .search-results {
+  position: static;
+  width: auto;
+  max-height: none;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+}
+
 /* --- the poll on screen -------------------------------------------------
    Kick's own card, in this client's colours: the question, the options as
    rows that are both a label and a bar, and time draining right to left
@@ -322,12 +402,71 @@
    Floating over the log rather than sitting in it, because a poll runs for a
    minute while the chat keeps moving - a line in the log would scroll out of
    reach at exactly the moment somebody wanted to vote in it. */
-.poll-card {
+
+/* A stack, because a channel can have a poll and a prediction at once - and
+   an old one being read back over the top of both. */
+.poll-stack {
   position: absolute;
   z-index: 5;
   top: var(--spacing-s);
   left: var(--spacing-m);
   right: var(--spacing-m);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+/* Rows in the two history panels: the question, and how it went. */
+.history-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: none;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-highest);
+  color: var(--surface-text);
+  text-align: left;
+}
+
+.history-row:hover {
+  filter: brightness(1.2);
+}
+
+.history-row > span:first-child {
+  max-width: 100%;
+}
+
+/* A prediction is a poll with money on it, and reads as one - the payout and
+   the winner are the two things it says that a poll does not. */
+.poll-odds {
+  position: relative;
+  flex: none;
+}
+
+.poll-winner {
+  position: relative;
+  flex: none;
+  padding: 0 var(--spacing-xs);
+  border-radius: 999px;
+  background: var(--success);
+  color: #fff;
+  font-weight: 700;
+}
+
+.poll-option.winner {
+  outline: 1px solid var(--success);
+}
+
+.poll-return {
+  color: var(--surface-variant-text);
+}
+
+/* Held open by whatever is on screen rather than pinned to the top of the
+   log: the card floats, and the stack around it is what positions it. */
+.poll-card {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
@@ -1608,18 +1747,10 @@ img.composer-emoji {
 }
 
 .mentions-panel {
-  position: absolute;
-  top: calc(100% + var(--spacing-xs));
-  right: 0;
-  z-index: 40;
-  width: 380px;
-  max-height: 440px;
-  overflow-y: auto;
-  padding: var(--spacing-xs);
-  background: var(--surface-container-high);
-  border: 1px solid var(--outline-strong);
-  border-radius: var(--corner-radius);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  /* Everything about where it sits comes from the popover it is now built
+     on: the header clips its own contents, so a panel laid out inside it
+     would be cut off at the row it hangs from. */
+  gap: var(--spacing-xxs);
 }
 
 .mentions-panel-head {
@@ -3388,11 +3519,6 @@ video.lightbox-media {
 }
 
 .add-to-dm-pop {
-  position: absolute;
-  top: calc(100% + var(--spacing-xxs));
-  right: 0;
-  z-index: 40;
-  width: 280px;
   max-height: 340px;
   overflow-y: auto;
   display: flex;
@@ -3420,13 +3546,35 @@ video.lightbox-media {
   padding-top: var(--spacing-xs);
 }
 
+.main-header > .conversation-tools {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
 .conversation-tools {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  flex: none;
+  /* Shrinkable, which is the whole difference between a header that compacts
+     and one that grows past the window: `flex: none` here meant the row's
+     width was whatever its contents wanted, and a stream title is as long as
+     the streamer felt like typing. */
+  flex: 0 1 auto;
+  min-width: 0;
   position: relative;
   margin-left: auto;
+  justify-content: flex-end;
+}
+
+/* Buttons keep their size; only the things made of text give ground. */
+.conversation-tools > .icon-button,
+.conversation-tools > .header-anchor,
+.conversation-tools > .follow-button {
+  flex: none;
+}
+
+.header-anchor {
+  display: inline-flex;
 }
 
 /* Hanging up should not look like the same button in a different mood. */
@@ -4800,7 +4948,11 @@ video.lightbox-media {
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-xs);
+  /* Shrinks to nothing before anything else in the row does. Its whole
+     contents are in its tooltip, so a narrow window loses the least here. */
+  flex: 0 1 auto;
   min-width: 0;
+  overflow: hidden;
   max-width: 42%;
   padding: 1px var(--spacing-xs);
   border: 1px solid var(--outline-light);

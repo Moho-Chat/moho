@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { MessageRow, type MessageMode } from './MessageRow'
-import { PollCard } from './PollCard'
+import { LiveCards } from './LiveCards'
 import { CallView } from './CallView'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, isChatKind } from '../lib/util'
@@ -412,7 +412,7 @@ export function MessageList(): JSX.Element {
       {/* Over the log rather than in it: a poll is one question being
           answered while the chat keeps moving underneath, and a line in the
           log would scroll away mid-vote. */}
-      <PollCard bufferId={bufferId} />
+      <LiveCards bufferId={bufferId} />
       <div className="messagelist-scroll" ref={scrollRef} onScroll={onScroll}>
         {/* One wrapper so the whole log has a single measurable height; the
             observer above needs an element that grows with the content, which

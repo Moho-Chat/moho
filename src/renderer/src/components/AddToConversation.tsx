@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
+import { HeaderPopover } from './HeaderPopover'
 import { useChat, useStore } from '../state/hooks'
 import { classes, resolveMediaUrl } from '../lib/util'
 import type { BufferEntry } from '../state/store'
@@ -122,7 +123,7 @@ export function AddToConversation({ buffer }: { buffer: BufferEntry }): JSX.Elem
         onClick={() => setOpen(!open)}
       />
       {open && (
-        <div className="add-to-dm-pop">
+        <HeaderPopover anchor={box.current} width={280} className="add-to-dm-pop" onClose={() => setOpen(false)}>
           <div className="add-to-dm-head small">
             {room <= 0
               ? `This group is full - Discord allows ${GROUP_DM_MAX_OTHERS + 1} people including you.`
@@ -171,7 +172,7 @@ export function AddToConversation({ buffer }: { buffer: BufferEntry }): JSX.Elem
               </button>
             </div>
           )}
-        </div>
+        </HeaderPopover>
       )}
     </div>
   )

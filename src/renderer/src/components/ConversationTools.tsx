@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
 import { AddToConversation } from './AddToConversation'
+import { HeaderPopover } from './HeaderPopover'
 import { useChat, useStore } from '../state/hooks'
 import { classes, formatFullTime } from '../lib/util'
-import type { BufferEntry } from '../state/store'
+import type { BufferEntry, LiveCard } from '../state/store'
 import type { Message } from '../../../shared/wire'
 
 /**
@@ -20,6 +21,7 @@ function InviteToRoom({ buffer }: { buffer: BufferEntry }): JSX.Element {
   const [open, setOpen] = useState(false)
   const [who, setWho] = useState('')
   const [busy, setBusy] = useState(false)
+  const button = useRef<HTMLSpanElement>(null)
 
   const invite = (): void => {
     const userId = who.trim()
@@ -36,31 +38,112 @@ function InviteToRoom({ buffer }: { buffer: BufferEntry }): JSX.Element {
       .finally(() => setBusy(false))
   }
 
-  if (!open) {
-    return <IconButton name="person_add" title="Invite somebody to this room" onClick={() => setOpen(true)} />
+  return (
+    <>
+      <span ref={button} className="header-anchor">
+        <IconButton
+          name="person_add"
+          title="Invite somebody to this room"
+          onClick={() => setOpen(!open)}
+        />
+      </span>
+      {open && (
+        <HeaderPopover anchor={button.current} width={320} onClose={() => setOpen(false)}>
+          <div className="popover-field">
+            <Icon name="person_add" size={16} />
+            <input
+              autoFocus
+              type="text"
+              value={who}
+              placeholder="@someone:server"
+              disabled={busy}
+              onChange={(e) => setWho(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setOpen(false)
+                if (e.key === 'Enter') invite()
+              }}
+            />
+          </div>
+        </HeaderPopover>
+      )}
+    </>
+  )
+}
+
+/**
+ * The polls or predictions this conversation has already been through.
+ *
+ * Kept by the daemon rather than by the window, so the list survives a
+ * restart: what was voted on last night is a question asked after one more
+ * often than before one. Picking a row puts it back over the chat to be read
+ * rather than answered.
+ */
+function CardHistory({
+  buffer,
+  kind,
+  icon,
+  label
+}: {
+  buffer: BufferEntry
+  kind: 'poll' | 'prediction'
+  icon: string
+  label: string
+}): JSX.Element {
+  const store = useStore()
+  const [open, setOpen] = useState(false)
+  const [rows, setRows] = useState<LiveCard[] | null>(null)
+  const button = useRef<HTMLSpanElement>(null)
+
+  const show = (): void => {
+    if (open) {
+      setOpen(false)
+      return
+    }
+    setOpen(true)
+    setRows(null)
+    void store.listPolls(buffer.id, kind).then(setRows)
   }
 
   return (
-    <div className="conversation-search">
-      <Icon name="person_add" size={16} />
-      <input
-        autoFocus
-        type="text"
-        value={who}
-        placeholder="@someone:server"
-        disabled={busy}
-        onChange={(e) => setWho(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            setWho('')
-            setOpen(false)
-          }
-          if (e.key === 'Enter') invite()
-        }}
-        onBlur={() => !who.trim() && setOpen(false)}
-      />
-    </div>
+    <>
+      <span ref={button} className="header-anchor">
+        <IconButton name={icon} title={label} className={open ? 'active' : undefined} onClick={show} />
+      </span>
+      {open && (
+        <HeaderPopover anchor={button.current} width={360} onClose={() => setOpen(false)}>
+          <div className="small muted">{label}</div>
+          {rows === null && <div className="small muted">Looking…</div>}
+          {rows?.length === 0 && (
+            <div className="small muted">
+              {kind === 'poll' ? 'No polls here yet.' : 'No predictions here yet.'}
+            </div>
+          )}
+          {rows?.map((card) => (
+            <button
+              key={card.id}
+              type="button"
+              className="history-row"
+              onClick={() => {
+                store.reviewPoll(card)
+                setOpen(false)
+              }}
+            >
+              <span className="ellipsis">{card.title}</span>
+              <span className="small muted">
+                {card.ts ? new Date(card.ts * 1000).toLocaleDateString() : ''} · {winning(card)}
+              </span>
+            </button>
+          ))}
+        </HeaderPopover>
+      )}
+    </>
   )
+}
+
+/** Whichever answer came out ahead, for the one line a history row gets. */
+function winning(card: LiveCard): string {
+  const best = [...card.options].sort((a, b) => b.votes - a.votes)[0]
+  return best ? `${best.label} (${best.votes})` : 'no answers'
 }
 
 /**
@@ -107,7 +190,9 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   /** Loading backwards towards a search result, which can take a moment. */
   const [jumping, setJumping] = useState(false)
   const [calling, setCalling] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
+  const searchButton = useRef<HTMLSpanElement>(null)
 
   const isDiscord = buffer.accountId.startsWith('discord:')
   const stream = useChat((s) => s.kickStreams)[buffer.id]
@@ -156,17 +241,6 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
     return () => clearInterval(timer)
   }, [isKick, buffer.id, buffer.kind])
 
-  // Clicking anywhere else puts the results away, the way any other transient
-  // panel behaves.
-  useEffect(() => {
-    if (!results) return
-    const close = (e: MouseEvent): void => {
-      if (!box.current?.contains(e.target as Node)) setResults(null)
-    }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [results])
-
   const rerun = async (): Promise<void> => {
     setSearching(true)
     try {
@@ -199,6 +273,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
     // mechanism that keeps the tail in view.
     store.setJumpTarget(id)
     setResults(null)
+    setSearchOpen(false)
   }
 
   const call = (): void => {
@@ -288,43 +363,79 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           there is no friend list to choose from and nothing to look up. */}
       {buffer.accountId.startsWith('matrix:') && <InviteToRoom buffer={buffer} />}
 
-      <div className="conversation-search">
-        <Icon name="search" size={16} />
-        <input
-          type="search"
-          value={query}
-          placeholder={`Search ${buffer.name}`}
-          onChange={(e) => setQuery(e.target.value)}
-          // Jumping to a result puts the panel away. Coming back to a box
-          // that still holds a query should show what it found rather than
-          // requiring the text to be changed before it will answer again.
-          onFocus={() => query.trim() && !results && void rerun()}
-          onKeyDown={(e) => e.key === 'Escape' && (setQuery(''), setResults(null))}
-        />
-      </div>
+      {/* What this channel has asked before now. Two buttons rather than one
+          list, because a poll and a prediction are different questions -
+          which one is worth going back to is not a filter you want to apply
+          after opening a list. */}
+      <CardHistory buffer={buffer} kind="poll" icon="help" label="Past polls" />
+      <CardHistory buffer={buffer} kind="prediction" icon="casino" label="Past predictions" />
 
-      {results && (
-        <div className="search-results">
-          <div className="search-results-head small muted">
-            {searching
-              ? 'Searching…'
-              : jumping
-                ? 'Loading older messages…'
-                : `${results.length} ${results.length === 1 ? 'result' : 'results'}`}
+      {/* An icon until it is being used. A box wide enough to type into is
+          the single widest thing in this row, and a header that always
+          carried one had nothing left to give when the window narrowed. */}
+      <span ref={searchButton} className="header-anchor">
+        <IconButton
+          name="search"
+          title={`Search ${buffer.name}`}
+          className={searchOpen ? 'active' : undefined}
+          onClick={() => setSearchOpen(!searchOpen)}
+        />
+      </span>
+
+      {searchOpen && (
+        <HeaderPopover
+          anchor={searchButton.current}
+          width={420}
+          className="search-popover"
+          onClose={() => setSearchOpen(false)}
+        >
+          <div className="popover-field">
+            <Icon name="search" size={16} />
+            <input
+              autoFocus
+              type="search"
+              value={query}
+              placeholder={`Search ${buffer.name}`}
+              onChange={(e) => setQuery(e.target.value)}
+              // Coming back to a box that still holds a query should show
+              // what it found rather than needing the text changed first.
+              onFocus={() => query.trim() && !results && void rerun()}
+              onKeyDown={(e) => {
+                if (e.key !== 'Escape') return
+                if (query) {
+                  setQuery('')
+                  setResults(null)
+                } else {
+                  setSearchOpen(false)
+                }
+              }}
+            />
           </div>
-          {results.map((m) => (
-            <button key={m.id} type="button" className="search-result" onClick={() => void jumpTo(m.id)}>
-              <span className="search-result-head small">
-                <span className="search-result-from">{m.from}</span>
-                <span className="muted">{formatFullTime(m.ts)}</span>
-              </span>
-              <span className="search-result-body small ellipsis">{m.body}</span>
-            </button>
-          ))}
-          {!searching && results.length === 0 && (
-            <div className="search-results-empty small muted">Nothing found in this conversation.</div>
+
+          {results && (
+            <div className="search-results">
+              <div className="search-results-head small muted">
+                {searching
+                  ? 'Searching…'
+                  : jumping
+                    ? 'Loading older messages…'
+                    : `${results.length} ${results.length === 1 ? 'result' : 'results'}`}
+              </div>
+              {results.map((m) => (
+                <button key={m.id} type="button" className="search-result" onClick={() => void jumpTo(m.id)}>
+                  <span className="search-result-head small">
+                    <span className="search-result-from">{m.from}</span>
+                    <span className="muted">{formatFullTime(m.ts)}</span>
+                  </span>
+                  <span className="search-result-body small ellipsis">{m.body}</span>
+                </button>
+              ))}
+              {!searching && results.length === 0 && (
+                <div className="search-results-empty small muted">Nothing found in this conversation.</div>
+              )}
+            </div>
           )}
-        </div>
+        </HeaderPopover>
       )}
     </div>
   )

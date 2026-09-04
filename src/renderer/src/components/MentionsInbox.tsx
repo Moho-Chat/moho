@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
+import { HeaderPopover } from './HeaderPopover'
 import { Avatar } from './Avatar'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { isMutedBuffer, MENTIONS_GROUP_ID } from '../lib/groups'
@@ -114,7 +115,7 @@ export function MentionsInbox(): JSX.Element {
       )}
 
       {open && (
-        <div className="mentions-panel">
+        <HeaderPopover anchor={box.current} width={380} className="mentions-panel" onClose={() => setOpen(false)}>
           <div className="mentions-panel-head small">
             <span className="muted">
               {jumping
@@ -193,7 +194,7 @@ export function MentionsInbox(): JSX.Element {
             <Icon name="inbox" size={16} />
             See all mentions
           </button>
-        </div>
+        </HeaderPopover>
       )}
     </div>
   )
