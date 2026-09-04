@@ -313,6 +313,33 @@
   font-weight: 600;
 }
 
+/* --- on air ------------------------------------------------------------
+   A live channel says so twice over: a red dot in front of the name, which
+   survives being scanned down a long list, and the word in the badge slot
+   where an unread count would otherwise sit. */
+.live-badge {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 999px;
+  /* The same solid red as the hang-up button rather than --error, which is
+     a pale pink for text and reads as decorative when used as a fill. */
+  background: #c9403c;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 18px;
+  text-align: center;
+}
+
+.live-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #c9403c;
+}
+
 .guild-more {
   display: block;
   width: calc(100% - var(--spacing-m));

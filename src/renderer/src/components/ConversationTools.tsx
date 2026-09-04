@@ -139,6 +139,23 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
     return () => clearTimeout(timer)
   }, [query, buffer.id, store])
 
+  // A viewer count that never moves is worse than none, and Kick pushes a
+  // stream starting and stopping but never the count. The followed channels
+  // are polled as a group by the daemon; this is the one channel on screen,
+  // which may not be followed at all, asked about on its own minute.
+  const isKick = buffer.accountId.startsWith('kick:')
+  useEffect(() => {
+    if (!isKick || buffer.kind !== 'channel') return
+    const tick = (): void => {
+      void window.moho.rpc('refreshKickStream', { bufferId: buffer.id }).catch(() => {
+        // Nothing to say: the header keeps the last count it had, which is
+        // what it would show anyway, and a toast every minute is not a fix.
+      })
+    }
+    const timer = setInterval(tick, 60_000)
+    return () => clearInterval(timer)
+  }, [isKick, buffer.id, buffer.kind])
+
   // Clicking anywhere else puts the results away, the way any other transient
   // panel behaves.
   useEffect(() => {

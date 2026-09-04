@@ -741,6 +741,10 @@ function BufferRow({
 }: BufferRowProps): JSX.Element {
   const { menu, open, close } = useContextMenu()
   const account = accounts.find((a) => a.id === buffer.accountId)
+  // Whether this channel is on air. Selected down to the one boolean rather
+  // than the map, so a viewer count ticking over in one channel does not
+  // re-render every row in the list.
+  const live = useChat((s) => s.kickStreams[buffer.id]?.live ?? false)
 
   // Under an account header the row's own kind is what's worth showing (a
   // channel vs a DM vs the server buffer). A pinned row has no header above
@@ -857,6 +861,7 @@ function BufferRow({
         title={draggable ? `${buffer.name} — drag onto a heading to file it` : buffer.name}
       >
         {leading}
+        {live && <span className="live-dot" aria-label="Live" />}
         <span className="ellipsis buffer-name">{bufferDisplayName(buffer.name)}</span>
         {/* So a conversation with no unread count and no traffic in it is
             explained rather than merely quiet: it is being read elsewhere. */}
@@ -866,6 +871,11 @@ function BufferRow({
         {buffer.syncing && <span className="spinner" aria-label="Synchronising" />}
         {poppedOut && <Icon name="open_in_new" size={13} className="buffer-muted-icon" />}
         {muted && <Icon name="notifications_off" size={13} className="buffer-muted-icon" />}
+        {/* On air, in the place the unread count would be. A count still
+            wins that slot when there is one - what is unread is the thing
+            you have to act on - and the dot beside the name carries the
+            live state either way. */}
+        {live && !(buffer.unread > 0 && !muted) && <span className="live-badge">LIVE</span>}
         {buffer.unread > 0 && !muted && (
           <span className={classes('unread-badge', buffer.highlight && 'highlight')}>
             {buffer.unread > 99 ? '99+' : buffer.unread}
