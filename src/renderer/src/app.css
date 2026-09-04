@@ -4629,3 +4629,39 @@ video.lightbox-media {
   margin-left: auto;
   max-width: 55%;
 }
+
+/* --- what a Kick channel is broadcasting ---------------------------------
+   The chat is watched beside a video this client does not show, so the header
+   carries the context that video would: what the stream is, what is being
+   played, and how many people are there. */
+.stream-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-width: 0;
+  max-width: 42%;
+  padding: 1px var(--spacing-xs);
+  border: 1px solid var(--outline-light);
+  border-radius: var(--corner-radius-small);
+  color: var(--surface-variant-text);
+}
+
+.stream-chip.live {
+  border-color: var(--error);
+}
+
+/* Red, and only present while live - the one thing on the chip that must be
+   readable at a glance from across a room. */
+.stream-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--error);
+}
+
+/* Each part shrinks before the row does, so a long stream title cannot push
+   the buttons beside it off the header. */
+.stream-chip .ellipsis {
+  min-width: 2em;
+}

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
 import { AddToConversation } from './AddToConversation'
 import { useChat, useStore } from '../state/hooks'
-import { formatFullTime } from '../lib/util'
+import { classes, formatFullTime } from '../lib/util'
 import type { BufferEntry } from '../state/store'
 import type { Message } from '../../../shared/wire'
 
@@ -110,6 +110,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   const box = useRef<HTMLDivElement>(null)
 
   const isDiscord = buffer.accountId.startsWith('discord:')
+  const stream = useChat((s) => s.kickStreams)[buffer.id]
   const isDm = buffer.kind === 'dm'
   // This conversation's call, not merely a call on the same account: one
   // account can only be in one, but the button has to be right about which.
@@ -201,6 +202,37 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
       {buffer.channelModes && (
         <span className="channel-modes small" title={describeModes(buffer.channelModes)}>
           {buffer.channelModes}
+        </span>
+      )}
+
+      {/* What the stream is, for a channel that is one. Kick's chat is
+          watched beside a video this client does not show, so the title, the
+          game and the number of people watching are the context the chat is
+          missing - and "offline" is worth saying too, since a quiet channel
+          and an off-air one look identical otherwise. */}
+      {stream && (
+        <span
+          className={classes('stream-chip', 'small', stream.live && 'live')}
+          title={
+            stream.live
+              ? [stream.title, stream.category, stream.viewers ? `${stream.viewers.toLocaleString()} watching` : null]
+                  .filter(Boolean)
+                  .join(' · ')
+              : 'Not streaming right now'
+          }
+        >
+          {stream.live ? (
+            <>
+              <span className="stream-dot" />
+              <span className="ellipsis">{stream.title || 'Live'}</span>
+              {stream.category && <span className="muted ellipsis">{stream.category}</span>}
+              {stream.viewers !== null && stream.viewers !== undefined && (
+                <span className="muted">{stream.viewers.toLocaleString()}</span>
+              )}
+            </>
+          ) : (
+            <span className="muted">offline</span>
+          )}
         </span>
       )}
       {isDiscord && isDm && (

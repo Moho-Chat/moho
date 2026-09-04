@@ -106,6 +106,18 @@ function autojoinList(autojoin: string | undefined): string[] {
     .filter(Boolean)
 }
 
+/** What a Kick channel is broadcasting, as the daemon last asked. */
+export interface KickStream {
+  bufferId: string
+  live: boolean
+  title?: string | null
+  category?: string | null
+  viewers?: number | null
+  /** Unix seconds the stream started, for "live for 2h 14m". */
+  startedTs?: number | null
+  followers?: number | null
+}
+
 export type ActivePanel = '' | 'accounts' | 'settings' | 'join' | 'downloads'
 
 export interface ChatState {
@@ -233,6 +245,14 @@ export interface ChatState {
   dividerTsByBuffer: Record<string, number>
   matrixPermissions: Record<string, RoomPermissions>
   /**
+   * What each Kick channel is broadcasting, by buffer.
+   *
+   * A Kick channel is a stream as much as a chat, and moho showed only the
+   * chat - so the title, the game and the number of people watching, which is
+   * most of what a viewer wants to know, were nowhere.
+   */
+  kickStreams: Record<string, KickStream>
+  /**
    * The profile being shown, or null.
    *
    * One at a time, and held here rather than in the card: the answer arrives
@@ -302,6 +322,7 @@ const INITIAL: ChatState = {
   readersByBuffer: {},
   openThread: null,
   matrixPermissions: {},
+  kickStreams: {},
   profile: null,
   replyingTo: null,
   toasts: [],
@@ -1385,6 +1406,12 @@ export class ChatStore {
         const open = this.state.profile
         if (open && open.name.toLowerCase() !== answer.name.toLowerCase() && !answer.handle?.toLowerCase().includes(open.name.toLowerCase())) break
         this.set({ profile: answer })
+        break
+      }
+
+      case 'kickStream': {
+        const stream = data as unknown as KickStream
+        this.set({ kickStreams: { ...this.state.kickStreams, [stream.bufferId]: stream } })
         break
       }
 
