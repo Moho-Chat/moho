@@ -871,15 +871,19 @@ function BufferRow({
         {buffer.syncing && <span className="spinner" aria-label="Synchronising" />}
         {poppedOut && <Icon name="open_in_new" size={13} className="buffer-muted-icon" />}
         {muted && <Icon name="notifications_off" size={13} className="buffer-muted-icon" />}
-        {/* On air, in the place the unread count would be. A count still
-            wins that slot when there is one - what is unread is the thing
-            you have to act on - and the dot beside the name carries the
-            live state either way. */}
-        {live && !(buffer.unread > 0 && !muted) && <span className="live-badge">LIVE</span>}
-        {buffer.unread > 0 && !muted && (
-          <span className={classes('unread-badge', buffer.highlight && 'highlight')}>
-            {buffer.unread > 99 ? '99+' : buffer.unread}
-          </span>
+        {/* One badge, and being on air wins it: a live channel says LIVE,
+            an off-air one says how much was said while you were away. The
+            two flickering against each other in the same slot as messages
+            arrive is worse than either on its own. */}
+        {live ? (
+          <span className="live-badge">LIVE</span>
+        ) : (
+          buffer.unread > 0 &&
+          !muted && (
+            <span className={classes('unread-badge', buffer.highlight && 'highlight')}>
+              {buffer.unread > 99 ? '99+' : buffer.unread}
+            </span>
+          )
         )}
       </button>
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={entries} onClose={close} />}
