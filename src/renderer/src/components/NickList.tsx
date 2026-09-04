@@ -118,14 +118,16 @@ export function NickList(): JSX.Element {
   // Both are advisory - the server re-checks either way and refuses if we were
   // wrong, exactly as any other client would be refused.
   // Kick answers this from the badges it already sent: the local user is a
-  // moderator of a channel if their own row says so. Same shape as IRC's,
+  // moderator of a channel if their own row says so. Matched on the name Kick
+  // knows, never the local one - renaming yourself must not cost you your own
+  // moderator buttons. Same shape as IRC's,
   // and advisory in the same way - Kick re-checks and refuses if we were
   // wrong, which it explains far better than a status code would.
   const perms =
     account?.service === 'irc'
       ? ircPermissions(members, account.currentNick)
       : account?.service === 'kick'
-        ? kickPermissions(members, account.currentNick || account.displayName)
+        ? kickPermissions(members, account.currentNick)
         : (buffer && permissions[buffer.id]) || {}
 
   const groups = useMemo(() => {

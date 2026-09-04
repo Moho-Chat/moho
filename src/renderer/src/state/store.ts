@@ -1916,15 +1916,19 @@ export class ChatStore {
    * message you just sent would not group with the one before it, and then
    * would the moment it landed.
    *
-   * The display name is the fallback for the first thing ever said in a
-   * buffer, where there is nothing to copy.
+   * The account's own identity is the fallback for the first thing ever said
+   * in a buffer, where there is nothing to copy.
    */
   private ownNameIn(bufferId: string): string {
     const list = this.state.messagesByBuffer[bufferId] || []
     for (let i = list.length - 1; i >= 0; i--) {
       if (list[i].isOwn && !list[i].pending && list[i].from) return list[i].from
     }
-    return this.accountFor(bufferId)?.displayName || 'me'
+    const account = this.accountFor(bufferId)
+    // The identity the service knows, not the local rename: this name is
+    // compared against the echo when it lands, and a locally renamed one
+    // would never match its own message.
+    return account?.currentNick || account?.displayName || 'me'
   }
 
   private async markRead(bufferId: string): Promise<void> {
