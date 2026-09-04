@@ -174,6 +174,7 @@ export function MessageRow({
   const canEditDelete =
     !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix')
   const canReact = service === 'discord' || service === 'matrix'
+  const pinned = useChat((s) => s.matrixPinned)[bufferId]?.includes(message.id) ?? false
   const isSystem = !isChatKind(message.kind)
   // Said to you rather than to the room. Drawn differently on purpose: the
   // whole risk with a private message is reading it as a public one.
@@ -252,6 +253,19 @@ export function MessageRow({
         ] as MenuEntry[])
       : []),
     { label: 'Reply', icon: 'reply', onClick: () => reply() },
+    // What the room tells everyone to read first. Offered to everybody
+    // rather than gated on a power level read here: the server decides, and
+    // it refuses in words worth showing - hiding the action from somebody who
+    // could have used it is the worse mistake.
+    ...(service === 'matrix' && !isSystem
+      ? ([
+          {
+            label: pinned ? 'Unpin from this room' : 'Pin to this room',
+            icon: pinned ? 'keep_off' : 'push_pin',
+            onClick: () => store.setPinned(bufferId, message.id, !pinned)
+          }
+        ] as MenuEntry[])
+      : []),
     // Beside Reply because it is the same gesture aimed somewhere else, and
     // only where the service has whispers at all.
     ...(service === 'sneedchat' && !message.isOwn && message.from && !isSystem

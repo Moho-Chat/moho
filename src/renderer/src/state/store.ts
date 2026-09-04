@@ -364,6 +364,8 @@ export interface ChatState {
   hiddenPolls: string[]
   /** An old poll or prediction being read back, over the conversation. */
   reviewCard: LiveCard | null
+  /** Which messages each Matrix room has pinned, newest last. */
+  matrixPinned: Record<string, string[]>
   /**
    * The profile being shown, or null.
    *
@@ -438,6 +440,7 @@ const INITIAL: ChatState = {
   livePolls: {},
   hiddenPolls: [],
   reviewCard: null,
+  matrixPinned: {},
   profile: null,
   replyingTo: null,
   toasts: [],
@@ -1437,6 +1440,20 @@ export class ChatStore {
     this.set({ hiddenPolls: this.state.hiddenPolls.filter((k) => k !== key) })
   }
 
+  /**
+   * Pins a message in a Matrix room, or takes the pin off.
+   *
+   * Offered to everybody rather than gated on a power level read here: the
+   * server decides, and it says no in words worth showing. Hiding the action
+   * from somebody who could have used it is the worse mistake.
+   */
+  setPinned(bufferId: string, eventId: string, pinned: boolean): void {
+    void window.moho
+      .rpc('setMatrixPinned', { bufferId, eventId, pinned })
+      .then(() => this.toast('info', pinned ? 'Pinned' : 'Unpinned'))
+      .catch((e: Error) => this.toast('error', e.message))
+  }
+
   /** Follows a Kick channel, or stops. The header reads the answer back. */
   setFollowing(bufferId: string, follow: boolean): void {
     void window.moho
@@ -1596,6 +1613,15 @@ export class ChatStore {
         this.set({ profile: answer })
         break
       }
+
+      case 'matrixPinned':
+        this.set({
+          matrixPinned: {
+            ...this.state.matrixPinned,
+            [data.bufferId as string]: (data.pinned as string[]) || []
+          }
+        })
+        break
 
       case 'pollCard': {
         const bufferId = data.bufferId as string

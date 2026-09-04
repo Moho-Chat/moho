@@ -157,6 +157,77 @@ function winning(card: LiveCard): string {
 }
 
 /**
+ * What a room has told everyone to read first.
+ *
+ * A panel rather than a banner: rooms pin their rules, their current topic of
+ * business and the thing everyone is meant to have read, and any of those can
+ * be long. The count on the button is what makes it worth opening.
+ */
+function PinnedMessages({ buffer }: { buffer: BufferEntry }): JSX.Element | null {
+  const store = useStore()
+  const count = (useChat((s) => s.matrixPinned)[buffer.id] || []).length
+  const [open, setOpen] = useState(false)
+  const [rows, setRows] = useState<Message[] | null>(null)
+  const button = useRef<HTMLSpanElement>(null)
+
+  const show = (): void => {
+    if (open) {
+      setOpen(false)
+      return
+    }
+    setOpen(true)
+    setRows(null)
+    void window.moho
+      .rpc<{ pinned: Message[] }>('listMatrixPinned', { bufferId: buffer.id })
+      .then((answer) => setRows(answer.pinned))
+      .catch((e: Error) => {
+        store.toast('error', e.message)
+        setRows([])
+      })
+  }
+
+  // Nothing pinned is nothing to offer: a button that always opens an empty
+  // panel is a button people stop pressing.
+  if (count === 0) return null
+
+  return (
+    <>
+      <span ref={button} className="header-anchor">
+        <IconButton
+          name="push_pin"
+          title={`${count} pinned ${count === 1 ? 'message' : 'messages'}`}
+          className={open ? 'active' : undefined}
+          onClick={show}
+        />
+      </span>
+      {open && (
+        <HeaderPopover anchor={button.current} width={400} onClose={() => setOpen(false)}>
+          <div className="small muted">Pinned in this room</div>
+          {rows === null && <div className="small muted">Looking…</div>}
+          {rows?.map((message) => (
+            <button
+              key={message.id}
+              type="button"
+              className="history-row"
+              onClick={() => {
+                store.setJumpTarget(message.id)
+                setOpen(false)
+              }}
+            >
+              <span className="small">
+                <span className="search-result-from">{message.from}</span>{' '}
+                <span className="muted">{message.ts ? formatFullTime(message.ts) : ''}</span>
+              </span>
+              <span className="small ellipsis">{message.body}</span>
+            </button>
+          ))}
+        </HeaderPopover>
+      )}
+    </>
+  )
+}
+
+/**
  * What a channel's restrictions mean, for the ones worth explaining.
  *
  * IRC writes them as letters because that is what its server says; Kick has
@@ -420,6 +491,8 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           names somebody whether or not this account has ever met them, so
           there is no friend list to choose from and nothing to look up. */}
       {buffer.accountId.startsWith('matrix:') && <InviteToRoom buffer={buffer} />}
+
+      {isMatrix && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
 
       {/* What this channel has asked before now. Two buttons rather than one
           list, because a poll and a prediction are different questions -
