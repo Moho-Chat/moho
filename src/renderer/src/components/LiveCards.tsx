@@ -42,6 +42,9 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
   // Its own clock: `remaining` was the truth when the daemon heard it, and
   // the seconds since then are this component's to count.
   const [now, setNow] = useState(() => Date.now())
+  /** Which outcome a bet is being put on, and how much. */
+  const [picked, setPicked] = useState<string | number | null>(null)
+  const [stake, setStake] = useState('')
   useEffect(() => {
     if (reviewing || card.closed) return
     const timer = setInterval(() => setNow(Date.now()), 500)
@@ -60,6 +63,26 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
   // nothing left to answer, so a bar offering to bring it back would only be
   // offering an old result.
   if (folded && !open) return null
+
+  const amount = Math.floor(Number(stake))
+  const canBet =
+    picked !== null &&
+    Number.isFinite(amount) &&
+    amount >= (card.minBet ?? 10) &&
+    (card.balance === null || card.balance === undefined || amount <= card.balance)
+
+  const bet = (): void => {
+    if (picked === null) {
+      store.toast('info', 'Pick an outcome first')
+      return
+    }
+    if (!canBet) {
+      store.toast('info', `Bets are ${card.minBet ?? 10} points or more`)
+      return
+    }
+    store.betPrediction(card.bufferId, picked, amount)
+    setStake('')
+  }
 
   const heading = reviewing
     ? isPrediction
@@ -122,14 +145,25 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
             className={classes(
               'poll-option',
               card.votedOptionId === option.id && 'voted',
+              picked === option.id && 'picked',
               option.winner && 'winner',
               !open && 'closed'
             )}
-            // Backing a prediction costs points this client has no way to
-            // spend, so a prediction's rows are read rather than pressed.
-            disabled={reviewing || isPrediction || !open || card.hasVoted}
-            onClick={() => store.votePoll(card.bufferId, option.id)}
-            title={!reviewing && !isPrediction && open && !card.hasVoted ? `Vote for ${option.label}` : option.label}
+            // A poll row is the vote; a prediction row only chooses what the
+            // points go on, because the amount is the other half of a bet.
+            disabled={reviewing || !open || (!isPrediction && card.hasVoted)}
+            onClick={() =>
+              isPrediction ? setPicked(option.id) : store.votePoll(card.bufferId, option.id)
+            }
+            title={
+              reviewing || !open
+                ? option.label
+                : isPrediction
+                  ? `Put points on ${option.label}`
+                  : card.hasVoted
+                    ? option.label
+                    : `Vote for ${option.label}`
+            }
           >
             {/* The share as the row's own fill, so the numbers are read twice:
                 once as text and once as a length. */}
@@ -144,7 +178,41 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
         ))}
       </div>
 
-      {card.yourReturn ? <div className="poll-return small">Your return: {round(card.yourReturn)} points</div> : null}
+      {/* What this account already has on it, and what that would come back
+          as at the rate the outcome is paying now. Kick marks the same
+          number as an estimate while betting is open, because every later
+          bet moves it. */}
+      {card.stake ? (
+        <div className="poll-return small">
+          Your bet: {round(card.stake)}
+          {card.yourReturn ? ` · would return ${round(card.yourReturn)}${open ? ' at current odds' : ''}` : ''}
+        </div>
+      ) : null}
+
+      {/* The bet itself. Only while it is taking them, and only where the
+          service says what this account has to spend - offering to bet
+          points that cannot be counted is offering a button that fails. */}
+      {isPrediction && !reviewing && open && (
+        <div className="poll-bet">
+          <input
+            className="poll-bet-amount"
+            type="number"
+            min={card.minBet ?? 10}
+            max={card.balance ?? undefined}
+            step={10}
+            value={stake}
+            placeholder={`${card.minBet ?? 10}+`}
+            onChange={(e) => setStake(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && bet()}
+          />
+          <button type="button" className="button subtle" disabled={!canBet} onClick={bet}>
+            Predict
+          </button>
+          {card.balance !== null && card.balance !== undefined && (
+            <span className="small muted">{round(card.balance)} points</span>
+          )}
+        </div>
+      )}
 
       {/* Time, draining right to left the way the services' own do. Left out
           on something being read back: it has no time left to show. */}

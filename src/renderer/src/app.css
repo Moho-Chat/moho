@@ -439,6 +439,37 @@
   max-width: 100%;
 }
 
+/* Putting points on an outcome: pick a row, then say how much. Two steps
+   rather than one, because a click that spends points on its own is a click
+   nobody dares make. */
+.poll-bet {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.poll-bet-amount {
+  width: 90px;
+  padding: 2px var(--spacing-xs);
+  background: var(--surface-container-highest);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  color: var(--surface-text);
+  font-family: inherit;
+  font-size: var(--font-size-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.poll-bet-amount:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+/* The row the points would go on, before they have gone on it. */
+.poll-option.picked {
+  outline: 1px solid var(--primary);
+}
+
 /* A prediction is a poll with money on it, and reads as one - the payout and
    the winner are the two things it says that a poll does not. */
 .poll-odds {

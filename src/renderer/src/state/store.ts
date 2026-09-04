@@ -114,7 +114,14 @@ function autojoinList(autojoin: string | undefined): string[] {
  * the card draws the same bar either way.
  */
 export interface LiveCardOption {
-  id: number
+  /**
+   * Whatever the service calls this answer.
+   *
+   * A number on a Kick poll, a ULID string on a Kick prediction - the card
+   * only ever hands it back where it came from, so it is carried rather than
+   * converted.
+   */
+  id: string | number
   label: string
   votes: number
   /** How many people are behind it, where the service counts that too. */
@@ -145,7 +152,13 @@ export interface LiveCard {
   remaining: number
   resultDisplayDuration: number
   hasVoted: boolean
-  votedOptionId: number | null
+  votedOptionId: string | number | null
+  /** What this account has riding on it, in points. */
+  stake?: number | null
+  /** Points left to bet with, where the service says. */
+  balance?: number | null
+  /** The smallest bet the service will take. */
+  minBet?: number | null
   /** A prediction's pot, in points. */
   total?: number | null
   /** What this account stands to get back, where the service says. */
@@ -1365,9 +1378,22 @@ export class ChatStore {
    * this vote already in it - so the bars move on the click rather than when
    * Kick's broadcast catches up.
    */
-  votePoll(bufferId: string, optionId: number): void {
+  votePoll(bufferId: string, optionId: string | number): void {
     void window.moho
-      .rpc('votePoll', { bufferId, optionId })
+      .rpc('votePoll', { bufferId, optionId: Number(optionId) })
+      .catch((e: Error) => this.toast('error', e.message))
+  }
+
+  /**
+   * Puts points on an outcome.
+   *
+   * The daemon answers with the prediction this bet landed in, so the card
+   * redraws from the reply - the odds move with every bet, and the one you
+   * just placed should be the first thing to move them on your screen.
+   */
+  betPrediction(bufferId: string, optionId: string | number, amount: number): void {
+    void window.moho
+      .rpc('betPrediction', { bufferId, optionId: String(optionId), amount })
       .catch((e: Error) => this.toast('error', e.message))
   }
 
