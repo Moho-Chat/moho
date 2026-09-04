@@ -313,6 +313,149 @@
   font-weight: 600;
 }
 
+
+/* --- the poll on screen -------------------------------------------------
+   Kick's own card, in this client's colours: the question, the options as
+   rows that are both a label and a bar, and time draining right to left
+   along the bottom.
+
+   Floating over the log rather than sitting in it, because a poll runs for a
+   minute while the chat keeps moving - a line in the log would scroll out of
+   reach at exactly the moment somebody wanted to vote in it. */
+.poll-card {
+  position: absolute;
+  z-index: 5;
+  top: var(--spacing-s);
+  left: var(--spacing-m);
+  right: var(--spacing-m);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-s) var(--spacing-s) 0;
+  border: 1px solid var(--outline-light);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.poll-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-s);
+}
+
+.poll-heading {
+  min-width: 0;
+  flex: 1;
+}
+
+.poll-title {
+  font-weight: 600;
+}
+
+.poll-buttons {
+  display: flex;
+  gap: var(--spacing-xxs);
+}
+
+.poll-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+/* Each row is its own bar: the fill sits behind the text rather than beside
+   it, so a long option label never competes with the graph for width. */
+.poll-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: none;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-highest);
+  color: var(--surface-text);
+  text-align: left;
+  overflow: hidden;
+}
+
+.poll-option:not(:disabled):hover {
+  filter: brightness(1.2);
+}
+
+.poll-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--primary);
+  opacity: 0.28;
+  transition: width 0.3s ease;
+}
+
+/* The one you picked, which is worth seeing at a glance in a list of rows
+   that otherwise differ only by length. */
+.poll-option.voted .poll-fill {
+  opacity: 0.5;
+}
+
+.poll-option.voted {
+  outline: 1px solid var(--primary);
+}
+
+.poll-label,
+.poll-count {
+  position: relative;
+  font-weight: 600;
+}
+
+.poll-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.poll-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--surface-variant-text);
+}
+
+/* Time left, draining right to left the way Kick's own does. Full width of
+   the card, at the bottom, with no padding around it. */
+.poll-timer {
+  height: 4px;
+  margin: var(--spacing-xs) calc(var(--spacing-s) * -1) 0;
+  background: var(--surface-container);
+}
+
+.poll-timer-fill {
+  display: block;
+  height: 100%;
+  background: var(--success);
+  transition: width 0.5s linear;
+}
+
+/* Folded away: still running, still one click from being answered. */
+.poll-card.folded {
+  padding: 0;
+}
+
+.poll-unfold {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: none;
+  background: none;
+  color: var(--surface-variant-text);
+  text-align: left;
+}
+
+.poll-unfold:hover {
+  color: var(--surface-text);
+}
+
 /* --- on air ------------------------------------------------------------
    The word itself, in the badge slot where an unread count would otherwise
    sit - one mark for one fact. */

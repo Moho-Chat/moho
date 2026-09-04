@@ -107,6 +107,54 @@ function autojoinList(autojoin: string | undefined): string[] {
 }
 
 /** What a Kick channel is broadcasting, as the daemon last asked. */
+/** One option in a Kick poll, with the votes it has so far. */
+export interface KickPollOption {
+  id: number
+  label: string
+  votes: number
+}
+
+/**
+ * The poll running in a Kick channel.
+ *
+ * `remaining` is the seconds left when the daemon heard about it, and
+ * `receivedAt` is when that was - the card counts down from the pair rather
+ * than asking Kick every second.
+ */
+export interface KickPoll {
+  bufferId: string
+  title: string
+  options: KickPollOption[]
+  duration: number
+  remaining: number
+  resultDisplayDuration: number
+  hasVoted: boolean
+  votedOptionId: number | null
+  /** Client clock, in milliseconds, for the countdown. */
+  receivedAt: number
+  /**
+   * Kick has taken the poll down.
+   *
+   * The card stays anyway, showing how it went, until the reader folds it
+   * away - a result nobody has looked at yet is worth more than the space it
+   * occupies, and a poll that vanishes the instant it closes is one you never
+   * saw the answer to.
+   */
+  closed?: boolean
+}
+
+/**
+ * What identifies one poll for as long as it runs.
+ *
+ * The title alone would carry a fold across two polls that happen to ask the
+ * same question; the moment it started separates them, and stays put as the
+ * votes come in.
+ */
+export function pollKey(poll: KickPoll): string {
+  const started = Math.round((poll.receivedAt - (poll.duration - poll.remaining) * 1000) / 1000)
+  return `${poll.bufferId}|${poll.title}|${started}`
+}
+
 export interface KickStream {
   bufferId: string
   live: boolean
@@ -258,6 +306,10 @@ export interface ChatState {
    * most of what a viewer wants to know, were nowhere.
    */
   kickStreams: Record<string, KickStream>
+  /** The poll in each Kick channel, absent where there is none. */
+  kickPolls: Record<string, KickPoll>
+  /** Polls the reader has folded away, by buffer and title. */
+  hiddenPolls: string[]
   /**
    * The profile being shown, or null.
    *
@@ -329,6 +381,8 @@ const INITIAL: ChatState = {
   openThread: null,
   matrixPermissions: {},
   kickStreams: {},
+  kickPolls: {},
+  hiddenPolls: [],
   profile: null,
   replyingTo: null,
   toasts: [],
@@ -1262,6 +1316,41 @@ export class ChatStore {
       .catch((e: Error) => this.toast('error', e.message))
   }
 
+  /**
+   * Votes in the poll on screen.
+   *
+   * The card redraws from the daemon's answer, which carries the poll with
+   * this vote already in it - so the bars move on the click rather than when
+   * Kick's broadcast catches up.
+   */
+  voteKickPoll(bufferId: string, optionId: number): void {
+    void window.moho
+      .rpc('voteKickPoll', { bufferId, optionId })
+      .catch((e: Error) => this.toast('error', e.message))
+  }
+
+  /** Takes the poll down, which Kick allows its streamer and moderators. */
+  endKickPoll(bufferId: string): void {
+    void window.moho
+      .rpc('endKickPoll', { bufferId })
+      .catch((e: Error) => this.toast('error', e.message))
+  }
+
+  /**
+   * Folds the poll away without ending it.
+   *
+   * Per poll rather than per channel: hiding this one must not hide the next
+   * one, which is a different question somebody may well want to answer.
+   */
+  hidePoll(key: string): void {
+    this.set({ hiddenPolls: [...this.state.hiddenPolls.filter((k) => k !== key), key] })
+  }
+
+  /** Brings it back. */
+  showPoll(key: string): void {
+    this.set({ hiddenPolls: this.state.hiddenPolls.filter((k) => k !== key) })
+  }
+
   /** Follows a Kick channel, or stops. The header reads the answer back. */
   setFollowing(bufferId: string, follow: boolean): void {
     void window.moho
@@ -1419,6 +1508,22 @@ export class ChatStore {
         const open = this.state.profile
         if (open && open.name.toLowerCase() !== answer.name.toLowerCase() && !answer.handle?.toLowerCase().includes(open.name.toLowerCase())) break
         this.set({ profile: answer })
+        break
+      }
+
+      case 'kickPoll': {
+        const bufferId = data.bufferId as string
+        const poll = data.poll as unknown as KickPoll | null
+        const polls = { ...this.state.kickPolls }
+        const had = polls[bufferId]
+        if (!poll) {
+          // Taken down, not forgotten: the card holds the result until it is
+          // folded away.
+          if (had) polls[bufferId] = { ...had, closed: true }
+        } else {
+          polls[bufferId] = { ...poll, bufferId, receivedAt: Date.now() }
+        }
+        this.set({ kickPolls: polls })
         break
       }
 
