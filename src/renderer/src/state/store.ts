@@ -366,6 +366,8 @@ export interface ChatState {
   reviewCard: LiveCard | null
   /** Which messages each Matrix room has pinned, newest last. */
   matrixPinned: Record<string, string[]>
+  /** Who each Matrix account has asked never to hear from. */
+  matrixIgnored: Record<string, string[]>
   /**
    * The profile being shown, or null.
    *
@@ -441,6 +443,7 @@ const INITIAL: ChatState = {
   hiddenPolls: [],
   reviewCard: null,
   matrixPinned: {},
+  matrixIgnored: {},
   profile: null,
   replyingTo: null,
   toasts: [],
@@ -1440,6 +1443,25 @@ export class ChatStore {
     this.set({ hiddenPolls: this.state.hiddenPolls.filter((k) => k !== key) })
   }
 
+  /** Seeds the ignore list from a direct read, before any event arrives. */
+  noteIgnored(accountId: string, users: string[]): void {
+    this.set({ matrixIgnored: { ...this.state.matrixIgnored, [accountId]: users } })
+  }
+
+  /**
+   * Ignores somebody on Matrix, or stops.
+   *
+   * The account's own list rather than this window's `blockedNicks`: it
+   * travels to every client signed in, which is what blocking somebody
+   * means, and it agrees with Element.
+   */
+  setIgnored(accountId: string, userId: string, ignored: boolean): void {
+    void window.moho
+      .rpc('setMatrixIgnored', { accountId, userId, ignored })
+      .then(() => this.toast('info', ignored ? `Ignoring ${userId}` : `No longer ignoring ${userId}`))
+      .catch((e: Error) => this.toast('error', e.message))
+  }
+
   /**
    * Pins a message in a Matrix room, or takes the pin off.
    *
@@ -1613,6 +1635,15 @@ export class ChatStore {
         this.set({ profile: answer })
         break
       }
+
+      case 'matrixIgnored':
+        this.set({
+          matrixIgnored: {
+            ...this.state.matrixIgnored,
+            [data.accountId as string]: (data.users as string[]) || []
+          }
+        })
+        break
 
       case 'matrixPinned':
         this.set({

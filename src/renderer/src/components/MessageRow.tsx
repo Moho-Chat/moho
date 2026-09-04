@@ -253,6 +253,22 @@ export function MessageRow({
         ] as MenuEntry[])
       : []),
     { label: 'Reply', icon: 'reply', onClick: () => reply() },
+    // Never hearing from them again, on every client this account uses -
+    // Matrix keeps the list on the account rather than in one window, which
+    // is the difference between blocking somebody and hiding them here.
+    ...(service === 'matrix' && !isSystem && !message.isOwn && message.senderId
+      ? ([
+          {
+            label: `Ignore ${message.from}`,
+            icon: 'block',
+            danger: true,
+            onClick: () => {
+              const account = store.accountFor(bufferId)
+              if (account) store.setIgnored(account.id, message.senderId!, true)
+            }
+          }
+        ] as MenuEntry[])
+      : []),
     // What the room tells everyone to read first. Offered to everybody
     // rather than gated on a power level read here: the server decides, and
     // it refuses in words worth showing - hiding the action from somebody who
