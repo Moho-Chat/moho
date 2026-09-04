@@ -210,6 +210,23 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           game and the number of people watching are the context the chat is
           missing - and "offline" is worth saying too, since a quiet channel
           and an off-air one look identical otherwise. */}
+      {/* Following is the one thing about a Kick channel somebody changes from
+          here - subscribing is money and raiding is the broadcaster's own
+          gesture, and neither belongs behind a button in a chat client.
+          Absent for an account that cannot say, rather than offering to do
+          something that would fail. */}
+      {stream && stream.following !== null && stream.following !== undefined && (
+        <button
+          type="button"
+          className={classes('button', 'subtle', 'follow-button', stream.following && 'following')}
+          title={stream.following ? 'Stop following this channel' : 'Follow this channel'}
+          onClick={() => store.setFollowing(buffer.id, !stream.following)}
+        >
+          <Icon name={stream.following ? 'favorite' : 'favorite_border'} size={15} />
+          {stream.following ? 'Following' : 'Follow'}
+        </button>
+      )}
+
       {stream && (
         <span
           className={classes('stream-chip', 'small', stream.live && 'live')}

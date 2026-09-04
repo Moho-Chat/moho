@@ -116,6 +116,12 @@ export interface KickStream {
   /** Unix seconds the stream started, for "live for 2h 14m". */
   startedTs?: number | null
   followers?: number | null
+  /**
+   * Whether this account follows the channel, or absent when it cannot say -
+   * a Kick account that is not signed in reads chat and knows nothing about
+   * follows, and a button offering to follow there would fail when pressed.
+   */
+  following?: boolean | null
 }
 
 export type ActivePanel = '' | 'accounts' | 'settings' | 'join' | 'downloads'
@@ -1253,6 +1259,13 @@ export class ChatStore {
       .rpc('setAccountAutojoin', { accountId, channels: next.join(',') })
       .then(() => this.refreshAccounts())
       .then(() => this.toast('info', has ? `Will not rejoin ${channel}` : `Will rejoin ${channel} on connect`))
+      .catch((e: Error) => this.toast('error', e.message))
+  }
+
+  /** Follows a Kick channel, or stops. The header reads the answer back. */
+  setFollowing(bufferId: string, follow: boolean): void {
+    void window.moho
+      .rpc('setKickFollowing', { bufferId, follow })
       .catch((e: Error) => this.toast('error', e.message))
   }
 

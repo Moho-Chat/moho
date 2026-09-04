@@ -4665,3 +4665,18 @@ video.lightbox-media {
 .stream-chip .ellipsis {
   min-width: 2em;
 }
+
+/* Following a Kick channel. Quiet when already following - it is a state
+   being shown rather than an action being offered - and only ever coloured
+   by the heart, so the header does not gain a second bright thing. */
+.follow-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  padding: 1px var(--spacing-xs);
+  font-size: var(--font-size-small);
+}
+
+.follow-button.following {
+  color: var(--error);
+}
