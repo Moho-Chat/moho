@@ -861,7 +861,6 @@ function BufferRow({
         title={draggable ? `${buffer.name} — drag onto a heading to file it` : buffer.name}
       >
         {leading}
-        {live && <span className="live-dot" aria-label="Live" />}
         <span className="ellipsis buffer-name">{bufferDisplayName(buffer.name)}</span>
         {/* So a conversation with no unread count and no traffic in it is
             explained rather than merely quiet: it is being read elsewhere. */}

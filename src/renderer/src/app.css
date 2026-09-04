@@ -314,9 +314,8 @@
 }
 
 /* --- on air ------------------------------------------------------------
-   A live channel says so twice over: a red dot in front of the name, which
-   survives being scanned down a long list, and the word in the badge slot
-   where an unread count would otherwise sit. */
+   The word itself, in the badge slot where an unread count would otherwise
+   sit - one mark for one fact. */
 .live-badge {
   flex: none;
   padding: 0 5px;
@@ -332,13 +331,6 @@
   text-align: center;
 }
 
-.live-dot {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #c9403c;
-}
 
 .guild-more {
   display: block;
