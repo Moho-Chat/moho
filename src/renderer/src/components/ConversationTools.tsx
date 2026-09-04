@@ -157,6 +157,96 @@ function winning(card: LiveCard): string {
 }
 
 /**
+ * Which conversations a room has going on beside the main one.
+ *
+ * Asked of the server rather than assembled from scrollback: a thread whose
+ * root has scrolled past is unreachable otherwise, and that is exactly the
+ * thread somebody is looking for - the one they were part of yesterday.
+ */
+function ThreadList({ buffer }: { buffer: BufferEntry }): JSX.Element {
+  const store = useStore()
+  const [open, setOpen] = useState(false)
+  const [rows, setRows] = useState<ThreadSummary[] | null>(null)
+  const button = useRef<HTMLSpanElement>(null)
+
+  const show = (): void => {
+    if (open) {
+      setOpen(false)
+      return
+    }
+    setOpen(true)
+    setRows(null)
+    void window.moho
+      .rpc<{ threads: ThreadSummary[] }>('listMatrixThreads', { bufferId: buffer.id, limit: 25 })
+      .then((answer) => setRows(answer.threads))
+      .catch((e: Error) => {
+        store.toast('error', e.message)
+        setRows([])
+      })
+  }
+
+  return (
+    <>
+      <span ref={button} className="header-anchor">
+        <IconButton
+          name="forum"
+          title="Threads in this room"
+          className={open ? 'active' : undefined}
+          onClick={show}
+        />
+      </span>
+      {open && (
+        <HeaderPopover anchor={button.current} width={400} onClose={() => setOpen(false)}>
+          <div className="small muted">Threads, most recent first</div>
+          {rows === null && <div className="small muted">Looking…</div>}
+          {rows?.length === 0 && <div className="small muted">No threads in this room yet.</div>}
+          {rows?.map((thread) => (
+            <button
+              key={thread.rootId}
+              type="button"
+              className="history-row"
+              onClick={() => {
+                void store.openThreadPanel(buffer.id, thread.rootId)
+                setOpen(false)
+              }}
+            >
+              <span className="small">
+                <span className="search-result-from">{thread.from}</span>{' '}
+                <span className="muted">
+                  {thread.replies} {thread.replies === 1 ? 'reply' : 'replies'}
+                  {/* Said because it is the difference between a thread that
+                      happened and one you are in. */}
+                  {thread.joined ? ' · you replied' : ''}
+                </span>
+              </span>
+              <span className="small ellipsis">{thread.body}</span>
+              {thread.lastBody && (
+                <span className="small muted ellipsis">
+                  {thread.lastFrom}: {thread.lastBody}
+                </span>
+              )}
+            </button>
+          ))}
+        </HeaderPopover>
+      )}
+    </>
+  )
+}
+
+/** One thread as the room's own list describes it. */
+interface ThreadSummary {
+  rootId: string
+  from: string
+  body: string
+  ts: number
+  replies: number
+  joined: boolean
+  lastFrom?: string | null
+  lastBody?: string | null
+  lastTs?: number | null
+}
+
+/**
  * What a room has told everyone to read first.
  *
  * A panel rather than a banner: rooms pin their rules, their current topic of
@@ -492,6 +582,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           there is no friend list to choose from and nothing to look up. */}
       {buffer.accountId.startsWith('matrix:') && <InviteToRoom buffer={buffer} />}
 
+      {isMatrix && buffer.kind !== 'server' && <ThreadList buffer={buffer} />}
       {isMatrix && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
 
       {/* What this channel has asked before now. Two buttons rather than one

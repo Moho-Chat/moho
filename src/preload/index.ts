@@ -105,6 +105,8 @@ const api = {
   pathForFile: (file: File): string => webUtils.getPathForFile(file),
 
   pickFile: (): Promise<string | null> => ipcRenderer.invoke(IPC.pickFile),
+  pickSavePath: (suggested?: string): Promise<string | null> =>
+    ipcRenderer.invoke(IPC.pickSavePath, suggested),
   pickDirectory: (): Promise<string | null> => ipcRenderer.invoke(IPC.pickDirectory),
   importGroupIcon: (groupId: string): Promise<{ path?: string; error?: string }> =>
     ipcRenderer.invoke(IPC.importGroupIcon, groupId),

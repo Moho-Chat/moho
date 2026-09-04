@@ -546,6 +546,17 @@ function wireIpc(): void {
     if (/^(https?|mailto):/i.test(url)) shell.openExternal(url)
   })
 
+  // Where to write something the app is about to produce - a key export, so
+  // far. Separate from pickFile because the two dialogs ask opposite
+  // questions, and a save dialog that cannot name a default file is a save
+  // dialog people cancel.
+  ipcMain.handle(IPC.pickSavePath, async (e, suggested?: string) => {
+    const parent = callerWindow(e) ?? mainWindow
+    if (!parent) return null
+    const res = await dialog.showSaveDialog(parent, { defaultPath: suggested })
+    return res.canceled || !res.filePath ? null : res.filePath
+  })
+
   ipcMain.handle(IPC.pickFile, async (e) => {
     const parent = callerWindow(e) ?? mainWindow
     if (!parent) return null

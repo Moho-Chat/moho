@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
 import { useChat, useStore } from '../state/hooks'
+import { resolveMediaUrl } from '../lib/util'
 import type { Account, MatrixDevice } from '../../../shared/wire'
+
+/** What the homeserver says this account is called and looks like. */
+interface OwnProfile {
+  accountId: string
+  userId: string
+  displayName: string
+  avatarUrl?: string | null
+}
 
 /** Where an account stands on cross-signing, as the daemon reports it. */
 interface CrossSigningStatus {
@@ -41,6 +50,10 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
   const [deleting, setDeleting] = useState<string | null>(null)
   const [deletePassword, setDeletePassword] = useState('')
   const [crossSigning, setCrossSigning] = useState<CrossSigningStatus | null>(null)
+  const [profile, setProfile] = useState<OwnProfile | null>(null)
+  const [profileName, setProfileName] = useState('')
+  const [keyPassphrase, setKeyPassphrase] = useState('')
+  const [keyBusy, setKeyBusy] = useState(false)
   const [bootstrapPassword, setBootstrapPassword] = useState('')
   const [bootstrapping, setBootstrapping] = useState(false)
 
@@ -53,6 +66,13 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
       .then(setDevices)
       .catch((e: Error) => store.toast('error', e.message))
       .finally(() => setLoading(false))
+    void window.moho
+      .rpc<OwnProfile>('matrixOwnProfile', { accountId: account.id })
+      .then((answer) => {
+        setProfile(answer)
+        setProfileName(answer.displayName || '')
+      })
+      .catch(() => setProfile(null))
     void window.moho
       .rpc<{ users: string[] }>('listMatrixIgnored', { accountId: account.id })
       .then((answer) => store.noteIgnored(account.id, answer.users))
@@ -103,6 +123,59 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
         </div>
         <button type="button" className="icon-button" title="Refresh" onClick={refresh}>
           <Icon name="refresh" size={16} />
+        </button>
+      </div>
+
+      {/* Who everybody else sees. Separate from the display name in the
+          account card above it, and the difference is worth stating: that
+          one is what moho calls this account, this one is what every room
+          you are in shows. */}
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Your profile on {account.id.split(':').slice(1).join(':')}</div>
+          <div className="small muted">Changing these changes them for everyone.</div>
+        </div>
+      </div>
+      <div className="device-row">
+        {profile?.avatarUrl ? (
+          <img className="account-avatar" src={resolveMediaUrl(profile.avatarUrl)} alt="" />
+        ) : (
+          <Icon name="account_circle" size={18} />
+        )}
+        <div className="field-row setting-text">
+          <input
+            className="text-field"
+            type="text"
+            placeholder={profile?.userId || 'Display name'}
+            value={profileName}
+            onChange={(e) => setProfileName(e.target.value)}
+          />
+        </div>
+        <button
+          type="button"
+          className="button subtle"
+          disabled={!profileName.trim() || profileName.trim() === profile?.displayName}
+          onClick={() =>
+            void rpc('setMatrixProfileName', { accountId: account.id, name: profileName.trim() })
+              .then(() => store.toast('info', 'Name changed'))
+              .then(refresh)
+          }
+        >
+          Save name
+        </button>
+        <button
+          type="button"
+          className="button subtle"
+          onClick={() =>
+            void window.moho.pickFile().then((path) => {
+              if (!path) return
+              return rpc('setMatrixProfileAvatar', { accountId: account.id, path })
+                .then(() => store.toast('info', 'Picture changed'))
+                .then(refresh)
+            })
+          }
+        >
+          Change picture
         </button>
       </div>
 
@@ -177,6 +250,78 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
           other people from here.
         </p>
       )}
+
+      {/* A copy of the room keys that does not depend on the homeserver.
+          Beside the server-side backup rather than instead of it: one
+          survives losing every device, the other survives losing the
+          server. */}
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Key file</div>
+          <div className="small muted">
+            The encrypted export Element writes, for moving history to a client that cannot reach
+            the backup - or for keeping a copy of your own.
+          </div>
+        </div>
+      </div>
+      <div className="device-row">
+        <Icon name="vpn_key" size={18} />
+        <div className="field-row setting-text">
+          <input
+            className="text-field"
+            type="password"
+            placeholder="Passphrase for the file"
+            value={keyPassphrase}
+            onChange={(e) => setKeyPassphrase(e.target.value)}
+          />
+        </div>
+        <button
+          type="button"
+          className="button subtle"
+          disabled={!keyPassphrase || keyBusy}
+          onClick={() =>
+            void window.moho.pickSavePath('element-keys.txt').then((path) => {
+              if (!path) return
+              setKeyBusy(true)
+              return rpc('exportMatrixKeys', {
+                accountId: account.id,
+                path,
+                passphrase: keyPassphrase
+              })
+                .then((answer: { keys: number }) =>
+                  store.toast('info', `Wrote ${answer.keys} room keys`)
+                )
+                .finally(() => setKeyBusy(false))
+            })
+          }
+        >
+          Export
+        </button>
+        <button
+          type="button"
+          className="button subtle"
+          disabled={!keyPassphrase || keyBusy}
+          onClick={() =>
+            void window.moho.pickFile().then((path) => {
+              if (!path) return
+              setKeyBusy(true)
+              return rpc('importMatrixKeys', {
+                accountId: account.id,
+                path,
+                passphrase: keyPassphrase
+              })
+                .then((answer: { imported: number; total: number }) =>
+                  // Both numbers, because they differ and only the first
+                  // answers "did that do anything".
+                  store.toast('info', `Imported ${answer.imported} of ${answer.total} keys`)
+                )
+                .finally(() => setKeyBusy(false))
+            })
+          }
+        >
+          Import
+        </button>
+      </div>
 
       {/* Who this account has asked never to hear from, and the way back.
           Listed here rather than only offered from a message, because the

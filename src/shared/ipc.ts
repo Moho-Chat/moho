@@ -10,6 +10,7 @@ export const IPC = {
   windowIsMaximized: 'moho:window:isMaximized',
   openExternal: 'moho:openExternal',
   pickFile: 'moho:pickFile',
+  pickSavePath: 'moho:pickSavePath',
   pickDirectory: 'moho:pickDirectory',
   downloadMedia: 'moho:downloadMedia',
   importGroupIcon: 'moho:importGroupIcon',
