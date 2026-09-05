@@ -618,6 +618,17 @@ function applyOwnReaction(list: Reaction[], emoji: string, add: boolean): Reacti
   return list.map((r) => (r.emoji === emoji ? { ...r, count, me: add } : r))
 }
 
+/**
+ * Whether this conversation's service can be asked for one message directly.
+ *
+ * Discord and Matrix both will (`?around=`, `/context`); IRC, Kick and
+ * Sneedchat have no such thing, so reaching a message there is still a walk
+ * backwards through what they do offer.
+ */
+function canFetchAround(bufferId: string): boolean {
+  return bufferId.startsWith('discord:') || bufferId.startsWith('matrix:')
+}
+
 function bestEffort(work: Promise<unknown>, what: string): void {
   void work.catch((e: Error) => console.debug(`[moho] ${what}:`, e.message))
 }
@@ -628,6 +639,17 @@ function bestEffort(work: Promise<unknown>, what: string): void {
  * bounds memory without losing history.
  */
 const MAX_MESSAGES_PER_BUFFER = 500
+/**
+ * How much a buffer may grow to when history has been deliberately loaded.
+ *
+ * The cap above is what a conversation settles at; this is the ceiling a live
+ * message is allowed to trim it back to. They differ because of what trimming
+ * does after a jump: reaching a pinned message puts fifty old rows at the top
+ * of the list, and in a busy room the very next message would have thrown them
+ * straight back out - so the reader arrives somewhere and is moved off it by
+ * the first person to speak.
+ */
+const MAX_MESSAGES_AFTER_LOADING = 2000
 /** As many mentions as the inbox will hold; the daemon's own limit matches. */
 const MAX_MENTIONS = 100
 const BACKLOG_PAGE = 200
@@ -2038,7 +2060,7 @@ export class ChatStore {
     if (existing.some((m) => m.id === msg.id)) return
 
     const list = [...existing, msg as ChatMessage]
-    this.setMessages(bufferId, list.slice(-MAX_MESSAGES_PER_BUFFER))
+    this.setMessages(bufferId, list.slice(-MAX_MESSAGES_AFTER_LOADING))
 
     // Being on screen in a window of its own counts as being open, because it
     // is: badging a channel somebody is watching in a second window asks them
@@ -2320,41 +2342,53 @@ export class ChatStore {
       (this.state.messagesByBuffer[bufferId] || []).some((m) => m.id === messageId)
     if (loaded()) return true
 
+    // Where the service will hand over one moment of a conversation, ask for
+    // it rather than walking to it. Paging backwards through a busy Discord
+    // channel to reach a pin from last year means dozens of round trips and
+    // thousands of messages nobody asked to see - and it gave up before it
+    // arrived, which is what "that message could not be reached" was.
+    if (canFetchAround(bufferId)) return await this.fetchAround(bufferId, messageId)
+
     for (let page = 0; page < 12; page++) {
       const before = (this.state.messagesByBuffer[bufferId] || []).length
       await this.loadMoreHistory(bufferId)
       if (loaded()) return true
-      // Nothing came back: either the store has been read to its beginning, or
-      // the message is far enough back that paging to it is not a wait but a
-      // refusal. Both are the moment to ask the service for that one part of
-      // the conversation instead - a pin is routinely years older than
-      // anything kept here, and it was still worth listing.
-      if ((this.state.messagesByBuffer[bufferId] || []).length === before) {
-        return await this.fetchAround(bufferId, messageId)
-      }
+      // Nothing came back, so there is nothing older to find it in.
+      if ((this.state.messagesByBuffer[bufferId] || []).length === before) return false
     }
     return loaded()
   }
 
   /**
-   * Asks the service for the part of the conversation one message is in.
+   * Asks the service for the part of the conversation one message is in, and
+   * puts it on screen.
    *
-   * Then pages once more rather than rendering the fetched window directly:
-   * the daemon has put those messages in the same store everything else is
-   * read from, so the ordinary load-more path picks them up - and because
-   * nothing exists between them and what is already on screen, one page
-   * reaches them however old they are.
+   * The window comes back with the call rather than being paged to afterwards:
+   * however much history lies between here and there is beside the point,
+   * because the reader is not going to read it. What lands is the message with
+   * the conversation either side of it, above what was already on screen - so
+   * the log reads as that moment, and then the present.
    */
   private async fetchAround(bufferId: string, messageId: string): Promise<boolean> {
     try {
-      await window.moho.rpc<{ ts: number }>('loadMessageContext', { bufferId, messageId })
+      const answer = await window.moho.rpc<{ ts: number; messages: Message[] }>(
+        'loadMessageContext',
+        { bufferId, messageId }
+      )
+      const current = this.state.messagesByBuffer[bufferId] || []
+      const seen = new Set(current.map((m) => m.id))
+      const added = (answer.messages || []).filter((m) => !seen.has(m.id)) as ChatMessage[]
+      if (added.length) {
+        const merged = [...added, ...current]
+        merged.sort((a, b) => a.ts - b.ts)
+        this.setMessages(bufferId, merged)
+      }
     } catch (e) {
       // Said rather than swallowed: "nothing happened when I clicked it" is
       // the complaint this whole path exists to answer.
       this.toast('error', `Couldn't reach that message: ${(e as Error).message}`)
       return false
     }
-    await this.loadMoreHistory(bufferId)
     return (this.state.messagesByBuffer[bufferId] || []).some((m) => m.id === messageId)
   }
 
