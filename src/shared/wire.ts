@@ -34,6 +34,8 @@ export interface Account {
    * member list is you, and therefore whether you hold op.
    */
   currentNick: string
+  /** Words that highlight a message on this account, besides its own name. */
+  highlightKeywords?: string[]
   /**
    * Whether the connection is encrypted. Only IRC is ever false - every other
    * service here is HTTPS or WSS by construction.

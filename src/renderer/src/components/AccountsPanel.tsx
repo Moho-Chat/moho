@@ -340,6 +340,27 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
             you does not change.
           </div>
 
+          {/* The other half of being addressed: your name is simply the one
+              word everybody has. Per account rather than everywhere, because
+              a word that means you on one network is somebody's ordinary
+              vocabulary on another - the words that apply everywhere are in
+              Settings. */}
+          <LabeledInput
+            label="Highlight keywords"
+            defaultValue={(account.highlightKeywords ?? []).join(', ')}
+            placeholder="a project, a name you also answer to"
+            onCommit={(words) =>
+              call('setHighlightKeywords', {
+                accountId: account.id,
+                keywords: words.split(',')
+              })
+            }
+          />
+          <div className="small muted">
+            Separate them with commas. Whole words only, and case does not
+            matter. They apply to messages that arrive after you add them.
+          </div>
+
           <GroupIcons accountId={account.id} />
           <HiddenAndMuted accountId={account.id} />
 

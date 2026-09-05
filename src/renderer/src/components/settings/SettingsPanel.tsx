@@ -12,6 +12,68 @@ import { Icon } from '../Icon'
 import type { Account, DccPrefs } from '../../../../shared/wire'
 
 /**
+ * The words that count on every account.
+ *
+ * Not a `StringSetting`, which writes to this window's own preferences: a
+ * highlight is decided in the daemon, where it becomes the flag the mentions
+ * inbox reads and the notification that reaches a phone. So this reads and
+ * writes the daemon's own list, and looks exactly like the settings either
+ * side of it.
+ */
+function GlobalHighlightKeywords(): JSX.Element {
+  const store = useStore()
+  const [words, setWords] = useState('')
+  const [saved, setSaved] = useState('')
+
+  useEffect(() => {
+    void window.moho
+      .rpc<{ global: string[] }>('getHighlightKeywords')
+      .then((answer) => {
+        const text = (answer.global || []).join(', ')
+        setWords(text)
+        setSaved(text)
+      })
+      .catch(() => {
+        /* An empty box is what somebody with no keywords sees anyway. */
+      })
+  }, [])
+
+  const commit = (): void => {
+    if (words === saved) return
+    void window.moho
+      .rpc<{ global: string[] }>('setHighlightKeywords', { keywords: words.split(',') })
+      // The daemon tidies the list - blanks out, repeats out - so what it
+      // says it kept is what the box should show.
+      .then((answer) => {
+        const text = (answer.global || []).join(', ')
+        setWords(text)
+        setSaved(text)
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+  }
+
+  return (
+    <div className="setting-row">
+      <div className="setting-text">
+        <div>Words</div>
+        <div className="small muted">
+          Separated by commas. Whole words only, and case does not matter. They apply to messages
+          that arrive after you add them.
+        </div>
+      </div>
+      <input
+        className="text-field setting-input"
+        value={words}
+        placeholder="a project, a surname, a name you also answer to"
+        onChange={(e) => setWords(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === 'Enter' && commit()}
+      />
+    </div>
+  )
+}
+
+/**
  * Structured by service, so adding a protocol later means adding a rail entry
  * and its own panel rather than redesigning this file - a left-hand list of
  * categories swapping a content pane on the right, sized for a handful of
@@ -250,6 +312,13 @@ function GeneralSettings(): JSX.Element {
           description='Show "8m ago" instead of a clock time, switching to "Yesterday at 5:27 PM" after 23h and a short date after 47h. Hovering always shows the full date either way.'
           defaultValue={false}
         />
+      </SettingsSection>
+
+      <SettingsSection
+        title="Highlight keywords"
+        description="Words that light a message up and notify you, the same way your own name does. These apply on every account; an account can add its own in the Accounts pane, for words that only mean you on one network."
+      >
+        <GlobalHighlightKeywords />
       </SettingsSection>
 
       <SettingsSection title="Media">
