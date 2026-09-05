@@ -178,7 +178,7 @@ export function MessageRow({
   const canEditDelete =
     !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix')
   const canReact = service === 'discord' || service === 'matrix'
-  const pinned = useChat((s) => s.matrixPinned)[bufferId]?.includes(message.id) ?? false
+  const pinned = useChat((s) => s.pinnedMessages)[bufferId]?.includes(message.id) ?? false
   const isSystem = !isChatKind(message.kind)
   // Said to you rather than to the room. Drawn differently on purpose: the
   // whole risk with a private message is reading it as a public one.
@@ -277,10 +277,10 @@ export function MessageRow({
     // rather than gated on a power level read here: the server decides, and
     // it refuses in words worth showing - hiding the action from somebody who
     // could have used it is the worse mistake.
-    ...(service === 'matrix' && !isSystem
+    ...((service === 'matrix' || service === 'discord') && !isSystem
       ? ([
           {
-            label: pinned ? 'Unpin from this room' : 'Pin to this room',
+            label: pinned ? 'Unpin from this conversation' : 'Pin to this conversation',
             icon: pinned ? 'keep_off' : 'push_pin',
             onClick: () => store.setPinned(bufferId, message.id, !pinned)
           }

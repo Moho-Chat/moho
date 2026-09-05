@@ -255,7 +255,7 @@ interface ThreadSummary {
  */
 function PinnedMessages({ buffer }: { buffer: BufferEntry }): JSX.Element | null {
   const store = useStore()
-  const count = (useChat((s) => s.matrixPinned)[buffer.id] || []).length
+  const known = useChat((s) => s.pinnedMessages)[buffer.id]
   const [open, setOpen] = useState(false)
   const [rows, setRows] = useState<Message[] | null>(null)
   const button = useRef<HTMLSpanElement>(null)
@@ -268,7 +268,7 @@ function PinnedMessages({ buffer }: { buffer: BufferEntry }): JSX.Element | null
     setOpen(true)
     setRows(null)
     void window.moho
-      .rpc<{ pinned: Message[] }>('listMatrixPinned', { bufferId: buffer.id })
+      .rpc<{ pinned: Message[] }>('listPinned', { bufferId: buffer.id })
       .then((answer) => setRows(answer.pinned))
       .catch((e: Error) => {
         store.toast('error', e.message)
@@ -277,23 +277,29 @@ function PinnedMessages({ buffer }: { buffer: BufferEntry }): JSX.Element | null
   }
 
   // Nothing pinned is nothing to offer: a button that always opens an empty
-  // panel is a button people stop pressing.
-  if (count === 0) return null
+  // panel is a button people stop pressing. That test needs the list, though,
+  // and only Matrix sends one unasked - a room's pins are part of its state,
+  // while Discord's are a question you have to go and ask. So where the
+  // answer is not known yet the button is offered, which is what Discord's
+  // own client does, and the count appears once something has asked.
+  const count = known?.length ?? 0
+  if (known && count === 0) return null
 
   return (
     <>
       <span ref={button} className="header-anchor">
         <IconButton
           name="push_pin"
-          title={`${count} pinned ${count === 1 ? 'message' : 'messages'}`}
+          title={known ? `${count} pinned ${count === 1 ? 'message' : 'messages'}` : 'Pinned messages'}
           className={open ? 'active' : undefined}
           onClick={show}
         />
       </span>
       {open && (
         <HeaderPopover anchor={button.current} width={400} onClose={() => setOpen(false)}>
-          <div className="small muted">Pinned in this room</div>
+          <div className="small muted">Pinned here</div>
           {rows === null && <div className="small muted">Looking…</div>}
+          {rows?.length === 0 && <div className="small muted">Nothing is pinned.</div>}
           {rows?.map((message) => (
             <button
               key={message.id}
@@ -583,7 +589,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
       {buffer.accountId.startsWith('matrix:') && <InviteToRoom buffer={buffer} />}
 
       {isMatrix && buffer.kind !== 'server' && <ThreadList buffer={buffer} />}
-      {isMatrix && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
+      {(isMatrix || isDiscord) && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
 
       {/* What this channel has asked before now. Two buttons rather than one
           list, because a poll and a prediction are different questions -

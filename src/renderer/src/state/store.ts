@@ -374,7 +374,8 @@ export interface ChatState {
   /** An old poll or prediction being read back, over the conversation. */
   reviewCard: LiveCard | null
   /** Which messages each Matrix room has pinned, newest last. */
-  matrixPinned: Record<string, string[]>
+  /** Which messages a conversation has pinned, where the service says so. */
+  pinnedMessages: Record<string, string[]>
   /** Who each Matrix account has asked never to hear from. */
   matrixIgnored: Record<string, string[]>
   /** Rooms each Matrix account has been invited to and not answered. */
@@ -453,7 +454,7 @@ const INITIAL: ChatState = {
   livePolls: {},
   hiddenPolls: [],
   reviewCard: null,
-  matrixPinned: {},
+  pinnedMessages: {},
   matrixIgnored: {},
   matrixInvites: {},
   profile: null,
@@ -1513,15 +1514,15 @@ export class ChatStore {
   }
 
   /**
-   * Pins a message in a Matrix room, or takes the pin off.
+   * Pins a message where the service has pins, or takes the pin off.
    *
-   * Offered to everybody rather than gated on a power level read here: the
+   * Offered to everybody rather than gated on a permission read here: the
    * server decides, and it says no in words worth showing. Hiding the action
    * from somebody who could have used it is the worse mistake.
    */
-  setPinned(bufferId: string, eventId: string, pinned: boolean): void {
+  setPinned(bufferId: string, messageId: string, pinned: boolean): void {
     void window.moho
-      .rpc('setMatrixPinned', { bufferId, eventId, pinned })
+      .rpc('setPinned', { bufferId, messageId, pinned })
       .then(() => this.toast('info', pinned ? 'Pinned' : 'Unpinned'))
       .catch((e: Error) => this.toast('error', e.message))
   }
@@ -1704,10 +1705,10 @@ export class ChatStore {
         })
         break
 
-      case 'matrixPinned':
+      case 'pinnedMessages':
         this.set({
-          matrixPinned: {
-            ...this.state.matrixPinned,
+          pinnedMessages: {
+            ...this.state.pinnedMessages,
             [data.bufferId as string]: (data.pinned as string[]) || []
           }
         })
