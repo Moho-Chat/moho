@@ -1175,62 +1175,38 @@ function SneedChatBrowserLogin({ accountId }: { accountId?: string }): JSX.Eleme
         their login page in a window so you can answer it yourself; moho keeps the session that
         comes back. Your password goes into their form and never passes through moho.
       </div>
+      {/* Said loudly and before the click rather than in the paragraph above,
+          because it is the one thing here that changes what a person is
+          exposing: chat itself keeps going over Tor, but this window does
+          not, and somebody who chose the onion for a reason has to know that
+          before they use it rather than after. */}
+      <div className="warning-note">
+        <Icon name="warning" size={16} />
+        <span>
+          This window connects over the ordinary internet, not Tor — the browser has no Tor of
+          its own. Your real IP address reaches the site, and your provider can see that you
+          visited it. Chat itself keeps using whatever this account is configured for.
+        </span>
+      </div>
     </>
   )
 }
 
 /**
- * Sneedchat login runs over the embedded Tor client and may have to solve the
- * site's proof-of-work gate, so it can take anywhere from instant to over a
- * minute - hence the same async-kickoff shape as Discord's QR flow.
+ * Adding a Sneedchat account is now one gesture: sign in where the site's
+ * verification can be answered.
+ *
+ * The username, password and TOTP fields that used to be here are gone
+ * because the forum's login form carries a CAPTCHA, and nothing typed into
+ * moho gets past it - a form that cannot work is worse than no form, because
+ * it looks like the way in. The browser window is the way in, and what it
+ * brings back names the account as well as opening it.
  */
 function SneedChatForm(): JSX.Element {
-  const store = useStore()
   const status = useChat((s) => s.sneedChatLoginStatus)
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [totpSecret, setTotpSecret] = useState('')
 
   return (
     <div className="add-form">
-      <div className="field-row">
-        <label className="field">
-          <span className="small muted">Username</span>
-          <input className="text-field" value={username} onChange={(e) => setUsername(e.target.value)} />
-        </label>
-        <label className="field">
-          <span className="small muted">Password</span>
-          <input
-            className="text-field"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
-      </div>
-      <label className="field">
-        <span className="small muted">TOTP secret (optional, if 2FA is on)</span>
-        <input className="text-field" value={totpSecret} onChange={(e) => setTotpSecret(e.target.value)} />
-      </label>
-      <button
-        type="button"
-        className="button"
-        disabled={!username || !password}
-        onClick={() =>
-          void window.moho
-            .rpc('addSneedChatAccount', {
-              username,
-              password,
-              ...(totpSecret ? { totpSecret } : {})
-            })
-            .then(() => store.setSneedChatLoginStatus('Bootstrapping Tor…'))
-            .catch((e: Error) => store.toast('error', e.message))
-        }
-      >
-        Connect
-      </button>
-      {/* Second because it can only follow the first: the browser hands back
-          a session, and a session has to belong to an account that exists. */}
       <SneedChatBrowserLogin />
       {status && <p className="small muted">{status}</p>}
     </div>

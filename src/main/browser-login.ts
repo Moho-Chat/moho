@@ -65,6 +65,15 @@ export interface LoginFlow {
    * fewer places it exists, the better.
    */
   finish: { method: string; param: string }
+  /**
+   * One more thing to read off the signed-in page, if the flow needs it.
+   *
+   * Not a credential and not what the sign-in is for - it exists because an
+   * account has to be called something, and the page somebody has just signed
+   * into is the only place that knows what. Sent alongside the credential as
+   * a second parameter; a page that does not answer simply sends nothing.
+   */
+  alsoRead?: { param: string; script: string }
 }
 
 /**
@@ -104,7 +113,17 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
       url: 'https://kiwifarms.st/',
       signedIn: "document.documentElement.getAttribute('data-logged-in') === 'true'"
     },
-    finish: { method: 'setSneedChatCookies', param: 'cookies' }
+    finish: { method: 'setSneedChatCookies', param: 'cookies' },
+    // Who just signed in, as the forum's own navigation writes it. Wanted
+    // because moho decides what counts as a mention of you by name, and
+    // because an account has to be called something - with the login form
+    // gone there is nowhere else left to ask. Best-effort: a page that does
+    // not answer leaves an already-added account's name alone.
+    alsoRead: {
+      param: 'username',
+      script:
+        "(document.querySelector('.p-navgroup-user-linkText') || document.querySelector('.p-navgroup-link--user .p-navgroup-linkText'))?.textContent?.trim() || null"
+    }
   },
   kick: {
     label: 'Kick',
@@ -127,6 +146,8 @@ export interface LoginOutcome {
   ok: boolean
   /** Present only on success. A credential: never log it, never persist it. */
   value?: string
+  /** Whatever `alsoRead` found, if the flow asked for anything and it did. */
+  extra?: { param: string; value: string }
   /** Why it did not succeed, for showing to a person. */
   error?: string
 }
@@ -220,7 +241,22 @@ export async function browserLogin(service: string): Promise<LoginOutcome> {
       TIMEOUT_MS
     )
 
-    watch(ses, win, flow, (value) => finish({ ok: true, value }))
+    watch(ses, win, flow, (value) => {
+      // Read before finishing, because finishing destroys the window - and
+      // best-effort, because this is a nicety and the credential is not.
+      const also = flow.alsoRead
+      if (!also || win.isDestroyed()) {
+        finish({ ok: true, value })
+        return
+      }
+      void win.webContents
+        .executeJavaScript(also.script, true)
+        .then((read: unknown) => {
+          const text = typeof read === 'string' ? read.trim() : ''
+          finish({ ok: true, value, ...(text ? { extra: { param: also.param, value: text } } : {}) })
+        })
+        .catch(() => finish({ ok: true, value }))
+    })
 
     // Closing the window is a decision, not a failure - reported so the caller
     // can go quiet rather than showing an error nobody caused.

@@ -2791,6 +2791,31 @@ img.smilie {
   line-height: 1.1;
 }
 
+/*
+ * A caution attached to a control, where the caution is about what pressing
+ * it exposes rather than about whether it will work.
+ *
+ * Bordered and iconed rather than another line of muted small print: the
+ * paragraph above a button is read after the button is pressed, if at all,
+ * and this is the sort of thing that has to be read before.
+ */
+.warning-note {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: flex-start;
+  padding: var(--spacing-s) var(--spacing-m);
+  border: 1px solid var(--warning);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-low);
+  font-size: var(--font-size-small);
+  line-height: 1.4;
+}
+
+.warning-note .icon {
+  color: var(--warning);
+  flex: none;
+}
+
 .recovery-key {
   padding: var(--spacing-s) var(--spacing-m);
   border: 1px solid var(--warning);

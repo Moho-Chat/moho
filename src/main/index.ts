@@ -676,6 +676,7 @@ function wireIpc(): void {
     try {
       await client.request(flow.finish.method, {
         [flow.finish.param]: outcome.value,
+        ...(outcome.extra ? { [outcome.extra.param]: outcome.extra.value } : {}),
         ...(accountId ? { accountId } : {})
       })
       return { ok: true }
