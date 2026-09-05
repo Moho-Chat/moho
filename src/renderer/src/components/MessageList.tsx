@@ -55,6 +55,9 @@ export interface ScrollFrame {
   lastTop: number
   height: number
   lastHeight: number
+  /** How tall the window onto the list is, and was. */
+  viewport: number
+  lastViewport: number
 }
 
 /**
@@ -75,15 +78,33 @@ export interface ScrollFrame {
  * distance of the bottom.
  *
  * Which leaves telling a reader's scroll from the page moving underneath one.
- * Height is the tell: when content is removed the browser clamps the position
+ * Height is one tell: when content is removed the browser clamps the position
  * down by what it lost, which looks exactly like scrolling up and is not, so a
  * position that fell by no more than the page shrank is not movement at all.
+ *
+ * The window onto the list is the other, and it was missing. A scroller sitting
+ * at its bottom cannot stay there when it is made taller - the position can
+ * never exceed the content less the window, so the browser drops it by however
+ * much the window gained. Resizing the pane therefore read as scrolling up by
+ * exactly that much, releasing the pin and offering to jump back to a present
+ * nobody had left. The allowance is the same idea either way: a fall no larger
+ * than what the page lost or the window gained is the layout moving, not the
+ * reader.
+ *
+ * And it cuts both ways. Making the pane *smaller* pushes the position the
+ * other direction - the bottom stays in view by the position rising - which
+ * reads as the reader scrolling back down. For somebody parked in history
+ * near the bottom that would take the pin back and drag them to the present,
+ * losing the place they went looking for. So a rise no larger than what the
+ * window lost is not the reader coming back either.
  */
 export function anchorVerdict(frame: ScrollFrame): 'release' | 'hold' | 'take' {
   const shrank = Math.max(0, frame.lastHeight - frame.height)
+  const opened = Math.max(0, frame.viewport - frame.lastViewport)
+  const closed = Math.max(0, frame.lastViewport - frame.viewport)
   const moved = frame.top - frame.lastTop
-  if (moved < -shrank - SCROLL_JITTER) return 'release'
-  if (moved > SCROLL_JITTER && frame.distance < REANCHOR_THRESHOLD) return 'take'
+  if (moved < -shrank - opened - SCROLL_JITTER) return 'release'
+  if (moved > closed + SCROLL_JITTER && frame.distance < REANCHOR_THRESHOLD) return 'take'
   return 'hold'
 }
 
@@ -224,6 +245,8 @@ export function MessageList(): JSX.Element {
   const lastTopRef = useRef(0)
   /** And how tall it was, to tell moving up from the page losing content. */
   const lastHeightRef = useRef(0)
+  /** And how tall the window onto it was, for the same reason. */
+  const lastViewportRef = useRef(0)
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = scrollRef.current
@@ -264,6 +287,11 @@ export function MessageList(): JSX.Element {
       if (anchoredRef.current) scrollToBottom()
     })
     ro.observe(content)
+    // And the window onto it. Making the pane taller does not necessarily
+    // change the content's height at all, so watching only the content meant
+    // the one case that moves the position without touching it - a resize -
+    // was the case nothing put back.
+    if (scrollRef.current) ro.observe(scrollRef.current)
     return () => ro.disconnect()
   }, [scrollToBottom])
 
@@ -346,15 +374,19 @@ export function MessageList(): JSX.Element {
     if (!el) return
     const top = el.scrollTop
     const height = el.scrollHeight
+    const viewport = el.clientHeight
     const verdict = anchorVerdict({
-      distance: height - top - el.clientHeight,
+      distance: height - top - viewport,
       top,
       lastTop: lastTopRef.current,
       height,
-      lastHeight: lastHeightRef.current
+      lastHeight: lastHeightRef.current,
+      viewport,
+      lastViewport: lastViewportRef.current
     })
     lastTopRef.current = top
     lastHeightRef.current = height
+    lastViewportRef.current = viewport
 
     // Reading away un-pins the view, and reading back pins it again; nothing
     // else moves it. Both halves of that have been got wrong here before, and
@@ -391,6 +423,7 @@ export function MessageList(): JSX.Element {
   useEffect(() => {
     lastTopRef.current = scrollRef.current?.scrollTop ?? 0
     lastHeightRef.current = scrollRef.current?.scrollHeight ?? 0
+    lastViewportRef.current = scrollRef.current?.clientHeight ?? 0
   }, [bufferId])
 
   const jumpToPresent = (): void => {
