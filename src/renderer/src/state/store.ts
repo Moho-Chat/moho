@@ -2370,6 +2370,10 @@ export class ChatStore {
    * the log reads as that moment, and then the present.
    */
   private async fetchAround(bufferId: string, messageId: string): Promise<boolean> {
+    // The same flag scrolling up sets, so the same strip says so: this is a
+    // round trip to the service and the reader is looking at a log that does
+    // not visibly change until it lands.
+    this.set({ loadingMore: { ...this.state.loadingMore, [bufferId]: true } })
     try {
       const answer = await window.moho.rpc<{ ts: number; messages: Message[] }>(
         'loadMessageContext',
@@ -2388,6 +2392,10 @@ export class ChatStore {
       // the complaint this whole path exists to answer.
       this.toast('error', `Couldn't reach that message: ${(e as Error).message}`)
       return false
+    } finally {
+      const loadingMore = { ...this.state.loadingMore }
+      delete loadingMore[bufferId]
+      this.set({ loadingMore })
     }
     return (this.state.messagesByBuffer[bufferId] || []).some((m) => m.id === messageId)
   }

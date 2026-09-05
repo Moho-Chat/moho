@@ -451,8 +451,15 @@ export function MessageList(): JSX.Element {
             observer above needs an element that grows with the content, which
             the scroll container itself never does. */}
         <div className="messagelist-content" ref={contentRef}>
+          {/* Sticky rather than merely first in the log: fetching the part of
+              a conversation around a pinned message happens while the reader
+              is somewhere else entirely, and a notice at the top of a log
+              they are not looking at the top of says nothing to anybody. */}
           {isLoadingMore && (
-            <div className="messagelist-loading muted small">Loading older messages…</div>
+            <div className="messagelist-loading muted small">
+              <span className="spinner" />
+              <span>Loading older messages…</span>
+            </div>
           )}
           {messages.map((msg, i) => (
             <div key={msg.id}>
@@ -493,6 +500,17 @@ export function MessageList(): JSX.Element {
             ))}
         </div>
       </div>
+
+      {/* And again at the bottom while reading history, where the log below
+          is a gap rather than the end: the strip above is out of sight once
+          the fetched page pushes it up, and this is the edge being read
+          from. */}
+      {!anchored && isLoadingMore && (
+        <div className="messagelist-loading-bottom muted small">
+          <span className="spinner" />
+          <span>Loading…</span>
+        </div>
+      )}
 
       {!anchored && (
         <button type="button" className="jump-to-present" onClick={jumpToPresent}>
