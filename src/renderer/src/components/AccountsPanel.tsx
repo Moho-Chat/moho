@@ -1177,15 +1177,16 @@ function SneedChatBrowserLogin({ accountId }: { accountId?: string }): JSX.Eleme
       </div>
       {/* Said loudly and before the click rather than in the paragraph above,
           because it is the one thing here that changes what a person is
-          exposing: chat itself keeps going over Tor, but this window does
-          not, and somebody who chose the onion for a reason has to know that
-          before they use it rather than after. */}
+          exposing: the chat connection is tunnelled through Tor and this one
+          window is not, so somebody who chose Tor for a reason has to know
+          which half of this is which - before they use it rather than after. */}
       <div className="warning-note">
         <Icon name="warning" size={16} />
         <span>
-          This window connects over the ordinary internet, not Tor — the browser has no Tor of
-          its own. Your real IP address reaches the site, and your provider can see that you
-          visited it. Chat itself keeps using whatever this account is configured for.
+          Your chat is tunnelled through Tor — this sign-in is not. The browser window has no Tor
+          of its own, so it reaches the site directly: your real IP address arrives at the site,
+          and your provider can see you visited it. Once you are signed in, moho goes back
+          through Tor for everything else.
         </span>
       </div>
     </>
