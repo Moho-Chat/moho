@@ -32,6 +32,15 @@ export type Capture =
   | { kind: 'cookie'; name: string; url: string }
   /** A parameter on a redirect the service lands on - SSO, mostly. */
   | { kind: 'query'; param: string }
+  /**
+   * Every cookie the site holds, once the page says somebody is signed in.
+   *
+   * Forum software keeps a session across two or three cookies whose names
+   * and lifetimes are its own business, so this takes the lot rather than
+   * naming one - and waits for the page itself to say the sign-in finished,
+   * because a session cookie exists for a guest too and looks identical.
+   */
+  | { kind: 'cookies'; url: string; signedIn: string }
 
 export interface LoginFlow {
   /** Shown in the window's title bar, so it is obvious whose page this is. */
@@ -77,6 +86,25 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     // signed in, so the first authenticated request is the answer.
     capture: { kind: 'header', name: 'authorization' },
     finish: { method: 'addDiscordAccountToken', param: 'token' }
+  },
+  sneedchat: {
+    label: 'Kiwi Farms',
+    // The clearnet host rather than the onion this account may be configured
+    // for: this window is Chromium with no Tor of its own, and the session it
+    // comes back with is the forum's, not one host's. The daemon goes on
+    // reaching the site however it was told to.
+    url: 'https://kiwifarms.st/login/',
+    // Nothing. The credential here is a cookie the site sets, not a request
+    // this needs to read - so no request is read.
+    watch: [],
+    // XenForo marks its own <html> when somebody is signed in, which is the
+    // same signal the daemon trusts over a cookie's mere presence.
+    capture: {
+      kind: 'cookies',
+      url: 'https://kiwifarms.st/',
+      signedIn: "document.documentElement.getAttribute('data-logged-in') === 'true'"
+    },
+    finish: { method: 'setSneedChatCookies', param: 'cookies' }
   },
   kick: {
     label: 'Kick',
@@ -192,7 +220,7 @@ export async function browserLogin(service: string): Promise<LoginOutcome> {
       TIMEOUT_MS
     )
 
-    watch(ses, flow, (value) => finish({ ok: true, value }))
+    watch(ses, win, flow, (value) => finish({ ok: true, value }))
 
     // Closing the window is a decision, not a failure - reported so the caller
     // can go quiet rather than showing an error nobody caused.
@@ -204,7 +232,34 @@ export async function browserLogin(service: string): Promise<LoginOutcome> {
   })
 }
 
-function watch(ses: Session, flow: LoginFlow, found: (value: string) => void): void {
+function watch(ses: Session, win: BrowserWindow, flow: LoginFlow, found: (value: string) => void): void {
+  if (flow.capture.kind === 'cookies') {
+    const { url, signedIn } = flow.capture
+    // Asked of the page after each navigation rather than watched for on the
+    // cookie jar: the jar changes constantly during a sign-in - a gate, a
+    // guest session, a CSRF token - and none of that means anybody is in yet.
+    const check = (): void => {
+      if (win.isDestroyed()) return
+      void win.webContents
+        .executeJavaScript(signedIn, true)
+        .then((yes: unknown) => {
+          if (yes !== true) return
+          return ses.cookies.get({ url }).then((cookies) => {
+            const header = cookies.map((c) => `${c.name}=${c.value}`).join('; ')
+            if (header) found(header)
+          })
+        })
+        .catch(() => {
+          /* a page mid-navigation cannot be asked; the next one will be */
+        })
+    }
+    win.webContents.on('did-navigate', check)
+    win.webContents.on('did-navigate-in-page', check)
+    win.webContents.on('did-finish-load', check)
+    return
+  }
+
+
   if (flow.capture.kind === 'header') {
     const wanted = flow.capture.name.toLowerCase()
     ses.webRequest.onBeforeSendHeaders({ urls: flow.watch }, (details, callback) => {

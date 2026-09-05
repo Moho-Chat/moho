@@ -386,6 +386,8 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
 
           {account.service === 'matrix' && <MatrixAccountTools account={account} />}
 
+          {account.service === 'sneedchat' && <SneedChatBrowserLogin accountId={account.id} />}
+
           {account.service === 'kick' && <KickFollowSync account={account} />}
 
           <button
@@ -1123,6 +1125,61 @@ function KickForm({ onDone }: { onDone: () => void }): JSX.Element {
 }
 
 /**
+ * Signing in to the forum by hand, because its login form now asks for one.
+ *
+ * The site added a CAPTCHA to the login form, and a CAPTCHA is precisely a
+ * question a program is not meant to answer - so moho stops trying and asks
+ * the person instead. The window is the site's own login page; what comes
+ * back from it is the session, which is all the daemon ever wanted a password
+ * for. It is a workaround and reads like one on purpose.
+ *
+ * The window reaches the site over the ordinary internet rather than through
+ * moho's Tor client, since Chromium has no Tor of its own. The session it
+ * returns belongs to the forum rather than to one of its addresses, so the
+ * daemon goes on connecting however it was configured to.
+ */
+function SneedChatBrowserLogin({ accountId }: { accountId?: string }): JSX.Element {
+  const store = useStore()
+  const [busy, setBusy] = useState(false)
+
+  return (
+    <>
+      <button
+        type="button"
+        className="button"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true)
+          void window.moho
+            .browserLogin('sneedchat', accountId)
+            .then((r) => {
+              setBusy(false)
+              if (r.ok) {
+                store.toast('info', 'Signed in. Connecting…')
+                void store.refreshAccounts()
+                // Closing the window is a decision rather than a failure.
+              } else if (r.error && r.error !== 'cancelled') {
+                store.toast('error', r.error)
+              }
+            })
+            .catch((e: Error) => {
+              setBusy(false)
+              store.toast('error', e.message)
+            })
+        }}
+      >
+        {busy ? 'Waiting for the sign-in window…' : 'Sign in with a browser'}
+      </button>
+      <div className="small muted">
+        The forum now asks for a CAPTCHA when signing in, which moho cannot answer. This opens
+        their login page in a window so you can answer it yourself; moho keeps the session that
+        comes back. Your password goes into their form and never passes through moho.
+      </div>
+    </>
+  )
+}
+
+/**
  * Sneedchat login runs over the embedded Tor client and may have to solve the
  * site's proof-of-work gate, so it can take anywhere from instant to over a
  * minute - hence the same async-kickoff shape as Discord's QR flow.
@@ -1172,6 +1229,9 @@ function SneedChatForm(): JSX.Element {
       >
         Connect
       </button>
+      {/* Second because it can only follow the first: the browser hands back
+          a session, and a session has to belong to an account that exists. */}
+      <SneedChatBrowserLogin />
       {status && <p className="small muted">{status}</p>}
     </div>
   )
