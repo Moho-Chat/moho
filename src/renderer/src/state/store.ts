@@ -356,6 +356,18 @@ export interface ChatState {
   /** Buffers whose initial backlog fetch has completed. */
   loadedBuffers: Record<string, true>
   loadingMore: Record<string, true>
+  /** Reading forward, towards the present, from somewhere jumped to. */
+  loadingNewer: Record<string, true>
+  /**
+   * Where a conversation is missing its middle, as the id of the last message
+   * before the hole.
+   *
+   * Set by arriving somewhere directly - a pinned message, a search result -
+   * which puts one moment of a conversation on screen above a present that
+   * belongs to a different week. Without it a reader scrolling down out of
+   * that moment steps over the gap without being told there was one.
+   */
+  historyGapAfter: Record<string, string>
   /** Per-buffer "New messages" divider timestamp, snapshotted on open. */
   dividerTsByBuffer: Record<string, number>
   matrixPermissions: Record<string, RoomPermissions>
@@ -445,6 +457,8 @@ const INITIAL: ChatState = {
   presenceByBuffer: {},
   loadedBuffers: {},
   loadingMore: {},
+  loadingNewer: {},
+  historyGapAfter: {},
   dividerTsByBuffer: {},
     typingByBuffer: {},
   readersByBuffer: {},
@@ -2386,6 +2400,14 @@ export class ChatStore {
         const merged = [...added, ...current]
         merged.sort((a, b) => a.ts - b.ts)
         this.setMessages(bufferId, merged)
+        // Where the fetched moment stops and the log jumps to whatever was
+        // already loaded. Only when something follows it: a window that
+        // reaches the present has no hole after it.
+        const last = added[added.length - 1]
+        const follows = merged.findIndex((m) => m.id === last.id) < merged.length - 1
+        if (follows) {
+          this.set({ historyGapAfter: { ...this.state.historyGapAfter, [bufferId]: last.id } })
+        }
       }
     } catch (e) {
       // Said rather than swallowed: "nothing happened when I clicked it" is
@@ -2398,6 +2420,59 @@ export class ChatStore {
       this.set({ loadingMore })
     }
     return (this.state.messagesByBuffer[bufferId] || []).some((m) => m.id === messageId)
+  }
+
+  /**
+   * Reads forward from the hole a jump left, and closes it when it meets what
+   * is already on screen.
+   *
+   * Asked for by scrolling down into the gap rather than done as part of the
+   * jump: the reader who wants the conversation that followed will go looking
+   * for it, and the reader who was only checking one pinned message will not -
+   * fetching the week in between for both would be the walk that arriving
+   * directly exists to avoid.
+   */
+  async loadNewerHistory(bufferId: string): Promise<void> {
+    const afterId = this.state.historyGapAfter[bufferId]
+    if (!afterId || this.state.loadingNewer[bufferId]) return
+    const list = this.state.messagesByBuffer[bufferId] || []
+    const edge = list.find((m) => m.id === afterId)
+    if (!edge) return
+
+    this.set({ loadingNewer: { ...this.state.loadingNewer, [bufferId]: true } })
+    try {
+      const answer = await window.moho.rpc<{ added: number }>('loadNewerMessages', {
+        bufferId,
+        messageId: afterId
+      })
+      const rows = await window.moho.rpc<Message[]>('getBacklog', {
+        bufferId,
+        after: edge.ts,
+        limit: BACKLOG_PAGE
+      })
+      const current = this.state.messagesByBuffer[bufferId] || []
+      const seen = new Set(current.map((m) => m.id))
+      const fresh = rows.filter((m) => !seen.has(m.id)) as ChatMessage[]
+      if (fresh.length) {
+        const merged = [...current, ...fresh]
+        merged.sort((a, b) => a.ts - b.ts)
+        this.setMessages(bufferId, merged)
+      }
+      // The hole is closed when the service has nothing more to give, or when
+      // what came back runs into what was already here - either way there is
+      // no longer anything missing between this message and the next.
+      const met = rows.some((m) => seen.has(m.id))
+      const gap = { ...this.state.historyGapAfter }
+      if (answer.added === 0 || met || !fresh.length) delete gap[bufferId]
+      else gap[bufferId] = fresh[fresh.length - 1].id
+      this.set({ historyGapAfter: gap })
+    } catch (e) {
+      this.toast('error', `Couldn't load the rest: ${(e as Error).message}`)
+    } finally {
+      const loadingNewer = { ...this.state.loadingNewer }
+      delete loadingNewer[bufferId]
+      this.set({ loadingNewer })
+    }
   }
 
   async loadMoreHistory(bufferId: string): Promise<void> {

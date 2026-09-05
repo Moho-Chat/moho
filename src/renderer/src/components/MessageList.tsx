@@ -116,6 +116,8 @@ export function MessageList(): JSX.Element {
   const bufferId = useChat((s) => s.activeBufferId)
   const messagesByBuffer = useChat((s) => s.messagesByBuffer)
   const loadingMore = useChat((s) => s.loadingMore)
+  const loadingNewer = useChat((s) => s.loadingNewer)
+  const historyGapAfter = useChat((s) => s.historyGapAfter)
   const dividerTsByBuffer = useChat((s) => s.dividerTsByBuffer)
   const jumpTarget = useChat((s) => s.jumpTarget)
   const [relativeTimestamps] = usePref<boolean>('display.relativeTimestamps', false)
@@ -131,6 +133,10 @@ export function MessageList(): JSX.Element {
 
   const dividerTs = dividerTsByBuffer[bufferId] || 0
   const isLoadingMore = !!loadingMore[bufferId]
+  const isLoadingNewer = !!loadingNewer[bufferId]
+  // Where this conversation is missing its middle, from having been entered
+  // partway down rather than read into.
+  const gapAfterId = historyGapAfter[bufferId]
 
   // Message-kind filters. nobilis always emits and persists every message
   // regardless of kind, so which to render is purely a client decision and
@@ -468,6 +474,18 @@ export function MessageList(): JSX.Element {
                   <span>New</span>
                 </div>
               )}
+              {/* Where the log is not continuous. Arriving at a pinned message
+                  puts one moment on screen above a present from another week,
+                  and without this the reader crosses months between two
+                  adjacent lines with nothing to say so. Shown after the
+                  message rather than before the next one so it reads as the
+                  end of that moment. */}
+              {msg.id === gapAfterId && i < messages.length - 1 && (
+                <HistoryGap
+                  loading={isLoadingNewer}
+                  onFill={() => void store.loadNewerHistory(bufferId)}
+                />
+              )}
               <MessageRow
                 message={msg}
                 bufferId={bufferId}
@@ -501,14 +519,14 @@ export function MessageList(): JSX.Element {
         </div>
       </div>
 
-      {/* And again at the bottom while reading history, where the log below
-          is a gap rather than the end: the strip above is out of sight once
-          the fetched page pushes it up, and this is the edge being read
-          from. */}
-      {!anchored && isLoadingMore && (
+      {/* The other direction gets its own notice at the other edge. Reading
+          forward is a different thing from reading back, and a spinner at the
+          bottom while older messages load says the log is growing where it is
+          not. */}
+      {isLoadingNewer && (
         <div className="messagelist-loading-bottom muted small">
           <span className="spinner" />
-          <span>Loading…</span>
+          <span>Loading newer messages…</span>
         </div>
       )}
 
@@ -518,6 +536,48 @@ export function MessageList(): JSX.Element {
           {missedCount > 0
             ? `${missedCount} new message${missedCount === 1 ? '' : 's'}`
             : 'Jump to present'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The line across a conversation that is missing its middle.
+ *
+ * Fills itself when it is scrolled to rather than waiting to be pressed: a
+ * reader coming down out of the moment they jumped to is asking for what
+ * followed it by the act of reading downwards. The button is there for the
+ * one that fails - a fetch that errors leaves the gap and something to
+ * press.
+ */
+function HistoryGap({ loading, onFill }: { loading: boolean; onFill: () => void }): JSX.Element {
+  const mark = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = mark.current
+    if (!el || loading) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) onFill()
+      },
+      { threshold: 0.1 }
+    )
+    io.observe(el)
+    return () => io.disconnect()
+    // onFill is rebuilt every render; the gap it closes over is the one this
+    // divider is drawn for, so re-observing on each render is correct and
+    // costs nothing.
+  })
+
+  return (
+    <div className="history-gap" ref={mark}>
+      {loading ? (
+        <span className="muted small">
+          <span className="spinner" /> Loading the rest…
+        </span>
+      ) : (
+        <button type="button" className="history-gap-fill" onClick={onFill}>
+          Some messages here have not been loaded
         </button>
       )}
     </div>

@@ -766,6 +766,52 @@
   border-radius: var(--corner-radius-small);
 }
 
+/*
+ * A conversation that is missing its middle, said in the log itself.
+ *
+ * A line rather than a banner, and worded rather than drawn: the reader has
+ * to be able to tell the difference between "this is what was said next" and
+ * "this is the next thing that happens to be loaded", and there is no
+ * graphical way to say that.
+ */
+.history-gap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  color: var(--surface-text-muted);
+  font-size: var(--font-size-small);
+}
+
+.history-gap::before,
+.history-gap::after {
+  content: '';
+  flex: 1;
+  border-top: 1px dashed var(--outline-medium);
+}
+
+.history-gap-fill {
+  flex: none;
+  padding: 2px var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  border: 1px solid var(--outline-medium);
+  background: var(--surface-container);
+  color: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.history-gap-fill:hover {
+  background: var(--surface-container-highest);
+}
+
+.history-gap .spinner {
+  display: inline-block;
+  vertical-align: -1px;
+  margin-right: var(--spacing-xs);
+}
+
 /* The same thing said at the other edge, above the jump-to-present bar. */
 .messagelist-loading-bottom {
   position: absolute;
