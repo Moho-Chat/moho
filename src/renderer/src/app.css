@@ -138,7 +138,12 @@
 /* The name gives up its width first: it has a tooltip and a channel list to
    fall back on, and the buttons beside it do not. */
 .main-header-title {
-  flex: 1 1 auto;
+  /* Basis zero rather than the width of the words: the name is what fills
+     whatever space the buttons leave over, not a thing that takes its own
+     width and makes everything else fight it. With `auto` a long room name
+     started out wider than the row and the shrinking was shared, so the
+     tools ran out of room too and spilled leftwards over the name. */
+  flex: 1 1 0;
   min-width: 0;
   font-weight: 500;
 }
@@ -1158,6 +1163,14 @@
   /* The box's own padding plus its border, so the hint sits exactly where the
      first typed character will. */
   left: calc(var(--spacing-s) + 1px);
+  /* And bounded on the other side, which it was not: an absolutely positioned
+     span with only a left edge is as wide as its words, so "Message" plus a
+     long room name wrapped onto three lines and drew them straight up out of
+     the box over the conversation. One line, cut off where the box ends. */
+  right: calc(var(--spacing-s) + 1px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   top: 50%;
   transform: translateY(-50%);
   pointer-events: none;
@@ -3713,6 +3726,13 @@ video.lightbox-media {
   position: relative;
   margin-left: auto;
   justify-content: flex-end;
+  /* The last guard, for a window narrow enough that the buttons alone do not
+     fit: they are packed to the right, so overflow here runs to the *left* -
+     straight over the conversation's name, which is what it used to do.
+     Clipped is worse than complete and better than overlapping. The popovers
+     these buttons open are hung off the window rather than laid out in here,
+     so nothing that needs to escape is affected. */
+  overflow: hidden;
 }
 
 /* Buttons keep their size; only the things made of text give ground. */
