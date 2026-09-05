@@ -6,6 +6,7 @@ import type {
   CustomEmoji,
   IncomingCall,
   DccTransfer,
+  MatrixInvite,
   MatrixVerification,
   Member,
   Message,
@@ -376,6 +377,8 @@ export interface ChatState {
   matrixPinned: Record<string, string[]>
   /** Who each Matrix account has asked never to hear from. */
   matrixIgnored: Record<string, string[]>
+  /** Rooms each Matrix account has been invited to and not answered. */
+  matrixInvites: Record<string, MatrixInvite[]>
   /**
    * The profile being shown, or null.
    *
@@ -452,6 +455,7 @@ const INITIAL: ChatState = {
   reviewCard: null,
   matrixPinned: {},
   matrixIgnored: {},
+  matrixInvites: {},
   profile: null,
   replyingTo: null,
   toasts: [],
@@ -751,9 +755,40 @@ export class ChatStore {
   async refreshAccounts(): Promise<void> {
     try {
       this.set({ accounts: await window.moho.rpc<Account[]>('listAccounts') })
+      void this.refreshInvites()
     } catch (e) {
       this.toast('error', `Couldn't list accounts: ${(e as Error).message}`)
     }
+  }
+
+  /**
+   * What each Matrix account has been invited to.
+   *
+   * Read when the accounts are, rather than only when some panel that shows
+   * invitations happens to be opened: an invitation nobody has seen is an
+   * invitation nobody can answer, and it was previously only fetched inside
+   * the join panel.
+   */
+  async refreshInvites(): Promise<void> {
+    for (const account of this.state.accounts.filter((a) => a.service === 'matrix')) {
+      try {
+        const invites = await window.moho.rpc<MatrixInvite[]>('listMatrixInvites', {
+          accountId: account.id
+        })
+        this.set({ matrixInvites: { ...this.state.matrixInvites, [account.id]: invites } })
+      } catch {
+        // An older daemon has no such method, and no invites to show.
+      }
+    }
+  }
+
+  /** Accepts an invitation, or turns it down. */
+  answerMatrixInvite(accountId: string, roomId: string, accept: boolean): void {
+    void window.moho
+      .rpc(accept ? 'acceptMatrixInvite' : 'declineMatrixInvite', { accountId, roomId })
+      // Not removed here: the next sync stops listing it, which is what
+      // actually confirms the server agreed.
+      .catch((e: Error) => this.toast('error', e.message))
   }
 
   /**
@@ -1646,6 +1681,15 @@ export class ChatStore {
         this.set({ profile: answer })
         break
       }
+
+      case 'matrixInvites':
+        this.set({
+          matrixInvites: {
+            ...this.state.matrixInvites,
+            [data.accountId as string]: (data.invites as MatrixInvite[]) || []
+          }
+        })
+        break
 
       case 'matrixIgnored':
         this.set({

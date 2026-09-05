@@ -503,6 +503,15 @@ export interface SasEmoji {
   description: string
 }
 
+/** A room this account has been invited to and has not answered. */
+export interface MatrixInvite {
+  roomId: string
+  name: string
+  inviter: string | null
+  avatarUrl: string | null
+  isDirect: boolean
+}
+
 export interface MatrixVerification {
   accountId: string
   verificationId: string

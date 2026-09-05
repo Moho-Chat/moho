@@ -5,11 +5,12 @@ import { ServerRail } from './components/ServerRail'
 import { MessageList } from './components/MessageList'
 import { MentionsInbox } from './components/MentionsInbox'
 import { MentionsPage } from './components/MentionsPage'
-import { MENTIONS_GROUP_ID } from './lib/groups'
+import { INVITE_PREFIX, MENTIONS_GROUP_ID } from './lib/groups'
 import { Composer } from './components/Composer'
 import { MembershipGate } from './components/MembershipGate'
 import { NickList } from './components/NickList'
 import { ThreadPanel } from './components/ThreadPanel'
+import { InvitePanel } from './components/InvitePanel'
 import { VerificationDialog } from './components/VerificationDialog'
 import { ProfileCard } from './components/ProfileCard'
 import { ConversationTools } from './components/ConversationTools'
@@ -254,6 +255,9 @@ function Body({
   // The mentions page replaces the log rather than sitting beside it: it is a
   // list of places to go, and every row leads into a conversation.
   if (activeGroupId === MENTIONS_GROUP_ID) return <MentionsPage />
+  // An invitation stands where the conversation would, because it is the
+  // conversation being offered.
+  if (activeGroupId.startsWith(INVITE_PREFIX)) return <InvitePanel groupId={activeGroupId} />
   if (hasBuffer) return <MessageList />
   return <Placeholder icon="forum" text="Select or join a channel" />
 }

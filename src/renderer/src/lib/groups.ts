@@ -1,4 +1,4 @@
-import type { BufferGroup } from '../../../shared/wire'
+import type { MatrixInvite, BufferGroup } from '../../../shared/wire'
 import type { BufferEntry } from '../state/store'
 
 /**
@@ -8,7 +8,44 @@ import type { BufferEntry } from '../state/store'
  * actually sends.
  */
 export type RailGroup = Omit<BufferGroup, 'kind'> & {
-  kind: BufferGroup['kind'] | 'pinned'
+  kind: BufferGroup['kind'] | 'pinned' | 'invite'
+}
+
+/**
+ * The rail entry for a room somebody has invited you to.
+ *
+ * A tile of its own rather than a mark on the account's, because that is what
+ * it behaves like: it arrives on its own, it is answered once, and then it is
+ * gone. A badge on an account tile would still be there after the answer,
+ * saying nothing, until something else redrew it.
+ */
+export const INVITE_PREFIX = 'invite:'
+
+export function inviteGroupId(accountId: string, roomId: string): string {
+  return `${INVITE_PREFIX}${accountId}|${roomId}`
+}
+
+/** The account and room an invite entry stands for, or null. */
+export function readInviteGroupId(groupId: string): { accountId: string; roomId: string } | null {
+  if (!groupId.startsWith(INVITE_PREFIX)) return null
+  const rest = groupId.slice(INVITE_PREFIX.length)
+  const split = rest.indexOf('|')
+  if (split < 0) return null
+  return { accountId: rest.slice(0, split), roomId: rest.slice(split + 1) }
+}
+
+export function inviteGroup(accountId: string, invite: MatrixInvite): RailGroup {
+  return {
+    id: inviteGroupId(accountId, invite.roomId),
+    accountId,
+    service: 'matrix',
+    kind: 'invite',
+    name: invite.name,
+    iconUrl: invite.avatarUrl ?? undefined,
+    // Ahead of everything, including direct messages: it is the only entry
+    // in the rail that expires if nobody answers it.
+    position: -2000
+  } as RailGroup
 }
 
 /**
@@ -104,7 +141,7 @@ export function visibleGroups(groups: BufferGroup[], buffers: BufferEntry[]): Bu
 
 /** Entries the user cannot drag, and which always lead the rail. */
 export function isFixedEntry(group: RailGroup): boolean {
-  return group.kind === 'dms' || group.kind === 'pinned'
+  return group.kind === 'dms' || group.kind === 'pinned' || group.kind === 'invite'
 }
 
 /**

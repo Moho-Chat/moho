@@ -8,6 +8,7 @@ import { useChat, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, classes, nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
 import {
   isFixedEntry,
+  inviteGroup,
   orderedGroups,
   railEntries,
   fileInFolder,
@@ -91,6 +92,10 @@ function GroupFace({ group, customIcon }: { group: RailGroup; customIcon?: strin
   // what moves; its face is not separately grabbable.
   if (customIcon) return <img className="rail-icon" src={resolveMediaUrl(customIcon)} alt="" draggable={false} />
   if (group.kind === 'pinned') return <Icon name="push_pin" size={22} />
+  // An invitation reads as one rather than as an unfamiliar server: the room
+  // usually has no picture and often no name, and initials taken off a raw
+  // room id say nothing at all.
+  if (group.kind === 'invite') return <Icon name="mark_email_unread" size={22} />
   if (group.iconUrl) return <img className="rail-icon" src={resolveMediaUrl(group.iconUrl)} alt="" draggable={false} />
   if (group.kind === 'dms') return <Icon name="forum" size={22} />
   if (group.kind === 'account' && service.mark && service.colour) {
@@ -309,6 +314,7 @@ export function ServerRail(): JSX.Element | null {
   // the selector's result by identity, so returning a new object each render
   // reports a change every time and loops until React gives up.
   const groups = useChat((s) => s.groups)
+  const matrixInvites = useChat((s) => s.matrixInvites)
   const activeGroupId = useChat((s) => s.activeGroupId)
   const activeBufferId = useChat((s) => s.activeBufferId)
   const buffers = useChat((s) => s.buffers)
@@ -388,6 +394,11 @@ export function ServerRail(): JSX.Element | null {
   // inbox in the header, which is where the unread count already is, and a
   // permanent tile for it only competed with the servers this column is for.
   if (pinned.length > 0) extras.push(pinnedGroup())
+  // An invitation arrives as its own tile and leaves when it is answered -
+  // it behaves like a new conversation, not like a mark on an account.
+  for (const [accountId, list] of Object.entries(matrixInvites)) {
+    for (const invite of list) extras.push(inviteGroup(accountId, invite))
+  }
   const ordered = orderedGroups([...shown, ...extras], railOrder)
 
   // The rail always draws, even with nothing in it.

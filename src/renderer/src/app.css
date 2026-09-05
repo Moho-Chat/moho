@@ -2567,6 +2567,31 @@ img.smilie {
   background: var(--surface-variant);
 }
 
+/* An invitation, standing where the conversation would - because that is
+   what is being offered. The rail tile beside it says one has arrived; both
+   go the moment it is answered. */
+.invite-panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-l);
+  text-align: center;
+}
+
+.invite-panel-name {
+  max-width: 100%;
+  margin: 0;
+  font-size: var(--font-size-large);
+}
+
+.invite-panel-note {
+  max-width: 34em;
+}
+
 .invite-what {
   display: flex;
   flex-direction: column;

@@ -10,6 +10,7 @@ import {
   DM_GROUP_ID,
   isDirectMessage,
   isMutedBuffer,
+  INVITE_PREFIX,
   MENTIONS_GROUP_ID,
   PINNED_GROUP_ID,
   pinnedGroup,
@@ -121,11 +122,19 @@ export function BufferList(): JSX.Element {
     return isDirectMessage(open) ? DM_GROUP_ID : open.groupId
   }, [buffers, activeBufferId])
 
-  const activeGroup = onMentionsPage
-    ? undefined
-    : shownGroups.find((g) => g.id === activeGroupId) ||
-      shownGroups.find((g) => g.id === openBufferGroup) ||
-      shownGroups[0]
+  // An invitation is selected the same way the mentions page is: a rail entry
+  // with no group behind it. Without this the lookup below fails to find it,
+  // falls back to some real group, and the effect writes that back - so
+  // choosing an invitation landed on whichever server happened to be first,
+  // which is exactly what it looked like.
+  const onInvite = activeGroupId.startsWith(INVITE_PREFIX)
+
+  const activeGroup =
+    onMentionsPage || onInvite
+      ? undefined
+      : shownGroups.find((g) => g.id === activeGroupId) ||
+        shownGroups.find((g) => g.id === openBufferGroup) ||
+        shownGroups[0]
   /**
    * Settles a selection that had to be resolved by falling back.
    *
@@ -136,9 +145,9 @@ export function BufferList(): JSX.Element {
    * once means the next change has a real selection to keep.
    */
   useEffect(() => {
-    if (onMentionsPage || !activeGroup) return
+    if (onMentionsPage || onInvite || !activeGroup) return
     if (activeGroup.id !== activeGroupId) store.selectGroup(activeGroup.id)
-  }, [activeGroup, activeGroupId, onMentionsPage, store])
+  }, [activeGroup, activeGroupId, onMentionsPage, onInvite, store])
 
   const isPinnedPage = activeGroup?.id === PINNED_GROUP_ID
   const isDmPage = activeGroup?.id === DM_GROUP_ID
