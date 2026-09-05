@@ -60,7 +60,10 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
   const isPrediction = card.kind === 'prediction'
   const total = card.options.reduce((sum, o) => sum + o.votes, 0)
   const share = (votes: number): number => (total > 0 ? Math.round((votes / total) * 100) : 0)
-  const folded = hidden.includes(card.id)
+  // Asking to read an old one overrides having folded it away: the fold is
+  // how a card is dismissed while it runs, and a review is the deliberate
+  // gesture of asking for that same card back.
+  const folded = !reviewing && hidden.includes(card.id)
 
   // A finished card that has been folded away is finished with: there is
   // nothing left to answer, so a bar offering to bring it back would only be

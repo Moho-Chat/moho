@@ -1462,7 +1462,11 @@ export class ChatStore {
       const rows = await window.moho.rpc<LiveCard[]>('listPolls', { bufferId, kind, limit: 25 })
       // Read back rather than live: every one of these is over, whatever
       // seconds it was carrying when it was written down.
-      return rows.map((card) => ({ ...card, receivedAt: cardHeardAt(card), closed: true }))
+      //
+      // The conversation is stamped on the way out as well as on the way in,
+      // because rows written before the daemon carried one would otherwise be
+      // recalled into a card that belongs to no channel and so draws nothing.
+      return rows.map((card) => ({ ...card, bufferId, receivedAt: cardHeardAt(card), closed: true }))
     } catch (e) {
       this.toast('error', (e as Error).message)
       return []
