@@ -767,6 +767,86 @@
 }
 
 /*
+ * What can be typed after a slash, above the box.
+ *
+ * Its own list rather than the name picker's, because the rows carry more:
+ * the command, what it takes, what it does, and who answers it. Laid out as
+ * one line of name and arguments over a line of explanation, so the eye runs
+ * down the names rather than reading each row.
+ */
+.command-picker {
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0 var(--spacing-s) var(--spacing-xs);
+  padding: var(--spacing-xs);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+
+.command-picker-head {
+  padding: var(--spacing-xs) var(--spacing-s);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.command-option {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: none;
+  border-radius: var(--corner-radius-small);
+  background: none;
+  color: var(--surface-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.command-option.active,
+.command-option:hover {
+  background: var(--surface-container-highest);
+}
+
+.command-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-highest);
+  color: var(--surface-variant-text);
+}
+
+.command-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.command-name {
+  font-weight: 500;
+}
+
+/* The arguments are not the name: same line, quieter, so the name still
+   reads as the thing being chosen. */
+.command-usage {
+  color: var(--surface-variant-text);
+  font-weight: 400;
+}
+
+.command-source {
+  flex: none;
+  margin-left: auto;
+}
+
+/*
  * The controls a service put on a message.
  *
  * Rows, because the layout is information: a bot that put five buttons on one

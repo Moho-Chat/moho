@@ -69,14 +69,23 @@ function caretToEnd(el: HTMLElement): void {
  * encryption indicator. A fixed bar rather than part of the scrolling message
  * area, so arriving messages can never visually intrude under it.
  */
-/** One slash command a channel offers, as the daemon describes it. */
-interface DiscordCommand {
-  id: string
+/**
+ * One command that can be typed here, whoever implements it.
+ *
+ * The daemon answers with its own and the channel's bots' in one list, since
+ * somebody typing a slash is asking what happens next rather than which half
+ * of the program answers.
+ */
+interface TypedCommand {
   name: string
+  /** `<required> [optional]`, as a manual page would write it. */
+  usage?: string
   description?: string
-  application?: string
+  /** "Built-in", or the bot that answers it. */
+  source?: string
+  kind: 'builtin' | 'application'
   /** Discord's own description of the command, handed back to run it. */
-  command: { options?: { name: string; type?: number; required?: boolean }[] }
+  command?: { options?: { name: string; type?: number; required?: boolean }[] }
 }
 
 export function Composer(): JSX.Element | null {
@@ -127,8 +136,17 @@ export function Composer(): JSX.Element | null {
    * bots a server has installed, they differ per channel, and there is no
    * list a client could hold. Only Discord has them.
    */
-  const [commands, setCommands] = useState<DiscordCommand[]>([])
+  const [commands, setCommands] = useState<TypedCommand[]>([])
   const [commandIndex, setCommandIndex] = useState(0)
+  /**
+   * The application command whose name has been completed into the box.
+   *
+   * Held because what follows it is arguments rather than a message: without
+   * this, finishing "/wordle" and pressing Enter would say "/wordle" out loud
+   * in the channel. A built-in needs no such memory - the daemon reads those
+   * out of the text itself, which is how they have always worked.
+   */
+  const [pendingCommand, setPendingCommand] = useState<TypedCommand | null>(null)
   /** Discord's mentionable roles here; empty everywhere else. */
   const [roles, setRoles] = useState<{ id: string; name: string; colour?: string }[]>([])
   const emojiButtonRef = useRef<HTMLButtonElement>(null)
@@ -183,7 +201,7 @@ export function Composer(): JSX.Element | null {
 
   // What has been typed as a command, if anything: a slash at the very start
   // and the word after it. Not mid-message - "and/or" is not a command.
-  const typedCommand = service === 'discord' && /^\/\S*$/.test(text) ? text.slice(1) : null
+  const typedCommand = /^\/\S*$/.test(text) ? text.slice(1) : null
 
   useEffect(() => {
     if (typedCommand === null || !buffer) {
@@ -192,7 +210,7 @@ export function Composer(): JSX.Element | null {
     }
     const timer = setTimeout(() => {
       void window.moho
-        .rpc<{ commands: DiscordCommand[] }>('listDiscordCommands', {
+        .rpc<{ commands: TypedCommand[] }>('listCommands', {
           bufferId: buffer.id,
           query: typedCommand
         })
@@ -236,6 +254,15 @@ export function Composer(): JSX.Element | null {
   const submit = (): void => {
     const body = text.trim()
     if (!body && staged.length === 0) return
+
+    // A command whose name was completed into the box: what follows it is
+    // arguments for a bot, not a line to say in the channel. Built-ins fall
+    // through to the ordinary send, because the daemon reads those out of
+    // the message text itself.
+    if (pendingCommand && body.startsWith(`/${pendingCommand.name}`)) {
+      runCommand(pendingCommand)
+      return
+    }
 
     // Aimed at one person rather than at the room. Attachments are not
     // carried: a whisper is a line of text on this service, and silently
@@ -323,16 +350,51 @@ export function Composer(): JSX.Element | null {
   }
 
   /**
-   * Runs the chosen command, with whatever was typed after it as its
-   * arguments, in the order the command declares them.
+   * Takes the highlighted command: writes its name into the box, and gets out
+   * of the way so the arguments can be typed.
    *
-   * Positional rather than named: Discord's own client draws a form built
-   * from the command's own description of itself, which is a great deal of
-   * interface for something people type. What somebody types after the name
-   * is what they mean by the first argument.
+   * Completing rather than running, because almost every command takes
+   * something after it and a menu that fired on the first press would be a
+   * menu you had to avoid. A command that takes nothing has nothing to wait
+   * for, so that one runs.
    */
-  const runCommand = (command: DiscordCommand): void => {
-    const words = text.trim().split(/\s+/).slice(1)
+  const takeCommand = (command: TypedCommand): void => {
+    const wants = (command.usage ?? '').trim().length > 0
+    setCommands([])
+    if (!wants && command.kind === 'application') {
+      setPendingCommand(command)
+      runCommand(command, `/${command.name}`)
+      return
+    }
+    const written = `/${command.name}${wants ? ' ' : ''}`
+    setText(written)
+    if (inputRef.current) {
+      inputRef.current.textContent = written
+      // The caret goes to the end, where the next thing typed belongs.
+      const range = document.createRange()
+      range.selectNodeContents(inputRef.current)
+      range.collapse(false)
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      inputRef.current.focus()
+    }
+    // Remembered only for the ones this client has to run itself; a built-in
+    // is read out of the message text by the daemon, the way it always was.
+    setPendingCommand(command.kind === 'application' ? command : null)
+  }
+
+  /**
+   * Runs an application command with whatever was typed after its name, in
+   * the order the command declares its arguments.
+   *
+   * Positional rather than a form: Discord's own client builds one out of the
+   * command's description of itself, which is a great deal of interface for
+   * something people type. What somebody writes after the name is what they
+   * mean by the first argument.
+   */
+  const runCommand = (command: TypedCommand, typed = text): void => {
+    const words = typed.trim().split(/\s+/).slice(1)
     const declared = (command.command?.options ?? []).filter((o) => (o.type ?? 3) <= 10)
     const options = declared
       .map((option, i) => ({ option, word: words[i] }))
@@ -340,7 +402,7 @@ export function Composer(): JSX.Element | null {
       .map(({ option, word }) => ({
         type: option.type ?? 3,
         name: option.name,
-        // Numbers and booleans are sent as themselves; everything else, a
+        // Numbers and booleans are sent as themselves; everything else the
         // service resolves for itself from what was written.
         value:
           option.type === 4 || option.type === 10
@@ -357,6 +419,7 @@ export function Composer(): JSX.Element | null {
     setText('')
     if (inputRef.current) inputRef.current.textContent = ''
     setCommands([])
+    setPendingCommand(null)
     void window.moho
       .rpc('runDiscordCommand', { bufferId: buffer!.id, command: command.command, options })
       .catch((e: Error) => store.toast('error', e.message))
@@ -462,30 +525,42 @@ export function Composer(): JSX.Element | null {
           put it, and the only place it can go without covering what is being
           typed. Members first, then roles, then the service's whole-room
           words, because that is the order of how often each is meant. */}
-      {/* The commands a channel offers, in the same place and with the same
-          keys as the name picker above the box - two lists that behave
-          differently would be two things to learn. */}
+      {/* What can be typed here, and what it takes. Above the box in the
+          same place as the name picker, and with the same keys - two lists
+          that behaved differently would be two things to learn.
+
+          The heading names what was typed, because a fuzzy match can return
+          something that looks nothing like it: "dv" finding "devoice" reads
+          as a bug until the line above says what was searched for. */}
       {commands.length > 0 && (
-        <div className="mention-picker" role="listbox" aria-label="Run a command">
+        <div className="command-picker" role="listbox" aria-label="Run a command">
+          <div className="command-picker-head small muted">
+            Commands matching /{typedCommand}
+          </div>
           {commands.map((c, i) => (
             <button
-              key={c.id}
+              key={`${c.kind}:${c.name}`}
               type="button"
               role="option"
               aria-selected={i === commandIndex}
-              className={classes('mention-option', i === commandIndex && 'active')}
+              className={classes('command-option', i === commandIndex && 'active')}
               onMouseDown={(e) => {
                 e.preventDefault()
-                runCommand(c)
+                takeCommand(c)
               }}
               onMouseEnter={() => setCommandIndex(i)}
             >
-              <span className="mention-glyph">
+              <span className="command-glyph">
                 <Icon name="terminal" size={16} />
               </span>
-              <span className="ellipsis">/{c.name}</span>
-              {c.description && <span className="small muted ellipsis mention-detail">{c.description}</span>}
-              {c.application && <span className="small muted">{c.application}</span>}
+              <span className="command-text">
+                <span className="command-name ellipsis">
+                  /{c.name}
+                  {c.usage && <span className="command-usage"> {c.usage}</span>}
+                </span>
+                {c.description && <span className="small muted ellipsis">{c.description}</span>}
+              </span>
+              {c.source && <span className="small muted command-source">{c.source}</span>}
             </button>
           ))}
         </div>
@@ -615,9 +690,12 @@ export function Composer(): JSX.Element | null {
                   setCommandIndex((commandIndex + step) % commands.length)
                   return
                 }
+                // Both take it, and taking it means writing it into the box
+                // rather than firing it: almost every command wants something
+                // after its name.
                 if (e.key === 'Enter' || e.key === 'Tab') {
                   e.preventDefault()
-                  runCommand(commands[commandIndex])
+                  takeCommand(commands[commandIndex])
                   return
                 }
                 if (e.key === 'Escape') {
