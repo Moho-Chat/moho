@@ -1757,6 +1757,29 @@ export class ChatStore {
 
       // Verification is a multi-step flow whose steps all arrive as pushes:
       // a status change, then the emoji to compare, then a final result.
+      // Somebody asking to verify, rather than us asking them. Nothing
+      // handled this, so a request arriving from another session - or from
+      // another person, now that those reach here at all - was recorded by
+      // the daemon and shown nowhere.
+      case 'matrixVerificationIncoming':
+        this.set({
+          matrixVerification: {
+            accountId: data.accountId,
+            verificationId: data.verificationId,
+            state: 'requested',
+            otherUser: data.fromUser,
+            otherDevice: data.fromDevice,
+            isSelf: data.isSelf
+          }
+        })
+        this.toast(
+          'info',
+          data.isSelf === false
+            ? `${data.fromUser} wants to verify with you`
+            : 'Another of your sessions wants to verify'
+        )
+        break
+
       case 'matrixVerificationStatus':
         this.set({
           matrixVerification: { ...(this.state.matrixVerification || {}), ...data }

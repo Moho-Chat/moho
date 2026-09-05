@@ -332,6 +332,32 @@
 
 
 
+/* --- verifying somebody ------------------------------------------------
+   Over the window rather than inside the account panel, because a request
+   can arrive from another session or another person at any moment - and the
+   panel it used to live in is usually closed when one does. */
+.verification-dialog {
+  position: fixed;
+  z-index: 70;
+  right: var(--spacing-m);
+  bottom: var(--spacing-m);
+  width: min(360px, calc(100vw - var(--spacing-m) * 2));
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding: var(--spacing-m);
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--corner-radius);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+.verification-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
 /* --- panels hanging off the header -------------------------------------
    Fixed to the window rather than laid out in the header, because the header
    is a row that has to compact: a panel inside it either widens the row past

@@ -10,6 +10,7 @@ import { Composer } from './components/Composer'
 import { MembershipGate } from './components/MembershipGate'
 import { NickList } from './components/NickList'
 import { ThreadPanel } from './components/ThreadPanel'
+import { VerificationDialog } from './components/VerificationDialog'
 import { ProfileCard } from './components/ProfileCard'
 import { ConversationTools } from './components/ConversationTools'
 import { AccountsPanel } from './components/AccountsPanel'
@@ -192,6 +193,12 @@ export default function App(): JSX.Element {
 
       {/* Over everything: an answer to something just asked. */}
       <ProfileCard />
+
+      {/* Over everything, because a verification can now start somewhere
+          else entirely - another of your sessions, or another person in a
+          room you share - and a dialog only the account panel can show is a
+          request nobody can answer. */}
+      <VerificationDialog />
 
       {/* Over everything: a call arrives while you are looking elsewhere. */}
       <IncomingCallPanel />

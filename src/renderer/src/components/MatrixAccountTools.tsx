@@ -426,88 +426,14 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
         </div>
       ))}
 
+      {/* The emoji comparison is drawn over the whole window now rather
+          than in here: a verification can arrive from another session, or
+          from another person through a room you share, and this panel is
+          not necessarily open when one does. */}
       {active && (
-        <div className="verification-box">
-          {active.emoji ? (
-            <>
-              <div className="setting-text">Do these match on the other device?</div>
-              <div className="sas-emoji">
-                {active.emoji.map((e, i) => (
-                  <div key={i} className="sas-cell">
-                    <span className="sas-symbol">{e.symbol}</span>
-                    <span className="small muted">{e.description}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="button-row">
-                <button
-                  type="button"
-                  className="button"
-                  onClick={() =>
-                    void rpc('confirmMatrixVerification', {
-                      accountId: account.id,
-                      verificationId: active.verificationId,
-                      matches: true
-                    })
-                  }
-                >
-                  They match
-                </button>
-                <button
-                  type="button"
-                  className="button danger"
-                  onClick={() =>
-                    void rpc('confirmMatrixVerification', {
-                      accountId: account.id,
-                      verificationId: active.verificationId,
-                      matches: false
-                    })
-                  }
-                >
-                  They don&apos;t
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="setting-text">
-                Verification {active.state || 'starting'}…
-              </div>
-              <p className="small muted">
-                Accept the request on your other session; the emoji to compare will appear here.
-              </p>
-              <div className="button-row">
-                {active.state === 'requested' && (
-                  <button
-                    type="button"
-                    className="button"
-                    onClick={() =>
-                      void rpc('respondMatrixVerification', {
-                        accountId: account.id,
-                        verificationId: active.verificationId,
-                        accept: true
-                      })
-                    }
-                  >
-                    Accept
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="button subtle"
-                  onClick={() =>
-                    void rpc('cancelMatrixVerification', {
-                      accountId: account.id,
-                      verificationId: active.verificationId
-                    })
-                  }
-                >
-                  Cancel
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+        <p className="small muted">
+          A verification is in progress — the comparison is shown over the window.
+        </p>
       )}
 
       <div className="divider-h" />

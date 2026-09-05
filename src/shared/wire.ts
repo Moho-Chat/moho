@@ -508,6 +508,19 @@ export interface MatrixVerification {
   verificationId: string
   state?: string
   emoji?: SasEmoji[]
+  /**
+   * Who is on the other end.
+   *
+   * For one of your own sessions this is you and the device is the
+   * interesting half; for somebody else it is the whole point - a dialog
+   * that cannot say whose emoji these are is one nobody should press yes on.
+   */
+  otherUser?: string
+  otherDevice?: string | null
+  isSelf?: boolean
+  /** Set on an incoming request that has not been answered yet. */
+  fromUser?: string
+  fromDevice?: string
 }
 
 export interface RoomPermissions {
