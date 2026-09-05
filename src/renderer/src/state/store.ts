@@ -2324,10 +2324,38 @@ export class ChatStore {
       const before = (this.state.messagesByBuffer[bufferId] || []).length
       await this.loadMoreHistory(bufferId)
       if (loaded()) return true
-      // Nothing came back, so there is nothing older to find it in.
-      if ((this.state.messagesByBuffer[bufferId] || []).length === before) return false
+      // Nothing came back: either the store has been read to its beginning, or
+      // the message is far enough back that paging to it is not a wait but a
+      // refusal. Both are the moment to ask the service for that one part of
+      // the conversation instead - a pin is routinely years older than
+      // anything kept here, and it was still worth listing.
+      if ((this.state.messagesByBuffer[bufferId] || []).length === before) {
+        return await this.fetchAround(bufferId, messageId)
+      }
     }
     return loaded()
+  }
+
+  /**
+   * Asks the service for the part of the conversation one message is in.
+   *
+   * Then pages once more rather than rendering the fetched window directly:
+   * the daemon has put those messages in the same store everything else is
+   * read from, so the ordinary load-more path picks them up - and because
+   * nothing exists between them and what is already on screen, one page
+   * reaches them however old they are.
+   */
+  private async fetchAround(bufferId: string, messageId: string): Promise<boolean> {
+    try {
+      await window.moho.rpc<{ ts: number }>('loadMessageContext', { bufferId, messageId })
+    } catch (e) {
+      // Said rather than swallowed: "nothing happened when I clicked it" is
+      // the complaint this whole path exists to answer.
+      this.toast('error', `Couldn't reach that message: ${(e as Error).message}`)
+      return false
+    }
+    await this.loadMoreHistory(bufferId)
+    return (this.state.messagesByBuffer[bufferId] || []).some((m) => m.id === messageId)
   }
 
   async loadMoreHistory(bufferId: string): Promise<void> {

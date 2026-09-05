@@ -306,8 +306,16 @@ function PinnedMessages({ buffer }: { buffer: BufferEntry }): JSX.Element | null
               type="button"
               className="history-row"
               onClick={() => {
-                store.setJumpTarget(message.id)
                 setOpen(false)
+                // Through the same path a search result takes, rather than
+                // straight to the jump: a pin is usually the oldest thing in
+                // the conversation, so it is the least likely message to
+                // already be on screen - and it used to be the one click that
+                // did nothing at all.
+                void store.jumpToMessage(buffer.id, message.id).then((there) => {
+                  if (there) store.setJumpTarget(message.id)
+                  else store.toast('info', 'That message could not be reached')
+                })
               }}
             >
               <span className="small">
