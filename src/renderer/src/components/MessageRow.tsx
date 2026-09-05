@@ -8,7 +8,7 @@ import { RichText } from '../lib/richtext'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { useSniffedTypes, sniffUrl } from '../lib/sniff'
 import type { ChatMessage } from '../state/store'
-import type { MessageBadge, MessageReader } from '../../../shared/wire'
+import type { MessageBadge, MessageComponent, MessageReader } from '../../../shared/wire'
 import {
   embedColor,
   extractCodeBlocks,
@@ -659,6 +659,18 @@ export function MessageRow({
             </div>
           )}
 
+          {/* What the message is for, on a great many bot messages: the
+              prose is a caption and the button is the thing. Above the
+              reactions because it belongs to the message rather than being a
+              response to it. */}
+          {(message.components?.length ?? 0) > 0 && (
+            <MessageControls
+              components={message.components!}
+              bufferId={bufferId}
+              messageId={message.id}
+            />
+          )}
+
           {(message.reactions?.length ?? 0) > 0 && (
             <div className="reaction-row">
               {message.reactions!.map((r) => (
@@ -824,4 +836,88 @@ function moderationEntries(
     out.push({ label: 'Unban sender', icon: 'lock_open', onClick: () => call('unbanMatrixMember') })
   }
   return out
+}
+
+/**
+ * The buttons and menus a service put on a message.
+ *
+ * Drawn in the rows they were laid out in, because that is information: a bot
+ * that put five buttons on one row and one underneath meant the last one to
+ * stand apart, and flattening them into a line loses which is which.
+ *
+ * A link button is a link and nothing else - it opens a page and tells nobody
+ * it was pressed - so it is drawn as one rather than sent back to the service.
+ */
+function MessageControls({
+  components,
+  bufferId,
+  messageId
+}: {
+  components: MessageComponent[]
+  bufferId: string
+  messageId: string
+}): JSX.Element {
+  const store = useStore()
+  const rows = new Map<number, MessageComponent[]>()
+  for (const c of components) {
+    const row = c.row ?? 0
+    rows.set(row, [...(rows.get(row) ?? []), c])
+  }
+
+  return (
+    <div className="component-rows">
+      {[...rows.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([row, controls]) => (
+          <div key={row} className="component-row">
+            {controls.map((c, i) =>
+              c.kind === 'select' ? (
+                <select
+                  key={c.customId ?? i}
+                  className="component-select"
+                  defaultValue=""
+                  disabled={c.disabled}
+                  onChange={(e) => {
+                    if (!c.customId || !e.target.value) return
+                    store.useComponent(bufferId, messageId, c.customId, true, [e.target.value])
+                  }}
+                >
+                  <option value="" disabled>
+                    {c.placeholder || 'Choose…'}
+                  </option>
+                  {(c.options ?? []).map((o) => (
+                    <option key={o.value} value={o.value} title={o.description}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              ) : c.style === 'link' && c.url ? (
+                <a
+                  key={c.url}
+                  className="component-button link"
+                  href={c.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {c.emoji && <ReactionEmoji emoji={c.emoji} />}
+                  <span className="ellipsis">{c.label || c.url}</span>
+                  <Icon name="open_in_new" size={13} />
+                </a>
+              ) : (
+                <button
+                  key={c.customId ?? i}
+                  type="button"
+                  className={classes('component-button', c.style)}
+                  disabled={c.disabled || !c.customId}
+                  onClick={() => c.customId && store.useComponent(bufferId, messageId, c.customId, false, [])}
+                >
+                  {c.emoji && <ReactionEmoji emoji={c.emoji} />}
+                  <span className="ellipsis">{c.label || 'Press'}</span>
+                </button>
+              )
+            )}
+          </div>
+        ))}
+    </div>
+  )
 }

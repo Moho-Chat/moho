@@ -767,6 +767,77 @@
 }
 
 /*
+ * The controls a service put on a message.
+ *
+ * Rows, because the layout is information: a bot that put five buttons on one
+ * row and one below meant the last to stand apart. Sized down from a real
+ * button - these sit inside a message, and a row of full-size buttons would
+ * outweigh what was said.
+ */
+.component-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-xs);
+}
+
+.component-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  align-items: center;
+}
+
+.component-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  max-width: 220px;
+  padding: 3px var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-highest);
+  color: var(--surface-text);
+  font-size: var(--font-size-small);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.component-button:hover:not(:disabled) {
+  border-color: var(--primary);
+}
+
+.component-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Discord's own four meanings, in this theme's colours rather than theirs. */
+.component-button.primary {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.component-button.success {
+  border-color: var(--success, var(--primary));
+}
+
+.component-button.danger {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.component-select {
+  max-width: 260px;
+  padding: 3px var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-highest);
+  color: var(--surface-text);
+  font-size: var(--font-size-small);
+}
+
+/*
  * The filter menu under a search box.
  *
  * A list of what can be asked for, in the words that ask for it: picking one

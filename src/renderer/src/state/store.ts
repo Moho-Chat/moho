@@ -1563,6 +1563,19 @@ export class ChatStore {
       .catch((e: Error) => this.toast('error', e.message))
   }
 
+  /**
+   * Presses a button on a message, or answers one of its menus.
+   *
+   * Nothing is echoed here. Whatever the bot does about it arrives the way
+   * anything else does - a message, or an edit to the one that was pressed -
+   * and guessing at it would mean showing an answer that never came.
+   */
+  useComponent(bufferId: string, messageId: string, customId: string, select: boolean, values: string[]): void {
+    void window.moho
+      .rpc('useDiscordComponent', { bufferId, messageId, customId, select, values })
+      .catch((e: Error) => this.toast('error', e.message))
+  }
+
   /** Follows a Kick channel, or stops. The header reads the answer back. */
   setFollowing(bufferId: string, follow: boolean): void {
     void window.moho
@@ -1577,6 +1590,15 @@ export class ChatStore {
         // An echo of our own send resolves the optimistic row in place; only
         // an unmatched message is a genuinely new one to append.
         if (!data.isOwn || !this.reconcileOwnEcho(data)) this.appendMessage(data.bufferId, data)
+        break
+
+      // Buttons and menus, which arrive a moment after the message they are
+      // on: the row has to exist before they can be written onto it.
+      case 'messageComponents':
+        this.mapMessage(data.bufferId as string, data.messageId as string, (m) => ({
+          ...m,
+          components: data.components as ChatMessage['components']
+        }))
         break
 
       case 'messageUpdated':

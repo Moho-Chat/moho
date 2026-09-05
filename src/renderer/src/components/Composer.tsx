@@ -69,6 +69,16 @@ function caretToEnd(el: HTMLElement): void {
  * encryption indicator. A fixed bar rather than part of the scrolling message
  * area, so arriving messages can never visually intrude under it.
  */
+/** One slash command a channel offers, as the daemon describes it. */
+interface DiscordCommand {
+  id: string
+  name: string
+  description?: string
+  application?: string
+  /** Discord's own description of the command, handed back to run it. */
+  command: { options?: { name: string; type?: number; required?: boolean }[] }
+}
+
 export function Composer(): JSX.Element | null {
   const store = useStore()
   const buffer = useActiveBuffer()
@@ -110,6 +120,15 @@ export function Composer(): JSX.Element | null {
   const cycle = useRef<{ last: Completion; attempt: number } | null>(null)
   /** The "@..." being typed, and which suggestion is selected. */
   const [mention, setMention] = useState<{ query: string; index: number } | null>(null)
+  /**
+   * The slash commands this channel offers, while one is being typed.
+   *
+   * Asked of the service rather than assembled here: these belong to whatever
+   * bots a server has installed, they differ per channel, and there is no
+   * list a client could hold. Only Discord has them.
+   */
+  const [commands, setCommands] = useState<DiscordCommand[]>([])
+  const [commandIndex, setCommandIndex] = useState(0)
   /** Discord's mentionable roles here; empty everywhere else. */
   const [roles, setRoles] = useState<{ id: string; name: string; colour?: string }[]>([])
   const emojiButtonRef = useRef<HTMLButtonElement>(null)
@@ -273,6 +292,75 @@ export function Composer(): JSX.Element | null {
     })
   }
 
+  // What has been typed as a command, if anything: a slash at the very start
+  // and the word after it. Not mid-message - "and/or" is not a command.
+  const typedCommand = service === 'discord' && /^\/\S*$/.test(text) ? text.slice(1) : null
+
+  useEffect(() => {
+    if (typedCommand === null) {
+      setCommands([])
+      return
+    }
+    const timer = setTimeout(() => {
+      void window.moho
+        .rpc<{ commands: DiscordCommand[] }>('listDiscordCommands', {
+          bufferId: buffer!.id,
+          query: typedCommand
+        })
+        .then((answer) => {
+          setCommands(answer.commands || [])
+          setCommandIndex(0)
+        })
+        .catch(() => {
+          // A channel with no bots answers nothing useful, and a list that
+          // could not be read is a list that stays closed rather than a
+          // complaint about typing a slash.
+          setCommands([])
+        })
+    }, 200)
+    return () => clearTimeout(timer)
+  }, [typedCommand, buffer?.id])
+
+  /**
+   * Runs the chosen command, with whatever was typed after it as its
+   * arguments, in the order the command declares them.
+   *
+   * Positional rather than named: Discord's own client draws a form built
+   * from the command's own description of itself, which is a great deal of
+   * interface for something people type. What somebody types after the name
+   * is what they mean by the first argument.
+   */
+  const runCommand = (command: DiscordCommand): void => {
+    const words = text.trim().split(/\s+/).slice(1)
+    const declared = (command.command?.options ?? []).filter((o) => (o.type ?? 3) <= 10)
+    const options = declared
+      .map((option, i) => ({ option, word: words[i] }))
+      .filter((pair) => pair.word !== undefined)
+      .map(({ option, word }) => ({
+        type: option.type ?? 3,
+        name: option.name,
+        // Numbers and booleans are sent as themselves; everything else, a
+        // service resolves for itself from what was written.
+        value:
+          option.type === 4 || option.type === 10
+            ? Number(word)
+            : option.type === 5
+              ? word.toLowerCase() === 'true'
+              : word
+      }))
+    const missing = declared.find((o, i) => o.required && words[i] === undefined)
+    if (missing) {
+      store.toast('info', `/${command.name} needs ${missing.name}`)
+      return
+    }
+    setText('')
+    if (inputRef.current) inputRef.current.textContent = ''
+    setCommands([])
+    void window.moho
+      .rpc('runDiscordCommand', { bufferId: buffer!.id, command: command.command, options })
+      .catch((e: Error) => store.toast('error', e.message))
+  }
+
   /** Reads the "@..." at the caret, so the list follows what is being typed. */
   const noteMention = (): void => {
     const selection = window.getSelection()
@@ -373,6 +461,35 @@ export function Composer(): JSX.Element | null {
           put it, and the only place it can go without covering what is being
           typed. Members first, then roles, then the service's whole-room
           words, because that is the order of how often each is meant. */}
+      {/* The commands a channel offers, in the same place and with the same
+          keys as the name picker above the box - two lists that behave
+          differently would be two things to learn. */}
+      {commands.length > 0 && (
+        <div className="mention-picker" role="listbox" aria-label="Run a command">
+          {commands.map((c, i) => (
+            <button
+              key={c.id}
+              type="button"
+              role="option"
+              aria-selected={i === commandIndex}
+              className={classes('mention-option', i === commandIndex && 'active')}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                runCommand(c)
+              }}
+              onMouseEnter={() => setCommandIndex(i)}
+            >
+              <span className="mention-glyph">
+                <Icon name="terminal" size={16} />
+              </span>
+              <span className="ellipsis">/{c.name}</span>
+              {c.description && <span className="small muted ellipsis mention-detail">{c.description}</span>}
+              {c.application && <span className="small muted">{c.application}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
       {mention && suggestions.length > 0 && (
         <div className="mention-picker" role="listbox" aria-label="Tag somebody">
           {suggestions.map((target, i) => (
@@ -490,6 +607,24 @@ export function Composer(): JSX.Element | null {
               // While the mention list is up it owns the keys somebody is
               // already using to drive it - a list you steer with the arrows
               // and take with Enter is one nobody has to be taught.
+              if (commands.length > 0) {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  const step = e.key === 'ArrowDown' ? 1 : commands.length - 1
+                  setCommandIndex((commandIndex + step) % commands.length)
+                  return
+                }
+                if (e.key === 'Enter' || e.key === 'Tab') {
+                  e.preventDefault()
+                  runCommand(commands[commandIndex])
+                  return
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setCommands([])
+                  return
+                }
+              }
               if (mention && suggestions.length > 0) {
                 if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                   e.preventDefault()

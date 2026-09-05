@@ -305,6 +305,24 @@ export interface Reaction {
   animated?: boolean
 }
 
+/** One control on a message: a button, or a menu to pick from. */
+export interface MessageComponent {
+  kind: 'button' | 'select'
+  /** What the service calls it, sent back when it is used. Links have none. */
+  customId?: string
+  label?: string
+  /** primary | secondary | success | danger | link */
+  style?: string
+  /** Where a link button goes, instead of telling anybody it was pressed. */
+  url?: string
+  disabled?: boolean
+  emoji?: string
+  options?: { value: string; label: string; description?: string }[]
+  placeholder?: string
+  /** Which row it was laid out on. */
+  row?: number
+}
+
 export interface Embed {
   title?: string
   description?: string
@@ -364,6 +382,14 @@ export interface Message {
    * the plain-text fallback and is what search reads.
    */
   html?: string
+  /**
+   * Buttons and menus under the message, where the service has them.
+   *
+   * Discord calls these components, and on a great many servers they are the
+   * message: a bot posts a line of prose and the thing it is for is the
+   * button below it.
+   */
+  components?: MessageComponent[]
   /** Matrix only - the sender's full MXID, for targeting moderation actions. */
   senderId?: string
   /**
