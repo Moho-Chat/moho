@@ -523,6 +523,12 @@ export interface DiscordFriend {
   globalName?: string | null
   avatarUrl?: string | null
   status?: string
+  /**
+   * Whether this is a friend, somebody asking to be one, or somebody being
+   * asked. The three are answered differently, and an incoming request that
+   * is not shown is one that cannot be answered.
+   */
+  kind?: 'friend' | 'incoming' | 'outgoing'
 }
 
 /** One emoji in a Matrix SAS comparison. */

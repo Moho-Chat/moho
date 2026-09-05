@@ -6,6 +6,7 @@ import type {
   CustomEmoji,
   IncomingCall,
   DccTransfer,
+  DiscordFriend,
   MatrixInvite,
   MatrixVerification,
   Member,
@@ -388,6 +389,8 @@ export interface ChatState {
   /** Which messages each Matrix room has pinned, newest last. */
   /** Which messages a conversation has pinned, where the service says so. */
   pinnedMessages: Record<string, string[]>
+  /** Friends and pending requests per Discord account, as they change. */
+  discordFriends: Record<string, DiscordFriend[]>
   /** Who each Matrix account has asked never to hear from. */
   matrixIgnored: Record<string, string[]>
   /** Rooms each Matrix account has been invited to and not answered. */
@@ -469,6 +472,7 @@ const INITIAL: ChatState = {
   hiddenPolls: [],
   reviewCard: null,
   pinnedMessages: {},
+  discordFriends: {},
   matrixIgnored: {},
   matrixInvites: {},
   profile: null,
@@ -1287,7 +1291,10 @@ export class ChatStore {
    * the kind of switch people press twice and then distrust. The status is
    * recorded either way and applied when the connection comes up.
    */
-  async setPresence(accountId: string, status: 'online' | 'idle' | 'offline'): Promise<void> {
+  async setPresence(
+    accountId: string,
+    status: 'online' | 'idle' | 'dnd' | 'invisible' | 'offline'
+  ): Promise<void> {
     if (status === 'offline') return this.setAccountConnected(accountId, false)
 
     const state = this.state.accounts.find((a) => a.id === accountId)?.state
@@ -1302,7 +1309,10 @@ export class ChatStore {
     await this.setAccountConnected(accountId, true)
   }
 
-  async setAccountStatus(accountId: string, status: 'online' | 'idle'): Promise<void> {
+  async setAccountStatus(
+    accountId: string,
+    status: 'online' | 'idle' | 'dnd' | 'invisible'
+  ): Promise<void> {
     try {
       await window.moho.rpc('setAccountStatus', { accountId, status })
       await this.refreshAccounts()
@@ -1590,6 +1600,18 @@ export class ChatStore {
         // An echo of our own send resolves the optimistic row in place; only
         // an unmatched message is a genuinely new one to append.
         if (!data.isOwn || !this.reconcileOwnEcho(data)) this.appendMessage(data.bufferId, data)
+        break
+
+      // Friends, and requests either way, as they change. Discord announces
+      // these rather than expecting a client to poll - which is what makes a
+      // request that arrives while the panel is open appear in it.
+      case 'discordFriends':
+        this.set({
+          discordFriends: {
+            ...this.state.discordFriends,
+            [data.accountId as string]: (data.friends as DiscordFriend[]) || []
+          }
+        })
         break
 
       // Buttons and menus, which arrive a moment after the message they are

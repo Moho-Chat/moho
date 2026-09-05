@@ -17,15 +17,20 @@ import type { Account } from '../../../shared/wire'
  * the plaque.
  */
 
-export type Status = 'online' | 'idle' | 'offline'
+export type Status = 'online' | 'idle' | 'dnd' | 'invisible' | 'offline'
 
 const STATUSES: { id: Status; label: string; glyph: string }[] = [
   { id: 'online', label: 'Online', glyph: 'circle' },
   { id: 'idle', label: 'Idle', glyph: 'dark_mode' },
+  { id: 'dnd', label: 'Do not disturb', glyph: 'do_not_disturb_on' },
+  // The one people want from a client that is not the service's own: still
+  // connected, still reading, counted as away by everybody looking. Not the
+  // same thing as the entry below, which actually disconnects.
+  { id: 'invisible', label: 'Invisible', glyph: 'visibility_off' },
   // Not a mood but an action: it signs the account out. Named for the state it
   // leaves you in rather than for the mechanism, since that is how it reads
   // beside the other two.
-  { id: 'offline', label: 'Offline', glyph: 'logout' }
+  { id: 'offline', label: 'Sign out', glyph: 'logout' }
 ]
 
 /**

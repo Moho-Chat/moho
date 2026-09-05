@@ -181,6 +181,36 @@ export function Composer(): JSX.Element | null {
     [mention, mentionTargets]
   )
 
+  // What has been typed as a command, if anything: a slash at the very start
+  // and the word after it. Not mid-message - "and/or" is not a command.
+  const typedCommand = service === 'discord' && /^\/\S*$/.test(text) ? text.slice(1) : null
+
+  useEffect(() => {
+    if (typedCommand === null || !buffer) {
+      setCommands([])
+      return
+    }
+    const timer = setTimeout(() => {
+      void window.moho
+        .rpc<{ commands: DiscordCommand[] }>('listDiscordCommands', {
+          bufferId: buffer.id,
+          query: typedCommand
+        })
+        .then((answer) => {
+          setCommands(answer.commands || [])
+          setCommandIndex(0)
+        })
+        .catch(() => {
+          // A channel with no bots answers nothing useful, and a list that
+          // could not be read is a list that stays closed rather than a
+          // complaint about typing a slash.
+          setCommands([])
+        })
+    }, 200)
+    return () => clearTimeout(timer)
+  }, [typedCommand, buffer?.id])
+
+
   if (!buffer) return null
 
   /**
@@ -291,35 +321,6 @@ export function Composer(): JSX.Element | null {
       if (path) stage(path)
     })
   }
-
-  // What has been typed as a command, if anything: a slash at the very start
-  // and the word after it. Not mid-message - "and/or" is not a command.
-  const typedCommand = service === 'discord' && /^\/\S*$/.test(text) ? text.slice(1) : null
-
-  useEffect(() => {
-    if (typedCommand === null) {
-      setCommands([])
-      return
-    }
-    const timer = setTimeout(() => {
-      void window.moho
-        .rpc<{ commands: DiscordCommand[] }>('listDiscordCommands', {
-          bufferId: buffer!.id,
-          query: typedCommand
-        })
-        .then((answer) => {
-          setCommands(answer.commands || [])
-          setCommandIndex(0)
-        })
-        .catch(() => {
-          // A channel with no bots answers nothing useful, and a list that
-          // could not be read is a list that stays closed rather than a
-          // complaint about typing a slash.
-          setCommands([])
-        })
-    }, 200)
-    return () => clearTimeout(timer)
-  }, [typedCommand, buffer?.id])
 
   /**
    * Runs the chosen command, with whatever was typed after it as its

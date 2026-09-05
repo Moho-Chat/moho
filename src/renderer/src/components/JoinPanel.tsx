@@ -664,7 +664,28 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
 
   useEffect(refreshFriends, [account.id])
 
-  const shown = onlineOnly ? friends.filter((f) => f.status && f.status !== 'offline') : friends
+  // And whatever has changed since this was asked. A request that arrives
+  // while this panel is open is exactly the one somebody is waiting for, so
+  // it appears rather than waiting for the refresh button.
+  const live = useChat((s) => s.discordFriends)[account.id]
+  useEffect(() => {
+    if (live) setFriends(live)
+  }, [live])
+
+  // Requests are their own list above the friends. They are not people you
+  // can message and they are the thing somebody opened this panel to deal
+  // with, so filtering them by whether they happen to be online - which is
+  // what the toggle below does - would hide the ones that matter most.
+  const waiting = friends.filter((f) => f.kind === 'incoming' || f.kind === 'outgoing')
+  const settled = friends.filter((f) => !f.kind || f.kind === 'friend')
+  const shown = onlineOnly ? settled.filter((f) => f.status && f.status !== 'offline') : settled
+
+  const answer = (userId: string, accept: boolean): void => {
+    void window.moho
+      .rpc('answerDiscordFriendRequest', { accountId: account.id, userId, accept })
+      .then(refreshFriends)
+      .catch((e: Error) => store.toast('error', e.message))
+  }
 
   return (
     <div className="panel join-panel">
@@ -702,6 +723,37 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
           Add a friend
         </button>
       </div>
+
+      {waiting.length > 0 && (
+        <>
+          <div className="join-friends-header">
+            <span className="setting-text">Requests</span>
+          </div>
+          {waiting.map((f) => (
+            <div key={f.userId} className="friend-row request">
+              {f.avatarUrl ? (
+                <img className="friend-avatar" src={resolveMediaUrl(f.avatarUrl)} alt="" />
+              ) : (
+                <span className="friend-avatar placeholder">{(f.globalName || f.username).slice(0, 1)}</span>
+              )}
+              <span className="ellipsis">{f.globalName || f.username}</span>
+              <span className="small muted">
+                {f.kind === 'incoming' ? 'wants to be friends' : 'asked, waiting'}
+              </span>
+              {f.kind === 'incoming' && (
+                <button type="button" className="button" onClick={() => answer(f.userId, true)}>
+                  Accept
+                </button>
+              )}
+              {/* Refusing one and taking back your own are the same call, and
+                  read differently enough to be worth different words. */}
+              <button type="button" className="button subtle" onClick={() => answer(f.userId, false)}>
+                {f.kind === 'incoming' ? 'Decline' : 'Cancel'}
+              </button>
+            </div>
+          ))}
+        </>
+      )}
 
       <div className="join-friends-header">
         <span className="setting-text">Friends</span>

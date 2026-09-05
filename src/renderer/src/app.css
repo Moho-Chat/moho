@@ -2893,6 +2893,23 @@ img.smilie {
   background: var(--surface-hover);
 }
 
+/* A request is a row you answer rather than open, so its buttons sit in it. */
+.friend-row.request {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  cursor: default;
+}
+
+.friend-row.request .button {
+  flex: none;
+  margin-left: auto;
+}
+
+.friend-row.request .button + .button {
+  margin-left: 0;
+}
+
 .friend-row .ellipsis:first-of-type {
   flex: 1;
 }
