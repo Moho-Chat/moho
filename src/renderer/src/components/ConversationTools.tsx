@@ -594,9 +594,14 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
       {/* What this channel has asked before now. Two buttons rather than one
           list, because a poll and a prediction are different questions -
           which one is worth going back to is not a filter you want to apply
-          after opening a list. */}
-      <CardHistory buffer={buffer} kind="poll" icon="help" label="Past polls" />
-      <CardHistory buffer={buffer} kind="prediction" icon="casino" label="Past predictions" />
+          after opening a list.
+
+          Each appears only where the service has the thing: Matrix rooms
+          have polls and no predictions, IRC has neither, and an icon that
+          opens an empty list on a service that could never fill it is an
+          icon that says the feature is missing rather than absent. */}
+      {(isKick || isMatrix) && <CardHistory buffer={buffer} kind="poll" icon="help" label="Past polls" />}
+      {isKick && <CardHistory buffer={buffer} kind="prediction" icon="casino" label="Past predictions" />}
 
       {/* An icon until it is being used. A box wide enough to type into is
           the single widest thing in this row, and a header that always
