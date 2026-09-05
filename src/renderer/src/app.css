@@ -3754,6 +3754,16 @@ video.lightbox-media {
   color: var(--primary);
 }
 
+/* The one badge that is a warning rather than a title: this message came
+   from a device nobody has vouched for. Coloured like an error and left
+   uncoloured nowhere else, because a doubt about who sent something is the
+   only thing here worth interrupting a name to say. */
+.sender-badge.unverified {
+  background: transparent;
+  border: 1px solid var(--error);
+  color: var(--error);
+}
+
 .channel-modes {
   padding: 1px var(--spacing-xs);
   border-radius: var(--corner-radius-small);

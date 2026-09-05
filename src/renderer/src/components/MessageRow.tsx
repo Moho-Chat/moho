@@ -54,7 +54,11 @@ function badgeLabel(badge: MessageBadge): string {
     og: 'OG',
     vip: 'VIP',
     staff: 'STAFF',
-    sub_gifter: 'GIFT'
+    sub_gifter: 'GIFT',
+    // Not a title like the rest of these - a warning that whoever sent this
+    // was using a device nobody has vouched for. Without its own short form
+    // the fallback below would abbreviate the explanation into "SEN".
+    unverified: '⚠'
   }
   return short[badge.type] ?? badge.text.slice(0, 3).toUpperCase()
 }

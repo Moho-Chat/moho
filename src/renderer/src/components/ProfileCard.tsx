@@ -100,6 +100,30 @@ export function ProfileCard(): JSX.Element | null {
           </div>
         )}
 
+        {/* Vouching for somebody, which is a different thing from checking
+            one of your own sessions: it says this really is them, to every
+            client of yours and to anybody who trusts you. Matrix only,
+            because it is the only protocol here with an identity to sign. */}
+        {profile.service === 'matrix' && profile.id && !profile.pending && (
+          <div className="button-row profile-actions">
+            <button
+              type="button"
+              className="button subtle"
+              onClick={() => {
+                void window.moho
+                  .rpc('startMatrixUserVerification', {
+                    accountId: profile.accountId,
+                    userId: profile.id
+                  })
+                  .then(() => store.closeProfile())
+                  .catch((e: Error) => store.toast('error', e.message))
+              }}
+            >
+              <Icon name="person_check" size={15} /> Verify {profile.name}
+            </button>
+          </div>
+        )}
+
         {profile.pending && (
           <p className="small muted profile-waiting">
             <span className="spinner" /> Asking {profile.service}…
