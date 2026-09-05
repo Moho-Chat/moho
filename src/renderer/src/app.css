@@ -100,6 +100,15 @@
 .main-column {
   flex: 1;
   min-width: 0;
+  /* A flex item will not shrink below its own content unless it is told it
+     may, and a column whose content is an ever-growing list of messages is
+     exactly where that bites: without this the column grows past the window
+     and the conversation carries on underneath the composer, which is what
+     "new messages appear below the input box" is.
+
+     The thread pane beside it had this from the start, which is how the two
+     came to behave differently on the same content. */
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -170,6 +179,10 @@
 
 .bufferlist-scroll {
   flex: 1;
+  /* The channel list scrolls for the same reason and by the same rule as
+     the message list: a flex child sizes to its content unless told it may
+     be smaller. */
+  min-height: 0;
   overflow-y: auto;
   padding: var(--spacing-xs) 0;
 }
@@ -700,12 +713,20 @@
   position: relative;
   flex: 1;
   min-width: 0;
+  /* Same rule, one level down: this holds the scroller, so it has to be
+     allowed to be smaller than the messages inside it. */
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
 .messagelist-scroll {
   flex: 1;
+  /* And the scroller itself, which is the canonical case: `overflow-y: auto`
+     only scrolls what it is not allowed to grow past. Without this the list
+     sizes itself to its content and simply never scrolls - every kind of
+     conversation, on every protocol, since they all draw through here. */
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: var(--spacing-s) 0 var(--spacing-m);
@@ -1173,6 +1194,8 @@ img.composer-emoji {
 
 .nicklist-scroll {
   flex: 1;
+  /* Four hundred members is taller than any window; the same rule. */
+  min-height: 0;
   overflow-y: auto;
   padding-bottom: var(--spacing-s);
 }
@@ -1230,6 +1253,9 @@ img.composer-emoji {
 
 .panel {
   flex: 1;
+  /* Side panels hold arbitrarily long content and must scroll rather than
+     grow the column they sit in. */
+  min-height: 0;
   overflow-y: auto;
   padding: var(--spacing-m);
 }
@@ -1722,6 +1748,9 @@ img.composer-emoji {
 .mentions-page {
   flex: 1;
   min-width: 0;
+  /* Same rule as the message list it replaces: a scroller is only a scroller
+     while it is allowed to be shorter than what is in it. */
+  min-height: 0;
   overflow-y: auto;
   padding: var(--spacing-s) 0;
 }
@@ -2378,6 +2407,8 @@ img.smilie {
 .settings-content {
   flex: 1;
   min-width: 0;
+  /* Settings is the longest column in the app, and the same rule applies. */
+  min-height: 0;
   overflow-y: auto;
   padding: var(--spacing-m) var(--spacing-l);
 }
