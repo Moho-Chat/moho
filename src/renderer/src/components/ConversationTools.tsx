@@ -4,10 +4,20 @@ import { AddToConversation } from './AddToConversation'
 import { HeaderPopover } from './HeaderPopover'
 import { useChat, useStore } from '../state/hooks'
 import { bufferDisplayName, classes, formatFullTime } from '../lib/util'
+import { hasQuery, parseSearch, suggestions } from '../lib/searchfilters'
 import type { BufferEntry, LiveCard } from '../state/store'
 import type { Message } from '../../../shared/wire'
 
 /** What the homeserver answered, alongside this window's own results. */
+/** What Discord's own search hands back. */
+interface DiscordSearch {
+  results: Message[]
+  total: number
+  /** The server is still being indexed, so an empty answer means "not yet". */
+  indexing: boolean
+  channelNames: Record<string, string>
+}
+
 interface MatrixSearch {
   results: Message[]
   /** Names for the rooms hits came from, so a cross-room result reads. */
@@ -380,10 +390,19 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   const [scope, setScope] = useState<'room' | 'account'>('room')
   const [roomNames, setRoomNames] = useState<Record<string, string>>({})
   const [encrypted, setEncrypted] = useState(false)
+  /** Discord is still building this server's index and has nothing yet. */
+  const [indexing, setIndexing] = useState(false)
+  /** How many the server found, which is usually far more than it sent. */
+  const [total, setTotal] = useState<number | null>(null)
   const box = useRef<HTMLDivElement>(null)
   const searchButton = useRef<HTMLSpanElement>(null)
+  const searchInput = useRef<HTMLInputElement>(null)
 
   const isDiscord = buffer.accountId.startsWith('discord:')
+  // What is still worth offering, given what has been typed so far. Empty
+  // once a filter's value is being typed, since the menu has nothing to add
+  // to a name half written.
+  const filterMenu = suggestions(query)
   const isMatrix = buffer.accountId.startsWith('matrix:')
   const stream = useChat((s) => s.kickStreams)[buffer.id]
   const isDm = buffer.kind === 'dm'
@@ -395,22 +414,57 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   // a word on the way to typing it; a short pause after typing stops is both
   // cheaper and what the results are actually wanted for.
   useEffect(() => {
-    const text = query.trim()
-    if (!text) {
+    const parsed = parseSearch(query)
+    if (!hasQuery(parsed)) {
       setResults(null)
       setRoomNames({})
       setEncrypted(false)
+      setIndexing(false)
+      setTotal(null)
       return
     }
+    const text = parsed.text.trim()
     setSearching(true)
     const timer = setTimeout(() => {
       // Local first, and shown as soon as it answers: this window's own copy
       // is instant and offline, and waiting for a round trip before showing
       // any of it would make every search feel like the network.
-      void window.moho
-        .rpc<Message[]>('searchMessages', { bufferId: buffer.id, query: text, limit: 50 })
+      //
+      // Filters are Discord's to apply, so a filtered search skips the local
+      // pass rather than showing results that ignore half of what was asked.
+      const filtered = isDiscord && !!(parsed.from || parsed.in || parsed.has || parsed.mentions || parsed.before || parsed.after)
+      void (filtered ? Promise.resolve([] as Message[]) : window.moho.rpc<Message[]>('searchMessages', { bufferId: buffer.id, query: text, limit: 50 }))
         .then((local) => {
           setResults(local)
+          if (isDiscord) {
+            // The server's own index, which covers every channel in the
+            // guild - including the ones this window has never opened.
+            return window.moho
+              .rpc<DiscordSearch>('searchDiscordMessages', {
+                bufferId: buffer.id,
+                query: text,
+                ...(parsed.from ? { from: parsed.from } : {}),
+                ...(parsed.in ? { in: parsed.in } : {}),
+                ...(parsed.has ? { has: parsed.has } : {}),
+                ...(parsed.mentions ? { mentions: parsed.mentions } : {}),
+                ...(parsed.before ? { before: parsed.before } : {}),
+                ...(parsed.after ? { after: parsed.after } : {})
+              })
+              .then((answer) => {
+                setRoomNames(answer.channelNames || {})
+                setIndexing(!!answer.indexing)
+                setTotal(answer.total)
+                const seen = new Set(local.map((m) => m.id))
+                setResults([...local, ...answer.results.filter((m) => !seen.has(m.id))])
+              })
+              .catch((e: Error) => {
+                // A filter that could not be resolved is the common one here,
+                // and it names what went wrong - worth showing rather than
+                // leaving a list that quietly ignored it.
+                store.toast('error', e.message)
+                if (filtered) setResults([])
+              })
+          }
           if (!isMatrix) return
           // Then the homeserver, which has what this client never downloaded
           // - including everything said before this account joined.
@@ -440,7 +494,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
         .finally(() => setSearching(false))
     }, 250)
     return () => clearTimeout(timer)
-  }, [query, buffer.id, store, isMatrix, scope])
+  }, [query, buffer.id, store, isMatrix, isDiscord, scope])
 
   // A viewer count that never moves is worse than none, and Kick pushes a
   // stream starting and stopping but never the count. The followed channels
@@ -634,6 +688,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
             <Icon name="search" size={16} />
             <input
               autoFocus
+              ref={searchInput}
               type="search"
               value={query}
               placeholder={`Search ${buffer.name}`}
@@ -652,6 +707,42 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
               }}
             />
           </div>
+
+          {/* The filters, written into the box rather than applied from the
+              menu. Discord's own search works this way and its users type
+              `from:` from memory; this is for everybody else, and it teaches
+              the words by leaving them in the box.
+
+              Only where a server will honour them: local search matches text
+              and nothing else, so offering "has: file" on IRC would be
+              offering a filter that quietly does nothing. */}
+          {isDiscord && filterMenu.length > 0 && (
+            <div className="search-filters">
+              <div className="small muted">Filters</div>
+              {filterMenu.map((f) => (
+                <button
+                  key={f.key}
+                  type="button"
+                  className="search-filter"
+                  onClick={() => {
+                    // Replaces the half-typed name rather than appending to
+                    // it, so picking "from" after typing "fr" does not leave
+                    // "fr from:".
+                    const words = query.split(/\s+/)
+                    words[words.length - 1] = `${f.key}:`
+                    setQuery(words.join(' '))
+                    searchInput.current?.focus()
+                  }}
+                >
+                  <Icon name={f.icon} size={16} />
+                  <span className="search-filter-text">
+                    <span>{f.label}</span>
+                    <span className="small muted">{f.hint}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Where to look. Only on Matrix, because it is the only protocol
               here whose server will answer the question - and the room is
@@ -685,6 +776,16 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
             </div>
           )}
 
+          {/* Discord answers a search of a server it has not finished
+              indexing with an empty result and a note that it is working;
+              silence there reads as "nothing was found", which is worse than
+              a wait nobody was told about. */}
+          {indexing && (
+            <div className="small muted">
+              Discord is still indexing this server. Try again in a minute.
+            </div>
+          )}
+
           {results && (
             <div className="search-results">
               <div className="search-results-head small muted">
@@ -692,7 +793,12 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
                   ? 'Searching…'
                   : jumping
                     ? 'Loading older messages…'
-                    : `${results.length} ${results.length === 1 ? 'result' : 'results'}`}
+                    : total !== null && total > results.length
+                      ? // What the server found, not what it sent: a search
+                        // answering "25 results" when there are thousands is
+                        // a wrong answer to "how much is there".
+                        `${results.length} of ${total.toLocaleString()} results`
+                      : `${results.length} ${results.length === 1 ? 'result' : 'results'}`}
               </div>
               {results.map((m) => (
                 <button key={m.id} type="button" className="search-result" onClick={() => void jumpToResult(m)}>

@@ -767,6 +767,44 @@
 }
 
 /*
+ * The filter menu under a search box.
+ *
+ * A list of what can be asked for, in the words that ask for it: picking one
+ * writes the token into the box rather than applying a hidden setting, so the
+ * next search is typed straight out and the menu becomes unnecessary.
+ */
+.search-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: var(--spacing-xs);
+  border-bottom: 1px solid var(--outline-low);
+}
+
+.search-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: none;
+  border-radius: var(--corner-radius-small);
+  background: none;
+  color: var(--surface-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-filter:hover {
+  background: var(--surface-container-highest);
+}
+
+.search-filter-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/*
  * A conversation that is missing its middle, said in the log itself.
  *
  * A line rather than a banner, and worded rather than drawn: the reader has
