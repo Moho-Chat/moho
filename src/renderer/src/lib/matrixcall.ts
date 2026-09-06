@@ -32,6 +32,14 @@ export interface MatrixCallEvent {
 export interface CallMember {
   user_id: string
   membership: { device_id?: string; expires_ts?: number }
+  /**
+   * What they can be reached on: `livekit` for a call held on a media
+   * server, `moho.mesh` for one held between the people in it. A call with a
+   * media server in it is one moho cannot join yet - the daemon refuses it
+   * with an explanation rather than letting somebody sit silently in a
+   * participant list.
+   */
+  transports?: string[]
 }
 
 /** The key that names one participant: a person on one device. */
