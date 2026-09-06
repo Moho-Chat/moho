@@ -40,6 +40,7 @@ export function Popout({ bufferId }: { bufferId: string }): JSX.Element {
   const [booted, setBooted] = useState(false)
   const buffer = useActiveBuffer()
   const linkUp = useChat((s) => s.linkUp)
+  const activeCall = useChat((s) => s.activeCall)
   // Folded by default: a popout is a narrow window opened to read one
   // conversation, and a member list would take a third of it before anything
   // has been read.
@@ -135,7 +136,9 @@ export function Popout({ bufferId }: { bufferId: string }): JSX.Element {
           answered here is answered here. */}
       <IncomingMatrixCall />
       <ScreenPicker />
-      <CallStage />
+      {/* A popped-out conversation is one conversation, so a call that is not
+          this one is in the corner and this one is above the log. */}
+      {activeCall && activeCall.bufferId !== bufferId && <CallStage mode="pip" />}
       <Toasts />
     </div>
   )

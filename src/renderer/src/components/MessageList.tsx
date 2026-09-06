@@ -3,6 +3,7 @@ import { Icon } from './Icon'
 import { MessageRow, type MessageMode } from './MessageRow'
 import { LiveCards } from './LiveCards'
 import { CallView } from './CallView'
+import { CallStage } from './CallStage'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, isChatKind } from '../lib/util'
 import type { ChannelIndex } from '../lib/format'
@@ -115,6 +116,7 @@ export function MessageList(): JSX.Element {
   const store = useStore()
   const bufferId = useChat((s) => s.activeBufferId)
   const messagesByBuffer = useChat((s) => s.messagesByBuffer)
+  const activeCall = useChat((s) => s.activeCall)
   const loadingMore = useChat((s) => s.loadingMore)
   const loadingNewer = useChat((s) => s.loadingNewer)
   const historyGapAfter = useChat((s) => s.historyGapAfter)
@@ -448,6 +450,10 @@ export function MessageList(): JSX.Element {
           useful while it can be seen, and a panel that scrolled away with
           the backlog would be gone the moment anybody read anything. */}
       <CallView bufferId={bufferId} />
+      {/* A call with pictures, in the same place as the one without: a call
+          and the conversation it is in are the same conversation. It moves to
+          a corner of its own only when you walk away from it - see App. */}
+      {activeCall?.bufferId === bufferId && <CallStage mode="inline" />}
       {/* Over the log rather than in it: a poll is one question being
           answered while the chat keeps moving underneath, and a line in the
           log would scroll away mid-vote. */}

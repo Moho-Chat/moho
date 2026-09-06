@@ -37,10 +37,17 @@ export default function App(): JSX.Element {
   const accounts = useChat((s) => s.accounts)
   const activePanel = useChat((s) => s.activePanel)
   const activeBufferId = useChat((s) => s.activeBufferId)
+  // A call whose conversation is not the one on screen. The stage lives in
+  // the conversation; this is the corner it retreats to.
+  const activeCall = useChat((s) => s.activeCall)
   const activeGroupId = useChat((s) => s.activeGroupId)
   const joinPanelAccountId = useChat((s) => s.joinPanelAccountId)
   const buffer = useActiveBuffer()
   const joinAccount = accounts.find((a) => a.id === joinPanelAccountId)
+  // Shown in the corner only when the conversation it belongs to is not the
+  // one being read - and not while a panel is covering the log either, since
+  // that is walking away from it too.
+  const callElsewhere = !!activeCall && (activeCall.bufferId !== activeBufferId || activePanel !== '')
 
   const [sidebarFolded, setSidebarFolded] = usePref<boolean>('ui.sidebarFolded', false)
   const [userListFolded, setUserListFolded] = usePref<boolean>('ui.userListFolded', false)
@@ -208,11 +215,11 @@ export default function App(): JSX.Element {
           than by the daemon - the media is the window's. */}
       <IncomingMatrixCall />
       <ScreenPicker />
-      {/* The call this window is holding, wherever the window has wandered
-          to. It does not live under the conversation: walking away from a
-          conversation does not hang up, and a call that vanished when you
-          looked at something else would be a call you could not hang up. */}
-      <CallStage />
+      {/* Where a call goes when you walk away from it: a corner of its own,
+          the way a phone keeps the picture in the corner. In the conversation
+          it belongs to it sits above the log instead - see MessageList - so
+          the two are never both on screen. */}
+      {callElsewhere && <CallStage mode="pip" />}
       {/* Over everything for the same reason: a file is offered while you are
           reading something else, and often in a conversation you are not. */}
       <TransferPanel />

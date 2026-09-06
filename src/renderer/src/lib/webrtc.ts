@@ -115,12 +115,34 @@ export class Call {
     }
   }
 
+  /**
+   * What to show this end of the call.
+   *
+   * The screen when one is being shared, the camera otherwise: every client
+   * previews what it is sending, and a black square while sharing is the one
+   * moment somebody most wants to check what the room can see.
+   */
   get stream(): MediaStream | null {
+    if (this.screen) {
+      const preview = new MediaStream([this.screen])
+      return preview
+    }
     return this.local
   }
 
   get remoteStream(): MediaStream {
     return this.remote
+  }
+
+  /**
+   * This end's microphone, separate from what the tile shows.
+   *
+   * `stream` above answers "what should be drawn", which is the screen while
+   * one is being shared. Measuring whether somebody is talking has to follow
+   * the microphone wherever the picture goes.
+   */
+  get localAudio(): MediaStream | null {
+    return this.local
   }
 
   get sharingScreen(): boolean {

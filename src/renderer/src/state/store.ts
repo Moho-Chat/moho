@@ -28,6 +28,7 @@ import { ircNetworkFor } from '../lib/networks'
 import { parseDeepLink, type IrcLink } from '../../../shared/deeplink'
 import { MatrixCalls, type MatrixCallEvent, type RingingCall } from '../lib/matrixcall'
 import type { CallPhase } from '../lib/webrtc'
+import { Levels } from '../lib/levels'
 import type { PopoutState } from '../../../shared/ipc'
 
 /**
@@ -47,6 +48,19 @@ export interface BufferEntry extends WireBuffer {
 }
 
 /** A wire Message plus local optimistic-send bookkeeping. */
+/** One person in a call, as the call view draws them. */
+export interface CallTile {
+  id: string
+  label: string
+  stream: MediaStream | null
+  /** Whether there is a live picture, as opposed to a name and a microphone. */
+  hasVideo: boolean
+  /** This end, which is drawn silent and is the one that can be muted here. */
+  self?: boolean
+  muted?: boolean
+  speaking?: boolean
+}
+
 export interface ChatMessage extends Message {
   /** Set on a locally-echoed message that nobilis hasn't confirmed yet. */
   pending?: boolean
@@ -401,6 +415,8 @@ export interface ChatState {
    * the panel that shows it has to be able to find it again.
    */
   ringingCall: RingingCall | null
+  /** The call put away without being hung up. */
+  callMinimized: boolean
   /** The screens and windows on offer, while somebody is choosing one. */
   screenSources: { id: string; name: string; thumbnail: string }[] | null
   activeCall: {
@@ -495,6 +511,7 @@ const INITIAL: ChatState = {
   pinnedMessages: {},
   discordFriends: {},
   ringingCall: null,
+  callMinimized: false,
   screenSources: null,
   activeCall: null,
   matrixIgnored: {},
@@ -704,6 +721,8 @@ export class ChatStore {
   /** clientId -> the optimistic message awaiting its real echo. */
   private pendingSends = new Map<string, { bufferId: string; ts: number }>()
   private toastSeq = 0
+  /** Who is talking in a call this window is holding. */
+  private levels = new Levels()
   /**
    * The Matrix call engine, one per window.
    *
@@ -741,6 +760,7 @@ export class ChatStore {
         return
       }
       this.set({
+        callMinimized: this.state.activeCall ? this.state.callMinimized : false,
         activeCall: {
           accountId: call.accountId,
           bufferId: call.bufferId,
@@ -1680,6 +1700,11 @@ export class ChatStore {
     this.matrixCalls.decline()
   }
 
+  /** Puts the call away, or brings it back. It keeps running either way. */
+  setCallMinimized(minimized: boolean): void {
+    this.set({ callMinimized: minimized })
+  }
+
   hangUpMatrixCall(): void {
     this.matrixCalls.end()
   }
@@ -1710,10 +1735,55 @@ export class ChatStore {
     resolve?.(source)
   }
 
-  /** The two streams a call view draws: ours and theirs. */
-  callStreams(): { local: MediaStream | null; remote: MediaStream | null } {
+  /**
+   * Everybody in the call, one entry per tile.
+   *
+   * A list rather than "ours and theirs", because a call is not always two
+   * people: a 1:1 Matrix call is the two below, and a group call - when there
+   * is one - is the same list, longer. The view draws whatever it is given
+   * and does not need to learn anything new to draw five.
+   */
+  callTiles(): CallTile[] {
     const call = this.matrixCalls.current
-    return { local: call?.call.stream ?? null, remote: call?.remote ?? null }
+    if (!call) {
+      this.levels.dispose()
+      return []
+    }
+    const active = this.state.activeCall
+    const live = (stream: MediaStream | null): boolean =>
+      !!stream?.getVideoTracks().some((t) => t.readyState === 'live' && !t.muted)
+    const ours = call.call.stream
+    const theirs = call.remote
+    const them = this.state.buffers.find((b) => b.id === call.bufferId)?.name
+    // Who is talking, measured here because the audio is here - the daemon
+    // does this for a Discord call because it holds that connection.
+    this.levels.watch('self', call.call.localAudio)
+    this.levels.watch('them', theirs)
+    const tiles: CallTile[] = [
+      {
+        id: 'self',
+        label: this.ownNameIn(call.bufferId) || 'You',
+        stream: ours,
+        hasVideo: live(ours),
+        self: true,
+        muted: !!active?.muted,
+        // A muted microphone is not a quiet one, and lighting it up would be
+        // telling somebody they are being heard when they are not.
+        speaking: !active?.muted && this.levels.speaking('self')
+      }
+    ]
+    // Only once there is somebody there: a tile for a person who has not
+    // answered is a picture of nobody.
+    if (theirs) {
+      tiles.push({
+        id: 'them',
+        label: them ? bufferDisplayName(them) : 'Them',
+        stream: theirs,
+        hasVideo: live(theirs),
+        speaking: this.levels.speaking('them')
+      })
+    }
+    return tiles
   }
 
   toggleCallMute(): void {

@@ -852,65 +852,178 @@
  * Sized so it can be looked at without swallowing the log: a call is watched
  * and the conversation is read, and the two happen at once.
  */
+/*
+ * In the conversation it belongs to, above the log - the same place the voice
+ * call view sits, because a call and the conversation it is in are the same
+ * conversation and people type into a channel while talking in it.
+ */
 .call-stage {
-  /* Over everything, because a call is not part of the conversation it
-     started in: it follows the window rather than the buffer, and has to be
-     hangable-up from wherever somebody has wandered to. */
-  position: absolute;
-  right: var(--spacing-m);
-  bottom: 90px;
-  z-index: 40;
-  width: 380px;
   display: flex;
   flex-direction: column;
+  flex: none;
   gap: var(--spacing-xs);
+  margin: var(--spacing-xs) var(--spacing-m) 0;
   padding: var(--spacing-xs);
   border: 1px solid var(--outline-medium);
   border-radius: var(--corner-radius);
   background: var(--surface-container);
 }
 
-.call-stage-video {
+/*
+ * And in a corner of its own once you walk away from that conversation, the
+ * way a phone keeps the picture in the corner rather than ending the call.
+ */
+.call-stage.pip {
+  position: absolute;
+  right: var(--spacing-m);
+  bottom: 90px;
+  z-index: 40;
+  width: 340px;
+  margin: 0;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+/*
+ * The corner view's own title bar: who is in the call, and the control that
+ * puts it away.
+ *
+ * Only in the corner, where the panel is a window in all but name and wants a
+ * window's furniture. In the conversation the tiles carry the names
+ * themselves and a second list would be the same thing twice.
+ */
+.call-stage-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 0 2px 2px;
+  color: var(--surface-variant-text);
+}
+
+.call-stage-title .small {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Put away: one line that says a call is still running, and offers it back. */
+.call-stage.minimized {
+  padding: 2px var(--spacing-xs);
+}
+
+.call-stage.minimized.pip {
+  width: auto;
+  max-width: 320px;
+}
+
+/*
+ * One tile per person, in as square a grid as the number allows.
+ *
+ * The grid grows downwards rather than squeezing: five people in a row would
+ * be five slivers, and the whole point of a tile is that a face is legible in
+ * it. Bounded in height so a call never takes the conversation over.
+ */
+.video-grid {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  /* Centred, because the tiles are sized to fit rather than stretched: a row
+     of three in a wide window leaves room at the sides, and that room belongs
+     equally on both. */
+  justify-content: center;
+  overflow: hidden;
+}
+
+/*
+ * Landscape, like every camera and every other client: a face fits in a
+ * sixteen-by-nine tile the way it does not fit in a tall one, and the whole
+ * row reads as one thing.
+ */
+.video-tile {
   position: relative;
-  height: 214px;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  min-width: 0;
+  /* It is a button now - pressing a face is how somebody is singled out - so
+     the button's own chrome has to go before it can look like a picture. */
+  padding: 0;
+  border: none;
   border-radius: var(--corner-radius-small);
   overflow: hidden;
-  background: #000;
+  cursor: pointer;
+  background: var(--surface-container-highest);
 }
 
-.call-remote {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-/* Nothing to look at yet, so the element is not what is on screen. */
-.call-remote.audio-only {
-  opacity: 0;
-}
-
-.call-stage-placeholder {
-  position: absolute;
-  inset: 0;
+/*
+ * One person, large, with everybody else in a row underneath.
+ *
+ * What a grid cannot say: that this is the person being watched. Discord and
+ * every other client draw it the same way, and the strip is what keeps it a
+ * call rather than a broadcast - the others are still there, still lit when
+ * they talk, and still one press away from being the large one.
+ */
+.video-stage {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: var(--spacing-s);
+  gap: 6px;
+  overflow: hidden;
 }
 
-/* Yourself, small and out of the way: it is there to check you are in frame,
-   not to be watched. */
-.call-local {
-  position: absolute;
-  right: var(--spacing-s);
-  bottom: var(--spacing-s);
-  width: 140px;
-  max-height: 100px;
-  border-radius: var(--corner-radius-small);
-  border: 1px solid var(--outline-medium);
-  background: #000;
+.video-strip {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  max-width: 100%;
+  /* More people than fit: scrolled rather than shrunk to nothing, since a
+     thumbnail below a certain size stops being a person. */
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.video-strip .video-tile {
+  flex: none;
+  height: 100%;
+}
+
+/* Who is talking, in the same green the voice call view uses - said with a
+   ring rather than by moving anybody, since a grid that reordered itself
+   every time somebody spoke would be unreadable. */
+.video-tile.speaking {
+  outline: 3px solid var(--success);
+  outline-offset: -3px;
+}
+
+.video-tile-picture {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
+}
+
+/* Nothing to look at: the name and a face, which is what a call without
+   cameras actually is. */
+.video-tile-picture.audio-only {
+  opacity: 0;
+}
+
+.video-tile-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.video-tile-name {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  max-width: calc(100% - 8px);
+  padding: 1px 6px;
+  border-radius: var(--corner-radius-small);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
 }
 
 .call-stage-controls {
@@ -923,6 +1036,10 @@
 .call-stage-controls .small {
   margin-right: auto;
 }
+
+/* Smaller in the corner than in the conversation, and shorter, so a call
+   somebody has walked away from stays out of the way. */
+
 
 /*
  * Which window to show a room.
