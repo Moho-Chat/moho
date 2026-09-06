@@ -452,6 +452,8 @@ export interface Member {
   prefix?: string
   away?: boolean
   userId?: string
+  /** The roles this person holds here, by name. Discord only. */
+  roles?: string[]
   powerLevel?: number
   /**
    * The protocol's own presence word - "online", "idle", "dnd", "offline".

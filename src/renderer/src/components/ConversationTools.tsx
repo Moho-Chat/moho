@@ -9,6 +9,14 @@ import type { BufferEntry, LiveCard } from '../state/store'
 import type { Message } from '../../../shared/wire'
 
 /** What the homeserver answered, alongside this window's own results. */
+/** One thread or forum post, as the daemon lists it. */
+interface DiscordThread {
+  id: string
+  name: string
+  archived?: boolean
+  messageCount?: number
+}
+
 /** What Discord's own search hands back. */
 interface DiscordSearch {
   results: Message[]
@@ -254,6 +262,85 @@ interface ThreadSummary {
   lastFrom?: string | null
   lastBody?: string | null
   lastTs?: number | null
+}
+
+/**
+ * The threads a Discord channel is holding, and the posts in a forum.
+ *
+ * Asked for when the button is pressed rather than kept: a guild can be
+ * holding hundreds, and which of them somebody wants is a question they are
+ * about to answer by pressing this.
+ *
+ * Opening one joins it, because Discord will not send a thread's messages to
+ * somebody who is not in it - which is also how reading one works in its own
+ * client, and is why this is a call rather than a lookup.
+ */
+function DiscordThreads({ buffer }: { buffer: BufferEntry }): JSX.Element {
+  const store = useStore()
+  const [open, setOpen] = useState(false)
+  const [rows, setRows] = useState<DiscordThread[] | null>(null)
+  const button = useRef<HTMLSpanElement>(null)
+
+  const show = (): void => {
+    if (open) {
+      setOpen(false)
+      return
+    }
+    setOpen(true)
+    setRows(null)
+    void window.moho
+      .rpc<{ threads: DiscordThread[] }>('listDiscordThreads', { bufferId: buffer.id })
+      .then((answer) => setRows(answer.threads))
+      .catch((e: Error) => {
+        store.toast('error', e.message)
+        setRows([])
+      })
+  }
+
+  return (
+    <>
+      <span ref={button} className="header-anchor">
+        <IconButton
+          name="forum"
+          title="Threads here"
+          className={open ? 'active' : undefined}
+          onClick={show}
+        />
+      </span>
+      {open && (
+        <HeaderPopover anchor={button.current} width={400} onClose={() => setOpen(false)}>
+          <div className="small muted">Threads and posts</div>
+          {rows === null && <div className="small muted">Looking…</div>}
+          {rows?.length === 0 && <div className="small muted">Nothing here yet.</div>}
+          {rows?.map((thread) => (
+            <button
+              key={thread.id}
+              type="button"
+              className="history-row"
+              onClick={() => {
+                setOpen(false)
+                void window.moho
+                  .rpc<{ bufferId: string }>('openDiscordThread', {
+                    bufferId: buffer.id,
+                    threadId: thread.id
+                  })
+                  .then((answer) => store.selectBuffer(answer.bufferId))
+                  .catch((e: Error) => store.toast('error', e.message))
+              }}
+            >
+              <span className="ellipsis">{thread.name}</span>
+              <span className="small muted">
+                {thread.messageCount ? `${thread.messageCount} messages` : 'no replies'}
+                {/* Said plainly, because an archived thread reads as a dead
+                    one until you open it - and opening it brings it back. */}
+                {thread.archived ? ' · archived' : ''}
+              </span>
+            </button>
+          ))}
+        </HeaderPopover>
+      )}
+    </>
+  )
 }
 
 /**
@@ -651,6 +738,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
       {buffer.accountId.startsWith('matrix:') && <InviteToRoom buffer={buffer} />}
 
       {isMatrix && buffer.kind !== 'server' && <ThreadList buffer={buffer} />}
+      {isDiscord && buffer.kind === 'channel' && <DiscordThreads buffer={buffer} />}
       {(isMatrix || isDiscord) && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
 
       {/* What this channel has asked before now. Two buttons rather than one

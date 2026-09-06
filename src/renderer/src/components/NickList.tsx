@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Icon, IconButton } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { useActiveBuffer, useChat, useIdSetPref, useStore } from '../state/hooks'
@@ -96,6 +96,15 @@ function ircPermissions(members: Member[], currentNick: string): Record<string, 
   }
 }
 
+/** What a Discord account may do in the guild a conversation belongs to. */
+interface DiscordPowers {
+  canKick?: boolean
+  canBan?: boolean
+  canMute?: boolean
+  canAssignRoles?: boolean
+  roles?: { id: string; name: string; colour?: string | null }[]
+}
+
 export function NickList(): JSX.Element {
   const store = useStore()
   const buffer = useActiveBuffer()
@@ -123,12 +132,29 @@ export function NickList(): JSX.Element {
   // moderator buttons. Same shape as IRC's,
   // and advisory in the same way - Kick re-checks and refuses if we were
   // wrong, which it explains far better than a status code would.
+  // Discord answers this from the roles it has already sent - it has no
+  // endpoint for "what may I do", so its own client works this out the same
+  // way. Advisory like the rest: the service re-checks and refuses.
+  const [discordPowers, setDiscordPowers] = useState<DiscordPowers | null>(null)
+  useEffect(() => {
+    setDiscordPowers(null)
+    if (account?.service !== 'discord' || !buffer) return
+    void window.moho
+      .rpc<DiscordPowers>('getDiscordPowers', { bufferId: buffer.id })
+      .then(setDiscordPowers)
+      .catch(() => {
+        /* advisory only: no answer means no moderation entries */
+      })
+  }, [account?.service, account?.id, buffer?.id])
+
   const perms =
     account?.service === 'irc'
       ? ircPermissions(members, account.currentNick)
       : account?.service === 'kick'
         ? kickPermissions(members, account.currentNick)
-        : (buffer && permissions[buffer.id]) || {}
+        : account?.service === 'discord'
+          ? discordPowers ?? {}
+          : (buffer && permissions[buffer.id]) || {}
 
   const groups = useMemo(() => {
     const filtered = query
@@ -264,6 +290,20 @@ export function NickList(): JSX.Element {
                       .catch((e: Error) => store.toast('error', e.message))
                     return
                   }
+                  if (account.service === 'discord') {
+                    // Discord's own three, and "mute" is a timeout there -
+                    // the same word this menu uses everywhere, meaning what
+                    // the service means by it.
+                    void window.moho
+                      .rpc('moderateDiscordMember', {
+                        bufferId: buffer.id,
+                        userId: member.userId || member.nick,
+                        action,
+                        minutes: 10
+                      })
+                      .catch((e: Error) => store.toast('error', e.message))
+                    return
+                  }
                   if (action === 'op' || action === 'deop' || action === 'voice') {
                     store.toast('error', 'Only IRC has channel ranks')
                     return
@@ -279,6 +319,17 @@ export function NickList(): JSX.Element {
                       accountId: account.id,
                       bufferId: buffer.id,
                       userId: member.userId || member.nick
+                    })
+                    .catch((e: Error) => store.toast('error', e.message))
+                }}
+                onSetRole={(roleId, give) => {
+                  if (!buffer) return
+                  void window.moho
+                    .rpc('setDiscordMemberRole', {
+                      bufferId: buffer.id,
+                      userId: member.userId || member.nick,
+                      roleId,
+                      give
                     })
                     .catch((e: Error) => store.toast('error', e.message))
                 }}
@@ -328,12 +379,21 @@ interface MemberRowProps {
   canWhisper: boolean
   /** IRC carries a file directly between two people; nothing else here does. */
   canSendFile: boolean
-  perms: { canKick?: boolean; canBan?: boolean; canMute?: boolean; canOp?: boolean }
+  perms: {
+    canKick?: boolean
+    canBan?: boolean
+    canMute?: boolean
+    canOp?: boolean
+    canAssignRoles?: boolean
+    roles?: { id: string; name: string; colour?: string | null }[]
+  }
   /** Which service this row belongs to, so an action is named as it acts. */
   service: string | undefined
   onToggleBlock: (key: string) => void
   onMention: () => void
   onModerate: (action: ModerationAction) => void
+  /** Gives this member a role, or takes it away. Discord only. */
+  onSetRole: (roleId: string, give: boolean) => void
   /** Matrix only: give this member a power level outright. */
   onSetPower: (level: number) => void
   onOpenDm: () => void
@@ -359,6 +419,7 @@ function MemberRow({
   onToggleBlock,
   onMention,
   onModerate,
+  onSetRole,
   onOpenDm,
   onWhisper,
   onSendFile,
@@ -419,6 +480,29 @@ function MemberRow({
     // Channel ranks, which only IRC has. Both directions offered rather than
     // one toggle: the member's own prefix says which way round it should be,
     // and a menu that guessed wrong would take op from somebody by accident.
+    // Discord's roles, offered as entries rather than a submenu: a guild has
+    // a handful worth giving by hand, and the rest are managed by bots and
+    // were filtered out before they got here.
+    ...(service === 'discord' && perms.canAssignRoles && (perms.roles?.length ?? 0) > 0
+      ? ([
+          { separator: true },
+          ...(perms.roles ?? []).slice(0, 12).map((role) => ({
+            label: `Give ${role.name}`,
+            icon: 'shield',
+            onClick: () => onSetRole(role.id, true)
+          })),
+          ...(member.roles ?? [])
+            .filter((held) => (perms.roles ?? []).some((r) => r.name === held))
+            .map((held) => ({
+              label: `Take ${held}`,
+              icon: 'remove_moderator',
+              onClick: () => {
+                const role = (perms.roles ?? []).find((r) => r.name === held)
+                if (role) onSetRole(role.id, false)
+              }
+            }))
+        ] as MenuEntry[])
+      : []),
     ...(perms.canOp
       ? ([
           { separator: true },
