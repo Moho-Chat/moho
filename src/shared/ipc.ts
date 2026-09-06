@@ -19,6 +19,8 @@ export const IPC = {
   restartDaemon: 'moho:restartDaemon',
   daemonStatus: 'moho:daemonStatus',
   smiliesDir: 'moho:smiliesDir',
+  /** The screens and windows that could be shared into a call. */
+  screenSources: 'moho:screenSources',
   markBufferRead: 'moho:markBufferRead',
   browserLogin: 'moho:browserLogin',
   popoutOpen: 'moho:popout:open',

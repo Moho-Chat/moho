@@ -20,6 +20,7 @@ import { DownloadsPanel } from './components/DownloadsPanel'
 import { JoinPanel } from './components/JoinPanel'
 import { Toasts } from './components/Toasts'
 import { IncomingCallPanel } from './components/IncomingCallPanel'
+import { CallStage, IncomingMatrixCall, ScreenPicker } from './components/CallStage'
 import { FileDrop } from './components/FileDrop'
 import { TransferPanel } from './components/TransferPanel'
 import { Icon, IconButton } from './components/Icon'
@@ -203,6 +204,15 @@ export default function App(): JSX.Element {
 
       {/* Over everything: a call arrives while you are looking elsewhere. */}
       <IncomingCallPanel />
+      {/* A Matrix call rings here too, but is answered by this window rather
+          than by the daemon - the media is the window's. */}
+      <IncomingMatrixCall />
+      <ScreenPicker />
+      {/* The call this window is holding, wherever the window has wandered
+          to. It does not live under the conversation: walking away from a
+          conversation does not hang up, and a call that vanished when you
+          looked at something else would be a call you could not hang up. */}
+      <CallStage />
       {/* Over everything for the same reason: a file is offered while you are
           reading something else, and often in a conversation you are not. */}
       <TransferPanel />

@@ -6,11 +6,13 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  desktopCapturer,
   dialog,
   globalShortcut,
   ipcMain,
   nativeImage,
   net,
+  session,
   Menu,
   screen,
   shell,
@@ -550,6 +552,20 @@ function wireIpc(): void {
   // far. Separate from pickFile because the two dialogs ask opposite
   // questions, and a save dialog that cannot name a default file is a save
   // dialog people cancel.
+  // What could be shared into a call. Thumbnails at a size worth looking at
+  // but not worth waiting for - this is a picker, not a preview.
+  ipcMain.handle(IPC.screenSources, async () => {
+    const sources = await desktopCapturer.getSources({
+      types: ['screen', 'window'],
+      thumbnailSize: { width: 320, height: 180 }
+    })
+    return sources.map((s) => ({
+      id: s.id,
+      name: s.name,
+      thumbnail: s.thumbnail.toDataURL()
+    }))
+  })
+
   ipcMain.handle(IPC.pickSavePath, async (e, suggested?: string) => {
     const parent = callerWindow(e) ?? mainWindow
     if (!parent) return null
@@ -695,6 +711,19 @@ app.whenReady().then(() => {
 
   electronApp.setAppUserModelId('com.salastil.moho')
   app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
+
+  // A call needs a microphone, and Chromium will not hand one over without
+  // being asked. Unanswered, the request does not fail - it hangs, which is
+  // what a call that never started looked like: no error, no ringing, nothing.
+  //
+  // Granted only to this application's own windows, on the default session.
+  // A sign-in window loads somebody else's page and runs in a partition of
+  // its own, which this handler never sees.
+  const allowed = new Set(['media', 'display-capture', 'audioCapture', 'videoCapture'])
+  session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => {
+    callback(allowed.has(permission))
+  })
+  session.defaultSession.setPermissionCheckHandler((_contents, permission) => allowed.has(permission))
 
   // Someone tried to launch a second copy: treat it as "show me moho", which
   // is almost always what they meant - especially when the window is hidden

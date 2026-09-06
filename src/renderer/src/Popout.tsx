@@ -8,6 +8,7 @@ import { ConversationTools } from './components/ConversationTools'
 import { BufferFace } from './components/BufferFace'
 import { FileDrop } from './components/FileDrop'
 import { Toasts } from './components/Toasts'
+import { CallStage, IncomingMatrixCall, ScreenPicker } from './components/CallStage'
 import { Icon, IconButton } from './components/Icon'
 import { useActiveBuffer, useChat, usePref, usePrefsReady, useStore } from './state/hooks'
 import { bufferDisplayName } from './lib/util'
@@ -129,6 +130,12 @@ export function Popout({ bufferId }: { bufferId: string }): JSX.Element {
       </div>
 
       <FileDrop />
+      {/* A call rings wherever the client is, including here: this window has
+          its own connection to the daemon and its own media, so a call
+          answered here is answered here. */}
+      <IncomingMatrixCall />
+      <ScreenPicker />
+      <CallStage />
       <Toasts />
     </div>
   )

@@ -492,6 +492,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   const filterMenu = suggestions(query)
   const isMatrix = buffer.accountId.startsWith('matrix:')
   const stream = useChat((s) => s.kickStreams)[buffer.id]
+  const matrixCall = useChat((s) => s.activeCall)
   const isDm = buffer.kind === 'dm'
   // This conversation's call, not merely a call on the same account: one
   // account can only be in one, but the button has to be right about which.
@@ -718,6 +719,25 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           )}
         </span>
       )}
+      {/* Matrix's own calls, which this window makes rather than the daemon:
+          two buttons because a video call is a different thing to start, and
+          on a service where either is normal the choice belongs on the
+          header rather than inside the call. */}
+      {isMatrix && buffer.kind !== 'server' && !matrixCall && (
+        <>
+          <IconButton name="call" title="Voice call" onClick={() => void store.callMatrix(buffer.id, false)} />
+          <IconButton name="videocam" title="Video call" onClick={() => void store.callMatrix(buffer.id, true)} />
+        </>
+      )}
+      {isMatrix && matrixCall?.bufferId === buffer.id && (
+        <IconButton
+          name="call_end"
+          title="Hang up"
+          className="calling"
+          onClick={() => store.hangUpMatrixCall()}
+        />
+      )}
+
       {isDiscord && isDm && (
         <IconButton
           name={inCall ? 'call_end' : 'call'}

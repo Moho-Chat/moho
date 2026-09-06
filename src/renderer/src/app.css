@@ -847,6 +847,145 @@
 }
 
 /*
+ * A call with pictures, over the conversation it belongs to.
+ *
+ * Sized so it can be looked at without swallowing the log: a call is watched
+ * and the conversation is read, and the two happen at once.
+ */
+.call-stage {
+  /* Over everything, because a call is not part of the conversation it
+     started in: it follows the window rather than the buffer, and has to be
+     hangable-up from wherever somebody has wandered to. */
+  position: absolute;
+  right: var(--spacing-m);
+  bottom: 90px;
+  z-index: 40;
+  width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container);
+}
+
+.call-stage-video {
+  position: relative;
+  height: 214px;
+  border-radius: var(--corner-radius-small);
+  overflow: hidden;
+  background: #000;
+}
+
+.call-remote {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Nothing to look at yet, so the element is not what is on screen. */
+.call-remote.audio-only {
+  opacity: 0;
+}
+
+.call-stage-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-s);
+}
+
+/* Yourself, small and out of the way: it is there to check you are in frame,
+   not to be watched. */
+.call-local {
+  position: absolute;
+  right: var(--spacing-s);
+  bottom: var(--spacing-s);
+  width: 140px;
+  max-height: 100px;
+  border-radius: var(--corner-radius-small);
+  border: 1px solid var(--outline-medium);
+  background: #000;
+  object-fit: cover;
+}
+
+.call-stage-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 0 var(--spacing-xs);
+}
+
+.call-stage-controls .small {
+  margin-right: auto;
+}
+
+/*
+ * Which window to show a room.
+ *
+ * Pictures rather than a list of names: two browser windows are called almost
+ * the same thing, and showing the wrong one to a room is the mistake this
+ * exists to prevent.
+ */
+.screen-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  max-width: 760px;
+  max-height: 70vh;
+  padding: var(--spacing-m);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.screen-picker-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  font-weight: 500;
+}
+
+.screen-picker-head .icon-button {
+  margin-left: auto;
+}
+
+.screen-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--spacing-s);
+  overflow-y: auto;
+}
+
+.screen-source {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-low);
+  color: var(--surface-text);
+  cursor: pointer;
+}
+
+.screen-source:hover {
+  border-color: var(--primary);
+}
+
+.screen-source img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #000;
+  border-radius: var(--corner-radius-small);
+}
+
+/*
  * The controls a service put on a message.
  *
  * Rows, because the layout is information: a bot that put five buttons on one

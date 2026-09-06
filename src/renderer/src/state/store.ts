@@ -26,6 +26,8 @@ import { bufferDisplayName, isImageFile, resolveMediaUrl } from '../lib/util'
 import { DM_GROUP_ID, isDirectMessage } from '../lib/groups'
 import { ircNetworkFor } from '../lib/networks'
 import { parseDeepLink, type IrcLink } from '../../../shared/deeplink'
+import { MatrixCalls, type MatrixCallEvent, type RingingCall } from '../lib/matrixcall'
+import type { CallPhase } from '../lib/webrtc'
 import type { PopoutState } from '../../../shared/ipc'
 
 /**
@@ -391,6 +393,25 @@ export interface ChatState {
   pinnedMessages: Record<string, string[]>
   /** Friends and pending requests per Discord account, as they change. */
   discordFriends: Record<string, DiscordFriend[]>
+  /**
+   * A Matrix call: the one ringing, and the one that is up.
+   *
+   * Held here rather than in a component because a call outlives whatever is
+   * on screen - navigating away from the conversation does not end it, and
+   * the panel that shows it has to be able to find it again.
+   */
+  ringingCall: RingingCall | null
+  /** The screens and windows on offer, while somebody is choosing one. */
+  screenSources: { id: string; name: string; thumbnail: string }[] | null
+  activeCall: {
+    accountId: string
+    bufferId: string
+    phase: CallPhase
+    /** Whether this end offered a camera. */
+    video: boolean
+    muted: boolean
+    sharingScreen: boolean
+  } | null
   /** Who each Matrix account has asked never to hear from. */
   matrixIgnored: Record<string, string[]>
   /** Rooms each Matrix account has been invited to and not answered. */
@@ -473,6 +494,9 @@ const INITIAL: ChatState = {
   reviewCard: null,
   pinnedMessages: {},
   discordFriends: {},
+  ringingCall: null,
+  screenSources: null,
+  activeCall: null,
   matrixIgnored: {},
   matrixInvites: {},
   profile: null,
@@ -680,6 +704,55 @@ export class ChatStore {
   /** clientId -> the optimistic message awaiting its real echo. */
   private pendingSends = new Map<string, { bufferId: string; ts: number }>()
   private toastSeq = 0
+  /**
+   * The Matrix call engine, one per window.
+   *
+   * Built here rather than per component so a call survives the panel that
+   * started it: walking away from a conversation does not hang up, and the
+   * bar that follows a call around has to find the same call.
+   */
+  private matrixCalls = new MatrixCalls({
+    send: (bufferId, type, content) => {
+      void window.moho
+        .rpc('sendMatrixCallEvent', { bufferId, type, content })
+        .catch((e: Error) => this.toast('error', `Call signalling failed: ${e.message}`))
+    },
+    iceServers: async (accountId) => {
+      try {
+        const answer = await window.moho.rpc<{ uris?: string[]; username?: string; password?: string }>(
+          'matrixTurnServers',
+          { accountId }
+        )
+        const uris = answer.uris ?? []
+        if (uris.length === 0) return []
+        // One entry carrying every uri, which is how a browser wants them:
+        // the credentials are the same for all of a homeserver's relays.
+        return [{ urls: uris, username: answer.username, credential: answer.password }]
+      } catch {
+        // No relay is a working configuration for two people on the same
+        // network, and a call worth trying is better than a refusal.
+        return []
+      }
+    },
+    onRinging: (call) => this.set({ ringingCall: call }),
+    onPhase: (phase, call) => {
+      if (!call || phase === 'ended') {
+        this.set({ activeCall: null })
+        return
+      }
+      this.set({
+        activeCall: {
+          accountId: call.accountId,
+          bufferId: call.bufferId,
+          phase,
+          video: call.video,
+          muted: this.state.activeCall?.muted ?? false,
+          sharingScreen: call.call.sharingScreen
+        }
+      })
+    },
+    onError: (message) => this.toast('error', message)
+  })
   private sweepTimer: ReturnType<typeof setInterval> | null = null
   private mentionsTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -1586,6 +1659,110 @@ export class ChatStore {
       .catch((e: Error) => this.toast('error', e.message))
   }
 
+  /**
+   * Rings whoever is in this Matrix conversation.
+   *
+   * Its own method rather than part of callBuffer, which is Discord's: the two
+   * do genuinely different things - Discord's call is a channel the daemon
+   * joins, and this one is a connection this window makes.
+   */
+  async callMatrix(bufferId: string, video: boolean): Promise<void> {
+    const account = this.accountFor(bufferId)
+    if (!account) return
+    await this.matrixCalls.place(account.id, bufferId, video)
+  }
+
+  async answerMatrixCall(video: boolean): Promise<void> {
+    await this.matrixCalls.answer(video)
+  }
+
+  declineMatrixCall(): void {
+    this.matrixCalls.decline()
+  }
+
+  hangUpMatrixCall(): void {
+    this.matrixCalls.end()
+  }
+
+  /**
+   * Puts the screen picker on screen and waits for a choice.
+   *
+   * A promise held here because the choosing is a component's job and the
+   * sharing is this one's - the alternative is the picker knowing how to
+   * start a screen share, which would put a call's mechanics in a dialog.
+   */
+  private screenChoice: ((source: { id: string; name: string } | null) => void) | null = null
+
+  private askForScreenSource(
+    sources: { id: string; name: string; thumbnail: string }[]
+  ): Promise<{ id: string; name: string } | null> {
+    return new Promise((resolve) => {
+      this.screenChoice = resolve
+      this.set({ screenSources: sources })
+    })
+  }
+
+  /** The picker answering, with a source or with nothing. */
+  chooseScreenSource(source: { id: string; name: string } | null): void {
+    const resolve = this.screenChoice
+    this.screenChoice = null
+    this.set({ screenSources: null })
+    resolve?.(source)
+  }
+
+  /** The two streams a call view draws: ours and theirs. */
+  callStreams(): { local: MediaStream | null; remote: MediaStream | null } {
+    const call = this.matrixCalls.current
+    return { local: call?.call.stream ?? null, remote: call?.remote ?? null }
+  }
+
+  toggleCallMute(): void {
+    const call = this.matrixCalls.current
+    if (!call || !this.state.activeCall) return
+    const muted = call.call.toggleMute()
+    this.set({ activeCall: { ...this.state.activeCall, muted } })
+  }
+
+  /**
+   * Shares a screen or a window into the call.
+   *
+   * The picker is the desktop's rather than the browser's: Electron will not
+   * answer getDisplayMedia without being told which source, and a list of the
+   * windows somebody actually has open is the only way to choose one.
+   */
+  async toggleScreenShare(): Promise<void> {
+    const call = this.matrixCalls.current
+    if (!call || !this.state.activeCall) return
+    try {
+      if (call.call.sharingScreen) {
+        await call.call.shareScreen()
+        this.set({ activeCall: { ...this.state.activeCall, sharingScreen: false } })
+        return
+      }
+      const sources = await window.moho.screenSources()
+      if (sources.length === 0) {
+        this.toast('info', 'Nothing to share')
+        return
+      }
+      // Chosen in the window rather than here: the picker is a component, and
+      // this waits for it to answer.
+      const source = await this.askForScreenSource(sources)
+      if (!source) return
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          // Chromium's own desktop-capture constraint, which is how an
+          // Electron window turns a source id into a stream.
+          mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: source.id }
+        }
+      } as unknown as MediaStreamConstraints)
+      await call.call.shareScreen(stream)
+      this.set({ activeCall: { ...this.state.activeCall, sharingScreen: true } })
+    } catch (e) {
+      this.toast('error', `Couldn't share the screen: ${(e as Error).message}`)
+    }
+  }
+
   /** Follows a Kick channel, or stops. The header reads the answer back. */
   setFollowing(bufferId: string, follow: boolean): void {
     void window.moho
@@ -1600,6 +1777,12 @@ export class ChatStore {
         // An echo of our own send resolves the optimistic row in place; only
         // an unmatched message is a genuinely new one to append.
         if (!data.isOwn || !this.reconcileOwnEcho(data)) this.appendMessage(data.bufferId, data)
+        break
+
+      // One end of a Matrix call: an offer, an answer, the network paths, or
+      // a hangup. The media is this window's; the daemon only carries these.
+      case 'matrixCall':
+        this.matrixCalls.handle(data as unknown as MatrixCallEvent)
         break
 
       // Friends, and requests either way, as they change. Discord announces

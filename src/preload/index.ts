@@ -105,6 +105,16 @@ const api = {
   pathForFile: (file: File): string => webUtils.getPathForFile(file),
 
   pickFile: (): Promise<string | null> => ipcRenderer.invoke(IPC.pickFile),
+  /**
+   * What could be shared into a call: every screen and window, each with a
+   * still of what is on it.
+   *
+   * Asked of the desktop rather than of the browser. Electron refuses
+   * getDisplayMedia's own picker, and a person choosing what to show a room
+   * needs to see which window they are choosing.
+   */
+  screenSources: (): Promise<{ id: string; name: string; thumbnail: string }[]> =>
+    ipcRenderer.invoke(IPC.screenSources),
   pickSavePath: (suggested?: string): Promise<string | null> =>
     ipcRenderer.invoke(IPC.pickSavePath, suggested),
   pickDirectory: (): Promise<string | null> => ipcRenderer.invoke(IPC.pickDirectory),
