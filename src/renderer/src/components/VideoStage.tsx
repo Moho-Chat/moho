@@ -1,6 +1,10 @@
-import type { ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
 import { Icon, IconButton } from './Icon'
+import { usePref } from '../state/hooks'
 import { classes } from '../lib/util'
+
+/** How close to an edge the panel may be parked. */
+const EDGE = 4
 
 /**
  * The frame a moving picture lives in, whatever is feeding it.
@@ -46,13 +50,122 @@ export function VideoStage({
   controls?: ReactNode
   children: ReactNode
 }): JSX.Element {
+  const panel = useRef<HTMLDivElement>(null)
+  /**
+   * Where the corner panel has been put, if anywhere.
+   *
+   * Null is the corner it starts in, which is where it belongs until somebody
+   * says otherwise - a remembered position is only worth having because
+   * somebody chose it, and a default written down as coordinates would drift
+   * with every change to the layout around it.
+   *
+   * Remembered across restarts, because moving it is a decision about this
+   * screen and this window, and having to make it again every launch is the
+   * whole complaint about panels that cannot be moved.
+   */
+  const [saved, setSaved] = usePref<{ x: number; y: number } | null>('ui.pipSpot', null)
+  // Followed during a drag rather than written on every pointer move: the
+  // preference goes to disk over IPC, and a drag is a hundred of them.
+  const [spot, setSpot] = useState(saved)
+  const grab = useRef<{ dx: number; dy: number } | null>(null)
+
+  /**
+   * Where the panel may be put, in the coordinates it is positioned in.
+   *
+   * Kept reachable: a panel dragged off the edge is a panel lost, and a call
+   * that cannot be hung up because its buttons are past the screen edge is
+   * worse than one that will not move at all.
+   */
+  const clamp = useCallback((x: number, y: number): { x: number; y: number } => {
+    const el = panel.current
+    const box = el?.getBoundingClientRect()
+    const within = (el?.offsetParent as HTMLElement | null)?.getBoundingClientRect()
+    const size = { w: box?.width ?? 340, h: box?.height ?? 200 }
+    const room = { w: within?.width ?? window.innerWidth, h: within?.height ?? window.innerHeight }
+    // Wholly inside, not merely mostly. Half off the edge would leave the
+    // panel's own controls hanging past the window with only the part that
+    // is not a handle still reachable - picked up once and never again.
+    //
+    // Not into the window's own title bar either: that bar is a compositor
+    // drag region, and a press inside one starts a window move before the
+    // page ever sees it.
+    const bar = document.querySelector('.titlebar')?.getBoundingClientRect()
+    const floor = bar ? Math.max(bar.bottom - (within?.top ?? 0), 0) : 0
+    return {
+      x: Math.min(Math.max(x, EDGE), Math.max(room.w - size.w - EDGE, EDGE)),
+      y: Math.min(Math.max(y, floor + EDGE), Math.max(room.h - size.h - EDGE, floor + EDGE))
+    }
+  }, [])
+
+  /** Viewport coordinates, as the panel's own positioning sees them. */
+  const local = useCallback((x: number, y: number): { x: number; y: number } => {
+    const within = (panel.current?.offsetParent as HTMLElement | null)?.getBoundingClientRect()
+    return { x: x - (within?.left ?? 0), y: y - (within?.top ?? 0) }
+  }, [])
+
+  // A window made smaller - or a position remembered from a larger screen -
+  // can leave it outside. The same clamp, applied to where it already is,
+  // on arrival and whenever the room changes shape.
+  useEffect(() => {
+    const fit = (): void =>
+      setSpot((was) => {
+        if (!was) return was
+        const to = clamp(was.x, was.y)
+        // Same object when nothing moved: a new one every pass would set
+        // state forever.
+        return to.x === was.x && to.y === was.y ? was : to
+      })
+    fit()
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  }, [clamp, minimized, mode])
+
+  const startDrag = (e: PointerEvent<HTMLDivElement>): void => {
+    // The bar is the handle, but the controls on it are not: pressing
+    // minimise should minimise rather than pick the panel up.
+    if (mode !== 'pip' || (e.target as HTMLElement).closest('button')) return
+    const box = panel.current?.getBoundingClientRect()
+    if (!box) return
+    grab.current = { dx: e.clientX - box.left, dy: e.clientY - box.top }
+    const here = local(box.left, box.top)
+    setSpot(clamp(here.x, here.y))
+    e.currentTarget.setPointerCapture(e.pointerId)
+    e.preventDefault()
+  }
+
+  const onDrag = (e: PointerEvent<HTMLDivElement>): void => {
+    if (!grab.current) return
+    const to = local(e.clientX - grab.current.dx, e.clientY - grab.current.dy)
+    setSpot(clamp(to.x, to.y))
+  }
+
+  const endDrag = (e: PointerEvent<HTMLDivElement>): void => {
+    if (!grab.current) return
+    grab.current = null
+    e.currentTarget.releasePointerCapture(e.pointerId)
+    // Now that it has come to rest, and once rather than throughout.
+    setSpot((rest) => {
+      setSaved(rest)
+      return rest
+    })
+  }
+
+  /** Where it sits: the corner it started in, or where it was put. */
+  const placed =
+    mode === 'pip' && spot ? { left: `${spot.x}px`, top: `${spot.y}px`, right: 'auto', bottom: 'auto' } : undefined
+  const handle =
+    mode === 'pip'
+      ? { onPointerDown: startDrag, onPointerMove: onDrag, onPointerUp: endDrag, onPointerCancel: endDrag }
+      : {}
+
   // Put away without being ended. Something being listened to while reading
   // something else does not need a picture on screen, and closing the picture
   // must not close what is behind it - so this is a bar with a way back.
   if (minimized) {
     return (
-      <div className={classes('call-stage', 'minimized', mode === 'pip' && 'pip')}>
-        <div className="call-stage-controls">
+      <div className={classes('call-stage', 'minimized', mode === 'pip' && 'pip')} ref={panel} style={placed}>
+        {/* The bar is the whole panel here, so the bar is the handle. */}
+        <div className={classes('call-stage-controls', mode === 'pip' && 'draggable')} {...handle}>
           <Icon name={endIcon === 'call_end' ? 'call' : 'live_tv'} size={16} />
           <span className="small muted ellipsis">{subtitle}</span>
           <IconButton name="expand_less" title="Show it again" onClick={() => onMinimized(false)} />
@@ -63,9 +176,10 @@ export function VideoStage({
   }
 
   return (
-    <div className={classes('call-stage', mode === 'pip' && 'pip')}>
+    <div className={classes('call-stage', mode === 'pip' && 'pip')} ref={panel} style={placed}>
       {mode === 'pip' && (
-        <div className="call-stage-title">
+        /* Dragged by its title bar, the way anything shaped like a window is. */
+        <div className="call-stage-title draggable" {...handle}>
           <Icon name={endIcon === 'call_end' ? 'call' : 'live_tv'} size={14} />
           <span className="small ellipsis" title={title}>
             {title || subtitle}

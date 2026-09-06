@@ -875,6 +875,11 @@
  */
 .call-stage.pip {
   position: absolute;
+  /* Dragged over moho's own title bar, the panel would be unpressable: that
+     bar is a compositor drag region, and a press inside one is taken as the
+     start of a window move before the page ever sees it - the same trap the
+     window controls carry a no-drag for. */
+  -webkit-app-region: no-drag;
   right: var(--spacing-m);
   bottom: 90px;
   z-index: 40;
@@ -902,6 +907,22 @@
 .call-stage-title .small {
   flex: 1;
   min-width: 0;
+}
+
+/*
+ * And the bar is where it is picked up: a panel floating over the client is a
+ * window, and a window is moved by its title bar. The buttons on it are not
+ * part of the handle - pressing minimise minimises.
+ */
+.draggable {
+  cursor: grab;
+  user-select: none;
+  /* Or the pointer stream turns into a scroll gesture halfway through a drag. */
+  touch-action: none;
+}
+
+.draggable:active {
+  cursor: grabbing;
 }
 
 /* Put away: one line that says a call is still running, and offers it back. */
