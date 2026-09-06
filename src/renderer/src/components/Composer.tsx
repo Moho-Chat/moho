@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
 import { Avatar } from './Avatar'
-import { EmojiPicker } from './EmojiPicker'
+import { EmojiPicker, type StickerEntry } from './EmojiPicker'
 import { useActiveBuffer, useChat, useStore } from '../state/hooks'
 import { emojiPreview } from '../lib/format'
 import { bufferDisplayName, classes, fileNameOf, isImageFile, resolveMediaUrl } from '../lib/util'
@@ -97,6 +97,9 @@ export function Composer(): JSX.Element | null {
   const [text, setText] = useState('')
   const [staged, setStaged] = useState<StagedAttachment[]>([])
   const [pickerOpen, setPickerOpen] = useState(false)
+  /** The account's sticker packs, fetched when the picker is first opened. */
+  const [stickers, setStickers] = useState<StickerEntry[]>([])
+  const [stickerPicker, setStickerPicker] = useState(false)
   const seqRef = useRef(0)
   const typingSentAt = useRef(0)
   /**
@@ -150,6 +153,7 @@ export function Composer(): JSX.Element | null {
   /** Discord's mentionable roles here; empty everywhere else. */
   const [roles, setRoles] = useState<{ id: string; name: string; colour?: string }[]>([])
   const emojiButtonRef = useRef<HTMLButtonElement>(null)
+  const stickerButtonRef = useRef<HTMLButtonElement>(null)
 
   const smilies = useChat((s) => s.smilies)
   const bufferEmojiByBuffer = useChat((s) => s.bufferEmoji)
@@ -757,10 +761,42 @@ export function Composer(): JSX.Element | null {
           type="button"
           className="icon-button"
           title="Emoji"
-          onClick={() => setPickerOpen(!pickerOpen)}
+          onClick={() => {
+            setStickerPicker(false)
+            setPickerOpen(!pickerOpen)
+          }}
         >
           <Icon name="mood" size={18} />
         </button>
+
+        {/* Its own button beside the emoji one, because it is its own
+            gesture: an emoji goes into the line being written and a sticker
+            is the message. Only where the service has them - which today is
+            Matrix, and where a pack is what supplies them. */}
+        {service === 'matrix' && (
+          <button
+            ref={stickerButtonRef}
+            type="button"
+            className="icon-button"
+            title="Stickers"
+            onClick={() => {
+              const opening = !stickerPicker
+              setPickerOpen(false)
+              setStickerPicker(opening)
+              // Asked for when the picker opens rather than kept in sync: a
+              // pack changes about as often as somebody adds one, and the
+              // images are cached by the time they are drawn twice.
+              if (opening) {
+                void window.moho
+                  .rpc<StickerEntry[]>('listMatrixStickers', { bufferId: buffer.id })
+                  .then(setStickers)
+                  .catch(() => setStickers([]))
+              }
+            }}
+          >
+            <Icon name="sticky_note_2" size={18} />
+          </button>
+        )}
 
         <IconButton
           name="add"
@@ -772,6 +808,23 @@ export function Composer(): JSX.Element | null {
         />
         <IconButton name="send" title="Send" onClick={submit} />
       </div>
+
+      {stickerPicker && (
+        <EmojiPicker
+          anchor={stickerButtonRef.current}
+          stickersOnly
+          stickers={stickers}
+          accountId={account?.id}
+          onSticker={(sticker) => {
+            setStickerPicker(false)
+            void window.moho
+              .rpc('sendMatrixSticker', { bufferId: buffer.id, mxc: sticker.mxc, body: sticker.body })
+              .catch((e: Error) => store.toast('error', e.message))
+          }}
+          onSelect={() => setStickerPicker(false)}
+          onClose={() => setStickerPicker(false)}
+        />
+      )}
 
       {pickerOpen && (
         <EmojiPicker

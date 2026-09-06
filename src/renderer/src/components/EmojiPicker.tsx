@@ -98,10 +98,35 @@ function readRecent(accountId?: string): string[] {
   }
 }
 
+/** One image out of a Matrix sticker pack, as the daemon offers it. */
+export interface StickerEntry {
+  name: string
+  pack: string
+  mxc: string
+  body: string
+  /** A local path the daemon already fetched, absent while it is fetching. */
+  url?: string | null
+}
+
 interface Props {
   anchor: HTMLElement | null
   customEmoji?: CustomEmoji[]
   smilies?: SmilieEntry[]
+  /**
+   * The account's stickers, where the service has them. Separate from the
+   * emoji above because picking one *sends* rather than typing: a sticker is
+   * a message, not a character in the box.
+   */
+  stickers?: StickerEntry[]
+  onSticker?: (sticker: StickerEntry) => void
+  /**
+   * Stickers and nothing else, for the button that opens exactly those.
+   *
+   * The two are different gestures rather than two tabs of one: an emoji goes
+   * into the line being written and a sticker *is* the message, so mixing
+   * them in one list would make half the cells type and half of them send.
+   */
+  stickersOnly?: boolean
   /** Whose recent picks to show. Absent means no account, so none are kept. */
   accountId?: string
   onSelect: (text: string) => void
@@ -112,8 +137,11 @@ export function EmojiPicker({
   anchor,
   customEmoji = [],
   smilies = [],
+  stickers = [],
+  stickersOnly = false,
   accountId,
   onSelect,
+  onSticker,
   onClose
 }: Props): JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
@@ -198,6 +226,21 @@ export function EmojiPicker({
     [q, smilies]
   )
 
+  // Grouped by the pack they came from, which is how somebody remembers where
+  // a sticker was: "the cat one" is a pack before it is a picture.
+  const packs = useMemo(() => {
+    const matching = q
+      ? stickers.filter((s) => s.name.toLowerCase().includes(q) || s.pack.toLowerCase().includes(q))
+      : stickers
+    const byPack = new Map<string, StickerEntry[]>()
+    for (const sticker of matching) {
+      const list = byPack.get(sticker.pack) ?? []
+      list.push(sticker)
+      byPack.set(sticker.pack, list)
+    }
+    return [...byPack.entries()]
+  }, [q, stickers])
+
   const pick = (text: string): void => {
     const next = [text, ...recent.filter((r) => r !== text)].slice(0, MAX_RECENT)
     setRecent(next)
@@ -218,13 +261,13 @@ export function EmojiPicker({
       <input
         className="text-field"
         autoFocus
-        placeholder="Search emoji…"
+        placeholder={stickersOnly ? 'Search stickers…' : 'Search emoji…'}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
 
       <div className="emoji-scroll">
-        {!q && recent.length > 0 && (
+        {!stickersOnly && !q && recent.length > 0 && (
           <Section title="Recent">
             {recent.map((r) => {
               // A recent is stored as the text that gets sent, which for a
@@ -255,7 +298,34 @@ export function EmojiPicker({
           </Section>
         )}
 
-        {unicode.length > 0 && (
+        {packs.map(([pack, entries]) => (
+          <Section key={pack} title={pack}>
+            {entries.map((sticker) => (
+              <button
+                key={sticker.mxc}
+                type="button"
+                className="emoji-cell sticker-cell"
+                title={`${sticker.name} · ${pack}`}
+                onClick={() => onSticker?.(sticker)}
+              >
+                {sticker.url ? (
+                  <img src={resolveMediaUrl(sticker.url)} alt={sticker.name} />
+                ) : (
+                  sticker.name
+                )}
+              </button>
+            ))}
+          </Section>
+        ))}
+
+        {stickersOnly && packs.length === 0 && (
+          <p className="small muted emoji-empty">
+            No sticker packs on this account. Packs added in another client - your own, or
+            one a room shares - turn up here.
+          </p>
+        )}
+
+        {!stickersOnly && unicode.length > 0 && (
           <Section title="Emoji">
             {unicode.map((e) => (
               <button
@@ -276,7 +346,8 @@ export function EmojiPicker({
             telling apart, since an unfamiliar name is then attributable to
             whoever supplied it. Discord sends none, so its emoji stay under
             the one heading they always had. */}
-        {customSections.map(([title, list]) => (
+        {!stickersOnly &&
+          customSections.map(([title, list]) => (
           <Section key={title} title={title}>
             {list.map((e) => (
               <button
@@ -297,10 +368,10 @@ export function EmojiPicker({
                 <img src={emojiImage(e)} alt={e.name} />
               </button>
             ))}
-          </Section>
-        ))}
+            </Section>
+          ))}
 
-        {smilieList.length > 0 && (
+        {!stickersOnly && smilieList.length > 0 && (
           <Section title="Smilies">
             {smilieList.map((s) => (
               <button

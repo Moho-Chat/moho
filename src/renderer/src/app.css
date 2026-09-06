@@ -3507,6 +3507,67 @@ img.smilie {
   pointer-events: none;
 }
 
+.emoji-empty {
+  padding: var(--spacing-s) var(--spacing-xs);
+  max-width: 22rem;
+}
+
+/* A sticker is a picture rather than a character, so it gets the room to be
+   one - an emoji cell is sized for a glyph and would draw these as thumbnails
+   too small to tell apart. */
+.emoji-cell.sticker-cell {
+  width: 64px;
+  height: 64px;
+}
+
+.emoji-cell.sticker-cell img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/*
+ * A sentence somebody writes before something happens: a knock's reason, a
+ * report's. The text is the point rather than a note attached to a button, so
+ * the box is what the dialog is mostly made of.
+ */
+.reason-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  width: min(440px, 90vw);
+  margin: auto;
+  padding: var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.reason-prompt-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  font-weight: 500;
+}
+
+.reason-prompt-box {
+  width: 100%;
+  padding: var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container);
+  color: var(--surface-text);
+  font: inherit;
+  resize: vertical;
+}
+
+.reason-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-s);
+}
+
 /* Expanded media viewer. Sits above everything including the title bar, so
    the picture is the only thing competing for attention. */
 .lightbox-backdrop {

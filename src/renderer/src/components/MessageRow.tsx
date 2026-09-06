@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { Avatar } from './Avatar'
+import { ReasonPrompt } from './ReasonPrompt'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { MediaEmbed } from './MediaEmbed'
 import { EmojiPicker } from './EmojiPicker'
@@ -158,6 +159,8 @@ export function MessageRow({
   const [draft, setDraft] = useState(message.body)
   const [revealed, setRevealed] = useState<Record<number, boolean>>({})
   const [pickerOpen, setPickerOpen] = useState(false)
+  /** Writing the reason for a report, before it is sent. */
+  const [reporting, setReporting] = useState(false)
   const reactButtonRef = useRef<HTMLButtonElement>(null)
 
   const permissions = useChat((s) => s.matrixPermissions)[bufferId] || {}
@@ -337,6 +340,21 @@ export function MessageRow({
       ? ([{ separator: true } as MenuEntry] as MenuEntry[])
       : []),
     ...moderationEntries(message, permissions, bufferId, store),
+    // Telling whoever runs the homeserver. Beside the moderation entries and
+    // deliberately not gated like them: those need power in the room and this
+    // needs none, which is the point of it - it is the answer available to
+    // somebody with no power at all. Not for your own messages, and not for
+    // the client's own narration.
+    ...(service === 'matrix' && !message.isOwn && !isSystem
+      ? ([
+          {
+            label: 'Report to the server',
+            icon: 'flag',
+            danger: true,
+            onClick: () => setReporting(true)
+          }
+        ] as MenuEntry[])
+      : []),
     // Talking to somebody directly, from where they said the thing you want to
     // talk to them about. Only where the sender is somebody to open one with:
     // your own messages, and anything the server itself said, are not.
@@ -787,6 +805,23 @@ export function MessageRow({
       )}
 
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={entries} onClose={close} />}
+      {reporting && (
+        <ReasonPrompt
+          title={`Report ${message.from}’s message`}
+          detail="This goes to the people who run your homeserver, with the message and the room it is in. They see your reason and nothing else you have not said."
+          placeholder="What is wrong with this message"
+          confirmLabel="Report"
+          danger
+          onCancel={() => setReporting(false)}
+          onConfirm={(reason) => {
+            setReporting(false)
+            void store
+              .reportMatrixMessage(bufferId, message.id, reason)
+              .then(() => store.toast('info', 'Reported to your homeserver'))
+              .catch((e: Error) => store.toast('error', e.message))
+          }}
+        />
+      )}
     </>
   )
 }

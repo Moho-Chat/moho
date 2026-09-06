@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ReasonPrompt } from './ReasonPrompt'
 import { createPortal } from 'react-dom'
 import { Avatar } from './Avatar'
 import { Icon, IconButton } from './Icon'
@@ -15,6 +16,12 @@ interface PublicRoom {
   avatarUrl?: string
   via: string
   joined: boolean
+  /**
+   * How this room is entered: "public" is joined, "knock" is asked, and
+   * "restricted" is open to members of a space this account may not be in.
+   * One button for all three is a button that fails for two of them.
+   */
+  joinRule?: string
 }
 
 /** One homeserver that was asked, and what came of asking it. */
@@ -79,6 +86,8 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
    * without having to be found and enabled.
    */
   const [disabled, setDisabled] = useState<Set<string>>(new Set())
+  /** The room being knocked on, while the reason is being written. */
+  const [knocking, setKnocking] = useState<PublicRoom | null>(null)
   const [joining, setJoining] = useState<Record<string, boolean>>({})
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
@@ -160,7 +169,19 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, extraServer, account.id])
 
+  /**
+   * Asking to be let in, for a room that is asked rather than entered.
+   *
+   * The reason travels with the knock and is what the people inside read, so
+   * it is worth writing - a knock with nothing attached is what most ignored
+   * knocks look like.
+   */
+  const knock = (room: PublicRoom): void => {
+    setKnocking(room)
+  }
+
   const join = (room: PublicRoom): void => {
+    if (room.joinRule === 'knock') return knock(room)
     setJoining((j) => ({ ...j, [room.roomId]: true }))
     void store
       // An alias where there is one: it carries its own server and survives
@@ -175,7 +196,14 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
       .then(() => onClose())
       .catch((e: Error) => {
         setJoining((j) => ({ ...j, [room.roomId]: false }))
-        store.toast('error', e.message)
+        // A restricted room refuses with a bare 403, which says nothing about
+        // the one thing that would get you in.
+        store.toast(
+          'error',
+          room.joinRule === 'restricted'
+            ? `${room.name || room.roomId} is open to members of a space - join the space first, and this room opens with it`
+            : e.message
+        )
       })
   }
 
@@ -279,6 +307,11 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
                   {/* Where it lives, said once, beside the room rather than
                       over a section of them. */}
                   {room.via ? ` · ${room.via}` : ' · this server'}
+                  {room.joinRule === 'knock'
+                    ? ' · asks to be knocked on'
+                    : room.joinRule === 'restricted'
+                      ? ' · open to a space’s members'
+                      : ''}
                   {room.topic ? ` · ${room.topic}` : ''}
                 </div>
               </div>
@@ -288,10 +321,42 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
                 disabled={room.joined || joining[room.roomId]}
                 onClick={() => join(room)}
               >
-                {room.joined ? 'Joined' : joining[room.roomId] ? 'Joining…' : 'Join'}
+                {room.joined
+                  ? 'Joined'
+                  : joining[room.roomId]
+                    ? 'Joining…'
+                    : room.joinRule === 'knock'
+                      ? 'Knock'
+                      : 'Join'}
               </button>
             </div>
           ))}
+
+          {knocking && (
+            <ReasonPrompt
+              title={`Ask to join ${knocking.name || knocking.alias || knocking.roomId}`}
+              detail="This room is asked rather than entered. Whoever is inside sees your reason and decides; the answer comes back as an invitation."
+              placeholder="Why you would like to join"
+              confirmLabel="Knock"
+              optional
+              onCancel={() => setKnocking(null)}
+              onConfirm={(reason) => {
+                const room = knocking
+                setKnocking(null)
+                setJoining((j) => ({ ...j, [room.roomId]: true }))
+                void store
+                  .knockMatrixRoom(account.id, room.alias || room.roomId, room.alias ? [] : [room.via], reason)
+                  .then(() => {
+                    setJoining((j) => ({ ...j, [room.roomId]: false }))
+                    store.toast('info', `Asked to join ${room.name || room.roomId}. The answer arrives as an invitation.`)
+                  })
+                  .catch((e: Error) => {
+                    setJoining((j) => ({ ...j, [room.roomId]: false }))
+                    store.toast('error', e.message)
+                  })
+              }}
+            />
+          )}
 
           {!busy && rooms.length === 0 && (answer?.rooms.length ?? 0) > 0 && (
             <p className="small muted room-search-empty">

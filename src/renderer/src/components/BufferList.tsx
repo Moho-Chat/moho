@@ -18,6 +18,7 @@ import {
   type RailGroup
 } from '../lib/groups'
 import { isJoining, type BufferEntry } from '../state/store'
+import type { BufferGroup } from '../../../shared/wire'
 import {
   bufferDisplayName,
   bufferKindGlyph,
@@ -286,6 +287,14 @@ export function BufferList(): JSX.Element {
           : undefined
       }
       autojoins={store.autojoins(b.accountId, bufferDisplayName(b.name))}
+      // Which spaces this account has, so a room can be put in one. Matrix
+      // only: a Discord guild is not something a channel is moved between.
+      spaces={groups.filter((g) => g.kind === 'space' && g.accountId === b.accountId)}
+      onSpace={(spaceId, child) =>
+        void store
+          .setMatrixSpaceChild(spaceId, b.id, child)
+          .catch((e: Error) => store.toast('error', e.message))
+      }
       onWatch={b.accountId.startsWith('kick:') ? () => store.watchStream(b.id) : undefined}
       onStopWatching={() => store.stopWatching()}
       onOpenInBrowser={
@@ -699,6 +708,10 @@ interface BufferRowProps {
   /** Kick channels only: play the stream in this window, or stop. */
   onWatch?: () => void
   onStopWatching?: () => void
+  /** The spaces this room could belong to, for the services that have them. */
+  spaces?: BufferGroup[]
+  /** Puts this room in a space, or takes it out of one. */
+  onSpace?: (spaceId: string, child: boolean) => void
   /** Whether it is in that list now. */
   autojoins?: boolean
   onHide: () => void
@@ -739,6 +752,8 @@ function BufferRow({
   onOpenInBrowser,
   onWatch,
   onStopWatching,
+  spaces,
+  onSpace,
   onHide,
   onClose,
   onCall,
@@ -810,6 +825,31 @@ function BufferRow({
     // A Kick channel is a stream as well as a chat, and the stream is not
     // something this client shows - so the way to watch it belongs on the
     // row, next to the way to open its chat in a window.
+    // Which space this room belongs to. A space is the server's own grouping,
+    // unlike the categories above it, so this writes to the room rather than
+    // to this window - and a room can be in more than one, which is why the
+    // one it is in now is offered for removal rather than swapped silently.
+    ...(spaces && spaces.length > 0 && buffer.kind !== 'server'
+      ? ([
+          ...spaces
+            .filter((space) => space.id !== buffer.groupId)
+            .map((space) => ({
+              label: `Add to ${space.name}`,
+              icon: 'move_to_inbox',
+              onClick: () => void onSpace?.(space.id, true)
+            })),
+          ...(spaces.some((space) => space.id === buffer.groupId)
+            ? [
+                {
+                  label: `Remove from ${spaces.find((s) => s.id === buffer.groupId)?.name ?? 'this space'}`,
+                  icon: 'outbox',
+                  onClick: () => void onSpace?.(buffer.groupId ?? '', false)
+                }
+              ]
+            : []),
+          { separator: true }
+        ] as MenuEntry[])
+      : []),
     // Watching is offered only while there is something to watch: an offline
     // channel's playlist is a signed URL to nothing, and an entry that fails
     // a few seconds after being pressed is worse than one that isn't there.

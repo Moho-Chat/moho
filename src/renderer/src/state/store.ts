@@ -2313,6 +2313,32 @@ export class ChatStore {
     setTimeout(() => this.dropJoining(stand_in.id), JOIN_GIVE_UP_MS)
   }
 
+  /**
+   * Asks to be let into a room that is asked rather than entered.
+   *
+   * No stand-in row, unlike a join: knocking does not put you in the room and
+   * a row in the list would say it had. The answer, when it comes, is an
+   * invitation - which the invite list already shows.
+   */
+  async knockMatrixRoom(accountId: string, roomIdOrAlias: string, via: string[] = [], reason = ''): Promise<void> {
+    await window.moho.rpc('knockMatrixRoom', { accountId, roomIdOrAlias, via, reason })
+  }
+
+  /**
+   * Tells whoever runs the homeserver about a message.
+   *
+   * Needs no power in the room, which is what makes it the answer available to
+   * everybody - see the moderation entries beside it, which do.
+   */
+  async reportMatrixMessage(bufferId: string, messageId: string, reason: string): Promise<void> {
+    await window.moho.rpc('reportMatrixMessage', { bufferId, messageId, reason })
+  }
+
+  /** Puts a room in a space, or takes it out of one. */
+  async setMatrixSpaceChild(spaceId: string, bufferId: string, child: boolean): Promise<void> {
+    await window.moho.rpc('setMatrixSpaceChild', { spaceId, bufferId, child })
+  }
+
   private dropJoining(id: string): void {
     if (!this.state.buffers.some((b) => b.id === id)) return
     this.set({ buffers: this.state.buffers.filter((b) => b.id !== id) })
