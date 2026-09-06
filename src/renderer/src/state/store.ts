@@ -248,6 +248,15 @@ export interface KickStream {
    * follows, and a button offering to follow there would fail when pressed.
    */
   following?: boolean | null
+  /**
+   * Where the video is: a signed Amazon IVS playlist, good for watching in
+   * this window rather than in a browser tab beside it.
+   *
+   * Replaced on every refresh, because the signature in it expires - so
+   * whoever is playing it reads the current one rather than the one they
+   * started with.
+   */
+  playbackUrl?: string | null
 }
 
 export type ActivePanel = '' | 'accounts' | 'settings' | 'join' | 'downloads'
@@ -417,6 +426,17 @@ export interface ChatState {
   ringingCall: RingingCall | null
   /** The call put away without being hung up. */
   callMinimized: boolean
+  /**
+   * The Kick stream being watched, if any.
+   *
+   * Beside the call rather than inside it: they draw into the same surface
+   * and only one of them can have it, but a stream is a broadcast being
+   * received and a call is a conversation being held, and the daemon knows
+   * nothing about this one - it is a URL and a video element.
+   */
+  watching: { bufferId: string; accountId: string; title: string } | null
+  /** The stream put away without being stopped. */
+  watchMinimized: boolean
   /** The screens and windows on offer, while somebody is choosing one. */
   screenSources: { id: string; name: string; thumbnail: string }[] | null
   activeCall: {
@@ -512,6 +532,8 @@ const INITIAL: ChatState = {
   discordFriends: {},
   ringingCall: null,
   callMinimized: false,
+  watching: null,
+  watchMinimized: false,
   screenSources: null,
   activeCall: null,
   matrixIgnored: {},
@@ -1703,6 +1725,46 @@ export class ChatStore {
   /** Puts the call away, or brings it back. It keeps running either way. */
   setCallMinimized(minimized: boolean): void {
     this.set({ callMinimized: minimized })
+  }
+
+  /**
+   * Starts watching a Kick channel's stream in this window.
+   *
+   * Only what is on air: the playlist for an offline channel is a signed URL
+   * to nothing, and a player pointed at it fails a few seconds later with an
+   * error about segments rather than saying the obvious thing.
+   *
+   * One at a time, and never beside a call - both draw into the same surface,
+   * and a call is the one that cannot be restarted with a click.
+   */
+  watchStream(bufferId: string): void {
+    const stream = this.state.kickStreams[bufferId]
+    const buffer = this.state.buffers.find((b) => b.id === bufferId)
+    if (!buffer) return
+    if (!stream?.live || !stream.playbackUrl) {
+      this.toast('info', `${bufferDisplayName(buffer.name)} is not streaming right now`)
+      return
+    }
+    if (this.state.activeCall) {
+      this.toast('info', 'Finish the call first - the picture has one place to go')
+      return
+    }
+    this.set({
+      watchMinimized: false,
+      watching: {
+        bufferId,
+        accountId: buffer.accountId,
+        title: stream.title || bufferDisplayName(buffer.name)
+      }
+    })
+  }
+
+  stopWatching(): void {
+    this.set({ watching: null, watchMinimized: false })
+  }
+
+  setWatchMinimized(minimized: boolean): void {
+    this.set({ watchMinimized: minimized })
   }
 
   hangUpMatrixCall(): void {

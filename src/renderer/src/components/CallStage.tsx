@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
+import { VideoStage } from './VideoStage'
 import { Avatar } from './Avatar'
 import { useChat, useStore } from '../state/hooks'
 import type { CallTile } from '../state/store'
@@ -144,25 +145,6 @@ export function CallStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' }): JSX
   const phase =
     call.phase === 'ringing' ? 'Ringing…' : call.phase === 'connecting' ? 'Connecting…' : 'Connected'
 
-  // Put away without being hung up. A call somebody is listening to while
-  // reading something else does not need a picture on screen, and closing the
-  // picture must not close the call - so this is a bar with a way back.
-  if (minimized) {
-    return (
-      <div className={classes('call-stage', 'minimized', mode === 'pip' && 'pip')}>
-        <div className="call-stage-controls">
-          <Icon name="call" size={16} />
-          <span className="small muted ellipsis">
-            {phase}
-            {where ? ` · ${bufferDisplayName(where)}` : ''}
-          </span>
-          <IconButton name="expand_less" title="Show the call" onClick={() => store.setCallMinimized(false)} />
-          <IconButton name="call_end" title="Hang up" className="calling" onClick={() => store.hangUpMatrixCall()} />
-        </div>
-      </div>
-    )
-  }
-
   // Who is in it, named. Only in the corner: in the conversation the tiles are
   // large enough to read the names off, and a second list of them would be the
   // same information twice.
@@ -215,27 +197,32 @@ export function CallStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' }): JSX
   )
 
   return (
-    <div className={classes('call-stage', mode === 'pip' && 'pip')}>
-      {mode === 'pip' && (
-        <div className="call-stage-title">
-          <Icon name="call" size={14} />
-          <span className="small ellipsis" title={everybody}>
-            {everybody || phase}
-          </span>
-          {/* Back to where the call is being held, which turns this corner
-              back into the conversation - the picture stops being a corner of
-              somewhere else and becomes the room you are in. */}
+    <VideoStage
+      mode={mode}
+      title={everybody}
+      subtitle={`${phase}${where ? ` · ${bufferDisplayName(where)}` : ''}`}
+      minimized={minimized}
+      onMinimized={(m) => store.setCallMinimized(m)}
+      onGoTo={() => void store.selectBuffer(call.bufferId)}
+      onEnd={() => store.hangUpMatrixCall()}
+      endLabel="Hang up"
+      controls={
+        <>
           <IconButton
-            name="open_in_full"
-            size={14}
-            title="Go to the call"
-            onClick={() => void store.selectBuffer(call.bufferId)}
+            name={call.muted ? 'mic_off' : 'mic'}
+            title={call.muted ? 'Unmute' : 'Mute'}
+            className={call.muted ? 'calling' : undefined}
+            onClick={() => store.toggleCallMute()}
           />
-          {/* Where a window's own control would be, because in the corner this
-              is a window: the thing you close is closed from its top right. */}
-          <IconButton name="remove" size={14} title="Minimise" onClick={() => store.setCallMinimized(true)} />
-        </div>
-      )}
+          <IconButton
+            name={call.sharingScreen ? 'stop_screen_share' : 'screen_share'}
+            title={call.sharingScreen ? 'Stop sharing' : 'Share a screen or window'}
+            className={call.sharingScreen ? 'active' : undefined}
+            onClick={() => void store.toggleScreenShare()}
+          />
+        </>
+      }
+    >
       {/* Everybody in the call, one tile each, in as square a grid as the
           number allows - which is what every client with more than two people
           in a call has arrived at, because faces are roughly square and a row
@@ -278,34 +265,7 @@ export function CallStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' }): JSX
         </div>
       )}
 
-      <div className="call-stage-controls">
-        {/* Which conversation this call is in, because the stage no longer
-            sits under it: a call outlives looking at something else. */}
-        <span className="small muted ellipsis">
-          {phase}
-          {where ? ` · ${bufferDisplayName(where)}` : ''}
-        </span>
-        <IconButton
-          name={call.muted ? 'mic_off' : 'mic'}
-          title={call.muted ? 'Unmute' : 'Mute'}
-          className={call.muted ? 'calling' : undefined}
-          onClick={() => store.toggleCallMute()}
-        />
-        <IconButton
-          name={call.sharingScreen ? 'stop_screen_share' : 'screen_share'}
-          title={call.sharingScreen ? 'Stop sharing' : 'Share a screen or window'}
-          className={call.sharingScreen ? 'active' : undefined}
-          onClick={() => void store.toggleScreenShare()}
-        />
-        {/* Out of the way without ending: the call keeps going, and the bar
-            that is left says so and offers it back. In the corner this sits in
-            the title bar instead, where a window's own controls live. */}
-        {mode !== 'pip' && (
-          <IconButton name="expand_more" title="Minimise" onClick={() => store.setCallMinimized(true)} />
-        )}
-        <IconButton name="call_end" title="Hang up" className="calling" onClick={() => store.hangUpMatrixCall()} />
-      </div>
-    </div>
+    </VideoStage>
   )
 }
 

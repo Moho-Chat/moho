@@ -4,6 +4,7 @@ import { MessageRow, type MessageMode } from './MessageRow'
 import { LiveCards } from './LiveCards'
 import { CallView } from './CallView'
 import { CallStage } from './CallStage'
+import { StreamStage } from './StreamStage'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, isChatKind } from '../lib/util'
 import type { ChannelIndex } from '../lib/format'
@@ -117,6 +118,7 @@ export function MessageList(): JSX.Element {
   const bufferId = useChat((s) => s.activeBufferId)
   const messagesByBuffer = useChat((s) => s.messagesByBuffer)
   const activeCall = useChat((s) => s.activeCall)
+  const watching = useChat((s) => s.watching)
   const loadingMore = useChat((s) => s.loadingMore)
   const loadingNewer = useChat((s) => s.loadingNewer)
   const historyGapAfter = useChat((s) => s.historyGapAfter)
@@ -454,6 +456,10 @@ export function MessageList(): JSX.Element {
           and the conversation it is in are the same conversation. It moves to
           a corner of its own only when you walk away from it - see App. */}
       {activeCall?.bufferId === bufferId && <CallStage mode="inline" />}
+      {/* And a Kick stream in the same place, for the same reason: the picture
+          and the chat about it are one conversation. Never both at once - the
+          store refuses to start a stream during a call. */}
+      {watching?.bufferId === bufferId && <StreamStage mode="inline" />}
       {/* Over the log rather than in it: a poll is one question being
           answered while the chat keeps moving underneath, and a line in the
           log would scroll away mid-vote. */}

@@ -286,6 +286,8 @@ export function BufferList(): JSX.Element {
           : undefined
       }
       autojoins={store.autojoins(b.accountId, bufferDisplayName(b.name))}
+      onWatch={b.accountId.startsWith('kick:') ? () => store.watchStream(b.id) : undefined}
+      onStopWatching={() => store.stopWatching()}
       onOpenInBrowser={
         b.accountId.startsWith('kick:')
           ? () => void window.moho.openExternal(`https://kick.com/${bufferDisplayName(b.name)}`)
@@ -694,6 +696,9 @@ interface BufferRowProps {
   onToggleAutojoin?: () => void
   /** Kick channels only: watch the stream where streams are watched. */
   onOpenInBrowser?: () => void
+  /** Kick channels only: play the stream in this window, or stop. */
+  onWatch?: () => void
+  onStopWatching?: () => void
   /** Whether it is in that list now. */
   autojoins?: boolean
   onHide: () => void
@@ -732,6 +737,8 @@ function BufferRow({
   onToggleAutojoin,
   autojoins,
   onOpenInBrowser,
+  onWatch,
+  onStopWatching,
   onHide,
   onClose,
   onCall,
@@ -754,6 +761,9 @@ function BufferRow({
   // than the map, so a viewer count ticking over in one channel does not
   // re-render every row in the list.
   const live = useChat((s) => s.kickStreams[buffer.id]?.live ?? false)
+  // Whether this channel's stream is the one in the window. Selected down to
+  // a boolean for the same reason as `live` above.
+  const watched = useChat((s) => s.watching?.bufferId === buffer.id)
 
   // Under an account header the row's own kind is what's worth showing (a
   // channel vs a DM vs the server buffer). A pinned row has no header above
@@ -800,6 +810,16 @@ function BufferRow({
     // A Kick channel is a stream as well as a chat, and the stream is not
     // something this client shows - so the way to watch it belongs on the
     // row, next to the way to open its chat in a window.
+    // Watching is offered only while there is something to watch: an offline
+    // channel's playlist is a signed URL to nothing, and an entry that fails
+    // a few seconds after being pressed is worse than one that isn't there.
+    ...(onWatch && (live || watched)
+      ? ([
+          watched
+            ? { label: 'Stop watching', icon: 'stop_circle', danger: true, onClick: onStopWatching! }
+            : { label: 'Watch the stream', icon: 'live_tv', onClick: onWatch }
+        ] as MenuEntry[])
+      : []),
     ...(onOpenInBrowser
       ? ([{ label: 'Open in browser', icon: 'public', onClick: onOpenInBrowser }] as MenuEntry[])
       : []),

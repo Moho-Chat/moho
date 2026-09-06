@@ -942,14 +942,19 @@
   width: 100%;
   aspect-ratio: 16 / 9;
   min-width: 0;
-  /* It is a button now - pressing a face is how somebody is singled out - so
-     the button's own chrome has to go before it can look like a picture. */
+  /* A tile is a button where pressing it means something - a face in a call
+     is how somebody is singled out - so the button's own chrome has to go
+     before it can look like a picture. A stream's single tile is not a
+     button, and should not offer a hand to a click that does nothing. */
   padding: 0;
   border: none;
   border-radius: var(--corner-radius-small);
   overflow: hidden;
-  cursor: pointer;
   background: var(--surface-container-highest);
+}
+
+button.video-tile {
+  cursor: pointer;
 }
 
 /*

@@ -9,6 +9,7 @@ import { BufferFace } from './components/BufferFace'
 import { FileDrop } from './components/FileDrop'
 import { Toasts } from './components/Toasts'
 import { CallStage, IncomingMatrixCall, ScreenPicker } from './components/CallStage'
+import { StreamStage } from './components/StreamStage'
 import { Icon, IconButton } from './components/Icon'
 import { useActiveBuffer, useChat, usePref, usePrefsReady, useStore } from './state/hooks'
 import { bufferDisplayName } from './lib/util'
@@ -41,6 +42,7 @@ export function Popout({ bufferId }: { bufferId: string }): JSX.Element {
   const buffer = useActiveBuffer()
   const linkUp = useChat((s) => s.linkUp)
   const activeCall = useChat((s) => s.activeCall)
+  const watching = useChat((s) => s.watching)
   // Folded by default: a popout is a narrow window opened to read one
   // conversation, and a member list would take a third of it before anything
   // has been read.
@@ -139,6 +141,7 @@ export function Popout({ bufferId }: { bufferId: string }): JSX.Element {
       {/* A popped-out conversation is one conversation, so a call that is not
           this one is in the corner and this one is above the log. */}
       {activeCall && activeCall.bufferId !== bufferId && <CallStage mode="pip" />}
+      {watching && watching.bufferId !== bufferId && <StreamStage mode="pip" />}
       <Toasts />
     </div>
   )

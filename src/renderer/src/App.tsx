@@ -21,6 +21,7 @@ import { JoinPanel } from './components/JoinPanel'
 import { Toasts } from './components/Toasts'
 import { IncomingCallPanel } from './components/IncomingCallPanel'
 import { CallStage, IncomingMatrixCall, ScreenPicker } from './components/CallStage'
+import { StreamStage } from './components/StreamStage'
 import { FileDrop } from './components/FileDrop'
 import { TransferPanel } from './components/TransferPanel'
 import { Icon, IconButton } from './components/Icon'
@@ -41,6 +42,8 @@ export default function App(): JSX.Element {
   // the conversation; this is the corner it retreats to.
   const activeCall = useChat((s) => s.activeCall)
   const activeGroupId = useChat((s) => s.activeGroupId)
+  // A stream being watched, which walks away the same way a call does.
+  const watching = useChat((s) => s.watching)
   const joinPanelAccountId = useChat((s) => s.joinPanelAccountId)
   const buffer = useActiveBuffer()
   const joinAccount = accounts.find((a) => a.id === joinPanelAccountId)
@@ -48,6 +51,7 @@ export default function App(): JSX.Element {
   // one being read - and not while a panel is covering the log either, since
   // that is walking away from it too.
   const callElsewhere = !!activeCall && (activeCall.bufferId !== activeBufferId || activePanel !== '')
+  const streamElsewhere = !!watching && (watching.bufferId !== activeBufferId || activePanel !== '')
 
   const [sidebarFolded, setSidebarFolded] = usePref<boolean>('ui.sidebarFolded', false)
   const [userListFolded, setUserListFolded] = usePref<boolean>('ui.userListFolded', false)
@@ -220,6 +224,9 @@ export default function App(): JSX.Element {
           it belongs to it sits above the log instead - see MessageList - so
           the two are never both on screen. */}
       {callElsewhere && <CallStage mode="pip" />}
+      {/* A stream keeps playing when you go and read something else, and goes
+          to the same corner - it is the same surface, differently fed. */}
+      {streamElsewhere && <StreamStage mode="pip" />}
       {/* Over everything for the same reason: a file is offered while you are
           reading something else, and often in a conversation you are not. */}
       <TransferPanel />
