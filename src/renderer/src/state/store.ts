@@ -1667,10 +1667,17 @@ export class ChatStore {
    * travels to every client signed in, which is what blocking somebody
    * means, and it agrees with Element.
    */
-  setIgnored(accountId: string, userId: string, ignored: boolean): void {
+  setIgnored(accountId: string, target: string, ignored: boolean): void {
     void window.moho
-      .rpc('setMatrixIgnored', { accountId, userId, ignored })
-      .then(() => this.toast('info', ignored ? `Ignoring ${userId}` : `No longer ignoring ${userId}`))
+      .rpc<{ scope?: string }>('setIgnored', { accountId, target, ignored })
+      .then((answer) => {
+        // Where it holds is the part worth saying. On Matrix and Discord the
+        // service itself is told, so it holds everywhere that account is
+        // signed in; on IRC, Kick and Sneedchat there is nobody to tell, and
+        // this is moho refusing to show what still arrives.
+        const scope = answer?.scope === 'account' ? '' : ' here'
+        this.toast('info', ignored ? `Ignoring ${target}${scope}` : `No longer ignoring ${target}`)
+      })
       .catch((e: Error) => this.toast('error', e.message))
   }
 

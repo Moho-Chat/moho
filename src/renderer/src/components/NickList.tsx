@@ -256,6 +256,13 @@ export function NickList(): JSX.Element {
                     .catch((e: Error) => store.toast('error', e.message))
                 }}
                 onToggleBlock={toggleBlocked}
+                onIgnore={(ignored) => {
+                  if (!account) return
+                  // The protocol id where the service has one - a display
+                  // name can be changed and reused, and on IRC it is all
+                  // there is.
+                  store.setIgnored(account.id, member.userId || member.nick, ignored)
+                }}
                 onMention={() => store.startReply('', member.nick, '')}
                 onModerate={(action) => {
                   if (!buffer || !account) return
@@ -390,6 +397,8 @@ interface MemberRowProps {
   /** Which service this row belongs to, so an action is named as it acts. */
   service: string | undefined
   onToggleBlock: (key: string) => void
+  /** Tells the service, where the service has anything to be told. */
+  onIgnore: (ignored: boolean) => void
   onMention: () => void
   onModerate: (action: ModerationAction) => void
   /** Gives this member a role, or takes it away. Discord only. */
@@ -417,6 +426,7 @@ function MemberRow({
   service,
   onSetPower,
   onToggleBlock,
+  onIgnore,
   onMention,
   onModerate,
   onSetRole,
@@ -442,10 +452,21 @@ function MemberRow({
     ...(canWhisper ? ([{ label: 'Whisper', icon: 'lock', onClick: onWhisper }] as MenuEntry[]) : []),
     ...(canSendFile ? ([{ label: 'Send a file', icon: 'upload_file', onClick: onSendFile }] as MenuEntry[]) : []),
     { separator: true },
+    // Not hearing from them. This used to be a list in this window's own
+    // preferences, which hid the lines and nothing else: they still counted
+    // as unread, still notified, still went into the log. It goes to the
+    // daemon now, which tells Matrix and Discord - both of which have a real
+    // list of their own - and keeps one itself for the services that have
+    // none. The window-local list stays only as the thing that hides what is
+    // already on screen.
     {
-      label: blocked ? 'Unblock' : 'Block',
+      label: blocked ? `Stop ignoring ${member.nick}` : `Ignore ${member.nick}`,
       icon: blocked ? 'check_circle' : 'block',
-      onClick: () => onToggleBlock(blockKey)
+      danger: !blocked,
+      onClick: () => {
+        onToggleBlock(blockKey)
+        onIgnore(!blocked)
+      }
     },
     ...(perms.canMute
       ? ([{ label: 'Mute', icon: 'volume_off', onClick: () => onModerate('mute') }] as MenuEntry[])

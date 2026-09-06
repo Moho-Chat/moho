@@ -260,10 +260,14 @@ export function MessageRow({
         ] as MenuEntry[])
       : []),
     { label: 'Reply', icon: 'reply', onClick: () => reply() },
-    // Never hearing from them again, on every client this account uses -
-    // Matrix keeps the list on the account rather than in one window, which
-    // is the difference between blocking somebody and hiding them here.
-    ...(service === 'matrix' && !isSystem && !message.isOwn && message.senderId
+    // Never hearing from them again. What that costs differs by service and
+    // the daemon says which: Matrix keeps the list on the homeserver and
+    // Discord has a real block, so both hold on every client that account is
+    // signed in to; IRC, Kick and Sneedchat have nobody to tell, so it is
+    // this window's own refusal to show what still arrives. The entry is the
+    // same either way, because the person pressing it is asking the same
+    // thing - the toast is where the difference is said.
+    ...(!isSystem && !message.isOwn && message.from
       ? ([
           {
             label: `Ignore ${message.from}`,
@@ -271,7 +275,10 @@ export function MessageRow({
             danger: true,
             onClick: () => {
               const account = store.accountFor(bufferId)
-              if (account) store.setIgnored(account.id, message.senderId!, true)
+              // The protocol id where there is one, since a display name can
+              // be changed and reused; the name where there is not, which is
+              // all IRC ever has.
+              if (account) store.setIgnored(account.id, message.senderId || message.from, true)
             }
           }
         ] as MenuEntry[])
