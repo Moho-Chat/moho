@@ -28,6 +28,30 @@ export interface MatrixCallEvent {
   content: Record<string, any>
 }
 
+/** Somebody in a room's call, as the room's own state says. */
+export interface CallMember {
+  user_id: string
+  membership: { device_id?: string; expires_ts?: number }
+}
+
+/** The key that names one participant: a person on one device. */
+export function memberKey(userId: string, deviceId: string): string {
+  return `${userId}|${deviceId}`
+}
+
+/**
+ * Whether this end is the one that calls, for a given pair.
+ *
+ * Both ends see each other arrive, and if both call, both answer and the call
+ * collides with itself. The rule has to be a property of the pair rather than
+ * of who arrived first, because "first" is not something two clients can
+ * agree on - so the smaller key calls the larger, which both sides compute
+ * the same way.
+ */
+export function shouldOffer(ownKey: string, theirKey: string): boolean {
+  return ownKey < theirKey
+}
+
 /** A call being offered to this account, waiting to be answered or refused. */
 export interface RingingCall {
   accountId: string
@@ -44,6 +68,12 @@ export interface RingingCall {
 export interface CallSurface {
   send: (bufferId: string, type: string, content: Record<string, unknown>) => void
   iceServers: (accountId: string) => Promise<RTCIceServer[]>
+  /** Publishes this end's membership of the room's call, and says who we are
+   *  in it - the user and the device, since one person may be in from two. */
+  joinMembership: (bufferId: string) => Promise<{ userId: string; deviceId: string; roomId?: string } | null>
+  leaveMembership: (bufferId: string) => Promise<void>
+  /** Who the room says is in the call. */
+  callMembers: (bufferId: string) => Promise<CallMember[]>
   onRinging: (call: RingingCall | null) => void
   onPhase: (phase: CallPhase, call: ActiveCall | null) => void
   onError: (message: string) => void
@@ -70,10 +100,49 @@ export function offerHasVideo(sdp: string): boolean {
   return /^m=video/m.test(sdp)
 }
 
+/** One other participant in a group call, and the connection to them. */
+export interface Peer {
+  key: string
+  userId: string
+  call: Call
+  remote: MediaStream | null
+}
+
+/**
+ * A call in a room, between everybody in it.
+ *
+ * A mesh rather than a conference: one peer connection per pair, which is
+ * what Matrix has without a media server standing in the middle. That is fine
+ * for the handful of people a room call usually is and would not be fine for
+ * thirty - the cost is one upload stream per other participant, which is the
+ * trade every meshed client makes.
+ *
+ * Who is in it is `m.call.member` state in the room, which is how anybody
+ * learns there is a call to join at all: a group call has no invitation.
+ */
+export interface GroupCall {
+  accountId: string
+  bufferId: string
+  ownKey: string
+  video: boolean
+  peers: Map<string, Peer>
+  /** This end's camera and microphone, opened once and lent to every leg. */
+  local: MediaStream | null
+  /** The whole call's id, on every signal, so a second call in the same room
+   *  is a second call rather than a crossed line. */
+  confId: string
+}
+
 export class MatrixCalls {
   private surface: CallSurface
   private active: ActiveCall | null = null
   private ringing: RingingCall | null = null
+  private group: GroupCall | null = null
+  /** The relay list this call was set up with, so an answering leg uses the
+   *  same one the offering legs did rather than asking again per invite. */
+  private iceForGroup: RTCIceServer[] = []
+  /** Keeps this end's membership from expiring while it is still here. */
+  private heartbeat: ReturnType<typeof setInterval> | null = null
 
   constructor(surface: CallSurface) {
     this.surface = surface
@@ -140,6 +209,224 @@ export class MatrixCalls {
     this.surface.onPhase('ended', null)
   }
 
+  get currentGroup(): GroupCall | null {
+    return this.group
+  }
+
+  /**
+   * Joins the room's call, starting one if nobody is in it yet.
+   *
+   * Joining *is* starting: publishing this end's membership is what makes a
+   * call exist, and the difference between the two is only whether anybody
+   * was there first.
+   */
+  async joinGroup(accountId: string, bufferId: string, video: boolean): Promise<void> {
+    if (this.active || this.group) {
+      this.surface.onError('Already in a call')
+      return
+    }
+    const own = await this.surface.joinMembership(bufferId)
+    if (!own) return
+    this.iceForGroup = await this.surface.iceServers(accountId)
+    const ownKey = memberKey(own.userId, own.deviceId)
+    // Opened once here rather than per leg: five connections asking the
+    // machine for the same camera get one capture and four refusals.
+    let local: MediaStream | null = null
+    try {
+      local = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
+        video
+      })
+    } catch {
+      try {
+        local = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+        if (video) this.surface.onError('No camera here - joining with audio only')
+      } catch (e) {
+        this.surface.onError(`Couldn't open the microphone: ${(e as Error).message}`)
+        await this.surface.leaveMembership(bufferId)
+        return
+      }
+    }
+    this.group = {
+      accountId,
+      bufferId,
+      ownKey,
+      video,
+      local,
+      peers: new Map(),
+      // Named for the room rather than for the buffer: each account calls the
+      // same room by a different buffer id, and a conference named after one
+      // of those is a conference the other end never joins.
+      confId: `moho-conf-${own.roomId ?? bufferId}`
+    }
+    this.surface.onPhase('connecting', null)
+    // Refreshed while this end is still here: a membership carries an expiry
+    // so that a client which dies mid-call stops being a participant, and
+    // one that is alive has to keep saying so.
+    this.heartbeat = setInterval(() => void this.surface.joinMembership(bufferId), 30_000)
+    await this.meet(await this.surface.callMembers(bufferId))
+  }
+
+  /**
+   * Brings the peer list into line with who the room says is in the call.
+   *
+   * Called on joining and on every membership change, so somebody arriving
+   * gets called and somebody leaving is hung up on - which is the whole of
+   * group call bookkeeping.
+   */
+  async meet(members: CallMember[]): Promise<void> {
+    const group = this.group
+    if (!group) return
+    const present = new Set<string>()
+    for (const member of members) {
+      const key = memberKey(member.user_id, member.membership?.device_id ?? '')
+      if (key === group.ownKey) continue
+      present.add(key)
+      if (group.peers.has(key)) continue
+      // Only one end of each pair offers; the other waits for the invite.
+      if (!shouldOffer(group.ownKey, key)) continue
+      await this.callPeer(key, member.user_id)
+    }
+    // And anybody the room no longer lists has left the call, whether they
+    // said so or their membership simply ran out.
+    for (const [key, peer] of [...group.peers]) {
+      if (present.has(key)) continue
+      void peer.call.hangUp('user_hangup', true)
+      group.peers.delete(key)
+    }
+    this.surface.onPhase(group.peers.size > 0 ? 'connected' : 'connecting', null)
+  }
+
+  /** Rings one participant of a group call. */
+  private async callPeer(key: string, userId: string): Promise<void> {
+    const group = this.group
+    if (!group) return
+    const iceServers = await this.surface.iceServers(group.accountId)
+    const callId = `${group.confId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    const call = this.buildPeer(group, callId, key, userId, true, iceServers)
+    group.peers.set(key, { key, userId, call, remote: null })
+    try {
+      await call.invite(group.video)
+    } catch (e) {
+      this.surface.onError(`Couldn't reach ${userId}: ${(e as Error).message}`)
+      group.peers.delete(key)
+    }
+  }
+
+  /** Leaves the call, telling the room and everybody in it. */
+  leaveGroup(): void {
+    const group = this.group
+    if (!group) return
+    this.group = null
+    if (this.heartbeat) clearInterval(this.heartbeat)
+    this.heartbeat = null
+    for (const peer of group.peers.values()) void peer.call.hangUp('user_hangup', true)
+    // The shared capture is nobody's leg to stop, so it is stopped here.
+    for (const track of group.local?.getTracks() ?? []) track.stop()
+    void this.surface.leaveMembership(group.bufferId)
+    this.surface.onPhase('ended', null)
+  }
+
+  /**
+   * One connection in the mesh.
+   *
+   * The same `Call` a one-to-one call uses; what differs is only that every
+   * signal names the conference and the person it is for, so five people in a
+   * room do not answer each other's offers.
+   */
+  private buildPeer(
+    group: GroupCall,
+    callId: string,
+    theirKey: string,
+    userId: string,
+    outgoing: boolean,
+    iceServers: RTCIceServer[]
+  ): Call {
+    const call: Call = new Call({
+      id: callId,
+      outgoing,
+      iceServers,
+      local: group.local,
+      handlers: {
+        send: (signal) => {
+          const base = {
+            call_id: callId,
+            version: '1',
+            party_id: group.ownKey,
+            conf_id: group.confId,
+            // Who it is for. Every signal is a room event that everybody
+            // sees, so without this each offer would be answered by
+            // everybody in the room at once.
+            dest_session_id: theirKey
+          }
+          const type =
+            signal.kind === 'invite'
+              ? 'm.call.invite'
+              : signal.kind === 'answer'
+                ? 'm.call.answer'
+                : signal.kind === 'candidates'
+                  ? 'm.call.candidates'
+                  : signal.kind === 'negotiate'
+                    ? 'm.call.negotiate'
+                    : 'm.call.hangup'
+          this.surface.send(group.bufferId, type, { ...base, ...signal.content })
+        },
+        onRemoteStream: (stream) => {
+          const peer = group.peers.get(theirKey)
+          if (peer) peer.remote = stream
+          this.surface.onPhase('connected', null)
+        },
+        onPhase: (phase) => {
+          if (phase === 'ended') group.peers.delete(theirKey)
+          this.surface.onPhase(phase === 'ended' && group.peers.size === 0 ? 'connecting' : phase, null)
+        },
+        onError: (message) => this.surface.onError(`${userId}: ${message}`)
+      }
+    })
+    return call
+  }
+
+  /**
+   * A signal belonging to the group call, rather than to a call of two.
+   *
+   * Answers with whether it was consumed, so the one-to-one path below can
+   * carry on ignoring everything that is not its own.
+   */
+  private handleGroup(event: MatrixCallEvent): boolean {
+    const group = this.group
+    if (!group) return false
+    const { content, kind, callId } = event
+    if (content.conf_id !== group.confId) return false
+    // Somebody else's leg of the mesh, seen because room events are seen by
+    // everybody. Not ours to answer.
+    if (content.dest_session_id && content.dest_session_id !== group.ownKey) return true
+    const theirKey = (content.party_id as string) ?? ''
+    const peer = [...group.peers.values()].find((p) => p.call.id === callId)
+
+    if (kind === 'm.call.invite' && !peer) {
+      const sdp = content.offer?.sdp as string | undefined
+      if (!sdp) return true
+      const call = this.buildPeer(group, callId, theirKey, event.from, false, this.iceForGroup)
+      group.peers.set(theirKey, { key: theirKey, userId: event.from, call, remote: null })
+      void call.accept(sdp, group.video)
+      return true
+    }
+    if (!peer) return true
+    if (kind === 'm.call.answer') {
+      const sdp = content.answer?.sdp as string | undefined
+      if (sdp) void peer.call.takeAnswer(sdp)
+    } else if (kind === 'm.call.candidates') {
+      void peer.call.addCandidates((content.candidates as RTCIceCandidateInit[] | undefined) ?? [])
+    } else if (kind === 'm.call.negotiate') {
+      const description = content.description as RTCSessionDescriptionInit | undefined
+      if (description) void peer.call.takeNegotiation(description)
+    } else if (kind === 'm.call.hangup' || kind === 'm.call.reject') {
+      void peer.call.hangUp('user_hangup', false)
+      group.peers.delete(peer.key)
+    }
+    return true
+  }
+
   private build(
     accountId: string,
     bufferId: string,
@@ -200,6 +487,10 @@ export class MatrixCalls {
    */
   handle(event: MatrixCallEvent): void {
     const { kind, callId, content } = event
+
+    // A group call's own signalling, which is addressed rather than broadcast
+    // even though every event in the room is seen by everybody.
+    if (content.conf_id && this.handleGroup(event)) return
 
     if (event.own) {
       const answeredElsewhere =

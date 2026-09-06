@@ -2924,6 +2924,25 @@ img.smilie {
   word-break: break-all;
 }
 
+/* A call happening in this room, which nobody was invited to: it sits where
+   the call itself would, above the log and outside the scroller. */
+.room-call-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  flex: none;
+  margin: var(--spacing-xs) var(--spacing-m) 0;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container);
+}
+
+.room-call-bar .small {
+  flex: 1;
+  min-width: 0;
+}
+
 .emoji-empty {
   padding: var(--spacing-m);
   text-align: center;

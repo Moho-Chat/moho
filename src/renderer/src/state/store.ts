@@ -26,7 +26,7 @@ import { bufferDisplayName, isImageFile, resolveMediaUrl } from '../lib/util'
 import { DM_GROUP_ID, isDirectMessage } from '../lib/groups'
 import { ircNetworkFor } from '../lib/networks'
 import { parseDeepLink, type IrcLink } from '../../../shared/deeplink'
-import { MatrixCalls, type MatrixCallEvent, type RingingCall } from '../lib/matrixcall'
+import { MatrixCalls, type CallMember, type MatrixCallEvent, type RingingCall } from '../lib/matrixcall'
 import type { CallPhase } from '../lib/webrtc'
 import { Levels } from '../lib/levels'
 import type { PopoutState } from '../../../shared/ipc'
@@ -427,6 +427,13 @@ export interface ChatState {
   /** The call put away without being hung up. */
   callMinimized: boolean
   /**
+   * Who is in each room's call, by buffer.
+   *
+   * A group call has no invitation - it is a piece of room state saying
+   * people are in one - so this is how a room offers a call to join.
+   */
+  callMembers: Record<string, CallMember[]>
+  /**
    * The Kick stream being watched, if any.
    *
    * Beside the call rather than inside it: they draw into the same surface
@@ -532,6 +539,7 @@ const INITIAL: ChatState = {
   discordFriends: {},
   ringingCall: null,
   callMinimized: false,
+  callMembers: {},
   watching: null,
   watchMinimized: false,
   screenSources: null,
@@ -775,8 +783,43 @@ export class ChatStore {
         return []
       }
     },
+    // A group call is joined rather than answered, so this end says it is in
+    // the room's call and reads back who else is - see matrixcall.ts.
+    joinMembership: async (bufferId) => {
+      try {
+        return await window.moho.rpc<{ userId: string; deviceId: string }>('setMatrixCallMembership', {
+          bufferId,
+          joined: true
+        })
+      } catch (e) {
+        this.toast('error', `Couldn't join the call: ${(e as Error).message}`)
+        return null
+      }
+    },
+    leaveMembership: async (bufferId) => {
+      await window.moho.rpc('setMatrixCallMembership', { bufferId, joined: false }).catch(() => {})
+    },
+    callMembers: async (bufferId) =>
+      window.moho.rpc<CallMember[]>('listMatrixCallMembers', { bufferId }).catch(() => []),
     onRinging: (call) => this.set({ ringingCall: call }),
     onPhase: (phase, call) => {
+      // A group call reports with no `call` of its own, because it is not one
+      // connection but several - the room is the call. Its phase moves the
+      // same state the one-to-one path does, and only leaving clears it.
+      const group = this.matrixCalls.currentGroup
+      if (group && phase !== 'ended') {
+        this.set({
+          activeCall: {
+            accountId: group.accountId,
+            bufferId: group.bufferId,
+            phase,
+            video: group.video,
+            muted: this.state.activeCall?.muted ?? false,
+            sharingScreen: false
+          }
+        })
+        return
+      }
       if (!call || phase === 'ended') {
         this.set({ activeCall: null })
         return
@@ -1775,7 +1818,39 @@ export class ChatStore {
   }
 
   hangUpMatrixCall(): void {
+    // Whichever kind is up: leaving a room's call withdraws the membership
+    // that says this end is in it, as well as hanging up on everybody.
+    if (this.matrixCalls.currentGroup) {
+      this.matrixCalls.leaveGroup()
+      this.set({ activeCall: null })
+      return
+    }
     this.matrixCalls.end()
+  }
+
+  /**
+   * Joins the call in this room, starting one if nobody is in it.
+   *
+   * Joining is starting: publishing this end's membership is what makes a
+   * call exist, and the difference is only whether anybody was there first.
+   */
+  async joinMatrixGroupCall(bufferId: string, video: boolean): Promise<void> {
+    const account = this.accountFor(bufferId)
+    if (!account) return
+    await this.matrixCalls.joinGroup(account.id, bufferId, video)
+    const group = this.matrixCalls.currentGroup
+    if (!group) return
+    this.set({
+      callMinimized: false,
+      activeCall: {
+        accountId: account.id,
+        bufferId,
+        phase: 'connecting',
+        video,
+        muted: false,
+        sharingScreen: false
+      }
+    })
   }
 
   /**
@@ -1812,7 +1887,49 @@ export class ChatStore {
    * is one - is the same list, longer. The view draws whatever it is given
    * and does not need to learn anything new to draw five.
    */
+  /** Somebody's name in a room, or their id where the roster has not said. */
+  private matrixDisplayName(bufferId: string, userId: string): string {
+    const roster = this.state.presenceByBuffer[bufferId] ?? []
+    return roster.find((m) => m.userId === userId)?.nick ?? userId
+  }
+
   callTiles(): CallTile[] {
+    // A call between everybody in a room: one tile for this end and one per
+    // person answered, which is what the fitted grid was built for.
+    const group = this.matrixCalls.currentGroup
+    if (group) {
+      // This end's own capture, which exists whether or not anybody has
+      // answered yet - it is opened once for the whole call rather than per
+      // connection.
+      const ours = group.local
+      this.levels.watch('self', ours)
+      const tiles: CallTile[] = [
+        {
+          id: 'self',
+          label: this.ownNameIn(group.bufferId) || 'You',
+          stream: ours,
+          hasVideo: !!ours?.getVideoTracks().some((t) => t.readyState === 'live' && !t.muted),
+          self: true,
+          muted: !!this.state.activeCall?.muted,
+          speaking: !this.state.activeCall?.muted && this.levels.speaking('self')
+        }
+      ]
+      for (const peer of group.peers.values()) {
+        this.levels.watch(peer.key, peer.remote)
+        // Only once there is something to show: a tile for somebody who has
+        // not answered yet is a picture of nobody.
+        if (!peer.remote) continue
+        tiles.push({
+          id: peer.key,
+          label: this.matrixDisplayName(group.bufferId, peer.userId),
+          stream: peer.remote,
+          hasVideo: peer.remote.getVideoTracks().some((t) => t.readyState === 'live' && !t.muted),
+          speaking: this.levels.speaking(peer.key)
+        })
+      }
+      return tiles
+    }
+
     const call = this.matrixCalls.current
     if (!call) {
       this.levels.dispose()
@@ -1980,6 +2097,15 @@ export class ChatStore {
       // Somebody is writing. Discord names one person per event and Matrix
       // sends the whole set, including an empty one to say everybody
       // stopped - so a list replaces, and a single nick is merged in.
+      // Somebody joined or left a room's call. Both the offer of a call to
+      // join and, while in one, the signal to meet whoever just arrived.
+      case 'matrixCallMembers': {
+        const members = (data.members ?? []) as CallMember[]
+        this.set({ callMembers: { ...this.state.callMembers, [data.bufferId]: members } })
+        void this.matrixCalls.meet(members)
+        break
+      }
+
       case 'typing': {
         const until = Date.now() + (data.expiresInMs ?? 10000)
         const current = this.state.typingByBuffer[data.bufferId]

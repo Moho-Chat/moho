@@ -69,17 +69,31 @@ export class Call {
   private answered = false
   /** The screen track while one is being shared, so it can be stopped. */
   private screen: MediaStreamTrack | null = null
+  /** Media opened by somebody else and lent to this leg - see the
+   *  constructor. Never stopped here, because it is not this leg's to stop. */
+  private shared: MediaStream | null = null
 
   constructor(opts: {
     id: string
     outgoing: boolean
     iceServers: RTCIceServer[]
     handlers: CallHandlers
+    /**
+     * A camera and microphone already open, to use instead of opening more.
+     *
+     * A call between two people opens its own. A call between five is five
+     * connections, and asking the machine for the camera five times gets
+     * five captures of the same camera - or, on most machines, one capture
+     * and four failures. So the group opens it once and hands it to each
+     * leg.
+     */
+    local?: MediaStream | null
   }) {
     this.id = opts.id
     this.outgoing = opts.outgoing
     this.handlers = opts.handlers
     this.partyId = `moho-${Math.random().toString(36).slice(2, 10)}`
+    this.shared = opts.local ?? null
     this.pc = new RTCPeerConnection({ iceServers: opts.iceServers })
 
     // Candidates are found for as long as a call lasts, not only at the
@@ -164,6 +178,12 @@ export class Call {
    * "video call" on a desktop with no webcam actually wants.
    */
   private async openLocal(video: boolean): Promise<void> {
+    // Already open, and open for several legs at once: take it as it is.
+    if (this.shared) {
+      this.local = this.shared
+      for (const track of this.shared.getTracks()) this.pc.addTrack(track, this.shared)
+      return
+    }
     const audio = { echoCancellation: true, noiseSuppression: true }
     try {
       this.local = await navigator.mediaDevices.getUserMedia({ audio, video })
@@ -303,7 +323,11 @@ export class Call {
   async hangUp(reason?: string, tell = true): Promise<void> {
     if (this.ringTimer) clearTimeout(this.ringTimer)
     if (tell) this.handlers.send({ kind: 'hangup', content: reason ? { reason } : {} })
-    for (const track of this.local?.getTracks() ?? []) track.stop()
+    // Not the shared capture: other legs of the same call are still using it,
+    // and stopping it here would take the camera away from all of them.
+    if (!this.shared) {
+      for (const track of this.local?.getTracks() ?? []) track.stop()
+    }
     this.screen?.stop()
     this.screen = null
     this.pc.close()

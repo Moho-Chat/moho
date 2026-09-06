@@ -745,8 +745,28 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           header rather than inside the call. */}
       {isMatrix && buffer.kind !== 'server' && !matrixCall && (
         <>
-          <IconButton name="call" title="Voice call" onClick={() => void store.callMatrix(buffer.id, false)} />
-          <IconButton name="videocam" title="Video call" onClick={() => void store.callMatrix(buffer.id, true)} />
+          {/* A room's call is between everybody in it and a direct message's
+              is between two people, which are different things to start: one
+              is joined and the other rings somebody. The room gets the first
+              and the DM the second, because that is what each one is. */}
+          <IconButton
+            name="call"
+            title={buffer.kind === 'channel' ? 'Start a call in this room' : 'Voice call'}
+            onClick={() =>
+              buffer.kind === 'channel'
+                ? void store.joinMatrixGroupCall(buffer.id, false)
+                : void store.callMatrix(buffer.id, false)
+            }
+          />
+          <IconButton
+            name="videocam"
+            title={buffer.kind === 'channel' ? 'Start a video call in this room' : 'Video call'}
+            onClick={() =>
+              buffer.kind === 'channel'
+                ? void store.joinMatrixGroupCall(buffer.id, true)
+                : void store.callMatrix(buffer.id, true)
+            }
+          />
         </>
       )}
       {isMatrix && matrixCall?.bufferId === buffer.id && (

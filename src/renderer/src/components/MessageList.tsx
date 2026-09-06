@@ -3,7 +3,7 @@ import { Icon } from './Icon'
 import { MessageRow, type MessageMode } from './MessageRow'
 import { LiveCards } from './LiveCards'
 import { CallView } from './CallView'
-import { CallStage } from './CallStage'
+import { CallStage, RoomCallBar } from './CallStage'
 import { StreamStage } from './StreamStage'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, isChatKind } from '../lib/util'
@@ -456,6 +456,9 @@ export function MessageList(): JSX.Element {
           and the conversation it is in are the same conversation. It moves to
           a corner of its own only when you walk away from it - see App. */}
       {activeCall?.bufferId === bufferId && <CallStage mode="inline" />}
+      {/* And a call already happening here, which nobody was invited to
+          because a group call has no invitation - only people in it. */}
+      <RoomCallBar bufferId={bufferId} />
       {/* And a Kick stream in the same place, for the same reason: the picture
           and the chat about it are one conversation. Never both at once - the
           store refuses to start a stream during a call. */}

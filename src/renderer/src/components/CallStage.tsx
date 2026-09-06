@@ -270,6 +270,50 @@ export function CallStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' }): JSX
 }
 
 /**
+ * A call already happening in this room, and the way into it.
+ *
+ * A group call has no invitation: it is a piece of room state saying people
+ * are in one, so the only way anybody learns of it is by being shown that
+ * they could join. Which is what this is - the bar Element shows at the top
+ * of a room, in the place a call would appear.
+ */
+export function RoomCallBar({ bufferId }: { bufferId: string }): JSX.Element | null {
+  const store = useStore()
+  const members = useChat((s) => s.callMembers[bufferId]) ?? []
+  const activeCall = useChat((s) => s.activeCall)
+  const buffers = useChat((s) => s.buffers)
+
+  // Nothing to offer while this end is already in it, and nothing to offer
+  // when nobody is.
+  if (members.length === 0 || activeCall?.bufferId === bufferId) return null
+  // Whose account this is, out of its id: a Matrix account is named for the
+  // user it signs in as, and this end being in the call from another device
+  // is still this end being in it.
+  const accountId = buffers.find((b) => b.id === bufferId)?.accountId ?? ''
+  const ownUserId = accountId.startsWith('matrix:') ? accountId.slice('matrix:'.length) : accountId
+  const others = members.filter((m) => m.user_id !== ownUserId)
+  if (others.length === 0) return null
+
+  const who =
+    others.length === 1
+      ? `${others[0].user_id} is in a call`
+      : `${others.length} people are in a call`
+
+  return (
+    <div className="room-call-bar">
+      <Icon name="videocam" size={16} />
+      <span className="small ellipsis">{who}</span>
+      <button type="button" className="button" onClick={() => void store.joinMatrixGroupCall(bufferId, false)}>
+        Join
+      </button>
+      <button type="button" className="button" onClick={() => void store.joinMatrixGroupCall(bufferId, true)}>
+        Join with video
+      </button>
+    </div>
+  )
+}
+
+/**
  * Which screen or window to show the room.
  *
  * A grid of what is actually open, with a still of each, because the names
