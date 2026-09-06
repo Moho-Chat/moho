@@ -492,6 +492,10 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   const filterMenu = suggestions(query)
   const isMatrix = buffer.accountId.startsWith('matrix:')
   const stream = useChat((s) => s.kickStreams)[buffer.id]
+  // Whether this window is the one playing this channel. Per window rather
+  // than per channel: a popped-out chat is its own window with its own
+  // picture, and the one in the main window keeps playing there.
+  const watching = useChat((s) => s.watching?.bufferId === buffer.id)
   const matrixCall = useChat((s) => s.activeCall)
   const isDm = buffer.kind === 'dm'
   // This conversation's call, not merely a call on the same account: one
@@ -719,6 +723,22 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           )}
         </span>
       )}
+      {/* Watching, offered where the chat is rather than only on the row in
+          the list - a popped-out channel has no list to right-click, and the
+          window that has the conversation is the one somebody is looking at
+          when they decide to watch it.
+
+          Beside the chip that says the channel is on air, and only while it
+          is: a playlist for an offline channel is a signed URL to nothing. */}
+      {stream && (stream.live || watching) && (
+        <IconButton
+          name={watching ? 'stop_circle' : 'live_tv'}
+          title={watching ? 'Stop watching' : 'Watch the stream'}
+          className={watching ? 'calling' : undefined}
+          onClick={() => (watching ? store.stopWatching() : store.watchStream(buffer.id))}
+        />
+      )}
+
       {/* Matrix's own calls, which this window makes rather than the daemon:
           two buttons because a video call is a different thing to start, and
           on a service where either is normal the choice belongs on the
