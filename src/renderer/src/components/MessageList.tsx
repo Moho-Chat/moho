@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from './Icon'
-import { MessageRow, type MessageMode } from './MessageRow'
+import { MessageRow, useRowContext, type MessageMode } from './MessageRow'
 import { LiveCards } from './LiveCards'
 import { CallView } from './CallView'
 import { CallStage, RoomCallBar } from './CallStage'
@@ -112,6 +112,28 @@ export function anchorVerdict(frame: ScrollFrame): 'release' | 'hold' | 'take' {
 
 /** Consecutive messages from the same author inside this window are grouped. */
 const GROUP_WINDOW_SECS = 300
+
+/**
+ * How much of a conversation is actually built as rows.
+ *
+ * A loaded buffer can hold two thousand messages and every one of them used to
+ * be a mounted row: its avatar, its embeds, its pictures, its reactions, all
+ * alive at once for a reader looking at a dozen of them. So the log is drawn
+ * as a tail of the list rather than the whole of it, and reading upwards
+ * lengthens the tail - the same gesture that already fetches an older page,
+ * one step earlier in the same sequence.
+ *
+ * A tail rather than a floating window on purpose: a chat log is read from the
+ * bottom, so what is above the rendered part is always older and what is below
+ * it is nothing. That means no spacer element, no estimated row heights, and
+ * no second opinion about how tall the page is - the scroll machinery below
+ * measures exactly what it did before.
+ */
+const RENDER_WINDOW = 120
+/** How much more of it to build when the reader reaches the top of what is. */
+const RENDER_STEP = 120
+/** Rows kept below a jumped-to message, so it has somewhere to sit. */
+const JUMP_MARGIN = 40
 
 export function MessageList(): JSX.Element {
   const store = useStore()
@@ -241,6 +263,15 @@ export function MessageList(): JSX.Element {
   const contentRef = useRef<HTMLDivElement>(null)
   const [anchored, setAnchored] = useState(true)
   const [missedCount, setMissedCount] = useState(0)
+  /** How many of the newest messages are built as rows. */
+  const [shown, setShown] = useState(RENDER_WINDOW)
+  // Read once for the conversation rather than once in each of its rows.
+  const shared = useRowContext(bufferId)
+
+  // Where the drawn part of the log starts. Everything before this is loaded
+  // and not built; everything from here is on the page.
+  const start = Math.max(0, messages.length - shown)
+  const view = useMemo(() => (start === 0 ? messages : messages.slice(start)), [messages, start])
 
   const lastBufferRef = useRef(bufferId)
   /** The newest message already accounted for, so growth is told from a prepend. */
@@ -314,6 +345,21 @@ export function MessageList(): JSX.Element {
    * pinned every one of those growths pulls it back to the bottom - so a
    * scroll issued from outside is undone a moment after it lands.
    */
+  /**
+   * Somewhere in the loaded log has been asked for that is not built yet.
+   *
+   * The tail is the newest hundred-odd messages; a search result from an hour
+   * ago is in the list and not on the page. Lengthening it first is what makes
+   * the jump below find its row - the effect after this one re-runs on `shown`
+   * for exactly that reason.
+   */
+  useEffect(() => {
+    if (!jumpTarget) return
+    const at = messages.findIndex((m) => m.id === jumpTarget)
+    if (at < 0) return
+    setShown((n) => Math.max(n, messages.length - at + JUMP_MARGIN))
+  }, [jumpTarget, messages])
+
   useEffect(() => {
     if (!jumpTarget) return
     const row = scrollRef.current?.querySelector(`[data-msg-id="${CSS.escape(jumpTarget)}"]`)
@@ -333,7 +379,10 @@ export function MessageList(): JSX.Element {
       if (holdRef.current === jumpTarget) holdRef.current = ''
     }, 2500)
     store.setJumpTarget('')
-  }, [jumpTarget, messages, anchor, store])
+    // `shown` is a dependency because the row may not have existed on the
+    // pass that first saw the target: the effect above lengthens the log, and
+    // this one has to look again once it has.
+  }, [jumpTarget, messages, shown, anchor, store])
 
   // A buffer switch is a fresh view: land at the bottom, anchored, with no
   // carried-over "missed messages" count from the previous buffer.
@@ -342,6 +391,9 @@ export function MessageList(): JSX.Element {
     lastBufferRef.current = bufferId
     lastIdRef.current = messages[messages.length - 1]?.id
     preLoadHeightRef.current = 0
+    // A fresh conversation is a fresh tail. Whatever was built for the last
+    // one goes with it.
+    setShown(RENDER_WINDOW)
     anchor(true)
     setMissedCount(0)
     scrollToBottom()
@@ -377,7 +429,10 @@ export function MessageList(): JSX.Element {
     // Not found means the message the count was last taken from has been
     // trimmed off the top; one is the honest floor rather than a guess.
     setMissedCount((n) => n + (seen >= 0 ? messages.length - 1 - seen : 1))
-  }, [messages, isLoadingMore])
+    // `shown` alongside `messages`: rows appearing above the reader move the
+    // page under them whether they came from the daemon or from the list this
+    // window already held, and both need the position putting back.
+  }, [messages, shown, isLoadingMore])
 
   const onScroll = useCallback(() => {
     const el = scrollRef.current
@@ -416,16 +471,40 @@ export function MessageList(): JSX.Element {
     else if (verdict === 'take') {
       anchor(true)
       setMissedCount(0)
+      // Back at the present under their own steam, so the rows built by
+      // whatever reading-back they did are let go of - the same release as
+      // the jump button, for the same gesture arrived at by scrolling. Safe
+      // to shorten the page here precisely because the view is pinned to its
+      // bottom: the observer above puts it back there as the height falls.
+      setShown(RENDER_WINDOW)
     }
 
     // Ask for an older page once the user reaches the top, but only when the
     // view is actually scrollable - an empty or short buffer sits at
     // scrollTop 0 permanently and would otherwise request pages forever.
-    if (el.scrollTop < 80 && el.scrollHeight > el.clientHeight && !isLoadingMore && messages.length > 0) {
-      preLoadHeightRef.current = el.scrollHeight
-      void store.loadMoreHistory(bufferId)
+    // Only for a reader who has actually gone looking. A list that has just
+    // been built sits at the top for the moment before it is scrolled to the
+    // bottom, and reading that as "show me more" both lengthened the page and
+    // asked the daemon for a page nobody wanted, every time a conversation was
+    // opened. The pin is released above the instant a reader moves upwards,
+    // so by here it says which of the two this is.
+    if (
+      !anchoredRef.current &&
+      el.scrollTop < 80 &&
+      el.scrollHeight > el.clientHeight &&
+      messages.length > 0
+    ) {
+      // Two steps at the same gesture, in order: what this window is already
+      // holding but has not drawn, and then what it does not hold at all.
+      if (shown < messages.length) {
+        preLoadHeightRef.current = el.scrollHeight
+        setShown((n) => n + RENDER_STEP)
+      } else if (!isLoadingMore) {
+        preLoadHeightRef.current = el.scrollHeight
+        void store.loadMoreHistory(bufferId)
+      }
     }
-  }, [anchor, bufferId, isLoadingMore, messages.length, store])
+  }, [anchor, bufferId, isLoadingMore, messages.length, shown, store])
 
   // Reset alongside the buffer: the position in one conversation says nothing
   // about the next, and a stale one would read the first scroll there as a
@@ -439,6 +518,10 @@ export function MessageList(): JSX.Element {
   const jumpToPresent = (): void => {
     anchor(true)
     setMissedCount(0)
+    // Whatever reading back built is let go of here rather than left mounted
+    // for the rest of the session: this is somebody saying they are done with
+    // it. Scrolling back up builds it again from the same place.
+    setShown(RENDER_WINDOW)
     scrollToBottom('smooth')
   }
 
@@ -482,7 +565,12 @@ export function MessageList(): JSX.Element {
               <span>Loading older messages…</span>
             </div>
           )}
-          {messages.map((msg, i) => (
+          {view.map((msg, offset) => {
+            // The index in the whole loaded list, not in the drawn tail:
+            // grouping, the new-message divider and the history gap are all
+            // about where a message sits in the conversation.
+            const i = start + offset
+            return (
             <div key={msg.id}>
               {i === dividerIndex && (
                 <div className="new-divider">
@@ -506,7 +594,10 @@ export function MessageList(): JSX.Element {
                 bufferId={bufferId}
                 service={service}
                 channels={channelMentions}
-                grouped={comfy !== 'classic' && isGrouped(messages, i)}
+                // The first drawn row starts its own run whatever came
+                // before it: the message it would group with is not on the
+                // page, so hiding this one's name would leave it unattributed.
+                grouped={comfy !== 'classic' && offset > 0 && isGrouped(messages, i)}
                 mode={comfy}
                 // The newest message is always the end of its own run.
                 lastInRun={i === messages.length - 1 || !isGrouped(messages, i + 1)}
@@ -516,9 +607,11 @@ export function MessageList(): JSX.Element {
                 contentSniffing={contentSniffing}
                 readers={showReaders ? readers?.[msg.id] : undefined}
                 threadReplies={threadReplies[msg.id]}
+                shared={shared}
               />
             </div>
-          ))}
+            )
+          })}
           {/* A room that has been joined but not yet heard from is not an
               empty room, and saying "no messages here yet" of one would be a
               claim about its contents that nothing has established. */}

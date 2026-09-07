@@ -770,6 +770,18 @@ const MAX_MESSAGES_PER_BUFFER = 500
  * the first person to speak.
  */
 const MAX_MESSAGES_AFTER_LOADING = 2000
+/**
+ * What a conversation keeps once somebody is reading a different one.
+ *
+ * A window subscribed to four hundred buffers was holding every one of them at
+ * the ceiling above, which is a ceiling meant for the conversation on screen -
+ * so an evening of traffic became a few hundred thousand messages that nothing
+ * was drawing and nothing would release. This is the tail a buffer is cut back
+ * to when it stops being the one in view: enough to fill the screen the moment
+ * it is opened again, with everything behind it read back out of the daemon's
+ * store by the same paging that already serves scrolling upwards.
+ */
+const MAX_MESSAGES_IDLE = 200
 /** As many mentions as the inbox will hold; the daemon's own limit matches. */
 const MAX_MENTIONS = 100
 const BACKLOG_PAGE = 200
@@ -2718,6 +2730,27 @@ export class ChatStore {
     this.set({ messagesByBuffer: { ...this.state.messagesByBuffer, [bufferId]: unique } })
   }
 
+  /** How much of this buffer to keep, which depends on whether it is in view. */
+  private retentionFor(bufferId: string): number {
+    return bufferId === this.state.activeBufferId ? MAX_MESSAGES_AFTER_LOADING : MAX_MESSAGES_IDLE
+  }
+
+  /**
+   * Cuts a conversation back to its tail now that something else is being
+   * read.
+   *
+   * Nothing is lost by this: every message here was written to the daemon's
+   * store as it arrived, and reopening the buffer pages it straight back. What
+   * it costs is the one thing worth spending - the rest of a long scroll
+   * upwards has to be fetched again if the reader returns to it, which is the
+   * same fetch they would have made had they never been there.
+   */
+  private trimIdleBuffer(bufferId: string): void {
+    const list = this.state.messagesByBuffer[bufferId]
+    if (!list || list.length <= MAX_MESSAGES_IDLE) return
+    this.setMessages(bufferId, list.slice(-MAX_MESSAGES_IDLE))
+  }
+
   private mapMessage(
     bufferId: string,
     id: string,
@@ -2738,7 +2771,10 @@ export class ChatStore {
     if (existing.some((m) => m.id === msg.id)) return
 
     const list = [...existing, msg as ChatMessage]
-    this.setMessages(bufferId, list.slice(-MAX_MESSAGES_AFTER_LOADING))
+    // The generous ceiling is for the conversation being read, where it stops
+    // a jump into history being thrown away by the next person to speak.
+    // Everywhere else a message is arriving into a list nobody is looking at.
+    this.setMessages(bufferId, list.slice(-this.retentionFor(bufferId)))
 
     // Being on screen in a window of its own counts as being open, because it
     // is: badging a channel somebody is watching in a second window asks them
@@ -2795,6 +2831,7 @@ export class ChatStore {
     // Snapshot the divider before clearing unread, so the "New messages" line
     // lands where the user actually left off rather than at the bottom.
     const buffer = this.state.buffers.find((b) => b.id === bufferId)!
+    const leaving = this.state.activeBufferId
     const dividerTs = this.state.dividerTsByBuffer[bufferId]
     const patch: Partial<ChatState> = {
       activeBufferId: bufferId,
@@ -2813,6 +2850,12 @@ export class ChatStore {
       }
     }
     this.set(patch)
+
+    // The conversation just left goes back to holding a screenful. Done here
+    // rather than on a timer because this is the moment its size stops being
+    // anybody's business: it is no longer drawn, and what a reader who comes
+    // back wants is the recent end of it, which is what it keeps.
+    if (leaving && leaving !== bufferId) this.trimIdleBuffer(leaving)
 
     // Which conversation to reopen at startup is the main window's to
     // remember. A popout writing its own here would decide it for everyone.

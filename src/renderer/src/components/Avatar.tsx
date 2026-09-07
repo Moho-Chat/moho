@@ -39,6 +39,11 @@ export function Avatar({
           src={resolveMediaUrl(url)}
           alt=""
           style={{ width: size, height: size }}
+          // A member list or a long log is hundreds of these, most of them
+          // below the fold: fetched and decoded when they are reached rather
+          // than all at once on the way past.
+          loading="lazy"
+          decoding="async"
           onError={() => setBroken(true)}
         />
       ) : (

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { MessageRow } from './MessageRow'
+import { MessageRow, useRowContext } from './MessageRow'
 import { IconButton } from './Icon'
 import { useChat, usePref, useStore } from '../state/hooks'
 import type { ChatMessage } from '../state/store'
@@ -24,6 +24,8 @@ export function ThreadPanel(): JSX.Element | null {
   const [comfy] = usePref<'classic' | 'comfy' | 'bubbles'>('ui.messageMode', 'comfy')
   const [relativeTimestamps] = usePref<boolean>('ui.relativeTimestamps', false)
   const store = useStore()
+  // Before the early return below, as every hook here has to be.
+  const shared = useRowContext(thread?.bufferId ?? '')
   const [draft, setDraft] = useState('')
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -74,6 +76,7 @@ export function ThreadPanel(): JSX.Element | null {
             mediaLoop={false}
             contentSniffing={false}
             inThread
+            shared={shared}
           />
         ))}
         {thread.loading && messages.length === 0 && (

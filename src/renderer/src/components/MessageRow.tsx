@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { memo, useMemo, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { Avatar } from './Avatar'
 import { ReasonPrompt } from './ReasonPrompt'
@@ -10,7 +10,14 @@ import { RichText } from '../lib/richtext'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { useSniffedTypes, sniffUrl } from '../lib/sniff'
 import type { ChatMessage } from '../state/store'
-import type { MessageBadge, MessageComponent, MessageReader } from '../../../shared/wire'
+import type {
+  CustomEmoji,
+  MessageBadge,
+  MessageComponent,
+  MessageReader,
+  RoomPermissions
+} from '../../../shared/wire'
+import type { SmilieIndex } from '../lib/format'
 import {
   embedColor,
   extractCodeBlocks,
@@ -107,6 +114,51 @@ interface Props {
   threadReplies?: number
   /** Whether this row is being drawn inside the thread panel itself. */
   inThread?: boolean
+  /** What every row in this conversation reads alike - see RowContext. */
+  shared: RowContext
+}
+
+/**
+ * What every row in a conversation reads alike.
+ *
+ * These are properties of the conversation, not of the message: which emoji it
+ * has, what this account may do in it, which messages are pinned. Each row
+ * used to subscribe to all of them itself, so a log of two thousand rows held
+ * twelve thousand live subscriptions and re-ran every one of them each time
+ * anything anywhere in the client changed - which is most of what made a busy
+ * window feel slow. Read once by whoever is drawing the list and handed down.
+ */
+export interface RowContext {
+  permissions: RoomPermissions
+  smilies: SmilieIndex | null
+  emoji: CustomEmoji[]
+  /** Already the conversation with this person, so offering to open it would
+   *  be a menu entry that reselects the buffer you are reading. */
+  inDirectMessage: boolean
+  pinned: string[]
+  /** Colour is how IRC has always been written, and also how a bot shouts. */
+  ircColours: boolean
+}
+
+/** The above, for one conversation. Called once per list, not once per row. */
+export function useRowContext(bufferId: string): RowContext {
+  const permissions = useChat((s) => s.matrixPermissions)[bufferId]
+  const smilies = useChat((s) => s.smilieIndex)
+  const emoji = useChat((s) => s.bufferEmoji)[bufferId]
+  const kind = useChat((s) => s.buffers).find((b) => b.id === bufferId)?.kind
+  const pinned = useChat((s) => s.pinnedMessages)[bufferId]
+  const [ircColours] = usePref<boolean>('irc.renderColours', true)
+  return useMemo(
+    () => ({
+      permissions: permissions ?? {},
+      smilies,
+      emoji: emoji ?? [],
+      inDirectMessage: kind === 'dm',
+      pinned: pinned ?? [],
+      ircColours
+    }),
+    [permissions, smilies, emoji, kind, pinned, ircColours]
+  )
 }
 
 /** How many faces fit before the row starts costing more than it says. */
@@ -138,7 +190,7 @@ function ReadMarkers({ readers }: { readers: MessageReader[] }): JSX.Element {
   )
 }
 
-export function MessageRow({
+function MessageRowBody({
   message,
   bufferId,
   service,
@@ -152,7 +204,8 @@ export function MessageRow({
   contentSniffing,
   readers,
   threadReplies,
-  inThread
+  inThread,
+  shared
 }: Props): JSX.Element {
   const store = useStore()
   const { menu, open, close } = useContextMenu()
@@ -166,17 +219,16 @@ export function MessageRow({
   const [forwarding, setForwarding] = useState(false)
   const reactButtonRef = useRef<HTMLButtonElement>(null)
 
-  const permissions = useChat((s) => s.matrixPermissions)[bufferId] || {}
-  const smilieIndex = useChat((s) => s.smilieIndex)
-  const bufferEmoji = useChat((s) => s.bufferEmoji)[bufferId] || []
-  // Already the conversation with this person, so offering to open it would
-  // be a menu entry that reselects the buffer you are reading.
-  const inDirectMessage = useChat((s) => s.buffers).find((b) => b.id === bufferId)?.kind === 'dm'
+  // All of this is the conversation's rather than the message's, and is read
+  // once for the whole list rather than once per row - see RowContext.
+  const {
+    permissions,
+    smilies: smilieIndex,
+    emoji: bufferEmoji,
+    inDirectMessage,
+    ircColours
+  } = shared
   const sniffed = useSniffedTypes()
-  // Colour is how IRC has always been written, and it is also how a bot
-  // shouts. Somebody who wants the words without the decoration says so here
-  // and the codes are removed instead of drawn.
-  const [ircColours] = usePref<boolean>('irc.renderColours', true)
 
   const isSneedchat = service === 'sneedchat'
   // Discord, Sneedchat and Matrix support editing and deleting your own
@@ -184,7 +236,7 @@ export function MessageRow({
   const canEditDelete =
     !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix')
   const canReact = service === 'discord' || service === 'matrix'
-  const pinned = useChat((s) => s.pinnedMessages)[bufferId]?.includes(message.id) ?? false
+  const pinned = shared.pinned.includes(message.id)
   const isSystem = !isChatKind(message.kind)
   // Said to you rather than to the room. Drawn differently on purpose: the
   // whole risk with a private message is reading it as a public one.
@@ -481,7 +533,12 @@ export function MessageRow({
           <span className="message-avatar">
             {!grouped &&
               (message.avatarUrl ? (
-                <img src={resolveMediaUrl(message.avatarUrl)} alt="" />
+                <img
+                  src={resolveMediaUrl(message.avatarUrl)}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                />
               ) : (
                 <span className="avatar-fallback" style={{ background: message.senderColor || nickColor(message.from) }}>
                   {message.from.slice(0, 1).toUpperCase()}
@@ -995,3 +1052,14 @@ function MessageControls({
     </div>
   )
 }
+
+/**
+ * A row only redraws when its own message does.
+ *
+ * Without this every row in the log rebuilt whenever anything in the client
+ * changed - a message in another channel, somebody's presence, a toast - and
+ * the cost of that grows with how much of the conversation is on screen. The
+ * props above are the whole of what a row draws from, and all of them are
+ * either values or references held steady by whoever draws the list.
+ */
+export const MessageRow = memo(MessageRowBody)

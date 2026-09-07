@@ -17,6 +17,17 @@ import { useCallback, useSyncExternalStore } from 'react'
 
 export type SniffKind = 'image' | 'video' | 'none'
 
+/**
+ * How many answers to keep.
+ *
+ * This is a cache, and it used to be a list: one entry per link ever seen,
+ * held for the life of the window, copied in full on every new answer. A
+ * session that had read a few busy channels was carrying tens of thousands of
+ * URLs to save a request it was never going to make again. The oldest go
+ * first, which for a chat log is the ones furthest up the scroll.
+ */
+const MAX_REMEMBERED = 500
+
 const resolved: Record<string, SniffKind> = {}
 const inFlight = new Set<string>()
 const listeners = new Set<() => void>()
@@ -36,6 +47,10 @@ export function sniffUrl(url: string): void {
   const finish = (kind: SniffKind): void => {
     inFlight.delete(url)
     resolved[url] = kind
+    // Insertion order is the age order here, and a plain object keeps it for
+    // string keys that are not array indices - which a URL never is.
+    const keys = Object.keys(resolved)
+    for (let i = 0; i < keys.length - MAX_REMEMBERED; i++) delete resolved[keys[i]]
     notify()
   }
 
