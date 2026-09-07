@@ -280,6 +280,15 @@ export interface ReplyPreview {
    * thread is somewhere, and only the second can be opened and continued.
    */
   thread?: boolean
+  /**
+   * Whether this names a message brought here rather than one being answered.
+   *
+   * The same field carries both because Discord says both the same way - a
+   * reference to another message - and only its `type` tells them apart. What
+   * differs on screen is the whole meaning: a reply points back at something,
+   * a forward is somebody else's message arriving.
+   */
+  forwarded?: boolean
 }
 
 /**

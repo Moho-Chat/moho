@@ -2186,6 +2186,16 @@ export class ChatStore {
         }))
         break
 
+      // Who wrote a forwarded message, once the daemon has read the original:
+      // the row above it says "Forwarded" until then, since Discord sends a
+      // forward without an author.
+      case 'messageReplyRenamed': {
+        this.mapMessage(data.bufferId, data.id, (m) =>
+          m.replyTo ? { ...m, replyTo: { ...m.replyTo, from: data.from } } : m
+        )
+        break
+      }
+
       case 'messageUpdated':
         // `edited` comes from the event rather than being hardcoded true: a
         // backend-internal body rewrite (Sneedchat swapping in a Tor-fetched

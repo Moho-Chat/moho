@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { Avatar } from './Avatar'
 import { ReasonPrompt } from './ReasonPrompt'
+import { ForwardPicker } from './ForwardPicker'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { MediaEmbed } from './MediaEmbed'
 import { EmojiPicker } from './EmojiPicker'
@@ -161,6 +162,8 @@ export function MessageRow({
   const [pickerOpen, setPickerOpen] = useState(false)
   /** Writing the reason for a report, before it is sent. */
   const [reporting, setReporting] = useState(false)
+  /** Choosing where to send this message on to. */
+  const [forwarding, setForwarding] = useState(false)
   const reactButtonRef = useRef<HTMLButtonElement>(null)
 
   const permissions = useChat((s) => s.matrixPermissions)[bufferId] || {}
@@ -260,6 +263,12 @@ export function MessageRow({
         ] as MenuEntry[])
       : []),
     { label: 'Reply', icon: 'reply', onClick: () => reply() },
+    // Sending somebody else's message on. Native where the service has one -
+    // Discord's forward carries the original itself, pictures and all - and a
+    // quoted copy where it does not.
+    ...(!isSystem && message.id
+      ? ([{ label: 'Forward…', icon: 'forward', onClick: () => setForwarding(true) }] as MenuEntry[])
+      : []),
     // Never hearing from them again. What that costs differs by service and
     // the daemon says which: Matrix keeps the list on the homeserver and
     // Discord has a real block, so both hold on every client that account is
@@ -547,8 +556,24 @@ export function MessageRow({
               </button>
             ) : (
               <div className="reply-preview small muted">
-                <Icon name={message.replyTo.thread ? 'forum' : 'reply'} size={13} />
-                <span className="reply-from" style={{ color: nickColor(message.replyTo.from) }}>
+                {/* A forward is not a reply and does not get the reply's
+                    arrow: it is somebody else's message arriving, which is a
+                    different thing from an answer to one. Its own word for
+                    it, too - until the original is read the row says only
+                    "Forwarded", because whose message it was is not in what
+                    Discord sends. */}
+                <Icon
+                  name={
+                    message.replyTo.forwarded ? 'forward' : message.replyTo.thread ? 'forum' : 'reply'
+                  }
+                  size={13}
+                />
+                <span
+                  className="reply-from"
+                  style={
+                    message.replyTo.forwarded ? undefined : { color: nickColor(message.replyTo.from) }
+                  }
+                >
                   {message.replyTo.from}
                 </span>
                 <span className="ellipsis">{message.replyTo.body}</span>
@@ -812,6 +837,13 @@ export function MessageRow({
       )}
 
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={entries} onClose={close} />}
+      {forwarding && (
+        <ForwardPicker
+          bufferId={bufferId}
+          messageId={message.id}
+          onClose={() => setForwarding(false)}
+        />
+      )}
       {reporting && (
         <ReasonPrompt
           title={`Report ${message.from}’s message`}

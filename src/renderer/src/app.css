@@ -3545,6 +3545,52 @@ img.smilie {
   object-fit: contain;
 }
 
+/* Where to send a message on to: a search box and the conversations this
+   window has, which on a busy account is a list that must be searchable. */
+.forward-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  width: min(460px, 92vw);
+  max-height: 70vh;
+  margin: auto;
+  padding: var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.forward-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.forward-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: none;
+  border-radius: var(--corner-radius-small);
+  background: none;
+  color: var(--surface-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.forward-choice:hover {
+  background: var(--surface-container-highest);
+}
+
+.forward-choice .ellipsis:first-of-type {
+  flex: 1;
+  min-width: 0;
+}
+
 /* A form a bot asked for: a title, its boxes, and a send. Sized by what it
    holds rather than fixed, since a form is one field as often as five. */
 .discord-modal {
