@@ -398,29 +398,46 @@ function PinnedMessages({ buffer }: { buffer: BufferEntry }): JSX.Element | null
           {rows === null && <div className="small muted">Looking…</div>}
           {rows?.length === 0 && <div className="small muted">Nothing is pinned.</div>}
           {rows?.map((message) => (
-            <button
-              key={message.id}
-              type="button"
-              className="history-row"
-              onClick={() => {
-                setOpen(false)
-                // Through the same path a search result takes, rather than
-                // straight to the jump: a pin is usually the oldest thing in
-                // the conversation, so it is the least likely message to
-                // already be on screen - and it used to be the one click that
-                // did nothing at all.
-                void store.jumpToMessage(buffer.id, message.id).then((there) => {
-                  if (there) store.setJumpTarget(message.id)
-                  else store.toast('info', 'That message could not be reached')
-                })
-              }}
-            >
-              <span className="small">
-                <span className="search-result-from">{message.from}</span>{' '}
-                <span className="muted">{message.ts ? formatFullTime(message.ts) : ''}</span>
-              </span>
-              <span className="small ellipsis">{message.body}</span>
-            </button>
+            /* The row goes to the message; the cross takes the pin off. Both
+               here, because this list is where somebody looks when they want
+               a pin gone - hunting the message down in the log to reach its
+               menu is the long way round to undo one click. */
+            <div key={message.id} className="pinned-row">
+              <button
+                type="button"
+                className="history-row"
+                onClick={() => {
+                  setOpen(false)
+                  // Through the same path a search result takes, rather than
+                  // straight to the jump: a pin is usually the oldest thing in
+                  // the conversation, so it is the least likely message to
+                  // already be on screen - and it used to be the one click that
+                  // did nothing at all.
+                  void store.jumpToMessage(buffer.id, message.id).then((there) => {
+                    if (there) store.setJumpTarget(message.id)
+                    else store.toast('info', 'That message could not be reached')
+                  })
+                }}
+              >
+                <span className="small">
+                  <span className="search-result-from">{message.from}</span>{' '}
+                  <span className="muted">{message.ts ? formatFullTime(message.ts) : ''}</span>
+                </span>
+                <span className="small ellipsis">{message.body}</span>
+              </button>
+              <IconButton
+                name="close"
+                size={14}
+                title="Unpin this"
+                onClick={() => {
+                  // Taken off the list at once rather than on the next
+                  // answer: the service says so a moment later, and a row
+                  // that lingers after being dismissed reads as a failure.
+                  setRows((current) => (current ?? []).filter((m) => m.id !== message.id))
+                  store.setPinned(buffer.id, message.id, false)
+                }}
+              />
+            </div>
           ))}
         </HeaderPopover>
       )}

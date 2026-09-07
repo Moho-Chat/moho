@@ -3545,6 +3545,19 @@ img.smilie {
   object-fit: contain;
 }
 
+/* A pinned message and the way to unpin it: the row goes to the message, the
+   cross beside it takes the pin off. */
+.pinned-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+}
+
+.pinned-row .history-row {
+  flex: 1;
+  min-width: 0;
+}
+
 /* Where to send a message on to: a search box and the conversations this
    window has, which on a busy account is a list that must be searchable. */
 .forward-picker {
