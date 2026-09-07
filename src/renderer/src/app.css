@@ -3545,6 +3545,36 @@ img.smilie {
   object-fit: contain;
 }
 
+/* A form a bot asked for: a title, its boxes, and a send. Sized by what it
+   holds rather than fixed, since a form is one field as often as five. */
+.discord-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  width: min(520px, 92vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  margin: auto;
+  padding: var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.discord-modal-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  font-weight: 500;
+}
+
+.discord-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+}
+
 /*
  * A sentence somebody writes before something happens: a knock's reason, a
  * report's. The text is the point rather than a note attached to a button, so

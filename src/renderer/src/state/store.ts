@@ -259,6 +259,29 @@ export interface KickStream {
   playbackUrl?: string | null
 }
 
+/** One box on a form a Discord bot sent. */
+export interface DiscordModalField {
+  customId: string
+  label: string
+  /** Several lines rather than one - Discord's "paragraph" style. */
+  long: boolean
+  placeholder?: string
+  value?: string
+  required?: boolean
+  minLength?: number | null
+  maxLength?: number | null
+}
+
+export interface DiscordModal {
+  accountId: string
+  bufferId: string
+  id?: string
+  customId: string
+  applicationId?: string
+  title: string
+  fields: DiscordModalField[]
+}
+
 export type ActivePanel = '' | 'accounts' | 'settings' | 'join' | 'downloads'
 
 export interface ChatState {
@@ -444,6 +467,13 @@ export interface ChatState {
   watching: { bufferId: string; accountId: string; title: string } | null
   /** The stream put away without being stopped. */
   watchMinimized: boolean
+  /**
+   * A form a Discord bot asked for, while it is being filled in.
+   *
+   * One at a time: a modal is the answer to something just pressed, and a
+   * second arriving while one is open is a bot talking over itself.
+   */
+  discordModal: DiscordModal | null
   /** The screens and windows on offer, while somebody is choosing one. */
   screenSources: { id: string; name: string; thumbnail: string }[] | null
   activeCall: {
@@ -543,6 +573,7 @@ const INITIAL: ChatState = {
   watching: null,
   watchMinimized: false,
   screenSources: null,
+  discordModal: null,
   activeCall: null,
   matrixIgnored: {},
   matrixInvites: {},
@@ -1832,6 +1863,37 @@ export class ChatStore {
     return group?.sfu ? group.sfu.arriving() : []
   }
 
+  closeDiscordModal(): void {
+    this.set({ discordModal: null })
+  }
+
+  /**
+   * Sends a filled-in form back to the bot that asked for it.
+   *
+   * Closed on success rather than on sending: a refusal is worth showing
+   * with what was typed still on screen, since retyping a form somebody has
+   * just filled in is the worst way to learn a field was too long.
+   */
+  async submitDiscordModal(values: Record<string, string>): Promise<void> {
+    const modal = this.state.discordModal
+    if (!modal) return
+    try {
+      await window.moho.rpc('submitDiscordModal', {
+        bufferId: modal.bufferId,
+        customId: modal.customId,
+        applicationId: modal.applicationId,
+        id: modal.id,
+        values: modal.fields.map((field) => ({
+          customId: field.customId,
+          value: values[field.customId] ?? ''
+        }))
+      })
+      this.set({ discordModal: null })
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
+  }
+
   hangUpMatrixCall(): void {
     // Whichever kind is up: leaving a room's call withdraws the membership
     // that says this end is in it, as well as hanging up on everybody.
@@ -2161,6 +2223,12 @@ export class ChatStore {
       // stopped - so a list replaces, and a single nick is merged in.
       // Somebody joined or left a room's call. Both the offer of a call to
       // join and, while in one, the signal to meet whoever just arrived.
+      // A bot answering a slash command with a form to fill in.
+      case 'discordModal': {
+        this.set({ discordModal: data as unknown as DiscordModal })
+        break
+      }
+
       // Somebody's media key, for a call whose frames the server cannot read.
       case 'matrixCallKey': {
         void this.matrixCalls.takeKey(data.userId, data.deviceId, data.key, data.index ?? 0)

@@ -22,6 +22,7 @@ import { Toasts } from './components/Toasts'
 import { IncomingCallPanel } from './components/IncomingCallPanel'
 import { CallStage, IncomingMatrixCall, ScreenPicker } from './components/CallStage'
 import { StreamStage } from './components/StreamStage'
+import { DiscordModal } from './components/DiscordModal'
 import { FileDrop } from './components/FileDrop'
 import { TransferPanel } from './components/TransferPanel'
 import { Icon, IconButton } from './components/Icon'
@@ -219,6 +220,9 @@ export default function App(): JSX.Element {
           than by the daemon - the media is the window's. */}
       <IncomingMatrixCall />
       <ScreenPicker />
+      {/* A form a Discord bot asked for. Over everything, because it is the
+          answer to something just pressed and it expires. */}
+      <DiscordModal />
       {/* Where a call goes when you walk away from it: a corner of its own,
           the way a phone keeps the picture in the corner. In the conversation
           it belongs to it sits above the log instead - see MessageList - so
