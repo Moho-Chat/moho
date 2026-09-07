@@ -17,6 +17,16 @@ import type { Buffer as ChatBuffer } from '../shared/wire'
  * so this event stream is already the right granularity to count.
  */
 
+/**
+ * The most an avatar may weigh before this stops trying to draw it.
+ *
+ * The bytes cross into the renderer as base64 inside a script, so a file that
+ * is not really an avatar would cost several times its own size to find that
+ * out. Two megabytes is far more than any service's avatar and far less than
+ * anything worth this.
+ */
+const MAX_ICON_BYTES = 2 * 1024 * 1024
+
 export interface NotificationPayload {
   accountId: string
   bufferId: string
@@ -131,8 +141,49 @@ export class Notifier {
   }
 
   /**
+   * What an image actually is, from its first few bytes.
+   *
+   * Not from its name: Sneedchat serves WebP and GIF avatars called `.jpg`,
+   * which is half the reason this transcode exists at all. A data URL's
+   * declared type is the one the decoder is handed, so taking it from the
+   * extension would hand it the wrong one for exactly the files that need
+   * this path.
+   */
+  private imageTypeOf(bytes: Buffer): string {
+    const starts = (...magic: number[]): boolean =>
+      magic.every((byte, i) => bytes[i] === byte)
+    if (starts(0x89, 0x50, 0x4e, 0x47)) return 'image/png'
+    if (starts(0xff, 0xd8, 0xff)) return 'image/jpeg'
+    if (starts(0x47, 0x49, 0x46, 0x38)) return 'image/gif'
+    // RIFF....WEBP
+    if (starts(0x52, 0x49, 0x46, 0x46) && bytes.subarray(8, 12).toString() === 'WEBP') {
+      return 'image/webp'
+    }
+    // Something else entirely. Chromium sniffs the bytes of an <img> either
+    // way, so a wrong-but-plausible type still decodes what it can, and what
+    // it cannot decode falls out of the null below rather than here.
+    return 'image/png'
+  }
+
+  /**
    * Redraws an image the main process cannot decode into a PNG it can, using
    * the window's own renderer - Chromium reads WebP, GIF and the rest natively.
+   *
+   * The bytes travel to the renderer as a data URL rather than being fetched
+   * back out of the media scheme. That is not a style preference: this used to
+   * ask the renderer to `fetch("moho-media://...")`, and the window's policy
+   * allows that scheme for images and media but not for `connect-src`, so the
+   * fetch was refused every single time. The catch below swallowed it, the
+   * function returned null, and the notification went out with no icon - which
+   * is precisely the symptom this transcode was written to fix, on precisely
+   * the services (Sneedchat, Matrix) whose avatars nativeImage cannot read.
+   *
+   * Widening the policy would have been the smaller diff and the worse answer.
+   * The media scheme can also reach the daemon's config directory, where the
+   * account tokens live; allowing `connect-src` there would turn "a script in
+   * this window could ask for that file" into "a script in this window could
+   * read it". Main already holds the path and may read it, so it hands over
+   * the bytes and the policy stays as it is.
    *
    * The window is hidden rather than destroyed when closed, so its renderer is
    * alive whenever the app is, which is what makes this safe to rely on for
@@ -143,20 +194,28 @@ export class Notifier {
     const wc = this.renderer()
     if (!wc || wc.isDestroyed()) return null
     try {
-      const src = `moho-media://file/?p=${encodeURIComponent(file)}`
+      const bytes = fs.readFileSync(file)
+      // An avatar is kilobytes. Anything of a size worth base64-ing across
+      // this boundary is not an avatar, and a notification icon is not worth
+      // the memory of finding out.
+      if (bytes.length === 0 || bytes.length > MAX_ICON_BYTES) return null
+      const source = `data:${this.imageTypeOf(bytes)};base64,${bytes.toString('base64')}`
       const dataUrl: string | null = await wc.executeJavaScript(
         `(async () => {
            try {
-             const res = await fetch(${JSON.stringify(src)})
-             if (!res.ok) return null
-             const bmp = await createImageBitmap(await res.blob())
+             const img = new Image()
+             img.src = ${JSON.stringify(source)}
+             // decode() rather than onload: it settles after the pixels are
+             // ready to draw, which is what the canvas is about to do.
+             await img.decode()
              // Notification icons are displayed small; capping keeps an
              // animated GIF's first frame from becoming a huge PNG.
-             const scale = Math.min(1, 128 / Math.max(bmp.width, bmp.height))
+             const scale = Math.min(1, 128 / Math.max(img.width, img.height))
              const c = document.createElement('canvas')
-             c.width = Math.max(1, Math.round(bmp.width * scale))
-             c.height = Math.max(1, Math.round(bmp.height * scale))
-             c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height)
+             c.width = Math.max(1, Math.round(img.width * scale))
+             c.height = Math.max(1, Math.round(img.height * scale))
+             c.getContext('2d').drawImage(img, 0, 0, c.width, c.height)
+             // A data: image does not taint the canvas, so this is readable.
              return c.toDataURL('image/png')
            } catch { return null }
          })()`,
