@@ -18,6 +18,7 @@
  */
 
 import {
+  BaseKeyProvider,
   ConnectionState,
   Room,
   RoomEvent,
@@ -25,6 +26,7 @@ import {
   type RemoteTrack,
   type RemoteTrackPublication
 } from 'livekit-client'
+import E2EEWorker from 'livekit-client/e2ee-worker?worker'
 
 /** One person on the media server, and what they are sending. */
 export interface SfuParticipant {
@@ -33,6 +35,38 @@ export interface SfuParticipant {
   userId: string
   stream: MediaStream
   hasVideo: boolean
+}
+
+/**
+ * The keys a call's media is encrypted with, as Matrix hands them around.
+ *
+ * The media server forwards frames it cannot read: each participant makes a
+ * key, sends it to the devices in the call over Matrix, and everybody's
+ * player is told which key belongs to which participant. This is the provider
+ * LiveKit asks for those keys, filled from the daemon's side of that
+ * exchange - see calls.rs.
+ *
+ * The window sizes are Element's own, because a key provider that ratchets
+ * differently from the other clients in a call is a key provider that decodes
+ * nothing.
+ */
+class MatrixKeyProvider extends BaseKeyProvider {
+  constructor() {
+    super({ ratchetWindowSize: 10, keyringSize: 256 })
+  }
+
+  /** Somebody's key, for the participant the media server knows them as. */
+  async setParticipantKey(identity: string, index: number, keyBase64: string): Promise<void> {
+    const raw = Uint8Array.from(atob(keyBase64.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
+    // Imported as HKDF material rather than as a key: LiveKit derives the
+    // cipher key from it, and Element hands it the same material, which is
+    // what makes the two agree.
+    const material = await crypto.subtle.importKey('raw', raw as BufferSource, 'HKDF', false, [
+      'deriveBits',
+      'deriveKey'
+    ])
+    this.onSetEncryptionKey(material, identity, index)
+  }
 }
 
 export interface SfuHandlers {
@@ -59,16 +93,26 @@ export function userFromIdentity(identity: string): string {
 export class SfuCall {
   private room: Room
   private handlers: SfuHandlers
+  /** Where the keys go, for an encrypted call. Absent means one in the clear. */
+  private keys: MatrixKeyProvider | null = null
   /** This end's own capture, so the tile shows what is being sent. */
   local: MediaStream | null = null
 
-  constructor(handlers: SfuHandlers) {
+  constructor(handlers: SfuHandlers, encrypted: boolean) {
     this.handlers = handlers
+    this.keys = encrypted ? new MatrixKeyProvider() : null
     this.room = new Room({
       // Let LiveKit decide what to send as the window and the connection
       // change: it can see the packet loss and this cannot.
       adaptiveStream: true,
-      dynacast: true
+      dynacast: true,
+      // A call in an encrypted room is encrypted between the people in it,
+      // with the server forwarding frames it cannot read. The worker is where
+      // the frames are actually enciphered - the browser will only let a
+      // transform touch them off the main thread.
+      ...(this.keys
+        ? { e2ee: { keyProvider: this.keys as unknown as BaseKeyProvider, worker: new E2EEWorker() } }
+        : {})
     })
     const announce = (): void => this.handlers.onParticipants(this.people())
     this.room
@@ -80,6 +124,13 @@ export class SfuCall {
         this.handlers.onParticipants([])
         this.handlers.onConnected(false)
       })
+      // Frames arriving that cannot be read. In an encrypted call that means
+      // somebody's key never got here, or theirs and ours disagree - which
+      // looks exactly like a working call with silence in it, so it is worth
+      // saying rather than leaving people to wonder why nobody is talking.
+      .on(RoomEvent.EncryptionError, (error) =>
+        this.handlers.onError(`Cannot read what somebody in the call is sending: ${error.message}`)
+      )
       .on(RoomEvent.ConnectionStateChanged, (state) => {
         // Being on the server is what connected means here, whether or not
         // anybody else has arrived - unlike the mesh, where there is nothing
@@ -87,6 +138,23 @@ export class SfuCall {
         this.handlers.onConnected(state === ConnectionState.Connected)
         announce()
       })
+  }
+
+  /** Whether this call's media is encrypted end to end. */
+  get encrypted(): boolean {
+    return this.keys !== null
+  }
+
+  /** This end's own key, which everybody else has to be told about. */
+  async useOwnKey(identity: string, index: number, keyBase64: string): Promise<void> {
+    if (!this.keys) return
+    await this.keys.setParticipantKey(identity, index, keyBase64)
+    await this.room.setE2EEEnabled(true)
+  }
+
+  /** Somebody else's key, as it arrives over Matrix. */
+  async useTheirKey(identity: string, index: number, keyBase64: string): Promise<void> {
+    await this.keys?.setParticipantKey(identity, index, keyBase64)
   }
 
   /** Joins the media server and starts sending. */
@@ -151,6 +219,33 @@ export class SfuCall {
     await this.room.localParticipant.setScreenShareEnabled(!on)
     this.local = this.ownStream()
     return !on
+  }
+
+  /**
+   * What the connection says is actually arriving, per participant.
+   *
+   * Tracks existing is not the same as tracks being readable: an undecodable
+   * stream is still a stream, with silence in it. The receiver's own counters
+   * are what tell the two apart.
+   */
+  async arriving(): Promise<{ identity: string; packets: number; samples: number }[]> {
+    const out: { identity: string; packets: number; samples: number }[] = []
+    for (const participant of this.room.remoteParticipants.values()) {
+      let packets = 0
+      let samples = 0
+      for (const publication of participant.trackPublications.values()) {
+        const receiver = (publication as RemoteTrackPublication).track?.receiver
+        if (!receiver) continue
+        const stats = await receiver.getStats()
+        stats.forEach((report) => {
+          if (report.type !== 'inbound-rtp') return
+          packets += (report as { packetsReceived?: number }).packetsReceived ?? 0
+          samples += (report as { totalSamplesReceived?: number }).totalSamplesReceived ?? 0
+        })
+      }
+      out.push({ identity: participant.identity, packets, samples })
+    }
+    return out
   }
 
   /** Leaves, letting go of the camera and the microphone. */

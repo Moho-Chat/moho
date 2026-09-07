@@ -799,6 +799,14 @@ export class ChatStore {
     leaveMembership: async (bufferId) => {
       await window.moho.rpc('setMatrixCallMembership', { bufferId, joined: false }).catch(() => {})
     },
+    // The daemon holds the encryption, so it is what hands a media key to the
+    // devices in the call - one Olm-encrypted event each, the way Element
+    // does it.
+    sendCallKey: async (bufferId, key, index) => {
+      await window.moho.rpc('sendMatrixCallKey', { bufferId, key, index }).catch((e: Error) => {
+        this.toast('error', `Couldn't share the call key: ${e.message}`)
+      })
+    },
     callMembers: async (bufferId) =>
       window.moho.rpc<CallMember[]>('listMatrixCallMembers', { bufferId }).catch(() => []),
     onRinging: (call) => this.set({ ringingCall: call }),
@@ -1817,6 +1825,13 @@ export class ChatStore {
     this.set({ watchMinimized: minimized })
   }
 
+  /** What is actually arriving in a call held on a media server, if one is
+   *  up: a check that the media is readable rather than merely connected. */
+  async callArrivals(): Promise<unknown> {
+    const group = this.matrixCalls.currentGroup
+    return group?.sfu ? group.sfu.arriving() : []
+  }
+
   hangUpMatrixCall(): void {
     // Whichever kind is up: leaving a room's call withdraws the membership
     // that says this end is in it, as well as hanging up on everybody.
@@ -2146,6 +2161,12 @@ export class ChatStore {
       // stopped - so a list replaces, and a single nick is merged in.
       // Somebody joined or left a room's call. Both the offer of a call to
       // join and, while in one, the signal to meet whoever just arrived.
+      // Somebody's media key, for a call whose frames the server cannot read.
+      case 'matrixCallKey': {
+        void this.matrixCalls.takeKey(data.userId, data.deviceId, data.key, data.index ?? 0)
+        break
+      }
+
       case 'matrixCallMembers': {
         const members = (data.members ?? []) as CallMember[]
         this.set({ callMembers: { ...this.state.callMembers, [data.bufferId]: members } })

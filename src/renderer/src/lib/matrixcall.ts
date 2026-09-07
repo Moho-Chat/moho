@@ -89,6 +89,8 @@ export interface CallSurface {
     encrypted?: boolean
   } | null>
   leaveMembership: (bufferId: string) => Promise<void>
+  /** Hands this end's media key to the devices in the call. */
+  sendCallKey: (bufferId: string, key: string, index: number) => Promise<void>
   /** Who the room says is in the call. */
   callMembers: (bufferId: string) => Promise<CallMember[]>
   onRinging: (call: RingingCall | null) => void
@@ -154,6 +156,15 @@ export interface GroupCall {
   sfu: SfuCall | null
   /** Who the media server says is here, for the SFU kind. */
   sfuPeople: SfuParticipant[]
+  /** This end's own media key and where it is in the cycle. */
+  ownKeyBase64: string
+  keyIndex: number
+  ownIdentity: string
+  /** Who was in the call last time it was looked at, so an arrival and a
+   *  departure can be told apart - they are answered differently. */
+  knownMembers: Set<string>
+  /** Whose media this end can actually read, by media-server identity. */
+  haveKeyFrom: Set<string>
   /** The whole call's id, on every signal, so a second call in the same room
    *  is a second call rather than a crossed line. */
   confId: string
@@ -258,13 +269,18 @@ export class MatrixCalls {
     // A call held on a media server, which is what Element's are. Nobody
     // connects to anybody directly, so none of the mesh below runs.
     if (own.media) {
-      const sfu = new SfuCall({
-        onParticipants: (people) => {
-          if (this.group) this.group.sfuPeople = people
+      const sfu = new SfuCall(
+        {
+          onParticipants: (people) => {
+            if (this.group) this.group.sfuPeople = people
+          },
+          onConnected: (connected) => this.surface.onPhase(connected ? 'connected' : 'connecting', null),
+          onError: (message) => this.surface.onError(message)
         },
-        onConnected: (connected) => this.surface.onPhase(connected ? 'connected' : 'connecting', null),
-        onError: (message) => this.surface.onError(message)
-      })
+        // A call in an encrypted room is encrypted; one in an open room is
+        // not, and pretending otherwise would leave everybody silent.
+        !!own.encrypted
+      )
       this.group = {
         accountId,
         bufferId,
@@ -274,21 +290,23 @@ export class MatrixCalls {
         peers: new Map(),
         sfu,
         sfuPeople: [],
+        ownKeyBase64: '',
+        // Starts below zero so the first roll is index 0, which is where
+        // every other client starts too.
+        keyIndex: -1,
+        ownIdentity: own.media.identity,
+        knownMembers: new Set(),
+        haveKeyFrom: new Set(),
         confId: `moho-conf-${own.roomId ?? bufferId}`
       }
       this.heartbeat = setInterval(() => void this.surface.joinMembership(bufferId), 30_000)
       this.surface.onPhase('connecting', null)
       try {
+        // The key first, so the first frame that goes out is already
+        // encrypted with something the others will be told about.
+        if (sfu.encrypted) await this.rollKey(own.media.identity)
         await sfu.join(own.media.url, own.media.jwt, video)
         this.group.local = sfu.local
-        if (own.encrypted) {
-          // Element encrypts a call's media per sender in an encrypted room,
-          // with the keys shared over Matrix. moho does not do that yet, so
-          // this is a call everybody is in and nobody can hear.
-          this.surface.onError(
-            'This room is encrypted, and moho cannot yet read the media in an encrypted call - the others will not hear you'
-          )
-        }
       } catch (e) {
         this.surface.onError(`Couldn't reach the media server: ${(e as Error).message}`)
         this.leaveGroup()
@@ -324,6 +342,11 @@ export class MatrixCalls {
       peers: new Map(),
       sfu: null,
       sfuPeople: [],
+      ownKeyBase64: '',
+      keyIndex: -1,
+      ownIdentity: '',
+      knownMembers: new Set(),
+      haveKeyFrom: new Set(),
       // Named for the room rather than for the buffer: each account calls the
       // same room by a different buffer id, and a conference named after one
       // of those is a conference the other end never joins.
@@ -338,6 +361,60 @@ export class MatrixCalls {
   }
 
   /**
+   * Makes a new key for this end, uses it, and hands it to everybody else.
+   *
+   * Sixteen random bytes and an index that cycles, which is what Element
+   * makes: a key provider that generates differently is one whose media
+   * nobody else can read.
+   *
+   * Rolled again whenever somebody leaves, so that what is said after they go
+   * cannot be read by them - the whole reason a call's key is per session
+   * rather than per room.
+   */
+  private async rollKey(identity: string): Promise<void> {
+    const group = this.group
+    if (!group?.sfu) return
+    const raw = new Uint8Array(16)
+    crypto.getRandomValues(raw)
+    const key = btoa(String.fromCharCode(...raw)).replace(/=+$/, '')
+    group.keyIndex = (group.keyIndex + 1) % 256
+    group.ownIdentity = identity
+    await group.sfu.useOwnKey(identity, group.keyIndex, key)
+    group.ownKeyBase64 = key
+    await this.surface.sendCallKey(group.bufferId, key, group.keyIndex)
+  }
+
+  /** Somebody else's key, arriving over Matrix. */
+  async takeKey(userId: string, deviceId: string, keyBase64: string, index: number): Promise<void> {
+    const group = this.group
+    if (!group?.sfu) return
+    // The media server knows people by the identity its token service gave
+    // them, which is the user and the device with a colon between.
+    const identity = `${userId}:${deviceId}`
+    group.haveKeyFrom.add(identity)
+    await group.sfu.useTheirKey(identity, index, keyBase64)
+  }
+
+  /**
+   * Names anybody whose media cannot be read, once they have had time to say.
+   *
+   * An encrypted call with a missing key does not fail: it connects, draws
+   * everybody's tile, and is silent - which is indistinguishable from a quiet
+   * room unless somebody says so. Called a little after each arrival, when a
+   * key that was coming would have come.
+   */
+  private warnAboutSilentPeople(): void {
+    const group = this.group
+    if (!group?.sfu?.encrypted) return
+    const unreadable = group.sfuPeople.filter((p) => !group.haveKeyFrom.has(p.key))
+    if (unreadable.length === 0) return
+    const who = unreadable.map((p) => p.userId).join(', ')
+    this.surface.onError(
+      `No key from ${who} - this call is encrypted and you will not hear them until their client sends one`
+    )
+  }
+
+  /**
    * Brings the peer list into line with who the room says is in the call.
    *
    * Called on joining and on every membership change, so somebody arriving
@@ -347,9 +424,29 @@ export class MatrixCalls {
   async meet(members: CallMember[]): Promise<void> {
     const group = this.group
     if (!group) return
-    // On a media server there is nobody to meet: the server is what everybody
-    // is connected to, and it says who is there.
-    if (group.sfu) return
+    // On a media server there is nobody to meet - the server is what
+    // everybody is connected to - but for an encrypted call the keys still
+    // have to follow the roster: a new arrival needs the key in use, and
+    // somebody leaving needs a new one, or what is said after they go is
+    // still readable by them.
+    if (group.sfu) {
+      if (!group.sfu.encrypted) return
+      const now = new Set(
+        members.map((m) => `${m.user_id}:${m.membership?.device_id ?? ''}`)
+      )
+      const left = [...group.knownMembers].some((who) => !now.has(who))
+      const arrived = [...now].some((who) => !group.knownMembers.has(who))
+      group.knownMembers = now
+      if (left) {
+        await this.rollKey(group.ownIdentity)
+      } else if (arrived && group.ownKeyBase64) {
+        await this.surface.sendCallKey(group.bufferId, group.ownKeyBase64, group.keyIndex)
+        // And if theirs never arrives, say so rather than leaving somebody
+        // wondering why the call is quiet.
+        setTimeout(() => this.warnAboutSilentPeople(), 12_000)
+      }
+      return
+    }
     const present = new Set<string>()
     for (const member of members) {
       const key = memberKey(member.user_id, member.membership?.device_id ?? '')
