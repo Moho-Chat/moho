@@ -13,6 +13,7 @@
  */
 
 import { Call, type CallPhase } from './webrtc'
+import { SfuCall, type SfuParticipant } from './livekit'
 
 /** What the daemon sends up when a call event arrives in a room. */
 export interface MatrixCallEvent {
@@ -78,7 +79,15 @@ export interface CallSurface {
   iceServers: (accountId: string) => Promise<RTCIceServer[]>
   /** Publishes this end's membership of the room's call, and says who we are
    *  in it - the user and the device, since one person may be in from two. */
-  joinMembership: (bufferId: string) => Promise<{ userId: string; deviceId: string; roomId?: string } | null>
+  joinMembership: (bufferId: string) => Promise<{
+    userId: string
+    deviceId: string
+    roomId?: string
+    /** Where the media goes, when the call is held on a media server. */
+    media?: { url: string; jwt: string; identity: string } | null
+    /** Whether the room is encrypted, which decides whether the media is. */
+    encrypted?: boolean
+  } | null>
   leaveMembership: (bufferId: string) => Promise<void>
   /** Who the room says is in the call. */
   callMembers: (bufferId: string) => Promise<CallMember[]>
@@ -136,6 +145,15 @@ export interface GroupCall {
   peers: Map<string, Peer>
   /** This end's camera and microphone, opened once and lent to every leg. */
   local: MediaStream | null
+  /**
+   * The media server, where the call is held on one.
+   *
+   * Set means this is an SFU call - Element's kind - and `peers` stays empty
+   * because nobody is connected to anybody directly. Absent means the mesh.
+   */
+  sfu: SfuCall | null
+  /** Who the media server says is here, for the SFU kind. */
+  sfuPeople: SfuParticipant[]
   /** The whole call's id, on every signal, so a second call in the same room
    *  is a second call rather than a crossed line. */
   confId: string
@@ -235,8 +253,50 @@ export class MatrixCalls {
     }
     const own = await this.surface.joinMembership(bufferId)
     if (!own) return
-    this.iceForGroup = await this.surface.iceServers(accountId)
     const ownKey = memberKey(own.userId, own.deviceId)
+
+    // A call held on a media server, which is what Element's are. Nobody
+    // connects to anybody directly, so none of the mesh below runs.
+    if (own.media) {
+      const sfu = new SfuCall({
+        onParticipants: (people) => {
+          if (this.group) this.group.sfuPeople = people
+        },
+        onConnected: (connected) => this.surface.onPhase(connected ? 'connected' : 'connecting', null),
+        onError: (message) => this.surface.onError(message)
+      })
+      this.group = {
+        accountId,
+        bufferId,
+        ownKey,
+        video,
+        local: null,
+        peers: new Map(),
+        sfu,
+        sfuPeople: [],
+        confId: `moho-conf-${own.roomId ?? bufferId}`
+      }
+      this.heartbeat = setInterval(() => void this.surface.joinMembership(bufferId), 30_000)
+      this.surface.onPhase('connecting', null)
+      try {
+        await sfu.join(own.media.url, own.media.jwt, video)
+        this.group.local = sfu.local
+        if (own.encrypted) {
+          // Element encrypts a call's media per sender in an encrypted room,
+          // with the keys shared over Matrix. moho does not do that yet, so
+          // this is a call everybody is in and nobody can hear.
+          this.surface.onError(
+            'This room is encrypted, and moho cannot yet read the media in an encrypted call - the others will not hear you'
+          )
+        }
+      } catch (e) {
+        this.surface.onError(`Couldn't reach the media server: ${(e as Error).message}`)
+        this.leaveGroup()
+      }
+      return
+    }
+
+    this.iceForGroup = await this.surface.iceServers(accountId)
     // Opened once here rather than per leg: five connections asking the
     // machine for the same camera get one capture and four refusals.
     let local: MediaStream | null = null
@@ -262,6 +322,8 @@ export class MatrixCalls {
       video,
       local,
       peers: new Map(),
+      sfu: null,
+      sfuPeople: [],
       // Named for the room rather than for the buffer: each account calls the
       // same room by a different buffer id, and a conference named after one
       // of those is a conference the other end never joins.
@@ -285,6 +347,9 @@ export class MatrixCalls {
   async meet(members: CallMember[]): Promise<void> {
     const group = this.group
     if (!group) return
+    // On a media server there is nobody to meet: the server is what everybody
+    // is connected to, and it says who is there.
+    if (group.sfu) return
     const present = new Set<string>()
     for (const member of members) {
       const key = memberKey(member.user_id, member.membership?.device_id ?? '')
@@ -329,8 +394,12 @@ export class MatrixCalls {
     if (this.heartbeat) clearInterval(this.heartbeat)
     this.heartbeat = null
     for (const peer of group.peers.values()) void peer.call.hangUp('user_hangup', true)
-    // The shared capture is nobody's leg to stop, so it is stopped here.
-    for (const track of group.local?.getTracks() ?? []) track.stop()
+    if (group.sfu) {
+      void group.sfu.leave()
+    } else {
+      // The shared capture is nobody's leg to stop, so it is stopped here.
+      for (const track of group.local?.getTracks() ?? []) track.stop()
+    }
     void this.surface.leaveMembership(group.bufferId)
     this.surface.onPhase('ended', null)
   }
@@ -402,7 +471,7 @@ export class MatrixCalls {
    */
   private handleGroup(event: MatrixCallEvent): boolean {
     const group = this.group
-    if (!group) return false
+    if (!group || group.sfu) return false
     const { content, kind, callId } = event
     if (content.conf_id !== group.confId) return false
     // Somebody else's leg of the mesh, seen because room events are seen by

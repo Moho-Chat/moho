@@ -1,11 +1,18 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <!--
+      Why the websocket schemes are in connect-src: a Matrix room call held on
+      a media server is a LiveKit connection, and LiveKit signals over a
+      websocket. `wss:` for a real one; plaintext only to this machine, since
+      a server reached over a network should not be carrying signalling in
+      the clear and allowing `ws:` outright would say it may.
+    -->
     <meta charset="UTF-8" />
     <title>moho</title>
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' data: blob: https: moho-media:; media-src 'self' blob: https: moho-media:; font-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:"
+      content="default-src 'self'; img-src 'self' data: blob: https: moho-media:; media-src 'self' blob: https: moho-media:; font-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: wss: ws://localhost:* http://localhost:*"
     />
   </head>
   <body>

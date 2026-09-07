@@ -299,28 +299,24 @@ export function RoomCallBar({ bufferId }: { bufferId: string }): JSX.Element | n
       ? `${others[0].user_id} is in a call`
       : `${others.length} people are in a call`
 
-  // A call held on a media server - which is what Element's own calls are.
-  // moho can see who is in one and cannot be in it yet, so it says so here
-  // rather than offering a button that fails.
-  const needsFocus = members.some((m) => m.transports?.includes('livekit'))
+  // Where the call is held, which is worth saying: on a media server it is
+  // the same call Element's people are in, and on the mesh it is one between
+  // whoever is in the room.
+  const onServer = members.some((m) => m.transports?.includes('livekit'))
 
   return (
     <div className="room-call-bar">
       <Icon name="videocam" size={16} />
       <span className="small ellipsis">
         {who}
-        {needsFocus ? ' · through a media server moho cannot join yet' : ''}
+        {onServer ? ' · on a media server' : ''}
       </span>
-      {!needsFocus && (
-        <>
-          <button type="button" className="button" onClick={() => void store.joinMatrixGroupCall(bufferId, false)}>
-            Join
-          </button>
-          <button type="button" className="button" onClick={() => void store.joinMatrixGroupCall(bufferId, true)}>
-            Join with video
-          </button>
-        </>
-      )}
+      <button type="button" className="button" onClick={() => void store.joinMatrixGroupCall(bufferId, false)}>
+        Join
+      </button>
+      <button type="button" className="button" onClick={() => void store.joinMatrixGroupCall(bufferId, true)}>
+        Join with video
+      </button>
     </div>
   )
 }

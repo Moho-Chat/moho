@@ -1837,9 +1837,12 @@ export class ChatStore {
   async joinMatrixGroupCall(bufferId: string, video: boolean): Promise<void> {
     const account = this.accountFor(bufferId)
     if (!account) return
-    await this.matrixCalls.joinGroup(account.id, bufferId, video)
-    const group = this.matrixCalls.currentGroup
-    if (!group) return
+    // The stage goes up before the joining rather than after it: connecting
+    // to a media server takes a moment, and a window that shows nothing for
+    // that moment looks like a button that did nothing. Set first so the
+    // phases the call reports afterwards land on top of it rather than
+    // underneath - reporting "connected" and then overwriting it with
+    // "connecting" was exactly the bug this shape avoids.
     this.set({
       callMinimized: false,
       activeCall: {
@@ -1851,6 +1854,8 @@ export class ChatStore {
         sharingScreen: false
       }
     })
+    await this.matrixCalls.joinGroup(account.id, bufferId, video)
+    if (!this.matrixCalls.currentGroup) this.set({ activeCall: null })
   }
 
   /**
@@ -1914,6 +1919,18 @@ export class ChatStore {
           speaking: !this.state.activeCall?.muted && this.levels.speaking('self')
         }
       ]
+      // On a media server, everybody arrives from the server rather than from
+      // a connection of their own - the same tiles either way.
+      for (const person of group.sfuPeople) {
+        this.levels.watch(person.key, person.stream)
+        tiles.push({
+          id: person.key,
+          label: this.matrixDisplayName(group.bufferId, person.userId),
+          stream: person.stream,
+          hasVideo: person.hasVideo,
+          speaking: this.levels.speaking(person.key)
+        })
+      }
       for (const peer of group.peers.values()) {
         this.levels.watch(peer.key, peer.remote)
         // Only once there is something to show: a tile for somebody who has
@@ -1973,8 +1990,26 @@ export class ChatStore {
   }
 
   toggleCallMute(): void {
+    if (!this.state.activeCall) return
+    // Three kinds of call reach this button and the button does not care:
+    // one to one, a mesh in a room, and a room call held on a media server.
+    const group = this.matrixCalls.currentGroup
+    if (group?.sfu) {
+      void group.sfu.toggleMute().then((muted) => {
+        if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, muted } })
+      })
+      return
+    }
+    if (group) {
+      // Every leg carries the same capture, so muting it mutes all of them.
+      const track = group.local?.getAudioTracks()[0]
+      if (!track) return
+      track.enabled = !track.enabled
+      this.set({ activeCall: { ...this.state.activeCall, muted: !track.enabled } })
+      return
+    }
     const call = this.matrixCalls.current
-    if (!call || !this.state.activeCall) return
+    if (!call) return
     const muted = call.call.toggleMute()
     this.set({ activeCall: { ...this.state.activeCall, muted } })
   }
@@ -1987,8 +2022,20 @@ export class ChatStore {
    * windows somebody actually has open is the only way to choose one.
    */
   async toggleScreenShare(): Promise<void> {
+    if (!this.state.activeCall) return
+    // On a media server the picker is LiveKit's own job, and Electron's
+    // source list is what answers it - see the permission handler in main.
+    const group = this.matrixCalls.currentGroup
+    if (group?.sfu) {
+      const sharing = await group.sfu.toggleScreen().catch((e: Error) => {
+        this.toast('error', e.message)
+        return false
+      })
+      this.set({ activeCall: { ...this.state.activeCall, sharingScreen: sharing } })
+      return
+    }
     const call = this.matrixCalls.current
-    if (!call || !this.state.activeCall) return
+    if (!call) return
     try {
       if (call.call.sharingScreen) {
         await call.call.shareScreen()
