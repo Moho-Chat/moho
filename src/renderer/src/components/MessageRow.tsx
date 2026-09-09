@@ -657,6 +657,10 @@ function MessageRowBody({
               <span className="message-body selectable">
                 <RichText
                   html={parts.html}
+                  // Ours unless the sender sent their own formatting, which
+                  // is the one case where a picture it names is a stranger's
+                  // server being told this message was read.
+                  ownMarkup={!message.html}
                   onRevealSpoiler={(i) => setRevealed((r) => ({ ...r, [i]: true }))}
                   // Following a channel link moves the rail too: the channel
                   // is usually in the same guild, but a cross-guild link is
@@ -707,6 +711,7 @@ function MessageRowBody({
                 <div className="rich-embed-desc small">
                   <RichText
                     html={formatMessage(embed.description, { channels })}
+                    ownMarkup
                     onOpenChannel={(id) => void store.selectBuffer(id, true)}
                   onOpenLink={(url) => store.followDeepLink(url)}
                   />

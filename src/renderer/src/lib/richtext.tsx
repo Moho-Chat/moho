@@ -103,6 +103,16 @@ function safeSpanStyle(attr: string | null): React.CSSProperties | undefined {
 
 export interface RichTextProps {
   html: string
+  /**
+   * Whether this client wrote the markup.
+   *
+   * Off by default, which is the safe way round: markup arriving from a
+   * service is somebody else's, and the only thing that changes is whether a
+   * picture it names may be fetched from a remote server. Anything built here
+   * - a formatted body this client produced, an embed's description - says so
+   * and keeps its images.
+   */
+  ownMarkup?: boolean
   /** Called with the spoiler's index when a hidden run is clicked. */
   onRevealSpoiler?: (index: number) => void
   /** Called with a buffer id when a channel link is clicked. */
@@ -116,9 +126,17 @@ interface Handlers {
   onRevealSpoiler?: RichTextProps['onRevealSpoiler']
   onOpenChannel?: RichTextProps['onOpenChannel']
   onOpenLink?: RichTextProps['onOpenLink']
+  /** Whether this markup is ours rather than the sender's - see safeImageSrc. */
+  ownMarkup?: boolean
 }
 
-export function RichText({ html, onRevealSpoiler, onOpenChannel, onOpenLink }: RichTextProps): JSX.Element {
+export function RichText({
+  html,
+  ownMarkup,
+  onRevealSpoiler,
+  onOpenChannel,
+  onOpenLink
+}: RichTextProps): JSX.Element {
   // DOMParser builds an inert document: no scripts run, no images load, no
   // network requests happen during parsing.
   //
@@ -132,11 +150,11 @@ export function RichText({ html, onRevealSpoiler, onOpenChannel, onOpenLink }: R
   // below passes any https image through, so a formatted body can name a URL
   // its author controls and learn that the message was read - see #145.
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
-  return <>{walk(doc.body, { onRevealSpoiler, onOpenChannel, onOpenLink }, 0)}</>
+  return <>{walk(doc.body, { onRevealSpoiler, onOpenChannel, onOpenLink, ownMarkup }, 0)}</>
 }
 
 function walk(node: Node, handlers: Handlers, depth: number): ReactNode[] {
-  const { onRevealSpoiler, onOpenChannel, onOpenLink } = handlers
+  const { onRevealSpoiler, onOpenChannel, onOpenLink, ownMarkup } = handlers
   const out: ReactNode[] = []
   // Depth guard: deeply nested markup in a hostile body shouldn't be able to
   // blow the stack. Beyond this, render the remaining subtree as flat text.
@@ -168,9 +186,14 @@ function walk(node: Node, handlers: Handlers, depth: number): ReactNode[] {
 
       case 'IMG': {
         const src = el.getAttribute('src') || ''
-        const resolved = safeImageSrc(src)
+        const resolved = safeImageSrc(src, !!ownMarkup)
         const alt = el.getAttribute('alt') || ''
-        if (!resolved) break
+        if (!resolved) {
+          // Refused rather than broken: what it was called is worth keeping
+          // where the sender gave it a name, and a tracking pixel has none.
+          if (alt) out.push(alt)
+          break
+        }
         // A custom emoji that has since been deleted from its guild leaves a
         // token in every message that used it, and a broken-image box is a
         // worse answer than the ":name:" the sender typed.
@@ -373,8 +396,15 @@ function classNameOf(el: Element): string | undefined {
  * both go through the guarded moho-media scheme. Remote https images are
  * allowed too (Discord CDN avatars and the like). Everything else is dropped.
  */
-function safeImageSrc(src: string): string | null {
-  if (/^https:\/\//i.test(src)) return src
+function safeImageSrc(src: string, remoteAllowed: boolean): string | null {
+  // A remote picture is a request to somebody else's server, made the moment
+  // the message is drawn. Where this client wrote the markup that is fine and
+  // wanted - a Discord emoji is a URL we built from an id. Where the *sender*
+  // wrote it, it is a way to be told that their message was read, by whom and
+  // from what address, and no chat message needs that. So the caller says
+  // which kind of markup this is, and the untrusted kind gets no remote
+  // images at all.
+  if (/^https:\/\//i.test(src)) return remoteAllowed ? src : null
   // Already routed (a smilie url built by the store) - passing it through
   // resolveMediaUrl again would double-wrap it.
   if (src.startsWith(`${MEDIA_SCHEME}://`)) return src
