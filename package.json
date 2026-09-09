@@ -11,12 +11,12 @@
     "build": "npm run typecheck && electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "pack": "npm run daemon && npm run build && electron-builder --linux AppImage",
-    "pack:dir": "npm run daemon && npm run build && electron-builder --linux dir",
+    "pack": "npm run daemon && npm run build && MOHO_BUILD=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty) electron-builder --linux AppImage",
+    "pack:dir": "npm run daemon && npm run build && MOHO_BUILD=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty) electron-builder --linux dir",
     "daemon": "./scripts/build-daemon.sh",
     "deploy": "npm run pack && ./scripts/install-desktop.sh",
     "daemon:win": "./scripts/build-daemon-win.sh",
-    "pack:win": "npm run daemon:win && npm run build && electron-builder --win nsis"
+    "pack:win": "npm run daemon:win && npm run build && MOHO_BUILD=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty) electron-builder --win nsis"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
@@ -91,7 +91,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false
-    }
+    },
+    "artifactName": "${productName}-${env.MOHO_BUILD}.${ext}"
   },
   "allowScripts": {
     "electron@33.4.11": true,
