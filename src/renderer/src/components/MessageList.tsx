@@ -282,6 +282,20 @@ export function MessageList(): JSX.Element {
   const preLoadHeightRef = useRef(0)
   /** A jumped-to message to keep in view while the page settles around it. */
   const holdRef = useRef('')
+  /**
+   * The row the reader is looking at, and where on screen it sits.
+   *
+   * Kept so that anything which changes the height of the log *above* them -
+   * a picture arriving three hundred lines back, an embed unfurling - can be
+   * undone by putting that row back where it was. Without it the reader is
+   * shoved by media they cannot see loading, which is the whole of what
+   * reading old messages in a busy channel felt like.
+   *
+   * Recorded on scroll rather than computed when it is needed, because by the
+   * time a resize is observed the layout has already moved and there is
+   * nothing left to measure against.
+   */
+  const placeRef = useRef<{ id: string; offset: number } | null>(null)
   /** Where the view was at the last scroll, to tell moving up from growing. */
   const lastTopRef = useRef(0)
   /** And how tall it was, to tell moving up from the page losing content. */
@@ -293,6 +307,41 @@ export function MessageList(): JSX.Element {
     const el = scrollRef.current
     if (!el) return
     el.scrollTo({ top: el.scrollHeight, behavior })
+  }, [])
+
+  /**
+   * Which row is at the top of the view, and how far into it we are.
+   *
+   * By hit test rather than by walking the rows: this runs on every scroll,
+   * and a list of two thousand is not a thing to scan that often.
+   */
+  const notePlace = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const box = el.getBoundingClientRect()
+    const hit = document.elementFromPoint(box.left + 8, box.top + 1)
+    const row = hit?.closest?.('[data-msg-id]') as HTMLElement | null
+    if (!row) return
+    placeRef.current = {
+      id: row.dataset.msgId ?? '',
+      offset: row.getBoundingClientRect().top - box.top
+    }
+  }, [])
+
+  /** And putting it back after something changed size. */
+  const keepPlace = useCallback(() => {
+    const el = scrollRef.current
+    const place = placeRef.current
+    if (!el || !place?.id) return
+    const row = el.querySelector(`[data-msg-id="${CSS.escape(place.id)}"]`)
+    if (!row) return
+    const drift = row.getBoundingClientRect().top - el.getBoundingClientRect().top - place.offset
+    // Whole pixels only, and never for a hair: sub-pixel corrections chase
+    // rounding for ever and are not a movement anybody could see.
+    if (Math.abs(drift) < 1) return
+    el.scrollTop += drift
+    lastTopRef.current = el.scrollTop
+    lastHeightRef.current = el.scrollHeight
   }, [])
 
   const anchor = useCallback((on: boolean) => {
@@ -325,7 +374,16 @@ export function MessageList(): JSX.Element {
           ?.scrollIntoView({ block: 'center' })
         return
       }
-      if (anchoredRef.current) scrollToBottom()
+      if (anchoredRef.current) {
+        scrollToBottom()
+        return
+      }
+      // Reading the past. Nothing here wants to move, so the height changing
+      // under them has to be taken back out: the row that was at the top of
+      // the view goes back to where it was, whether the growth was above it
+      // (which would have shoved them) or below it (which would not, and
+      // this then costs nothing).
+      keepPlace()
     })
     ro.observe(content)
     // And the window onto it. Making the pane taller does not necessarily
@@ -334,7 +392,7 @@ export function MessageList(): JSX.Element {
     // was the case nothing put back.
     if (scrollRef.current) ro.observe(scrollRef.current)
     return () => ro.disconnect()
-  }, [scrollToBottom])
+  }, [keepPlace, scrollToBottom])
 
 
   /**
@@ -428,7 +486,15 @@ export function MessageList(): JSX.Element {
     const seen = previous ? messages.findIndex((m) => m.id === previous) : -1
     // Not found means the message the count was last taken from has been
     // trimmed off the top; one is the honest floor rather than a guess.
-    setMissedCount((n) => n + (seen >= 0 ? messages.length - 1 - seen : 1))
+    const arrived = seen >= 0 ? messages.length - 1 - seen : 1
+    setMissedCount((n) => n + arrived)
+    // The drawn part of the log is a tail, so a message arriving at the bottom
+    // pushes one off the top of it - which for a reader parked in the past is
+    // the ground moving under them, and can take the very row they are reading
+    // out of the page. So while they are away from the bottom the tail grows
+    // instead of sliding: the top of it stays where it was, and what arrives
+    // is simply added.
+    if (seen >= 0) setShown((n) => n + arrived)
     // `shown` alongside `messages`: rows appearing above the reader move the
     // page under them whether they came from the daemon or from the list this
     // window already held, and both need the position putting back.
@@ -452,6 +518,7 @@ export function MessageList(): JSX.Element {
     lastTopRef.current = top
     lastHeightRef.current = height
     lastViewportRef.current = viewport
+    notePlace()
 
     // Reading away un-pins the view, and reading back pins it again; nothing
     // else moves it. Both halves of that have been got wrong here before, and
@@ -504,7 +571,7 @@ export function MessageList(): JSX.Element {
         void store.loadMoreHistory(bufferId)
       }
     }
-  }, [anchor, bufferId, isLoadingMore, messages.length, shown, store])
+  }, [anchor, bufferId, isLoadingMore, messages.length, notePlace, shown, store])
 
   // Reset alongside the buffer: the position in one conversation says nothing
   // about the next, and a stale one would read the first scroll there as a

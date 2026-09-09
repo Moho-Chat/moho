@@ -60,6 +60,16 @@ function humanSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+/**
+ * The shape an unmeasured picture is given to sit in.
+ *
+ * Four by three, because it has to be something and something wrong in the
+ * ordinary direction is less jarring than a tall box round a wide photograph.
+ * It is a starting size rather than a final one - see `measured` below - so
+ * being wrong costs one small adjustment rather than a permanent letterbox.
+ */
+const UNKNOWN_RATIO = '4 / 3'
+
 export function MediaEmbed({
   item,
   attachment,
@@ -82,6 +92,8 @@ export function MediaEmbed({
    * picture that could be fetched.
    */
   const [previewGone, setPreviewGone] = useState(false)
+  /** What the picture turned out to be, once it had loaded enough to say. */
+  const [seen, setSeen] = useState<{ width: number; height: number } | null>(null)
   const [playing, setPlaying] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
@@ -101,12 +113,24 @@ export function MediaEmbed({
 
   const open = (): void => void window.moho.openExternal(openTarget)
 
-  // Reserve the right box before anything loads. Without this the list
-  // reflows under the reader as each image arrives.
-  const ratio =
-    attachment?.width && attachment?.height
-      ? { aspectRatio: `${attachment.width} / ${attachment.height}` }
-      : undefined
+  /**
+   * The size the picture is going to be, decided before it arrives.
+   *
+   * Where the service told us - Discord and Matrix both send dimensions with
+   * an attachment - this is exact. Where it did not, which is every link a
+   * message merely contains, the box was previously nothing at all: a row of
+   * no height that became three hundred pixels the moment the image decoded,
+   * shoving everything below it. On a channel where most messages are
+   * pictures that is not an occasional jolt, it is the reading experience.
+   *
+   * So an unmeasured picture gets a placeholder shape to sit in until it can
+   * be measured, and measures itself on load - one change, at a size the list
+   * has already made room for, instead of one from nothing.
+   */
+  const measured = seen ?? (attachment?.width && attachment?.height
+    ? { width: attachment.width, height: attachment.height }
+    : null)
+  const ratio = { aspectRatio: measured ? `${measured.width} / ${measured.height}` : UNKNOWN_RATIO }
 
   const canRefresh = !!(isDiscordAttachment(openTarget) && bufferId && messageId && onRefresh)
 
@@ -218,6 +242,17 @@ export function MediaEmbed({
           alt={attachment?.filename || ''}
           title={refreshError || attachment?.filename}
           loading="lazy"
+          // Its real shape, the first moment there is one to have. Only for
+          // pictures nobody told us about: where the service sent dimensions
+          // they are already right, and re-measuring would swap an exact box
+          // for a rounded one.
+          onLoad={(e) => {
+            if (measured) return
+            const img = e.currentTarget
+            if (img.naturalWidth && img.naturalHeight) {
+              setSeen({ width: img.naturalWidth, height: img.naturalHeight })
+            }
+          }}
           // A failed preview means the cached file went away, which says
           // nothing about the link. Only a failure of the original itself is
           // the attachment actually being unreachable.
