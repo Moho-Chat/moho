@@ -10,7 +10,32 @@ set -eu
 
 APP_ID=moho
 SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-APPIMAGE="$(ls "$SRC_DIR"/dist/*.AppImage 2>/dev/null | head -1)"
+
+# The one built from what is checked out, by name.
+#
+# This used to take whichever AppImage `ls` listed first, which was right for
+# exactly as long as there was only ever one of them: builds were all called
+# moho-0.1.0 and overwrote each other. They are named after their commit now,
+# so dist/ accumulates them and "first" became alphabetical - which installed
+# a build from earlier in the day over the one just made, silently, because
+# both exist and neither is wrong to `ls`.
+#
+# Asking for the current commit's own file instead fails loudly when the build
+# did not happen, which is the failure worth having.
+BUILD="$(cd "$SRC_DIR" && git rev-parse --short HEAD 2>/dev/null || true)"
+DIRTY=""
+if [ -n "$BUILD" ] && ! (cd "$SRC_DIR" && git diff --quiet HEAD 2>/dev/null); then
+  DIRTY="-dirty"
+fi
+APPIMAGE=""
+if [ -n "$BUILD" ] && [ -f "$SRC_DIR/dist/$APP_ID-$BUILD$DIRTY.AppImage" ]; then
+  APPIMAGE="$SRC_DIR/dist/$APP_ID-$BUILD$DIRTY.AppImage"
+else
+  # No git, or a build whose name does not match the checkout: newest wins,
+  # which is at least the one most recently made rather than the one whose
+  # name happens to sort first.
+  APPIMAGE="$(ls -t "$SRC_DIR"/dist/*.AppImage 2>/dev/null | head -1)"
+fi
 
 BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
 APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
