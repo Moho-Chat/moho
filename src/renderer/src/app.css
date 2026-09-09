@@ -1913,6 +1913,16 @@ img.composer-emoji {
   margin: 0;
 }
 
+/* The line above a second way of doing the same thing. A rule across the form
+   rather than a heading: what follows is an alternative to what came before,
+   not a new section, and the two are the same size of decision. */
+.account-alternative {
+  align-self: stretch;
+  margin-top: var(--spacing-xs) !important;
+  padding-top: var(--spacing-s);
+  border-top: 1px solid var(--outline-medium);
+}
+
 .field {
   display: flex;
   flex-direction: column;

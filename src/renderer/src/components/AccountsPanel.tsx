@@ -1146,13 +1146,14 @@ function KickForm({ onDone }: { onDone: () => void }): JSX.Element {
 }
 
 /**
- * Signing in to the forum by hand, because its login form now asks for one.
+ * Signing in to the forum by hand, for when signing in by machine will not go.
  *
- * The site added a CAPTCHA to the login form, and a CAPTCHA is precisely a
- * question a program is not meant to answer - so moho stops trying and asks
- * the person instead. The window is the site's own login page; what comes
- * back from it is the session, which is all the daemon ever wanted a password
- * for. It is a workaround and reads like one on purpose.
+ * The CAPTCHA on the login form is answered by the daemon now, so this is no
+ * longer the only door - but it is still worth having, because the same
+ * service can decide it wants a browser fingerprint check instead of a proof
+ * of work, and nothing headless can produce one of those. The window is the
+ * site's own login page; what comes back from it is the session, which is all
+ * the daemon ever wanted a password for.
  *
  * The window reaches the site over the ordinary internet rather than through
  * moho's Tor client, since Chromium has no Tor of its own. The session it
@@ -1192,9 +1193,10 @@ function SneedChatBrowserLogin({ accountId }: { accountId?: string }): JSX.Eleme
         {busy ? 'Waiting for the sign-in window…' : 'Sign in with a browser'}
       </button>
       <div className="small muted">
-        The forum now asks for a CAPTCHA when signing in, which moho cannot answer. This opens
-        their login page in a window so you can answer it yourself; moho keeps the session that
-        comes back. Your password goes into their form and never passes through moho.
+        moho answers the forum&apos;s verification itself, so this is only needed when that
+        fails — if the site asks for a browser check, or the sign-in above keeps being refused.
+        It opens their login page in a window; moho keeps the session that comes back, and your
+        password goes into their form rather than through moho.
       </div>
       {/* Said loudly and before the click rather than in the paragraph above,
           because it is the one thing here that changes what a person is
@@ -1224,13 +1226,71 @@ function SneedChatBrowserLogin({ accountId }: { accountId?: string }): JSX.Eleme
  * it looks like the way in. The browser window is the way in, and what it
  * brings back names the account as well as opening it.
  */
+/**
+ * Signing in to the forum with an account, the ordinary way.
+ *
+ * This was taken out when the site put a CAPTCHA on its login form, because a
+ * form that cannot work is worse than no form - it looks like the way in. moho
+ * answers that CAPTCHA now (a proof of work, not a picture of a bus - see
+ * nobilis/src/backend/sneedchat/captcha.rs), so the way in is a way in again
+ * and this is back.
+ *
+ * It runs over the embedded Tor client and has two challenges to grind
+ * through before the password is even offered - the site's gate, then the
+ * form's - so it can take anywhere from a few seconds to over a minute, which
+ * is why it reports progress rather than just sitting there.
+ */
 function SneedChatForm(): JSX.Element {
+  const store = useStore()
   const status = useChat((s) => s.sneedChatLoginStatus)
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [totpSecret, setTotpSecret] = useState('')
 
   return (
     <div className="add-form">
-      <SneedChatBrowserLogin />
+      <div className="field-row">
+        <label className="field">
+          <span className="small muted">Username</span>
+          <input className="text-field" value={username} onChange={(e) => setUsername(e.target.value)} />
+        </label>
+        <label className="field">
+          <span className="small muted">Password</span>
+          <input
+            className="text-field"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </label>
+      </div>
+      <label className="field">
+        <span className="small muted">TOTP secret (optional, if 2FA is on)</span>
+        <input className="text-field" value={totpSecret} onChange={(e) => setTotpSecret(e.target.value)} />
+      </label>
+      <button
+        type="button"
+        className="button"
+        disabled={!username || !password}
+        onClick={() =>
+          void window.moho
+            .rpc('addSneedChatAccount', {
+              username,
+              password,
+              ...(totpSecret ? { totpSecret } : {})
+            })
+            .then(() => store.setSneedChatLoginStatus('Bootstrapping Tor…'))
+            .catch((e: Error) => store.toast('error', e.message))
+        }
+      >
+        Connect
+      </button>
       {status && <p className="small muted">{status}</p>}
+
+      {/* Second because it is the fallback rather than the way in: everything
+          above happens over Tor, and this does not. */}
+      <p className="small muted account-alternative">Or, if signing in here will not go through:</p>
+      <SneedChatBrowserLogin />
     </div>
   )
 }
