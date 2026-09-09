@@ -121,6 +121,16 @@ interface Handlers {
 export function RichText({ html, onRevealSpoiler, onOpenChannel, onOpenLink }: RichTextProps): JSX.Element {
   // DOMParser builds an inert document: no scripts run, no images load, no
   // network requests happen during parsing.
+  //
+  // Measured rather than assumed, because it was once doubted (#142): a body
+  // carrying `<link rel=stylesheet>`, `<style>@font-face`, `<img src=https:>`,
+  // a CSS `background: url()` and a `<script src>` was parsed here with the
+  // network watched, and not one of the five was fetched. The parse is safe;
+  // what a message can reach for, it reaches for when something *renders*.
+  //
+  // Which is a live surface rather than a theoretical one: `safeImageSrc`
+  // below passes any https image through, so a formatted body can name a URL
+  // its author controls and learn that the message was read - see #145.
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
   return <>{walk(doc.body, { onRevealSpoiler, onOpenChannel, onOpenLink }, 0)}</>
 }
