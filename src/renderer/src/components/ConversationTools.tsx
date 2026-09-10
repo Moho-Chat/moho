@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
 import { AddToConversation } from './AddToConversation'
+import { DiscordInvite } from './DiscordInvite'
 import { HeaderPopover } from './HeaderPopover'
 import { useChat, useStore } from '../state/hooks'
 import { bufferDisplayName, classes, formatFullTime } from '../lib/util'
@@ -808,6 +809,13 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
       {/* Beside the call button, for the same reason it is here: it acts on
           the conversation being read rather than on the window. */}
       {isDiscord && isDm && <AddToConversation buffer={buffer} />}
+
+      {/* A Discord channel is joined with a link rather than by being asked,
+          so the invite here is a thing to make and paste rather than a person
+          to name. A group message can be invited into as well as a channel,
+          which is why this is not gated on kind - the component hides itself
+          on the one conversation Discord has no link into, a one-to-one. */}
+      {isDiscord && buffer.kind !== 'server' && <DiscordInvite buffer={buffer} />}
 
       {/* The same job on Matrix, where it needs no picker: a Matrix address
           names somebody whether or not this account has ever met them, so

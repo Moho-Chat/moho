@@ -16,6 +16,7 @@ export const IPC = {
   importGroupIcon: 'moho:importGroupIcon',
   defaultDownloadDir: 'moho:defaultDownloadDir',
   readClipboardImage: 'moho:readClipboardImage',
+  writeClipboardText: 'moho:writeClipboardText',
   restartDaemon: 'moho:restartDaemon',
   daemonStatus: 'moho:daemonStatus',
   smiliesDir: 'moho:smiliesDir',

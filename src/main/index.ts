@@ -670,6 +670,14 @@ function wireIpc(): void {
     return file
   })
 
+  // Putting something on the clipboard from here rather than through the
+  // page's own `navigator.clipboard`, which wants a secure context and a
+  // permission this app has no way to grant itself. Text only: the renderer
+  // has no business writing anything else onto the system clipboard.
+  ipcMain.handle(IPC.writeClipboardText, (_e, text: string) => {
+    if (typeof text === 'string' && text.length > 0) clipboard.writeText(text)
+  })
+
   ipcMain.handle(IPC.restartDaemon, () => nobilis.restart())
   ipcMain.handle(IPC.daemonStatus, () => ({
     binaryPath: nobilis.binaryPath,

@@ -4454,6 +4454,55 @@ video.lightbox-media {
   padding-top: var(--spacing-xs);
 }
 
+/* Making an invite: three choices and the link they produce. A column
+   because each row is a question and its answer, and a form read down the
+   page is a form somebody finishes. */
+.invite-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.invite-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-s);
+}
+
+.invite-row select {
+  flex: 0 0 auto;
+  min-width: 130px;
+  padding: 2px var(--spacing-xs);
+  color: var(--surface-text);
+  background: var(--surface-container);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+}
+
+.invite-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
+  color: var(--surface-variant-text);
+}
+
+.invite-check input {
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
+.invite-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* The link itself, wide enough to read and selected on a click - it is a
+   thing to look at before sending, not only a thing to copy. */
+.invite-link input {
+  font-family: var(--font-mono);
+}
+
 .main-header > .conversation-tools {
   flex: 0 1 auto;
   min-width: 0;

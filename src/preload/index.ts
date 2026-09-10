@@ -93,6 +93,9 @@ const api = {
   },
 
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke(IPC.openExternal, url),
+
+  /** Puts a line of text on the system clipboard. */
+  copyText: (text: string): Promise<void> => ipcRenderer.invoke(IPC.writeClipboardText, text),
   /**
    * Where a dropped file actually lives.
    *
