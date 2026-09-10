@@ -431,7 +431,6 @@ export interface ChatState {
   /** The poll and prediction running in each channel, by `cardSlot`. */
   livePolls: Record<string, LiveCard>
   /** Cards the reader has folded away, by card id. */
-  hiddenPolls: string[]
   /** An old poll or prediction being read back, over the conversation. */
   reviewCard: LiveCard | null
   /** Which messages each Matrix room has pinned, newest last. */
@@ -563,7 +562,6 @@ const INITIAL: ChatState = {
   matrixPermissions: {},
   kickStreams: {},
   livePolls: {},
-  hiddenPolls: [],
   reviewCard: null,
   pinnedMessages: {},
   discordFriends: {},
@@ -1732,21 +1730,6 @@ export class ChatStore {
   /** Puts an old one back on screen, to be read rather than answered. */
   reviewPoll(card: LiveCard | null): void {
     this.set({ reviewCard: card })
-  }
-
-  /**
-   * Folds the poll away without ending it.
-   *
-   * Per poll rather than per channel: hiding this one must not hide the next
-   * one, which is a different question somebody may well want to answer.
-   */
-  hidePoll(key: string): void {
-    this.set({ hiddenPolls: [...this.state.hiddenPolls.filter((k) => k !== key), key] })
-  }
-
-  /** Brings it back. */
-  showPoll(key: string): void {
-    this.set({ hiddenPolls: this.state.hiddenPolls.filter((k) => k !== key) })
   }
 
   /** Seeds the ignore list from a direct read, before any event arrives. */

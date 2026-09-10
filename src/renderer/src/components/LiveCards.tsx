@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Icon, IconButton } from './Icon'
-import { useChat, useStore } from '../state/hooks'
+import { useChat, usePref, useStore } from '../state/hooks'
 import { classes } from '../lib/util'
 import { cardSlot, type LiveCard } from '../state/store'
 
@@ -35,10 +35,28 @@ export function LiveCards({ bufferId }: { bufferId: string }): JSX.Element | nul
   )
 }
 
+/**
+ * How many folded cards to remember before forgetting the oldest.
+ *
+ * A busy Kick channel runs a poll every few minutes, and every one folded
+ * leaves an id behind. Without a ceiling this is a list that only ever grows,
+ * written to disk on every fold. Two hundred is far past any card still on
+ * screen - the oldest to go is one whose poll ended long ago.
+ */
+const REMEMBERED_FOLDS = 200
+
 /** One card: a poll being voted in, a prediction being backed, or an old one. */
 function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean }): JSX.Element | null {
   const store = useStore()
-  const hidden = useChat((s) => s.hiddenPolls)
+  // Persisted rather than held in this window. Folding a card is a decision
+  // about that card, and it used to last only as long as the process: a
+  // restart brought back every poll somebody had put away, and a popped-out
+  // window never knew about a fold made in the main one. Prefs are shared
+  // between windows and survive a restart, which is what "folded" should
+  // already have meant.
+  const [hidden, setHidden] = usePref<string[]>('polls.folded', [])
+  const fold = (id: string): void => setHidden([...hidden.filter((k) => k !== id), id].slice(-REMEMBERED_FOLDS))
+  const unfold = (id: string): void => setHidden(hidden.filter((k) => k !== id))
   // Its own clock: `remaining` was the truth when the daemon heard it, and
   // the seconds since then are this component's to count.
   const [now, setNow] = useState(() => Date.now())
@@ -105,7 +123,7 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
   if (folded) {
     return (
       <div className="poll-card folded">
-        <button type="button" className="poll-unfold" onClick={() => store.showPoll(card.id)} title="Show it again">
+        <button type="button" className="poll-unfold" onClick={() => unfold(card.id)} title="Show it again">
           <Icon name={isPrediction ? 'casino' : 'bar_chart'} size={14} />
           <span className="ellipsis">{card.title}</span>
           <span className="small muted">{Math.ceil(left)}s</span>
@@ -138,7 +156,7 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
             name={reviewing ? 'close' : 'expand_less'}
             size={16}
             title={reviewing ? 'Done reading' : open ? 'Hide it' : 'Done with it'}
-            onClick={() => (reviewing ? store.reviewPoll(null) : store.hidePoll(card.id))}
+            onClick={() => (reviewing ? store.reviewPoll(null) : fold(card.id))}
           />
         </div>
       </div>
