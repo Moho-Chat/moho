@@ -251,6 +251,11 @@ export function isMutedBuffer(
   // An explicit mute on this buffer always stands.
   if (muted.includes(buffer.id)) return true
 
+  // And so does one made on the account itself - a Discord server silenced in
+  // the official client, a Matrix room silenced by a push rule. Every other
+  // device signed in to that account is already keeping quiet about it.
+  if (buffer.serverMuted) return true
+
   // A muted server, guild or space silences everything under it.
   return !!buffer.groupId && mutedGroups.includes(buffer.groupId)
 }

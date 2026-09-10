@@ -86,6 +86,16 @@ export interface Buffer {
   /** Where the service orders it: category rank and channel rank folded. */
   position?: number
   /**
+   * Muted on the account itself rather than in this window.
+   *
+   * A Discord guild or channel silenced in the official client, a Matrix room
+   * silenced by a push rule. The setting travels with the account, so every
+   * device signed in to it is already honouring it - and it cannot be undone
+   * from here, which is why it is separate from this window's own mute rather
+   * than folded into it.
+   */
+  serverMuted?: boolean
+  /**
    * Set while the buffer exists but the service has not yet said what is in
    * it - a Matrix room between joining it and its first sync. The list draws
    * a spinner against it and the empty room says so rather than looking like

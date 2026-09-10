@@ -24,7 +24,8 @@ import {
   bufferKindGlyph,
   classes,
   resolveMediaUrl,
-  serviceIcon
+  serviceIcon,
+  serviceLabel
 } from '../lib/util'
 import type { Account, Member } from '../../../shared/wire'
 import { Avatar } from './Avatar'
@@ -877,7 +878,17 @@ function BufferRow({
         ] as MenuEntry[])
       : []),
     { label: pinned ? 'Unpin' : 'Pin', icon: 'push_pin', onClick: onTogglePin },
-    { label: muted ? 'Unmute' : 'Mute', icon: muted ? 'notifications' : 'notifications_off', onClick: onToggleMute },
+    // A mute made on the account itself is not this window's to undo, and an
+    // "Unmute" that quietly did nothing would be worse than no entry at all -
+    // so it says where the mute is, and where to go and take it off.
+    buffer.serverMuted
+      ? {
+          label: account ? `Muted on ${serviceLabel(account.service)}` : 'Muted on this account',
+          icon: 'notifications_off',
+          disabled: true,
+          onClick: () => {}
+        }
+      : { label: muted ? 'Unmute' : 'Mute', icon: muted ? 'notifications' : 'notifications_off', onClick: onToggleMute },
     { separator: true },
     // Filing is a drag onto the heading now, not an entry per heading. That
     // list grew with the number of headings and had no ceiling - on a server
