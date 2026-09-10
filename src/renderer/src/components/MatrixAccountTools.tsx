@@ -10,6 +10,14 @@ interface OwnProfile {
   userId: string
   displayName: string
   avatarUrl?: string | null
+  /**
+   * What this homeserver lets the account change, from its own
+   * `/capabilities`. Absent means permitted — a server that says nothing is
+   * not a server saying no, and a field greyed out on silence would take away
+   * something that very likely works.
+   */
+  canChangeName?: boolean
+  canChangeAvatar?: boolean
 }
 
 /** Where an account stands on cross-signing, as the daemon reports it. */
@@ -148,13 +156,19 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
             type="text"
             placeholder={profile?.userId || 'Display name'}
             value={profileName}
+            disabled={profile?.canChangeName === false}
+            title={profile?.canChangeName === false ? 'This homeserver does not allow changing your display name' : undefined}
             onChange={(e) => setProfileName(e.target.value)}
           />
         </div>
         <button
           type="button"
           className="button subtle"
-          disabled={!profileName.trim() || profileName.trim() === profile?.displayName}
+          disabled={
+            profile?.canChangeName === false ||
+            !profileName.trim() ||
+            profileName.trim() === profile?.displayName
+          }
           onClick={() =>
             void rpc('setMatrixProfileName', { accountId: account.id, name: profileName.trim() })
               .then(() => store.toast('info', 'Name changed'))
@@ -166,6 +180,8 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
         <button
           type="button"
           className="button subtle"
+          disabled={profile?.canChangeAvatar === false}
+          title={profile?.canChangeAvatar === false ? 'This homeserver does not allow changing your picture' : undefined}
           onClick={() =>
             void window.moho.pickFile().then((path) => {
               if (!path) return
