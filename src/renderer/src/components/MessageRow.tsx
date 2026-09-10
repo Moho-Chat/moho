@@ -1,4 +1,5 @@
-import { memo, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
 import { Avatar } from './Avatar'
 import { ReasonPrompt } from './ReasonPrompt'
@@ -165,6 +166,14 @@ export function useRowContext(bufferId: string): RowContext {
 const MAX_READER_FACES = 3
 
 /**
+ * How many names the list shows before it stops naming people.
+ *
+ * Past this the answer is "the room has caught up", which "and N others" says
+ * better than another twenty rows do.
+ */
+const MAX_READER_NAMES = 12
+
+/**
  * The faces of everybody who has read this far.
  *
  * Overlapped rather than spaced, and capped, because this sits in a gutter
@@ -176,17 +185,108 @@ const MAX_READER_FACES = 3
 function ReadMarkers({ readers }: { readers: MessageReader[] }): JSX.Element {
   const names = readers.map((r) => r.nick).join(', ')
   const shown = readers.slice(0, MAX_READER_FACES)
+  const [at, setAt] = useState<{ x: number; y: number } | null>(null)
   return (
-    <span className="read-markers" title={`Read by ${names}`} aria-label={`Read by ${names}`}>
+    <>
+      <button
+        type="button"
+        className="read-markers"
+        title={`Read by ${names}`}
+        aria-label={`Read by ${names}`}
+        onClick={(e) => {
+          e.stopPropagation()
+          const box = e.currentTarget.getBoundingClientRect()
+          // Anchored to the faces rather than to the pointer: the list is
+          // about them, and a panel that lands wherever the cursor happened
+          // to be reads as unrelated to what was clicked.
+          setAt({ x: box.right, y: box.top })
+        }}
+      >
+        {shown.map((reader) => (
+          <span key={reader.userId} className="read-marker">
+            <Avatar name={reader.nick} url={reader.avatarUrl} size={14} />
+          </span>
+        ))}
+        {readers.length > shown.length && (
+          <span className="read-marker-more small muted">+{readers.length - shown.length}</span>
+        )}
+      </button>
+      {at && <ReaderList readers={readers} at={at} onClose={() => setAt(null)} />}
+    </>
+  )
+}
+
+/**
+ * Who has read this far, by name.
+ *
+ * Three overlapped faces answer "has anybody" and cannot answer "who" - which
+ * is the question somebody clicking them has. A tooltip could carry the names
+ * and did, but a tooltip cannot be read at leisure, cannot be scrolled, and
+ * vanishes if you move towards it.
+ *
+ * Capped, because past a point the answer stops being a list of people and
+ * becomes "the room": in a busy channel everybody catches up, and thirty names
+ * is a wall that says less than "and 27 others" does.
+ */
+function ReaderList({
+  readers,
+  at,
+  onClose
+}: {
+  readers: MessageReader[]
+  at: { x: number; y: number }
+  onClose: () => void
+}): JSX.Element {
+  const box = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState(at)
+
+  useLayoutEffect(() => {
+    const el = box.current
+    if (!el) return
+    const size = el.getBoundingClientRect()
+    // Nudged back inside the window, the same way the context menu is: this
+    // opens from the right-hand gutter, so left of the anchor is where it
+    // fits, and a message near the bottom would otherwise open off-screen.
+    setPos({
+      x: Math.max(8, Math.min(at.x - size.width, window.innerWidth - size.width - 8)),
+      y: Math.max(8, Math.min(at.y, window.innerHeight - size.height - 8))
+    })
+  }, [at])
+
+  useEffect(() => {
+    const away = (e: MouseEvent): void => {
+      if (!box.current?.contains(e.target as Node)) onClose()
+    }
+    const key = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose()
+    }
+    // Capturing, so a click anywhere closes this before that click does
+    // anything else - including on another message's faces.
+    window.addEventListener('mousedown', away, true)
+    window.addEventListener('keydown', key)
+    return () => {
+      window.removeEventListener('mousedown', away, true)
+      window.removeEventListener('keydown', key)
+    }
+  }, [onClose])
+
+  const shown = readers.slice(0, MAX_READER_NAMES)
+  return createPortal(
+    <div ref={box} className="reader-list" style={{ left: pos.x, top: pos.y }} role="dialog">
+      <div className="reader-list-head small muted">
+        Read by {readers.length === 1 ? '1 person' : `${readers.length} people`}
+      </div>
       {shown.map((reader) => (
-        <span key={reader.userId} className="read-marker">
-          <Avatar name={reader.nick} url={reader.avatarUrl} size={14} />
-        </span>
+        <div key={reader.userId} className="reader-row" title={reader.userId}>
+          <Avatar name={reader.nick} url={reader.avatarUrl} size={18} />
+          <span className="ellipsis">{reader.nick}</span>
+        </div>
       ))}
       {readers.length > shown.length && (
-        <span className="read-marker-more small muted">+{readers.length - shown.length}</span>
+        <div className="reader-row small muted">and {readers.length - shown.length} others</div>
       )}
-    </span>
+    </div>,
+    document.body
   )
 }
 
@@ -506,7 +606,12 @@ function MessageRowBody({
           comfy && 'comfy',
           bubbles && 'bubbles',
           own && 'own',
-          bubbles && lastInRun && 'tail'
+          bubbles && lastInRun && 'tail',
+          // Reserves the gutter the read faces occupy, so the hover toolbar
+          // sits beside them rather than on top of them. Only where there are
+          // any: an IRC channel has no read receipts and should not have the
+          // toolbar shoved inwards for a thing that is not there.
+          (readers?.length ?? 0) > 0 && 'has-readers'
         )}
         // Addressable, so a search result can scroll to the message it found.
         data-msg-id={message.id}

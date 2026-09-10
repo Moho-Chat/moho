@@ -2812,10 +2812,17 @@ img.smilie {
 /* Anchored to the row's top-right, overlapping it slightly so it reads as
    floating above the message rather than reserving layout space (which would
    make every row jump as the pointer moved down the list). */
+/* Clear of the read markers, which share this corner.
+   Discord's toolbar sits hard against the right edge because Discord has
+   nothing else there. This does: Matrix draws who has read each line in the
+   same gutter, and a toolbar over the top of them made a standing fact
+   unreadable and a control unclickable. The offset is the width of the widest
+   marker cluster - three overlapped faces and a "+N" - so the two never
+   overlap rather than taking turns. */
 .hover-toolbar {
   position: absolute;
   top: -10px;
-  right: var(--spacing-m);
+  right: calc(var(--spacing-m) + var(--read-gutter, 0px));
   display: none;
   gap: 1px;
   padding: 2px;
@@ -2828,6 +2835,13 @@ img.smilie {
 
 .message-row {
   position: relative;
+}
+
+/* Three overlapped 14px faces (14 + 9 + 9) plus a "+N" and its padding. The
+   number is the marker cluster's widest form rather than a guess, so the
+   toolbar clears it exactly and no further. */
+.message-row.has-readers {
+  --read-gutter: 62px;
 }
 
 .message-row:hover .hover-toolbar {
@@ -5373,10 +5387,54 @@ video.lightbox-media {
   font-variant-numeric: tabular-nums;
 }
 
-/* The hover toolbar sits in the same corner. It wins - it is the thing being
-   reached for - and the markers are a standing fact that can wait. */
-.message-row:hover .read-markers {
-  opacity: 0.25;
+/* The faces are a control now, not a label - they open the list of who. The
+   button is stripped back to the row it was, since the thing being clicked is
+   the faces themselves. */
+.read-markers {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.read-markers:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--corner-radius-small);
+}
+
+/* Who has read this far, by name. Anchored to the faces and clamped to the
+   window - it opens from the right-hand gutter, so it grows leftwards. */
+.reader-list {
+  position: fixed;
+  z-index: 40;
+  min-width: 180px;
+  max-width: 260px;
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--spacing-xs);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+.reader-list-head {
+  padding: 0 var(--spacing-xxs) var(--spacing-xxs);
+  border-bottom: 1px solid var(--outline-light);
+  margin-bottom: var(--spacing-xxs);
+}
+
+.reader-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 3px var(--spacing-xxs);
+  min-width: 0;
 }
 
 /* --- threads ------------------------------------------------------------
