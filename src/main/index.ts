@@ -24,6 +24,7 @@ import { NobilisProcess } from './nobilis-process'
 import { Prefs } from './prefs'
 import { Notifier } from './notifications'
 import { browserLogin, LOGIN_FLOWS } from './browser-login'
+import { solveCaptcha } from './captcha'
 import { IPC, POPOUT_FLAG, type PopoutState } from '../shared/ipc'
 import { DEEP_LINK_SCHEMES, isDeepLink } from '../shared/deeplink'
 import { allowPickedFile, allowRoot, installMediaHandler, registerMediaScheme } from './media-protocol'
@@ -707,6 +708,18 @@ function wireIpc(): void {
     } catch (e) {
       return { ok: false, error: (e as Error).message }
     }
+  })
+
+  /**
+   * Discord's captcha, answered in a window belonging to the one that asked.
+   *
+   * Parented so it sits over the window somebody is working in rather than
+   * appearing somewhere else on the desktop - the challenge belongs to the
+   * action, and the action belongs to a window.
+   */
+  ipcMain.handle(IPC.solveCaptcha, async (e, request: { sitekey: string; rqdata?: string | null }) => {
+    const parent = BrowserWindow.fromWebContents(e.sender) ?? undefined
+    return await solveCaptcha(request, parent)
   })
 
   ipcMain.handle(IPC.smiliesDir, () => smiliesPath())

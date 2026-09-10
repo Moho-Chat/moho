@@ -4,6 +4,7 @@ import { RoomSearch } from './RoomSearch'
 import { KNOWN_SNEEDCHAT_ROOMS } from '../lib/sneedchat'
 import { useChat, useStore } from '../state/hooks'
 import { classes, resolveMediaUrl } from '../lib/util'
+import { CaptchaCancelled, rpcAnsweringCaptcha } from '../lib/captcha'
 import type { Account, DiscordFriend } from '../../../shared/wire'
 
 /**
@@ -13,24 +14,25 @@ import type { Account, DiscordFriend } from '../../../shared/wire'
  */
 const GROUP_DM_MAX = 9
 
-/** Discord's own app, which is where these actions have to happen. */
-const DISCORD_HOME = 'https://discord.com/channels/@me'
-
 /**
- * The page for an invite, however it was written down.
+ * The code out of an invite, however it was written down.
  *
  * People paste the whole link, the short one, or just the code off the end of
  * a message, and all three mean the same server. Anything unrecognisable is
  * treated as a bare code, which is what it usually is - and if it is not,
- * Discord says so on a page far clearer than anything this could produce.
+ * Discord says so in a refusal clearer than anything this could produce.
+ *
+ * The daemon takes the last path segment too, but not a query string: a link
+ * copied out of an event announcement carries `?event=…`, and the code has to
+ * survive that.
  */
-function inviteUrl(entered: string): string {
+function inviteCode(entered: string): string {
   const text = entered.trim()
   const code = text
     .replace(/^https?:\/\//i, '')
     .replace(/^(www\.)?(discord\.gg|discord\.com\/invite|discordapp\.com\/invite)\//i, '')
     .split(/[?#/]/)[0]
-  return `https://discord.com/invite/${encodeURIComponent(code || text)}`
+  return code || text
 }
 
 /** A room this account has been invited to and not yet answered. */
@@ -680,6 +682,30 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
   const settled = friends.filter((f) => !f.kind || f.kind === 'friend')
   const shown = onlineOnly ? settled.filter((f) => f.status && f.status !== 'offline') : settled
 
+  /**
+   * Does one of the three things above, showing Discord's captcha if it wants
+   * one - `rpcAnsweringCaptcha` makes the detour invisible from here.
+   *
+   * Silent on a cancelled captcha: somebody closing the challenge has already
+   * said what they meant, and a toast telling them they cancelled is noise.
+   */
+  const act = (
+    done: string,
+    method: string,
+    params: Record<string, unknown>,
+    after?: () => void
+  ): void => {
+    void rpcAnsweringCaptcha(method, params)
+      .then(() => {
+        store.toast('info', done)
+        after?.()
+      })
+      .catch((e: Error) => {
+        if (e instanceof CaptchaCancelled) return
+        store.toast('error', e.message)
+      })
+  }
+
   const answer = (userId: string, accept: boolean): void => {
     void window.moho
       .rpc('answerDiscordFriendRequest', { accountId: account.id, userId, accept })
@@ -689,40 +715,37 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
 
   return (
     <div className="panel join-panel">
-      {/* All three of these go to Discord's own page rather than its API.
-          Discord asks for a captcha on each of them from anything that is
-          not its own client, and there is no honest way to answer one from
-          here: solving it is the automation it exists to prevent, and its
-          widget will not render outside discord.com in any case. A field
-          that reliably fails is worse than a button that works, and whatever
-          you do over there shows up here on the next sync. */}
+      {/* These used to be links to discord.com, because Discord asks for a
+          captcha on all three and this client had nowhere to show one. It
+          has now - a window of moho's own, on Discord's origin, where the
+          widget is the same widget their client uses (see main/captcha.ts) -
+          so these do the thing rather than pointing at where to do it. If a
+          challenge comes back, it appears; answer it and the action carries
+          on where it left off. */}
       <SubmitField
         label="Join a server"
         placeholder="invite code or discord.gg/…"
-        // The only one of the three that can carry what you typed: an invite
-        // has a page of its own, so this lands on the accept button rather
-        // than on Discord's front door.
-        onSubmit={(invite) => void window.moho.openExternal(inviteUrl(invite))}
+        onSubmit={(invite) =>
+          act(`Joined ${inviteCode(invite)}`, 'joinDiscordGuild', {
+            accountId: account.id,
+            invite: inviteCode(invite)
+          })
+        }
       />
 
-      <div className="join-elsewhere-row">
-        <button
-          type="button"
-          className="button subtle join-elsewhere"
-          onClick={() => void window.moho.openExternal(DISCORD_HOME)}
-        >
-          <Icon name="open_in_new" size={14} />
-          Create a server
-        </button>
-        <button
-          type="button"
-          className="button subtle join-elsewhere"
-          onClick={() => void window.moho.openExternal(DISCORD_HOME)}
-        >
-          <Icon name="open_in_new" size={14} />
-          Add a friend
-        </button>
-      </div>
+      <SubmitField
+        label="Add a friend"
+        placeholder="username, or name#1234"
+        onSubmit={(username) =>
+          act(`Asked ${username}`, 'addDiscordFriend', { accountId: account.id, username }, refreshFriends)
+        }
+      />
+
+      <SubmitField
+        label="Create a server"
+        placeholder="what to call it"
+        onSubmit={(name) => act(`Made ${name}`, 'createDiscordGuild', { accountId: account.id, name })}
+      />
 
       {waiting.length > 0 && (
         <>
