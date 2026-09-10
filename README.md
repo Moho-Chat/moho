@@ -178,23 +178,39 @@ called `subscribe` for that buffer.
 ## Protocol backends
 
 - **IRC** - TLS with SASL (PLAIN, EXTERNAL, SCRAM-SHA-256), NickServ auto-identify and GHOST
-  reclaim, autojoin, optional SOCKS5 proxying, DCC send and receive, IRCv3 chathistory backfill,
-  WHOIS, away, and the network's own colour codes.
-- **Discord** - official cross-device QR login (the same one discord.com/app offers), a real-time
-  gateway client, message edit/delete/reactions/replies sync.
+  reclaim, autojoin, optional SOCKS5 proxying, DCC send and receive, and the network's own colour
+  codes. Twelve IRCv3 capabilities plus SASL: `server-time`, `multi-prefix`, `away-notify`,
+  `extended-join`, `account-notify`, `chghost`, `message-tags`, `batch`, `chathistory` (both
+  spellings), `echo-message` and `labeled-response` - so a sent line is the one the server
+  actually delivered rather than this client's guess at it. Typing over `+typing`, a notify list
+  over MONITOR, WHOIS, away, and channel modes passed through raw.
+- **Discord** - official cross-device QR login (the same one discord.com/app offers), password
+  sign-in, or a token; a real-time gateway client over the user gateway. Messages with
+  edit/delete/reactions/replies/forwarding, threads and forum posts, slash commands with buttons,
+  menus and modal forms, polls that can be voted in, pinned messages, Discord's own search,
+  invites made as well as accepted, server and channel mutes read from the account itself, voice
+  calls with real audio (Songbird), and the account's own mute settings honoured. Where Discord
+  asks for a captcha, it is shown in a window of moho's own rather than sending you to a browser.
+  No video or screen share.
 - **Sneedchat (SneedChat)** - the Tor-only chat built into Kiwi Farms. Runs over an embedded Tor
-  client (or an external SOCKS5 proxy), solves the site's own proof-of-work anti-bot gate, and
-  connects to every configured room simultaneously (one persistent websocket per room, sharing a
-  single login). Supports message edit/delete and avatars (fetched through the same Tor session
-  and cached locally, since the client has no route to a `.onion` host on its own).
+  client (or an external SOCKS5 proxy), solves the site's own proof-of-work anti-bot gate *and*
+  the Tartarus captcha on its login form, and connects to every configured room simultaneously
+  (one persistent websocket per room, sharing a single login). Message edit/delete, whispers,
+  attachments (uploaded to postimg, since the chat itself is text-only), and avatars fetched
+  through the same Tor session and cached locally.
 - **Matrix** - Client-Server API with full end-to-end encryption (vodozemac-backed Olm/Megolm via
-  `matrix-sdk-crypto`), SAS device verification, server-side key backup, room moderation, threads,
-  read receipts, and a room directory search that asks every homeserver this account knows at
-  once.
+  `matrix-sdk-crypto`), SAS device verification, cross-signing, server-side key backup and key
+  import/export, encrypted attachments. Threads, read receipts, spaces (created and filled),
+  polls, stickers, knocking, reporting, room moderation, ignore lists, and a room directory
+  search that asks every homeserver this account knows at once. Calls both ways: one-to-one
+  signalling, and the group calls Element holds on a LiveKit media server, with the media keys
+  the room passes round.
 - **Kick** - the streaming site's chat, over its Pusher socket. Joins by streamer handle, imports
   the account's follows, and carries the three emote tiers with subscriber gating, redemptions,
-  subscriptions and raids, and moderation.
-- **XMPP/Slack** - not implemented yet.
+  subscriptions, gifted subs and raids, moderation, and polls and predictions that can be
+  answered rather than only watched.
+- **XMPP/Slack** - not implemented yet; `listProtocols` reports them as unavailable rather than
+  leaving a frontend to guess.
 
 ## On-disk state
 
