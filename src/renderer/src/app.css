@@ -3392,6 +3392,26 @@ img.smilie {
   background: var(--primary-hover-light);
 }
 
+/* The QR code, where the homeserver and the other device can support one.
+   White behind it always, on both themes: a scanner reads contrast, and a
+   code drawn dark-on-dark is a code nothing can read. */
+.verification-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding-top: var(--spacing-xs);
+}
+
+.verification-qr-code {
+  width: 180px;
+  height: 180px;
+  display: block;
+  background: #fff;
+  padding: var(--spacing-xs);
+  border-radius: var(--corner-radius-small);
+}
+
 .sas-emoji {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));

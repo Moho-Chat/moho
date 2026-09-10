@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
 import { useChat, useStore } from '../state/hooks'
 
@@ -14,8 +15,43 @@ import { useChat, useStore } from '../state/hooks'
  * else's is a person you are vouching for.
  */
 export function VerificationDialog(): JSX.Element | null {
+  const active = useChat((s) => s.matrixVerification)
+  if (!active) return null
+
+  // Keyed on the verification so its QR code is fetched afresh for a new one,
+  // rather than a picture of the last session being shown against this one.
+  return <VerificationBody key={active.verificationId} />
+}
+
+function VerificationBody(): JSX.Element | null {
   const store = useStore()
   const active = useChat((s) => s.matrixVerification)
+  const [qr, setQr] = useState<string | null>(null)
+
+  // Asked for once the flow is past "requested" - a code can only be made
+  // after both sides have agreed what they are verifying. Answering null is
+  // the ordinary case rather than a failure: a QR code proves an identity the
+  // other side can already check, so without cross-signing there is nothing
+  // to encode and emoji stay the way through.
+  useEffect(() => {
+    if (!active || active.emoji) return
+    let dropped = false
+    void window.moho
+      .rpc<{ svg: string | null }>('matrixVerificationQrCode', {
+        accountId: active.accountId,
+        verificationId: active.verificationId
+      })
+      .then((r) => {
+        if (!dropped) setQr(r.svg)
+      })
+      .catch(() => {
+        /* No code to show is not an error worth a toast; emoji still work. */
+      })
+    return () => {
+      dropped = true
+    }
+  }, [active?.verificationId, active?.state, active?.emoji])
+
   if (!active) return null
 
   const who = active.otherUser || active.fromUser || ''
@@ -71,6 +107,26 @@ export function VerificationDialog(): JSX.Element | null {
               ? 'Waiting for you to accept.'
               : `Verification ${active.state || 'starting'}…`}
           </div>
+
+          {/* Scanning is the way most people verify, and until now moho had
+              nothing to be scanned - Element would offer its camera and this
+              side could only answer with emoji. Shown rather than scanned:
+              on a desktop the device holding the camera is the other one. */}
+          {qr && (
+            <div className="verification-qr">
+              <div className="small muted">Or scan this from your other device.</div>
+              {/* As an image rather than injected markup. The SVG is the
+                  daemon's own drawing of a QR grid and carries nothing from
+                  anywhere else, but a data URI reaches the same picture
+                  without this page ever parsing markup it was handed - and
+                  the one habit worth keeping is not making that exception. */}
+              <img
+                className="verification-qr-code"
+                alt="Verification QR code"
+                src={`data:image/svg+xml;utf8,${encodeURIComponent(qr)}`}
+              />
+            </div>
+          )}
           <div className="button-row">
             {active.state === 'requested' && (
               <button type="button" className="button" onClick={() => rpc('respondMatrixVerification', { accept: true })}>
