@@ -1383,6 +1383,30 @@ function MatrixForm(): JSX.Element {
         >
           Sign in with SSO
         </button>
+        {/* For somebody who has no account at all. Registration is
+            user-interactive auth, so what this can complete is the flow with
+            no stages - which is what an open homeserver asks for. Where the
+            server wants a captcha, an email or its terms agreed to, the
+            daemon says which and says to sign up on the server's own page,
+            because those need a person somewhere this window is not. */}
+        <button
+          type="button"
+          className="button subtle"
+          disabled={!homeserverUrl || !userId || !password}
+          title="Make a new account on this homeserver"
+          onClick={() =>
+            void window.moho
+              .rpc('registerMatrixAccount', {
+                homeserverUrl,
+                username: userId.replace(/^@/, '').split(':')[0],
+                password
+              })
+              .then(() => store.setMatrixLoginStatus('Making the account…'))
+              .catch((e: Error) => store.toast('error', e.message))
+          }
+        >
+          Create account
+        </button>
       </div>
       {status && <p className="small muted">{status}</p>}
       <p className="small muted">
