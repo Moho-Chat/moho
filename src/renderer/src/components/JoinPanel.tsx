@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
+import { ContextMenu } from './ContextMenu'
 import { RoomSearch } from './RoomSearch'
 import { KNOWN_SNEEDCHAT_ROOMS } from '../lib/sneedchat'
 import { useChat, useStore } from '../state/hooks'
@@ -656,6 +657,14 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
    * common case to be better at the rare one.
    */
   const [picking, setPicking] = useState<string[] | null>(null)
+  /**
+   * The friend a right-click landed on, and where.
+   *
+   * One piece of state for the whole list rather than a menu per row: a row
+   * is drawn for every friend, and `useContextMenu` is a hook that cannot be
+   * called inside the map that draws them.
+   */
+  const [friendMenu, setFriendMenu] = useState<{ x: number; y: number; friend: DiscordFriend } | null>(null)
 
   const refreshFriends = (): void => {
     void window.moho
@@ -710,6 +719,27 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
     void window.moho
       .rpc('answerDiscordFriendRequest', { accountId: account.id, userId, accept })
       .then(refreshFriends)
+      .catch((e: Error) => store.toast('error', e.message))
+  }
+
+  /**
+   * Unfriending somebody. The same call as declining a request, because
+   * Discord models it as the same thing: a relationship, removed. Which of
+   * the three states you were in is what decides what it meant.
+   *
+   * No countdown in front of it, unlike leaving a server. That one needs an
+   * invite to undo and there may be nobody left to ask; this one is undone by
+   * asking again, so the cost of a misclick is a sentence to somebody you
+   * know rather than a door that has shut.
+   */
+  const removeFriend = (f: DiscordFriend): void => {
+    setFriendMenu(null)
+    void window.moho
+      .rpc('answerDiscordFriendRequest', { accountId: account.id, userId: f.userId, accept: false })
+      .then(() => {
+        store.toast('info', `Removed ${f.globalName || f.username}`)
+        refreshFriends()
+      })
       .catch((e: Error) => store.toast('error', e.message))
   }
 
@@ -850,6 +880,15 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
           key={f.userId}
           type="button"
           className={classes('friend-row', picking?.includes(f.userId) && 'picked')}
+          // Where taking somebody off the list lives. Not a button on the row:
+          // the row is itself a button - clicking it opens the conversation -
+          // and a remove sitting permanently beside a name is a remove that
+          // eventually gets pressed by accident.
+          onContextMenu={(e) => {
+            if (picking) return
+            e.preventDefault()
+            setFriendMenu({ x: e.clientX, y: e.clientY, friend: f })
+          }}
           onClick={() => {
             if (picking) {
               const has = picking.includes(f.userId)
@@ -879,6 +918,35 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
           <span className={`presence-dot ${f.status || 'offline'}`} />
         </button>
       ))}
+
+      {friendMenu && (
+        <ContextMenu
+          x={friendMenu.x}
+          y={friendMenu.y}
+          entries={[
+            {
+              label: 'Message',
+              icon: 'chat',
+              onClick: () =>
+                void window.moho
+                  .rpc<{ bufferId: string }>('openDiscordDm', {
+                    accountId: account.id,
+                    userId: friendMenu.friend.userId
+                  })
+                  .then((r) => store.selectBuffer(r.bufferId))
+                  .catch((e: Error) => store.toast('error', e.message))
+            },
+            { separator: true },
+            {
+              label: `Remove ${friendMenu.friend.globalName || friendMenu.friend.username}`,
+              icon: 'person_remove',
+              danger: true,
+              onClick: () => removeFriend(friendMenu.friend)
+            }
+          ]}
+          onClose={() => setFriendMenu(null)}
+        />
+      )}
 
       {/* Several ids make a group, one makes the ordinary DM - the same rule
           the daemon follows, so a comma is the only difference between the
