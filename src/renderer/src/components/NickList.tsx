@@ -35,6 +35,22 @@ export type ModerationAction = 'kick' | 'ban' | 'mute' | 'op' | 'deop' | 'voice'
  * person reads the same way in both places. An unfamiliar word keeps its own
  * first letters rather than being dropped.
  */
+/**
+ * What hovering a member says about them.
+ *
+ * Everything the network has actually told us, and nothing it has not. On IRC
+ * that is now a hostmask and a services account where the server offered them
+ * — the two facts that say which *person* a nick belongs to — and on every
+ * other service it stays what it was.
+ */
+function memberTitle(member: Member): string {
+  const lines = [member.nick]
+  if (member.account) lines.push(`identified as ${member.account}`)
+  if (member.host) lines.push(member.host)
+  if (lines.length === 1 && member.userId) return member.userId
+  return lines.join('\n')
+}
+
 function shortBadge(prefix: string): string {
   const short: Record<string, string> = {
     broadcaster: 'HOST',
@@ -540,7 +556,7 @@ function MemberRow({
         className={classes('nick-row', member.away && 'away', blocked && 'blocked')}
         onContextMenu={open}
         onClick={onMention}
-        title={member.userId || member.nick}
+        title={memberTitle(member)}
       >
         {/* IRC's rank is one character and sits in a fixed slot before the
             name. Kick's is a word - "moderator", "subscriber" - which
@@ -556,6 +572,14 @@ function MemberRow({
         {member.prefix && member.prefix.length > 1 && (
           <span className={`sender-badge small ${member.prefix}`} title={member.prefix}>
             {shortBadge(member.prefix)}
+          </span>
+        )}
+        {/* The network's own word for it, not a guess from the name. Drawn
+            after the nick like any other badge, and only where the network
+            actually said so. */}
+        {member.bot && (
+          <span className="sender-badge small bot" title="The network says this one is a program">
+            BOT
           </span>
         )}
         {blocked && <Icon name="block" size={12} />}

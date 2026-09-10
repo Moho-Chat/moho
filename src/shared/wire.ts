@@ -471,6 +471,24 @@ export interface Member {
   prefix?: string
   away?: boolean
   userId?: string
+  /**
+   * `user@host`, where the network says. IRC only, and absent until somebody
+   * has told us — a WHO on join, `userhost-in-names`, or a line from them.
+   *
+   * Carried because it is what identifies a *person* rather than a name: a
+   * nick is theirs only while they hold it, and an ignore or a ban keyed on
+   * one is undone the moment they change it.
+   */
+  host?: string
+  /**
+   * The services account they are signed in to, where the network says.
+   *
+   * Distinct from the nick: anybody can take a free nick, and only the
+   * account holder can be identified to it.
+   */
+  account?: string
+  /** The network's own word that this one is a program, not a person. */
+  bot?: boolean
   /** The roles this person holds here, by name. Discord only. */
   roles?: string[]
   powerLevel?: number

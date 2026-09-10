@@ -4625,6 +4625,15 @@ video.lightbox-media {
   color: var(--primary);
 }
 
+/* Not a rank and not a warning - a fact about what is behind the name. Kept
+   quiet: it belongs beside every one of a bot's lines, and a badge that loud
+   at that frequency would read as an alert. */
+.sender-badge.bot {
+  background: var(--surface-container-high);
+  color: var(--surface-variant-text);
+  letter-spacing: 0.04em;
+}
+
 /* The one badge that is a warning rather than a title: this message came
    from a device nobody has vouched for. Coloured like an error and left
    uncoloured nowhere else, because a doubt about who sent something is the
