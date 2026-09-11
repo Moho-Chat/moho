@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
 import { Avatar } from './Avatar'
 import { EmojiPicker, type StickerEntry } from './EmojiPicker'
+import { PlaceField } from './PlaceField'
 import { useActiveBuffer, useChat, useStore } from '../state/hooks'
 import { emojiPreview } from '../lib/format'
 import { bufferDisplayName, classes, fileNameOf, isImageFile, resolveMediaUrl } from '../lib/util'
@@ -100,6 +101,8 @@ export function Composer(): JSX.Element | null {
   /** The account's sticker packs, fetched when the picker is first opened. */
   const [stickers, setStickers] = useState<StickerEntry[]>([])
   const [stickerPicker, setStickerPicker] = useState(false)
+  /** The little form for sending a place, which is a field rather than a map. */
+  const [placeOpen, setPlaceOpen] = useState(false)
   const seqRef = useRef(0)
   const typingSentAt = useRef(0)
   /**
@@ -154,6 +157,7 @@ export function Composer(): JSX.Element | null {
   const [roles, setRoles] = useState<{ id: string; name: string; colour?: string }[]>([])
   const emojiButtonRef = useRef<HTMLButtonElement>(null)
   const stickerButtonRef = useRef<HTMLButtonElement>(null)
+  const placeButtonRef = useRef<HTMLButtonElement>(null)
 
   const smilies = useChat((s) => s.smilies)
   const bufferEmojiByBuffer = useChat((s) => s.bufferEmoji)
@@ -798,6 +802,26 @@ export function Composer(): JSX.Element | null {
           </button>
         )}
 
+        {/* Beside the sticker button for the same reason it is beside the
+            emoji one: a location is the message rather than something typed
+            into it. Matrix only, which is the one service here that carries
+            a place as its own kind of message. */}
+        {service === 'matrix' && (
+          <button
+            ref={placeButtonRef}
+            type="button"
+            className="icon-button"
+            title="Send a location"
+            onClick={() => {
+              setPickerOpen(false)
+              setStickerPicker(false)
+              setPlaceOpen(!placeOpen)
+            }}
+          >
+            <Icon name="location_on" size={18} />
+          </button>
+        )}
+
         <IconButton
           name="add"
           title={
@@ -808,6 +832,19 @@ export function Composer(): JSX.Element | null {
         />
         <IconButton name="send" title="Send" onClick={submit} />
       </div>
+
+      {placeOpen && (
+        <PlaceField
+          anchor={placeButtonRef.current}
+          onClose={() => setPlaceOpen(false)}
+          onSend={(place, label) => {
+            setPlaceOpen(false)
+            void window.moho
+              .rpc('sendMatrixLocation', { bufferId: buffer.id, place, label })
+              .catch((e: Error) => store.toast('error', e.message))
+          }}
+        />
+      )}
 
       {stickerPicker && (
         <EmojiPicker
