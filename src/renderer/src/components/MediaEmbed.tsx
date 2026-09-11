@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Icon } from './Icon'
 import { Lightbox } from './Lightbox'
+import { fullImageFor, knownFullImage } from '../lib/fullimage'
 import { resolveMediaUrl } from '../lib/util'
 import type { MediaItem } from '../lib/format'
 import type { Attachment } from '../../../shared/wire'
@@ -98,6 +99,17 @@ export function MediaEmbed({
   const [expanded, setExpanded] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState('')
+  /**
+   * The full-size picture behind a thumbnail, once the page holding it has
+   * been asked.
+   *
+   * Starts at whatever is already known, so the second time somebody opens a
+   * picture from a host they have opened one from before, it opens large
+   * immediately.
+   */
+  const [fromPage, setFromPage] = useState<string | null>(() =>
+    item?.page ? knownFullImage(item.page) : null
+  )
 
   // An attachment knows its own kind; an unfurled link only has a guess.
   const kind = attachment?.kind ?? item?.kind ?? 'file'
@@ -109,7 +121,18 @@ export function MediaEmbed({
   // A server-generated thumbnail is enough for a preview and much cheaper -
   // until it has been swept, after which the original is all there is.
   const previewSrc = (!previewGone && attachment?.thumbnailPath) || fullSrc
-  const openTarget = attachment?.url || fullSrc
+  /**
+   * What the viewer shows, which is not always what the log shows.
+   *
+   * A forum post that wraps a thumbnail in a link to the bigger copy is
+   * naming two pictures, and the small one is only the right answer for the
+   * row. Opening it used to hand the viewer the thumbnail - a postage stamp
+   * shown full-window, which reads as the viewer being broken.
+   */
+  const expandedSrc = item?.full || fromPage || fullSrc
+  // And where the link went, for opening outside the app: the page an image
+  // host wraps its thumbnail in is the page a person means to land on.
+  const openTarget = attachment?.url || item?.full || item?.page || fullSrc
 
   const open = (): void => void window.moho.openExternal(openTarget)
 
@@ -230,6 +253,13 @@ export function MediaEmbed({
           .finally(() => setRefreshing(false))
         return
       }
+      // Opened at once, with whatever is in hand. Where all the message named
+      // was a page, that page is asked what it is showing at the same moment -
+      // a request made because somebody clicked, and never before - and the
+      // viewer swaps the thumbnail for the real picture when the answer lands.
+      if (item?.page && !item.full && !fromPage) {
+        void fullImageFor(item.page).then(setFromPage)
+      }
       setExpanded(true)
     }
 
@@ -269,7 +299,7 @@ export function MediaEmbed({
           <Lightbox
             source={{
               kind: 'image',
-              src: resolveMediaUrl(fullSrc),
+              src: resolveMediaUrl(expandedSrc),
               externalUrl: openTarget,
               filename: attachment?.filename,
               width: attachment?.width,

@@ -110,6 +110,17 @@ const api = {
 
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke(IPC.openExternal, url),
 
+  /**
+   * Which picture a page is showing, read from its own OpenGraph tag.
+   *
+   * Here rather than in the window because the window is a `file://` document
+   * and a fetch from one carries no origin any host will answer: the reply
+   * comes back and the browser refuses to let the page read it. The main
+   * process has no such rule, being the thing that would enforce it.
+   */
+  resolveImagePage: (url: string): Promise<string | null> =>
+    ipcRenderer.invoke(IPC.resolveImagePage, url),
+
   /** Puts a line of text on the system clipboard. */
   copyText: (text: string): Promise<void> => ipcRenderer.invoke(IPC.writeClipboardText, text),
   /**

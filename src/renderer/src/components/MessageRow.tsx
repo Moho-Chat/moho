@@ -27,6 +27,7 @@ import {
   formatMessage,
   normalizeBBCode,
   clearnetLinks,
+  thumbnailLinks,
   youtubeId,
   stripCodeBlocks,
   stripEmbeddedUrls,
@@ -367,11 +368,15 @@ function MessageRowBody({
     // because it is about what this reader's browser can reach, and it has to
     // hold for an edited line and for backlog alike - both of which arrive at
     // this function again and neither of which is re-stored.
-    const normalized = normalizeBBCode(clearnetLinks(message.body || ''))
+    const raw = clearnetLinks(message.body || '')
+    const normalized = normalizeBBCode(raw)
     const media = extractMedia(normalized, {
       contentSniffing,
       sniffed,
-      onNeedSniff: sniffUrl
+      onNeedSniff: sniffUrl,
+      // Read from the un-normalised body: the pairing lives in the BBCode,
+      // and normalising unwraps both tags into two unrelated bare URLs.
+      thumbnails: thumbnailLinks(raw)
     })
     const codeBlocks = extractCodeBlocks(normalized)
     const quoteBlocks = extractQuoteBlocks(stripCodeBlocks(normalized))

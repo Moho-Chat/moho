@@ -17,6 +17,21 @@ export interface MediaItem {
   url: string
   kind: 'image' | 'video' | 'youtube'
   youtubeId?: string
+  /**
+   * A bigger copy of the same picture, where the message said where one is.
+   *
+   * A forum post that wraps a thumbnail in a link to the full-size image is
+   * saying two things - show this, open that - and only the first of them used
+   * to arrive here. Set when the wrapped link is itself an image.
+   */
+  full?: string
+  /**
+   * And where the wrapped link is a page about the picture rather than the
+   * picture - which is what every image host's "thumbnail for forums" button
+   * actually produces - the page, to be asked what it is showing at the moment
+   * somebody opens it.
+   */
+  page?: string
 }
 
 /**
@@ -140,6 +155,31 @@ export function normalizeBBCode(text: string): string {
   out = out.replace(/\[\/?list\]/gi, '')
 
   return out
+}
+
+/**
+ * The pairs a forum post makes when it wraps a picture in a link.
+ *
+ * `[url=X][img]Y[/img][/url]` is what every image host's "for forums" button
+ * hands you, and it means show Y, open X. Read from the raw body because
+ * `normalizeBBCode` unwraps both tags into bare URLs, after which the pair is
+ * two links in a row and nothing says they were ever related.
+ *
+ * Keyed by the thumbnail, which is what `extractMedia` will go on to find in
+ * the normalised text.
+ */
+export function thumbnailLinks(text: string): Record<string, string> {
+  const pairs: Record<string, string> = {}
+  if (!text) return pairs
+  const re = /\[url=(https?:\/\/[^\]\s]+)\]\s*\[img\]\s*(https?:\/\/[^\[\s]+?)\s*\[\/img\]\s*\[\/url\]/gi
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    const [, href, thumb] = m
+    // A link to the picture it is already showing says nothing; the pair only
+    // means something when the two differ.
+    if (href !== thumb) pairs[thumb] = href
+  }
+  return pairs
 }
 
 export interface SmilieIndex {
@@ -510,6 +550,25 @@ const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp)(\?\S*)?$/i
 const VIDEO_EXT_RE = /\.(mp4|webm|mov|mkv|ogv)(\?\S*)?$/i
 
 /**
+ * What a thumbnail was linked to, told apart by what it is.
+ *
+ * A link straight to a bigger file can be opened as it stands. A link to a
+ * page - which is what an image host's share button gives, the picture being
+ * one thing on it - has to be asked what it is showing, and that is a request
+ * worth making only when somebody opens the picture, so it is carried as a
+ * page and left alone until then.
+ */
+function biggerCopy(
+  thumb: string,
+  thumbnails?: Record<string, string>
+): { full?: string; page?: string } {
+  const target = thumbnails?.[thumb]
+  if (!target) return {}
+  const direct = IMAGE_EXT_RE.test(target) || OPAQUE_IMAGE_HOSTS.includes(hostnameOf(target))
+  return direct ? { full: target } : { page: target }
+}
+
+/**
  * Heuristic, extension- and pattern-based detection: IRC has no attachment
  * metadata the way Discord's API does.
  *
@@ -523,6 +582,8 @@ export function extractMedia(
     contentSniffing?: boolean
     sniffed?: Record<string, string>
     onNeedSniff?: (url: string) => void
+    /** Thumbnail URL -> what the post linked it to; see `thumbnailLinks`. */
+    thumbnails?: Record<string, string>
   } = {}
 ): MediaItem[] {
   if (!text) return []
@@ -545,31 +606,41 @@ export function extractMedia(
   // - two strings, one video - and keying on the string showed it twice.
   const seen = new Set<string>()
 
+  // What the thumbnails were linked to. Those URLs are in the text as well -
+  // inside the `[url=]` that wrapped the picture - and each is the same
+  // picture as the thumbnail naming it, so drawing both shows the message
+  // twice: once small, once large.
+  const targets = new Set(Object.values(opts.thumbnails ?? {}))
+
   for (const raw of urls) {
     const url = raw.replace(/[),.;!?]+$/, '')
     const yt = youtubeId(url)
     const identity = yt ? `yt:${yt}` : url
-    if (seen.has(identity)) continue
+    if (seen.has(identity) || targets.has(url)) continue
 
     if (yt) {
       seen.add(identity)
       result.push({ url, kind: 'youtube', youtubeId: yt })
     } else if (IMAGE_EXT_RE.test(url)) {
       seen.add(identity)
-      result.push({ url, kind: 'image' })
+      result.push({ url, kind: 'image', ...biggerCopy(url, opts.thumbnails) })
     } else if (VIDEO_EXT_RE.test(url)) {
       seen.add(identity)
       result.push({ url, kind: 'video' })
     } else if (OPAQUE_IMAGE_HOSTS.includes(hostnameOf(url))) {
       seen.add(identity)
-      result.push({ url, kind: 'image' })
+      result.push({ url, kind: 'image', ...biggerCopy(url, opts.thumbnails) })
     } else if (opts.contentSniffing && /^https?:\/\//i.test(url)) {
       // Nothing else could classify this. Not for file:// URLs: those are
       // always nobilis's own already-classified attachment paths.
       const sniffed = opts.sniffed?.[url]
       if (sniffed === 'image' || sniffed === 'video') {
         seen.add(identity)
-        result.push({ url, kind: sniffed })
+        result.push({
+          url,
+          kind: sniffed,
+          ...(sniffed === 'image' ? biggerCopy(url, opts.thumbnails) : {})
+        })
       } else if (sniffed === undefined) {
         opts.onNeedSniff?.(url)
       }
@@ -587,6 +658,15 @@ export function stripEmbeddedUrls(text: string, mediaItems: MediaItem[]): string
   if (!text || mediaItems.length === 0) return text
   let out = text
   for (const item of mediaItems) out = out.split(item.url).join('')
+
+  // A link left holding nothing, which is what the wrapper round a thumbnail
+  // becomes once the picture it was wrapping has been lifted out and drawn as
+  // an embed. Rendered, it is an anchor with no text: nothing to see, a stray
+  // clickable pixel, and an empty element in the log. Removed here rather than
+  // when the markup is rendered because this is where it was emptied, and the
+  // whitespace tidy at the end of this function is what puts the line back
+  // together afterwards.
+  out = out.replace(/\[url=[^\]]*\]\s*\[\/url\]/gi, '')
 
   // A second link to a video already embedded goes too. It renders no second
   // embed - the same video is shown once - so leaving its URL as text is the

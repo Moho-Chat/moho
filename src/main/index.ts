@@ -27,6 +27,7 @@ import { browserLogin, LOGIN_FLOWS } from './browser-login'
 import { solveCaptcha } from './captcha'
 import { IPC, POPOUT_FLAG, type PopoutState } from '../shared/ipc'
 import { clearnetLinks } from '../shared/clearnet'
+import { readCapped, pictureNamedIn } from './imagepage'
 import { DEEP_LINK_SCHEMES, isDeepLink } from '../shared/deeplink'
 import { allowPickedFile, allowRoot, installMediaHandler, registerMediaScheme } from './media-protocol'
 import { defaultDownloadDir, saveMedia } from './downloads'
@@ -542,6 +543,46 @@ function wireIpc(): void {
     mainWindow.webContents.send(IPC.activateBuffer, bufferId)
   })
   ipcMain.handle(IPC.popoutList, () => popoutState())
+
+  /**
+   * Which picture a page is showing.
+   *
+   * Forum posts wrap a thumbnail in a link to the image host's *page* - the
+   * picture is one thing on it - so the only address the message carries for
+   * the full-size copy is a page address. Every such host says what it is
+   * showing in an OpenGraph tag, because every one of them wants a preview
+   * when the link is pasted into a chat window, so one request and one tag
+   * answers it for all of them with no per-host knowledge.
+   *
+   * In the main process because a `file://` document cannot read a
+   * cross-origin reply, and asked only when somebody opens a picture - never
+   * as a message arrives.
+   */
+  ipcMain.handle(IPC.resolveImagePage, async (_e, raw: string): Promise<string | null> => {
+    let page: URL
+    try {
+      page = new URL(clearnetLinks(raw))
+    } catch {
+      return null
+    }
+    if (page.protocol !== 'https:') return null
+
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 8000)
+    try {
+      const res = await fetch(page, { signal: controller.signal, redirect: 'follow' })
+      // Only a page has the tag, and only a page is small enough to read
+      // without asking how big it is first. Anything else - a file, a stream,
+      // a download - is refused before a byte of the body is touched.
+      if (!res.ok || !(res.headers.get('content-type') || '').startsWith('text/html')) return null
+      const html = await readCapped(res)
+      return pictureNamedIn(html, page)
+    } catch {
+      return null
+    } finally {
+      clearTimeout(timer)
+    }
+  })
 
   ipcMain.handle(IPC.openExternal, (_e, raw: string) => {
     // The forum's onion address, sent to the browser as the clearnet one it is
