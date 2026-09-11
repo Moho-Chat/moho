@@ -26,6 +26,7 @@ import { Notifier } from './notifications'
 import { browserLogin, LOGIN_FLOWS } from './browser-login'
 import { solveCaptcha } from './captcha'
 import { IPC, POPOUT_FLAG, type PopoutState } from '../shared/ipc'
+import { clearnetLinks } from '../shared/clearnet'
 import { DEEP_LINK_SCHEMES, isDeepLink } from '../shared/deeplink'
 import { allowPickedFile, allowRoot, installMediaHandler, registerMediaScheme } from './media-protocol'
 import { defaultDownloadDir, saveMedia } from './downloads'
@@ -542,7 +543,13 @@ function wireIpc(): void {
   })
   ipcMain.handle(IPC.popoutList, () => popoutState())
 
-  ipcMain.handle(IPC.openExternal, (_e, url: string) => {
+  ipcMain.handle(IPC.openExternal, (_e, raw: string) => {
+    // The forum's onion address, sent to the browser as the clearnet one it is
+    // the same site as. Here as well as in the window because a link is not
+    // always something a message said: a picture fetched from the site carries
+    // an address of its own, and "open in browser" on one of those would hand
+    // the system a name it cannot resolve.
+    const url = clearnetLinks(raw)
     // Only ever hand the OS a real web/mail link - a message body is fully
     // attacker-controlled, and shell.openExternal will happily launch things
     // like `file://` or a custom app scheme otherwise.

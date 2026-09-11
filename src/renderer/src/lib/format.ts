@@ -1,4 +1,6 @@
 import type { SneedchatSmilie } from '../../../shared/wire'
+// Shared with the main process, which is what actually opens a clicked link.
+export { clearnetLinks } from '../../../shared/clearnet'
 
 /**
  * Message body formatting, ported from the QML frontend's MessageList.

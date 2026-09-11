@@ -26,6 +26,7 @@ import {
   extractQuoteBlocks,
   formatMessage,
   normalizeBBCode,
+  clearnetLinks,
   youtubeId,
   stripCodeBlocks,
   stripEmbeddedUrls,
@@ -361,7 +362,12 @@ function MessageRowBody({
   // matching how the original structured this - one do-everything function
   // would have to interleave four unrelated concerns.
   const parts = useMemo(() => {
-    const normalized = normalizeBBCode(message.body || '')
+    // Before anything reads the body: the forum's onion address, rewritten to
+    // the same site on the open internet. Here rather than in the daemon
+    // because it is about what this reader's browser can reach, and it has to
+    // hold for an edited line and for backlog alike - both of which arrive at
+    // this function again and neither of which is re-stored.
+    const normalized = normalizeBBCode(clearnetLinks(message.body || ''))
     const media = extractMedia(normalized, {
       contentSniffing,
       sniffed,
