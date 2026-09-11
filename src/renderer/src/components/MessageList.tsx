@@ -50,6 +50,24 @@ const REANCHOR_THRESHOLD = 100
  */
 const SCROLL_JITTER = 2
 
+/**
+ * How long after the reader last touched the list a scroll still counts as
+ * theirs.
+ *
+ * The pin is only ever let go of by a reader who moved the view, and the
+ * position alone cannot say who moved it: content being trimmed off the top of
+ * the drawn tail while an image settles into its full height below moves it by
+ * the same few pixels a small scroll upwards would, and reads identically in
+ * every measurement the frame carries. So the question is asked of the input
+ * instead - wheel, key, touch, or a hand on the scrollbar - and a fall in the
+ * position with no gesture behind it is the layout, whatever it looks like.
+ *
+ * Half a second because it spans one gesture and its settling, not two: a
+ * wheel notch and the smooth scroll it starts are one act, and the next notch
+ * re-arms it anyway.
+ */
+const READER_INPUT_MS = 500
+
 /** One scroll event, and enough of the one before it to say what happened. */
 export interface ScrollFrame {
   /** How far the bottom of the content sits below the bottom of the view. */
@@ -93,6 +111,13 @@ export interface ScrollFrame {
  * nobody had left. The allowance is the same idea either way: a fall no larger
  * than what the page lost or the window gained is the layout moving, not the
  * reader.
+ *
+ * What none of it can tell, and what the caller therefore asks separately, is
+ * whether a person moved the view at all: a trim above the reader and a
+ * picture growing below it move the position exactly as a small scroll
+ * upwards would, and net out in the height so there is nothing here to see it
+ * by. Hence READER_INPUT_MS - this says what the movement looks like, and the
+ * reader's own hands say whether to believe it.
  *
  * And it cuts both ways. Making the pane *smaller* pushes the position the
  * other direction - the bottom stays in view by the position rising - which
@@ -303,6 +328,19 @@ export function MessageList(): JSX.Element {
   const lastHeightRef = useRef(0)
   /** And how tall the window onto it was, for the same reason. */
   const lastViewportRef = useRef(0)
+
+  /**
+   * When the reader last did something to this list with their own hands.
+   *
+   * Only consulted about letting the pin go. Taking it back deliberately does
+   * not ask: a wheel gesture ends long before the smooth scroll it started
+   * arrives at the bottom, so requiring recent input there would refuse to
+   * re-pin exactly the reader who had just flung the view down to the present.
+   */
+  const lastInputRef = useRef(0)
+  const noteInput = useCallback(() => {
+    lastInputRef.current = performance.now()
+  }, [])
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = scrollRef.current
@@ -535,7 +573,13 @@ export function MessageList(): JSX.Element {
     // mistake wearing the other hat - and worse, because while the pin is off
     // it is holding the reader's place in the history they went looking for.
     // Being near the bottom is not asking to be dragged to it.
-    if (verdict === 'release') anchor(false)
+    // Only where the reader is the one who moved it. Everything else that
+    // moves the position - a row leaving the top of the tail as one arrives at
+    // the bottom, a smilie taller than the line it sits in finally decoding -
+    // is the page rearranging itself, and used to be indistinguishable from a
+    // small scroll upwards because in every number here it *is* one.
+    if (verdict === 'release' && performance.now() - lastInputRef.current < READER_INPUT_MS)
+      anchor(false)
     else if (verdict === 'take') {
       anchor(true)
       setMissedCount(0)
@@ -621,7 +665,22 @@ export function MessageList(): JSX.Element {
       {/* Above the cards, and above the log, because it outlasts both: a poll
           runs for a minute and a pin stays until the channel replaces it. */}
       <PinnedBar bufferId={bufferId} />
-      <div className="messagelist-scroll" ref={scrollRef} onScroll={onScroll}>
+      {/* The gestures that scroll a list, recorded so that a scroll can be
+          told from the page moving underneath one. Every way a person moves
+          this view arrives as one of these first: the wheel, a finger, the
+          keyboard once the list has focus, and a hand on the scrollbar or
+          dragging a selection past the edge (both of which start with a
+          pointer going down on the scroller). */}
+      <div
+        className="messagelist-scroll"
+        ref={scrollRef}
+        onScroll={onScroll}
+        onWheel={noteInput}
+        onPointerDown={noteInput}
+        onTouchStart={noteInput}
+        onTouchMove={noteInput}
+        onKeyDown={noteInput}
+      >
         {/* One wrapper so the whole log has a single measurable height; the
             observer above needs an element that grows with the content, which
             the scroll container itself never does. */}
