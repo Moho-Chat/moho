@@ -31,25 +31,41 @@ export function HeaderPopover({
   const box = useRef<HTMLDivElement>(null)
   const [at, setAt] = useState<{ top: number; left: number; width: number } | null>(null)
 
-  // Measured after layout rather than on render: the panel's own width is
-  // whatever the window allows, and the button may have moved since the click
-  // that opened it (the header reflows as things load).
+  // Measured after layout rather than on render: the panel's own height is
+  // whatever its contents make it, and the button may have moved since the
+  // click that opened it (the header reflows as things load).
   useLayoutEffect(() => {
     const place = (): void => {
       if (!anchor) return
       const rect = anchor.getBoundingClientRect()
       const margin = 8
-      const room = window.innerWidth - margin * 2
-      const w = Math.min(width, room)
+      const w = Math.min(width, window.innerWidth - margin * 2)
       // Right-aligned with the button, then pushed back onto the screen if
       // that would hang it off either edge.
       const left = Math.min(Math.max(margin, rect.right - w), window.innerWidth - margin - w)
-      setAt({ top: rect.bottom + 6, left, width: w })
+
+      // Below the button where it fits, above it where it does not.
+      //
+      // Below was the only option for a long time, which was right while
+      // every one of these hung off the header at the top of the window. The
+      // composer is at the *bottom*: a panel opened from a button down there
+      // went off the end of the screen entirely, which is a panel nobody can
+      // read or reach.
+      //
+      // The height is the rendered one rather than the CSS cap, because the
+      // cap is 60vh and most of these are three fields - flipping a short
+      // panel on the strength of a height it never reaches would send it
+      // upwards from buttons that had room all along.
+      const height = box.current?.getBoundingClientRect().height ?? 0
+      const below = rect.bottom + 6
+      const above = rect.top - 6 - height
+      const top = below + height <= window.innerHeight - margin ? below : Math.max(margin, above)
+      setAt({ top, left, width: w })
     }
     place()
     window.addEventListener('resize', place)
     return () => window.removeEventListener('resize', place)
-  }, [anchor, width])
+  }, [anchor, width, children])
 
   useEffect(() => {
     const away = (e: MouseEvent): void => {
@@ -72,7 +88,15 @@ export function HeaderPopover({
     <div
       ref={box}
       className={className ? `header-popover ${className}` : 'header-popover'}
-      style={at ? { top: at.top, left: at.left, width: at.width } : { visibility: 'hidden' }}
+      // The width is applied before the panel is placed, so the height
+      // measured above is the height this will actually have: measured at
+      // some other width, a panel that wraps to two lines is mistaken for one
+      // that wraps to three, and the flip is decided on the wrong number.
+      style={
+        at
+          ? { top: at.top, left: at.left, width: at.width }
+          : { visibility: 'hidden', width: Math.min(width, window.innerWidth - 16) }
+      }
     >
       {children}
     </div>
