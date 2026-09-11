@@ -460,6 +460,40 @@
 
 /* A stack, because a channel can have a poll and a prediction at once - and
    an old one being read back over the top of both. */
+/* The message a channel has pinned, above the log and above the poll cards -
+   it outlasts both. A row rather than a card: it is one line somebody put
+   there, not a thing with controls, and the only control on it is the one that
+   puts it away. */
+.pinned-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-s);
+  border-bottom: 1px solid var(--outline-light);
+  background: var(--surface-container);
+  flex: 0 0 auto;
+}
+
+.pinned-bar .pinned-mark {
+  color: var(--primary);
+  margin-top: 3px;
+  flex: 0 0 auto;
+}
+
+/* Wraps rather than scrolls, and is capped: a pinned wall of text must not
+   push the conversation off the screen, which is the one way this feature
+   could be worse than not having it. */
+.pinned-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 5.5em;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
 .poll-stack {
   position: absolute;
   z-index: 5;

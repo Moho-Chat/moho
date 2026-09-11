@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Icon } from './Icon'
 import { MessageRow, useRowContext, type MessageMode } from './MessageRow'
 import { LiveCards } from './LiveCards'
+import { PinnedBar } from './PinnedBar'
 import { CallView } from './CallView'
 import { CallStage, RoomCallBar } from './CallStage'
 import { StreamStage } from './StreamStage'
@@ -617,6 +618,9 @@ export function MessageList(): JSX.Element {
           answered while the chat keeps moving underneath, and a line in the
           log would scroll away mid-vote. */}
       <LiveCards bufferId={bufferId} />
+      {/* Above the cards, and above the log, because it outlasts both: a poll
+          runs for a minute and a pin stays until the channel replaces it. */}
+      <PinnedBar bufferId={bufferId} />
       <div className="messagelist-scroll" ref={scrollRef} onScroll={onScroll}>
         {/* One wrapper so the whole log has a single measurable height; the
             observer above needs an element that grows with the content, which

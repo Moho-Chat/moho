@@ -131,6 +131,19 @@ function autojoinList(autojoin: string | undefined): string[] {
  * `votes` carries both: a poll counts people, a prediction counts points, and
  * the card draws the same bar either way.
  */
+/**
+ * The one message a channel has pinned above its chat.
+ *
+ * Kick only, for now. `id` is the pinned message's own, which is what a
+ * dismissal is keyed on - putting this one away must not put the next one
+ * away, and the next one is the whole reason a channel pins anything.
+ */
+export interface PinnedMessage {
+  id: string
+  from: string
+  body: string
+}
+
 export interface LiveCardOption {
   /**
    * Whatever the service calls this answer.
@@ -430,6 +443,14 @@ export interface ChatState {
   kickStreams: Record<string, KickStream>
   /** The poll and prediction running in each channel, by `cardSlot`. */
   livePolls: Record<string, LiveCard>
+  /**
+   * What each Kick channel has pinned above its chat, by buffer.
+   *
+   * Standing state rather than a stream of events: a channel has one pin at a
+   * time and it stays until it is replaced, so this is the current answer
+   * rather than a log of answers.
+   */
+  pinnedByBuffer: Record<string, PinnedMessage>
   /** Cards the reader has folded away, by card id. */
   /** An old poll or prediction being read back, over the conversation. */
   reviewCard: LiveCard | null
@@ -562,6 +583,7 @@ const INITIAL: ChatState = {
   matrixPermissions: {},
   kickStreams: {},
   livePolls: {},
+  pinnedByBuffer: {},
   reviewCard: null,
   pinnedMessages: {},
   discordFriends: {},
@@ -2382,6 +2404,24 @@ export class ChatStore {
           }
         })
         break
+
+      case 'pinnedMessage': {
+        const bufferId = data.bufferId as string
+        const pinned = { ...this.state.pinnedByBuffer }
+        // A cleared pin arrives as an event with no id rather than as no
+        // event at all - the bar is on screen and has to be told to go.
+        if (data.id) {
+          pinned[bufferId] = {
+            id: String(data.id),
+            from: String(data.from ?? ''),
+            body: String(data.body ?? '')
+          }
+        } else {
+          delete pinned[bufferId]
+        }
+        this.set({ pinnedByBuffer: pinned })
+        break
+      }
 
       case 'pollCard': {
         const bufferId = data.bufferId as string
