@@ -1,0 +1,474 @@
+# Builds moho on every push to master and replaces the two files on the single
+# rolling release that lives on the moving `latest` tag.
+#
+# The shape mirrors how this is built by hand: the daemon first, then the app
+# around it, with the Windows installer cross-compiled from Linux exactly as
+# scripts/build-daemon-win.sh does locally. There is no Windows runner and
+# there does not need to be one - the .exe CI ships is then the same kind of
+# binary that has been shipped and tested from this desk all along.
+#
+# Every build step is an existing npm script rather than a reimplementation of
+# one. scripts/build-daemon.sh and build-daemon-win.sh stay the single
+# description of how the daemon gets built; if they change, this follows
+# without being edited.
+#
+# Two properties this file is arranged to keep:
+#
+#   - Nothing reaches the release unless typecheck and the Rust tests passed.
+#     That is structural rather than a convention: `publish` has `needs:` on
+#     both build jobs, and a needs-dependency on a failed job never runs.
+#   - The asset names and the release body agree about which commit they came
+#     from. See the "the tree is clean" step for why that is not automatic.
+
+name: rolling release
+
+on:
+  push:
+    branches: [master]
+    # A README edit should not cost forty minutes of compute. Note the absence
+    # of .github/** - editing this workflow SHOULD trigger a run that
+    # exercises the edit. A submodule bump touches the `nobilis` gitlink,
+    # which is a path change, so a daemon update is never filtered out.
+    paths-ignore:
+      - '**/*.md'
+      - 'LICENSE'
+  # The escape hatch for the case above: master moved for documentation
+  # reasons and the release should catch up anyway.
+  workflow_dispatch:
+
+# Newest push wins. A build for a commit master has already moved past is of
+# no use to a release that only ever holds the latest one.
+#
+# The cost is a few seconds of exposure: a cancellation landing inside
+# `publish` could leave the release holding a mix of old and new files. The
+# next run's prune step repairs that. If that window ever matters, split this
+# into a build group with cancel-in-progress true and a publish group with it
+# false, so publishes queue rather than cancel.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read by default. Only `publish` asks for more, and only for itself.
+permissions:
+  contents: read
+
+env:
+  # A release build does not use incremental compilation anyway; saying so
+  # keeps an incremental/ directory out of the cached target dir, where it
+  # would be carried back and forth forever and never hit.
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
+  # crates.io from a hosted runner is not always well, and a connection reset
+  # forty minutes in is an expensive way to learn that.
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+
+jobs:
+  # --------------------------------------------------------------------
+  # Linux: the AppImage, and the job carrying the test gate.
+  #
+  # cargo test lives here rather than in a job of its own on purpose. A
+  # standalone gate would compile all 812 crates a third time, in the dev
+  # profile, sharing nothing with either build. nobilis has no
+  # [dev-dependencies] and no [profile] overrides, so run in the release
+  # profile straight after `npm run daemon` it reuses every rlib that build
+  # just produced and compiles only the crate's own test harness. That is the
+  # difference between minutes and another half hour - and it is what
+  # PKGBUILD's check() already does locally.
+  # --------------------------------------------------------------------
+  build-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      # Published for the release body. It must not be recomputed there:
+      # git's --short length scales with the object count, so slicing the sha
+      # to a fixed width is a guess that eventually names a file that does not
+      # exist. This is the same string that named the artifacts.
+      build: ${{ steps.stamp.outputs.build }}
+
+    steps:
+      # nobilis is a submodule, and on master its URL is the public GitHub
+      # one - on development it points at Gitea. That is the other reason this
+      # workflow only ever runs on master.
+      #
+      # Depth 1 is enough: nobilis/build.rs only asks git for a short sha and
+      # a dirty flag, and falls back to "unknown" rather than failing.
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      # libopus-dev is deliberately absent. Without it libopus_sys builds a
+      # static opus through CMake, which is what we want in something that has
+      # to run on a machine we know nothing about. libasound2-dev is not
+      # optional - cpal reaches alsa-sys, which wants it.
+      - name: system build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config libasound2-dev
+
+      # The image ships a stable rust, but its version floats and this tree's
+      # effective floor is 1.93 (matrix-sdk-crypto). Ask explicitly.
+      #
+      # The version goes into the cache key below: artifacts compiled by
+      # another rustc cannot be reused, and a restored target dir full of them
+      # rebuilds everything while reporting a cache hit, which is a confusing
+      # way to lose twenty minutes.
+      - name: rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          echo "RUSTC_VERSION=$(rustc -V | tr ' /' '--')" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Registry index and downloaded crates only. registry/src is the
+      # extracted form of registry/cache and cargo recreates it on demand, so
+      # caching it doubles the archive for nothing.
+      - name: cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-${{ hashFiles('nobilis/Cargo.lock') }}
+          restore-keys: cargo-registry-
+
+      # The cache that matters. What costs half an hour here is compiling, not
+      # downloading: aws-lc and bundled sqlite go through CMake and cc, and the
+      # arti and matrix-sdk trees are large. A clean release build of this is
+      # about 1.7 GB of artifacts.
+      #
+      # The key deliberately excludes the commit sha. With the sha in it every
+      # push writes a fresh entry, and two jobs a few pushes a day evict the
+      # 10 GB repository budget within a day - leaving a cache that is never
+      # warm. Keyed on the lockfile it is written when dependencies change and
+      # hit on every push after that, so the only thing recompiled per push is
+      # nobilis itself, which is the few minutes that genuinely cannot be
+      # avoided.
+      - name: cache the cargo target directory
+        uses: actions/cache@v4
+        with:
+          path: nobilis/target
+          key: cargo-target-linux-${{ hashFiles('nobilis/Cargo.lock') }}-${{ env.RUSTC_VERSION }}
+          # A lockfile bump should start from the previous tree and rebuild
+          # what actually changed, rather than starting from nothing.
+          restore-keys: cargo-target-linux-
+
+      # The Electron binary, and the appimagetool and nsis bundles
+      # electron-builder fetches at pack time. Small, and it removes a real
+      # source of flakes: those are rate-limited downloads from GitHub.
+      - name: cache electron downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: electron-
+
+      - run: npm ci
+
+      # Before anything expensive. `npm run pack` builds the daemon first and
+      # typechecks afterwards, so without this a missing semicolon would not
+      # surface until half an hour in. The repeat inside pack costs seconds.
+      - name: typecheck
+        run: npm run typecheck
+
+      # Two jobs in one line. It warms the registry, and --locked turns a
+      # stale lockfile into a loud failure here rather than a silent rewrite
+      # later: the npm scripts call plain `cargo build`, which would quietly
+      # update Cargo.lock, dirty the working tree, and name the asset
+      # moho-<sha>-dirty out of a pristine checkout.
+      - name: verify the lockfile, and fetch what it names
+        run: cargo fetch --locked --manifest-path nobilis/Cargo.toml
+
+      - name: build the daemon
+        run: npm run daemon
+
+      # Reuses the release artifacts built one step above. The 19 tests that
+      # want the network, Tor, a sound device or real credentials are all
+      # #[ignore]d, so this is hermetic on a runner.
+      - name: cargo test
+        run: cargo test --release --locked --manifest-path nobilis/Cargo.toml
+
+      # MOHO_BUILD is computed inside the npm script - a shell assignment on
+      # the electron-builder line - so it cannot be injected from out here.
+      # The only way to control what the artifact is called is to guarantee
+      # the tree it is named after is clean.
+      #
+      # Failing is the point. A -dirty suffix on a public release built from a
+      # clean checkout is a lie about provenance, and it would also put the
+      # file's name out of step with the commit the release body claims.
+      - name: the tree is clean
+        id: stamp
+        run: |
+          if ! git diff --quiet HEAD; then
+            echo "::error::the checkout was modified during the build - the artifact would be named -dirty"
+            git status --porcelain
+            exit 1
+          fi
+          echo "build=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      # `npm run daemon` inside pack is a no-op against the tree just built.
+      # --publish never because there is no publish configuration and no token
+      # in this job - saying so means a later package.json change cannot
+      # quietly turn a build job into a publishing one.
+      - name: pack the AppImage
+        run: npm run pack -- --publish never
+
+      # Here to be read on the first few runs: it says how much headroom there
+      # actually was, rather than how much was estimated.
+      - run: df -h /
+        if: always()
+
+      # Only the AppImage. electron-builder also emits a .blockmap and a
+      # latest-linux.yml for its own updater, and the release is meant to hold
+      # exactly two files.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*.AppImage
+          if-no-files-found: error
+          retention-days: 7
+
+  # --------------------------------------------------------------------
+  # Windows, cross-compiled. Same runner OS, same scripts, plus mingw.
+  #
+  # In parallel with the Linux job rather than after it, so a run takes as
+  # long as the slower of the two rather than the sum. The trade is that a
+  # failing test does not stop this job finishing: wasted compute, never a
+  # wasted publish.
+  # --------------------------------------------------------------------
+  build-windows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      # No pkg-config and no libasound2-dev here, deliberately: the cross
+      # build must not find the host's Linux libraries. In particular do NOT
+      # set PKG_CONFIG_ALLOW_CROSS - libopus_sys' pkg-config probe correctly
+      # fails on the cross target and falls back to building opus from its
+      # vendored C source, and allowing cross would let it link the host's
+      # Linux libopus instead. That produces an .exe that fails on somebody
+      # else's machine rather than here, which is the worst place to find out.
+      - name: system build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake gcc-mingw-w64-x86-64
+
+      - name: rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add x86_64-pc-windows-gnu
+          echo "RUSTC_VERSION=$(rustc -V | tr ' /' '--')" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-${{ hashFiles('nobilis/Cargo.lock') }}
+          restore-keys: cargo-registry-
+
+      # Its own key, not shared with the Linux job. The same directory holds
+      # different things here: host artifacts for build scripts and proc
+      # macros under target/release/, and the real output under
+      # target/x86_64-pc-windows-gnu/. One key for both would be two jobs
+      # fighting over one entry and neither getting a hit.
+      - name: cache the cargo target directory
+        uses: actions/cache@v4
+        with:
+          path: nobilis/target
+          key: cargo-target-windows-gnu-${{ hashFiles('nobilis/Cargo.lock') }}-${{ env.RUSTC_VERSION }}
+          restore-keys: cargo-target-windows-gnu-
+
+      - name: cache electron downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: electron-
+
+      - run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: verify the lockfile, and fetch what it names
+        run: cargo fetch --locked --manifest-path nobilis/Cargo.toml
+
+      # build-daemon-win.sh builds for the gnu target and copies the .exe to
+      # nobilis/target/release/, which is where extraResources looks for it.
+      # It checks that file exists rather than trusting the exit code -
+      # against a restored target dir that is exactly the stale-binary case it
+      # was written for.
+      - name: build the Windows daemon
+        run: npm run daemon:win
+
+      - name: the tree is clean
+        run: |
+          if ! git diff --quiet HEAD; then
+            echo "::error::the checkout was modified during the build - the artifact would be named -dirty"
+            git status --porcelain
+            exit 1
+          fi
+
+      - name: pack the installer
+        run: npm run pack:win -- --publish never
+
+      - run: df -h /
+        if: always()
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  # --------------------------------------------------------------------
+  # Move the `latest` tag onto this commit, and make the release sitting on
+  # it hold exactly the two files the build jobs produced.
+  #
+  # No checkout at all: everything here is the GitHub API through gh, which
+  # is preinstalled on the runner, with the built-in token. Nothing to clone
+  # and no credentials to arrange.
+  # --------------------------------------------------------------------
+  publish:
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      BUILD: ${{ needs.build-linux.outputs.build }}
+
+    steps:
+      # Both jobs' artifacts into one flat directory, which is then the
+      # authoritative list of what the release should contain.
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: what was built
+        run: |
+          ls -l artifacts
+          # Two files, no more and no fewer. If electron-builder ever starts
+          # emitting something else into the glob, this says so here rather
+          # than by surprise on the release page.
+          test "$(find artifacts -maxdepth 1 -type f | wc -l)" -eq 2
+
+      # A release is tied to a tag, so a rolling release means a moving tag.
+      # The refs API rather than `git push -f` because it needs no checkout
+      # and no credential helper. The PATCH fails the very first time - there
+      # is no such ref yet - which is what the POST is for.
+      #
+      # -F force=true, capital: it sends a JSON boolean. Lowercase -f would
+      # send the string "true", which the API rejects.
+      #
+      # Refs written with GITHUB_TOKEN do not start workflow runs, so this
+      # cannot loop back into itself.
+      - name: move the latest tag onto this commit
+        run: |
+          gh api -X PATCH "repos/$GH_REPO/git/refs/tags/latest" \
+                 -f sha="$GITHUB_SHA" -F force=true \
+          || gh api -X POST "repos/$GH_REPO/git/refs" \
+                    -f ref=refs/tags/latest -f sha="$GITHUB_SHA"
+
+      # Rewritten every run, because the whole job of this text is to say
+      # which commit the files below came from.
+      #
+      # The warning about asset links is not boilerplate: the files are named
+      # after the commit, so a direct link to one stops resolving the moment
+      # the next push lands. The release page URL is the stable thing.
+      - name: compose the release notes
+        env:
+          SUBJECT: ${{ github.event.head_commit.message }}
+        run: |
+          # A dispatched run has no head_commit, so there is no subject to
+          # quote - say the commit without a dangling dash after it.
+          if [ -n "${SUBJECT:-}" ]; then
+            commit="**Commit:** \`$BUILD\` — ${SUBJECT%%$'\n'*}"
+          else
+            commit="**Commit:** \`$BUILD\`"
+          fi
+          {
+            echo "Rolling build of \`master\`, rebuilt and its files replaced on every"
+            echo "push. They are named after the commit, so a direct link to one stops"
+            echo "resolving once the next commit lands - the release page URL is the"
+            echo "stable thing to share."
+            echo
+            echo "$commit"
+            echo "**Built:** $(date -u '+%Y-%m-%d %H:%M UTC')"
+            echo "**Run:** $GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID"
+            echo
+            echo "| file | platform |"
+            echo "| --- | --- |"
+            echo "| \`moho-$BUILD.AppImage\` | Linux x86_64 - mark it executable and run it |"
+            echo "| \`moho-$BUILD.exe\` | Windows x64 - a per-user NSIS installer, no administrator needed |"
+            echo
+            echo "Each carries the \`nobilis\` daemon built alongside it, so the app and"
+            echo "the daemon in one download always match."
+            echo
+            echo "**The Windows installer is unsigned**, and cross-built with mingw."
+            echo "SmartScreen will warn on first run, and it is right about what it"
+            echo "knows: there is no certificate on it."
+            echo
+            echo "Not a versioned release, and no stability promise."
+          } > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+
+      - name: create or refresh the release
+        run: |
+          if gh release view latest >/dev/null 2>&1; then
+            gh release edit latest \
+              --title "Latest build" \
+              --notes-file "$RUNNER_TEMP/notes.md"
+          else
+            gh release create latest \
+              --title "Latest build" \
+              --notes-file "$RUNNER_TEMP/notes.md"
+          fi
+
+      # Upload first and prune second, deliberately. The files are named after
+      # the commit, so --clobber alone never removes anything and the release
+      # would grow a pair per push forever; deleting first would leave a
+      # window where somebody landing on the page finds nothing to download.
+      # In this order it briefly holds four files and never holds none.
+      - name: upload this build's files
+        run: gh release upload latest artifacts/* --clobber
+
+      - name: drop the previous build's files
+        run: |
+          keep="$(cd artifacts && ls -1)"
+          for asset in $(gh release view latest --json assets -q '.assets[].name'); do
+            printf '%s\n' "$keep" | grep -qxF "$asset" && continue
+            echo "dropping $asset"
+            gh release delete-asset latest "$asset" --yes
+          done
