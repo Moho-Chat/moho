@@ -1,0 +1,23 @@
+# On a merge, .gitmodules keeps the answer this branch already has.
+#
+# master names the daemon at github.com because master is what a stranger
+# clones, and development names it at the Gitea instance where the work
+# happens. Without this, a merge that touched .gitmodules on both sides would
+# stop and ask which host is right - and the answer is always "the one the
+# branch being merged into already said".
+#
+# `merge=ours` needs a driver by that name, which is one line per clone and
+# not something a repository can carry for you:
+#
+#     git config merge.ours.driver true
+#
+# Without it git falls back to an ordinary merge, which conflicts rather than
+# doing the wrong thing quietly - so a clone that has not run it is no worse
+# off than before this file existed.
+#
+# The edge, because it is a real one: this keeps the *whole file*, not just the
+# URL. If development ever adds a second submodule, master takes none of that
+# entry while still taking the gitlink the merge brings with it - a submodule
+# with nothing in .gitmodules to say where it comes from. Adding a submodule is
+# therefore a thing to re-do by hand on master, and the only such thing.
+/.gitmodules merge=ours
