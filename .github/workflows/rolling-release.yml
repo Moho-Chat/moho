@@ -284,25 +284,32 @@ jobs:
             build-essential cmake gcc-mingw-w64-x86-64
           # i386 as well as amd64, because the program wine is needed for is
           # a 32-bit one: electron-builder writes the icon and version
-          # metadata into the .exe with rcedit-ia32.exe. A 64-bit-only wine
-          # loads it and dies on a missing syswow64 ntdll, which is what run
-          # three spent nine minutes reaching.
+          # metadata into the .exe with rcedit-ia32.exe, and a 64-bit-only
+          # wine dies loading it on a missing syswow64 ntdll.
           sudo dpkg --add-architecture i386
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends wine64 wine32:i386 \
-            || sudo apt-get install -y --no-install-recommends wine
-          # Ubuntu 24.04 installs the binary as `wine64` and leaves no `wine`
-          # on PATH, which is the name electron-builder looks for - run two
-          # installed it successfully and then could not find it. Bridge the
-          # names rather than betting on which package a runner image carries.
-          command -v wine >/dev/null || sudo ln -s "$(command -v wine64)" /usr/local/bin/wine
+          # Recommends left ON here, unlike everything above. The `wine`
+          # package is a thin thing whose 32-bit half arrives as a recommend;
+          # asking for wine64 and wine32 directly instead installs
+          # /usr/lib/wine/wine64 and nothing in /usr/bin at all, which is a
+          # wine that no caller can find.
+          sudo apt-get install -y wine
+          # Ubuntu names the binary wine-stable and hangs /usr/bin/wine off it
+          # through alternatives, which may or may not have been set up.
+          # electron-builder looks for `wine`, so make sure that name exists
+          # whichever way round this image has it.
+          if ! command -v wine >/dev/null; then
+            target="$(command -v wine-stable || true)"
+            [ -n "$target" ] || { echo "::error::wine installed but no binary is on PATH"; exit 1; }
+            sudo ln -s "$target" /usr/local/bin/wine
+          fi
           wine --version
-          # And prove the 32-bit half is actually there rather than trusting
+          # And prove the 32-bit half is really there rather than trusting
           # apt, by building the prefix and looking for the very file whose
           # absence failed the pack step. `wine --version` passed on a wine
           # that could not run rcedit at all, so on its own it is not a check
           # worth having.
-          WINEDEBUG=-all timeout 180 wineboot --init >/dev/null 2>&1 || true
+          WINEDEBUG=-all timeout 300 wine wineboot --init >/dev/null 2>&1 || true
           test -f "$HOME/.wine/drive_c/windows/syswow64/ntdll.dll" \
             || { echo "::error::wine has no 32-bit support - rcedit cannot run"; exit 1; }
 
