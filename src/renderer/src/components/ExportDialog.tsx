@@ -16,10 +16,24 @@ import { canReachBack, type ExportRange } from '../lib/exporter'
  * what is already here - Sneedchat will not - and an export that quietly came
  * back short would read as a conversation that did not happen.
  */
+/**
+ * Now, as a `datetime-local` field wants it: local wall-clock, to the minute.
+ *
+ * Not `toISOString().slice(...)`, which is UTC - that would offer somebody in
+ * Sydney a "now" ten hours behind the clock on their wall, and they would fix
+ * it by hand without ever being told why it was wrong.
+ */
+function localNow(): string {
+  const d = new Date()
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 export function ExportDialog({
   title,
   service,
   oldestHeld,
+  heldCount,
   onConfirm,
   onCancel
 }: {
@@ -27,12 +41,20 @@ export function ExportDialog({
   service?: string
   /** Unix seconds of the oldest message held locally, if there is one. */
   oldestHeld?: number
+  /**
+   * How many messages are already here. A floor rather than a total: an export
+   * that reaches back will fetch more, so this is the smallest it can be.
+   */
+  heldCount?: number
   onConfirm: (range: ExportRange, opts: { media: boolean }) => void
   onCancel: () => void
 }): JSX.Element {
   const [everything, setEverything] = useState(true)
   const [from, setFrom] = useState('')
-  const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10))
+  // Local time, not UTC: the fields are read and typed by somebody sitting in
+  // their own timezone, and `toISOString` would offer them a "now" that is not
+  // theirs. Sliced to minutes because that is what datetime-local carries.
+  const [to, setTo] = useState(() => localNow())
   const [media, setMedia] = useState(true)
 
   useEffect(() => {
@@ -43,10 +65,12 @@ export function ExportDialog({
     return () => window.removeEventListener('keydown', onKey)
   }, [onCancel])
 
-  const since = everything || !from ? 0 : Math.floor(new Date(`${from}T00:00:00`).getTime() / 1000)
-  // The end of the chosen day rather than its start - somebody asking for a
-  // range ending today means today included, and midnight would drop it.
-  const until = everything || !to ? Math.floor(Date.now() / 1000) : Math.floor(new Date(`${to}T23:59:59`).getTime() / 1000)
+  // A datetime-local value is already local wall-clock time, so `new Date` on
+  // it means what was typed. Seconds are not offered, so the start is taken at
+  // :00 and the end at :59 - an inclusive minute at each edge, which is what
+  // somebody choosing "to 14:30" means rather than "up to 14:30:00 exactly".
+  const since = everything || !from ? 0 : Math.floor(new Date(`${from}:00`).getTime() / 1000)
+  const until = everything || !to ? Math.floor(Date.now() / 1000) : Math.floor(new Date(`${to}:59`).getTime() / 1000)
   const ready = everything || (!!to && (!from || since < until))
 
   // Only worth saying where it would actually bite: a range that starts after
@@ -78,11 +102,21 @@ export function ExportDialog({
           <div className="export-range">
             <label>
               <span className="small muted">From</span>
-              <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
+              <input
+                type="datetime-local"
+                value={from}
+                max={to}
+                onChange={(e) => setFrom(e.target.value)}
+              />
             </label>
             <label>
               <span className="small muted">To</span>
-              <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
+              <input
+                type="datetime-local"
+                value={to}
+                min={from}
+                onChange={(e) => setTo(e.target.value)}
+              />
             </label>
           </div>
         )}
@@ -94,6 +128,30 @@ export function ExportDialog({
             <span className="small muted"> — slower, but the export still reads offline</span>
           </span>
         </label>
+
+        {/* Said before it starts rather than discovered afterwards. There is
+            no size limit on what an export downloads - that was asked for
+            deliberately - so the only protection against a surprise is
+            knowing beforehand, and the number here is the honest one moho can
+            give: what it already holds, which an export that reaches back will
+            add to. */}
+        <p className={everything ? 'small warn-text' : 'small muted'}>
+          {everything ? (
+            <>
+              This exports the whole history of {title}. A long-running channel or an old
+              conversation can be an <strong>extremely large</strong> export
+              {typeof heldCount === 'number' && heldCount > 0 ? (
+                <> — moho already holds {heldCount.toLocaleString()} messages here</>
+              ) : null}
+              {canReachBack(service) ? ', and more will be fetched from the service.' : '.'}
+            </>
+          ) : (
+            <>
+              Long ranges can still be large, especially with pictures and video — there is no
+              size limit on what an export writes.
+            </>
+          )}
+        </p>
 
         {shortfall && (
           <p className="small warn-text">
