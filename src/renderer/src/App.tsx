@@ -26,7 +26,7 @@ import { DiscordModal } from './components/DiscordModal'
 import { FileDrop } from './components/FileDrop'
 import { TransferPanel } from './components/TransferPanel'
 import { Icon, IconButton } from './components/Icon'
-import { BufferFace } from './components/BufferFace'
+import { ConversationMenu } from './components/ConversationMenu'
 import { useActiveBuffer, useChat, usePref, usePrefsReady, useStore } from './state/hooks'
 import { bufferDisplayName } from './lib/util'
 import type { BufferEntry } from './state/store'
@@ -124,10 +124,16 @@ export default function App(): JSX.Element {
               onClick={() => setSidebarFolded(!sidebarFolded)}
             />
             {/* A conversation is headed by whoever it is with, the same way
-                its row in the list is - the picture and the status together,
-                not a bare name. */}
-            {activePanel === '' && !onMentionsPage && buffer && <BufferFace buffer={buffer} />}
-            <span className="main-header-title ellipsis">{headerTitle}</span>
+                its row in the list is - the picture and the name together,
+                and both are the way into its menu. The row in the list is
+                somewhere you go to find a conversation; this is where you
+                already are when you want to do something to the one you are
+                reading. */}
+            {activePanel === '' && !onMentionsPage && buffer ? (
+              <ConversationMenu buffer={buffer} />
+            ) : (
+              <span className="main-header-title ellipsis">{headerTitle}</span>
+            )}
 
             {/* The face, the search and the call button all act on the open
                 conversation, which the mentions page is not showing - leaving

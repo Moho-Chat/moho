@@ -74,6 +74,27 @@ degrade to text and `javascript:`/`data:` URLs, inline event handlers and `<scri
 survive. Local media nobilis has fetched is served through a dedicated scheme that resolves only
 inside the known cache directories, rather than by disabling `webSecurity`.
 
+#### No plugins, and no scripting
+
+moho does not have a plugin API or a scripting language, and will not grow one. This is a
+decision rather than a gap, and it is the same decision as everything above: the client does not
+execute code.
+
+It is the one place moho deliberately falls short of the clients it is otherwise measured
+against — HexChat has Perl and Python, WeeChat has Lua, Python, Perl and Ruby, mIRC has its own
+language — so a comparison that counts scripting will always find moho missing it, and that is
+the intended answer rather than a backlog item.
+
+The reasoning is that a scripting host is an execution surface pointed at exactly the data that
+is fully attacker-controlled. Every mitigation above — the fixed preload surface, the tag and
+attribute whitelist, the media scheme — exists to keep message content from ever becoming
+something that runs. A plugin API hands that back in one step, and does it with more privilege
+than the renderer has: scripts want the filesystem, the network and the message stream, which is
+the whole of what an attacker would ask for. The daemon/client split makes this cheaper to hold
+to than it would otherwise be, since anything that genuinely needs to automate moho can speak the
+wire protocol in `Wire protocol` below as a separate process, with its own permissions and its
+own blast radius.
+
 ### Global hotkey on Wayland
 
 The show/hide hotkey (`Control+Shift+M` by default, configurable) uses Electron's
