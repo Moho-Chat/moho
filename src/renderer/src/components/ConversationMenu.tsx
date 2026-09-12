@@ -91,7 +91,9 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
       onHangUp: () => void store.leaveVoice(buffer.accountId),
       onFile: (categoryId) => setAssignment(buffer.id, categoryId),
       onPopOut: () => store.popOut(buffer.id),
-      onDock: () => store.dock(buffer.id)
+      onDock: () => store.dock(buffer.id),
+      onMarkUnread: account?.service === 'matrix' ? () => void store.markUnread(buffer.id) : undefined,
+      markedUnread: buffer.markedUnread
     }),
     { separator: true },
     // Last, and on its own. It is the one entry here that starts something

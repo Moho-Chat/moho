@@ -48,6 +48,13 @@ export interface Account {
   torProxy?: string
   useTor: boolean
   hasKeyBackup: boolean
+  /**
+   * Matrix only: a media server for room calls, where the homeserver names
+   * none of its own. Absent on every other service, and on a Matrix account
+   * that has not been given one - which is the ordinary case, since most
+   * homeservers do name one.
+   */
+  rtcFocusUrl?: string
 }
 
 export interface SneedChatRoom {

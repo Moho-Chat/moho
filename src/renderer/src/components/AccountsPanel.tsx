@@ -1301,6 +1301,42 @@ function MatrixForm(): JSX.Element {
   const [homeserverUrl, setHomeserverUrl] = useState('https://matrix.org')
   const [userId, setUserId] = useState('')
   const [password, setPassword] = useState('')
+  // What this homeserver will actually accept, asked before anything is
+  // typed. A server offering only SSO has no password to take, and a password
+  // form drawn there is a form nobody can complete - which reads as a wrong
+  // password rather than as the wrong question.
+  //
+  // `null` while nothing is known: both ways in stay offered then, because
+  // guessing wrong in that direction merely fails at the end, while guessing
+  // wrong the other way hides the only door there is.
+  const [flows, setFlows] = useState<string[] | null>(null)
+  const [asking, setAsking] = useState(false)
+
+  // Asked a moment after typing stops rather than on every keystroke: a
+  // homeserver name is typed a character at a time and most of the prefixes
+  // are not servers.
+  useEffect(() => {
+    const url = homeserverUrl.trim()
+    if (!url) {
+      setFlows(null)
+      return
+    }
+    setAsking(true)
+    const timer = setTimeout(() => {
+      void window.moho
+        .rpc<{ flows: string[] }>('matrixLoginFlows', { homeserverUrl: url })
+        .then((a) => setFlows(a.flows))
+        // A server that cannot be reached or will not say is not a server
+        // with no ways in - it is one nothing is known about, and both
+        // buttons stay offered so somebody can try anyway.
+        .catch(() => setFlows(null))
+        .finally(() => setAsking(false))
+    }, 600)
+    return () => clearTimeout(timer)
+  }, [homeserverUrl])
+
+  const takesPassword = !flows || flows.includes('m.login.password')
+  const takesSso = !flows || flows.some((f) => f === 'm.login.sso' || f === 'm.login.cas')
 
   return (
     <div className="add-form">
@@ -1322,35 +1358,48 @@ function MatrixForm(): JSX.Element {
         The domain from your Matrix address is usually right — moho asks the server where its
         client API actually lives. Not the :8448 port, which is for server-to-server traffic.
       </p>
-      <div className="field-row">
-        <label className="field">
-          <span className="small muted">Username</span>
-          <input
-            className="text-field"
-            // Just the localpart. nobilis sends this as an m.id.user identifier,
-            // which the homeserver resolves against itself, and the login
-            // response hands back the full MXID - so there's nothing for the
-            // user to type twice.
-            placeholder="you"
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-          />
-        </label>
-        <label className="field">
-          <span className="small muted">Password</span>
-          <input
-            className="text-field"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
-      </div>
+      {/* Drawn only where it can be completed. A server that offers no
+          password login is not one somebody should be typing a password at:
+          the attempt would come back refused, and a refusal here is
+          indistinguishable from having got the password wrong. */}
+      {takesPassword && (
+        <div className="field-row">
+          <label className="field">
+            <span className="small muted">Username</span>
+            <input
+              className="text-field"
+              // Just the localpart. nobilis sends this as an m.id.user identifier,
+              // which the homeserver resolves against itself, and the login
+              // response hands back the full MXID - so there's nothing for the
+              // user to type twice.
+              placeholder="you"
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span className="small muted">Password</span>
+            <input
+              className="text-field"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </label>
+        </div>
+      )}
+      {!takesPassword && (
+        <p className="small muted">
+          This homeserver signs people in through its own page rather than with a password
+          here.
+        </p>
+      )}
       <div className="field-row">
         <button
           type="button"
           className="button"
-          disabled={!userId || !password}
+          hidden={!takesPassword}
+          disabled={!userId || !password || asking}
           onClick={() =>
             void window.moho
               .rpc('addMatrixAccount', {
@@ -1373,7 +1422,8 @@ function MatrixForm(): JSX.Element {
         <button
           type="button"
           className="button subtle"
-          disabled={!homeserverUrl}
+          hidden={!takesSso}
+          disabled={!homeserverUrl || asking}
           onClick={() =>
             void window.moho
               .rpc('addMatrixAccountSso', { homeserverUrl })
