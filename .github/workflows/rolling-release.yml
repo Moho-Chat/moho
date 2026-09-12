@@ -262,11 +262,29 @@ jobs:
       # vendored C source, and allowing cross would let it link the host's
       # Linux libopus instead. That produces an .exe that fails on somebody
       # else's machine rather than here, which is the worst place to find out.
+      # wine is here because electron-builder needs it even though nothing is
+      # signed. Packaging for Windows runs the executable through signtool,
+      # which is a Windows program, and it is that call - not the signing,
+      # which it then skips for want of a certificate - that wants wine. The
+      # first run died at exactly this step with "wine is required".
+      #
+      # The alternative is win.signAndEditExecutable: false, which skips the
+      # call and with it the icon and version metadata the installer shows.
+      # Paying a minute of apt for an .exe that looks like the one we ship by
+      # hand is the better trade.
+      #
+      # Asked for by both names because the package split differs between
+      # Ubuntu releases, then checked: an install that quietly put no `wine`
+      # on PATH would fail thirty minutes later at the pack step instead of
+      # here.
       - name: system build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake gcc-mingw-w64-x86-64
+          sudo apt-get install -y --no-install-recommends wine64 \
+            || sudo apt-get install -y --no-install-recommends wine
+          wine --version
 
       - name: rust toolchain
         run: |
