@@ -61,6 +61,11 @@ export interface Account {
    * the account talks to its server, so it is not taken automatically.
    */
   slidingSync?: boolean
+  /**
+   * Matrix only: whether this account keeps a dehydrated device, so room keys
+   * shared while a login did not exist are not simply lost.
+   */
+  dehydration?: boolean
 }
 
 export interface SneedChatRoom {
