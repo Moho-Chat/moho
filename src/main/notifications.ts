@@ -159,6 +159,14 @@ export class Notifier {
     if (starts(0x52, 0x49, 0x46, 0x46) && bytes.subarray(8, 12).toString() === 'WEBP') {
       return 'image/webp'
     }
+    // ISO-BMFF: AVIF and HEIC share the ftyp box four bytes in and are told
+    // apart by the brand after it. Only avif is claimed here - Chromium
+    // decodes that one and does not decode HEIC, so calling a HEIC file by
+    // its real name would promise a picture that never appears.
+    if (bytes.subarray(4, 8).toString() === 'ftyp') {
+      const brand = bytes.subarray(8, 12).toString()
+      if (brand === 'avif' || brand === 'avis') return 'image/avif'
+    }
     // Something else entirely. Chromium sniffs the bytes of an <img> either
     // way, so a wrong-but-plausible type still decodes what it can, and what
     // it cannot decode falls out of the null below rather than here.
