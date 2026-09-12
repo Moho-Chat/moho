@@ -196,17 +196,47 @@ export function EmojiPicker({
     setRecent(readRecent(accountId))
   }, [accountId])
 
-  // Anchored above and right-aligned to the button that opened it, then
-  // clamped back inside the viewport once its real size is known.
+  // Anchored above and right-aligned to the button that opened it, and kept
+  // inside the viewport - on both axes, and for as long as it is open.
+  //
+  // Placed once on mount was not enough, and the way it failed is worth
+  // keeping written down. The height it is positioned against is its own, and
+  // its own height depends on what is built inside it: with the grid windowed
+  // (see Section) the picker mounts short and grows to its 360px cap a frame
+  // later. Positioning against the short measurement put the top barely above
+  // the button, and the growth then pushed the bottom a couple of hundred
+  // pixels past the bottom of the screen - a picker that opened mostly
+  // offscreen.
+  //
+  // So it follows its own size rather than sampling it once, and the top is
+  // clamped at both ends rather than only against the top of the screen. A
+  // resize cannot move it out of view either.
   useLayoutEffect(() => {
     const el = ref.current
     if (!el || !anchor) return
-    const a = anchor.getBoundingClientRect()
-    const r = el.getBoundingClientRect()
-    setPos({
-      left: Math.max(4, Math.min(a.right - r.width, window.innerWidth - r.width - 4)),
-      top: Math.max(4, a.top - r.height - 6)
-    })
+
+    const place = (): void => {
+      const a = anchor.getBoundingClientRect()
+      const r = el.getBoundingClientRect()
+      const left = Math.max(4, Math.min(a.right - r.width, window.innerWidth - r.width - 4))
+      // Above the button by preference; pulled back down if that would hang
+      // off the top, and back up if the picker's full height would hang off
+      // the bottom. max() last so a viewport shorter than the picker still
+      // starts it at the top rather than at a negative offset.
+      const top = Math.max(4, Math.min(a.top - r.height - 6, window.innerHeight - r.height - 4))
+      setPos((was) => (was.left === left && was.top === top ? was : { left, top }))
+    }
+
+    place()
+    // Its size settles after mount, so watch for that rather than guess when.
+    // Repositioning does not change the size, so this cannot feed itself.
+    const ro = new ResizeObserver(place)
+    ro.observe(el)
+    window.addEventListener('resize', place)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', place)
+    }
   }, [anchor])
 
   useEffect(() => {
