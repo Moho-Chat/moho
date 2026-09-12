@@ -55,6 +55,12 @@ export interface Account {
    * homeservers do name one.
    */
   rtcFocusUrl?: string
+  /**
+   * Matrix only: whether this account uses sliding sync where the homeserver
+   * offers it. Off unless somebody turned it on - it replaces the whole of how
+   * the account talks to its server, so it is not taken automatically.
+   */
+  slidingSync?: boolean
 }
 
 export interface SneedChatRoom {
