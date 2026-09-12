@@ -23,6 +23,7 @@ import type {
 } from '../../../shared/wire'
 import { buildSmilieIndex, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { bufferDisplayName, isImageFile, resolveMediaUrl } from '../lib/util'
+import { runExport } from '../lib/exporter'
 import { DM_GROUP_ID, isDirectMessage } from '../lib/groups'
 import { ircNetworkFor } from '../lib/networks'
 import { parseDeepLink, type IrcLink } from '../../../shared/deeplink'
@@ -1484,6 +1485,53 @@ export class ChatStore {
       await window.moho.rpc('cancelTransfer', { id })
     } catch (e) {
       this.toast('error', `Couldn't stop that transfer: ${(e as Error).message}`)
+    }
+  }
+
+  /** Puts an export down between pages, or picks it back up. */
+  async pauseTransfer(id: string, paused: boolean): Promise<void> {
+    try {
+      await window.moho.rpc('pauseTransfer', { id, paused })
+    } catch (e) {
+      this.toast('error', `Couldn't ${paused ? 'pause' : 'resume'} that: ${(e as Error).message}`)
+    }
+  }
+
+  /**
+   * Writes a conversation to disk as a folder of HTML.
+   *
+   * The loop is in the window because the formatting is - see lib/exporter.ts.
+   * What this adds is where it goes (the downloads folder somebody chose, or
+   * the platform's own) and saying how it went, since the export itself
+   * reports progress through the transfer list like any other long job.
+   */
+  async exportConversation(
+    bufferId: string,
+    range: { since: number; until: number },
+    opts: { media: boolean }
+  ): Promise<void> {
+    const buffer = this.state.buffers.find((b) => b.id === bufferId)
+    if (!buffer) return
+    const account = this.accountFor(bufferId)
+    try {
+      const prefs = await window.moho.prefs.getAll()
+      const into =
+        (prefs['downloads.directory'] as string | undefined) || (await window.moho.defaultDownloadDir())
+      const answer = await runExport(
+        (method, params) => window.moho.rpc(method, params),
+        {
+          bufferId,
+          accountId: buffer.accountId,
+          service: account?.service,
+          title: bufferDisplayName(buffer.name)
+        },
+        range,
+        into,
+        opts
+      )
+      this.toast('info', `Exported ${answer.messages.toLocaleString()} messages to ${answer.path}`)
+    } catch (e) {
+      this.toast('error', `Export failed: ${(e as Error).message}`)
     }
   }
 

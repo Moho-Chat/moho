@@ -5340,9 +5340,70 @@ video.lightbox-media {
   font-variant-numeric: tabular-nums;
 }
 
+/* An export running behind whatever is on screen. A slow pulse rather than a
+   second badge: the number is already the thing being read, and what this adds
+   is that something is still happening rather than merely queued. */
+.rail-downloads.exporting {
+  animation: rail-exporting 2s ease-in-out infinite;
+}
+
+@keyframes rail-exporting {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* Somebody who has asked for less movement gets the badge and not the pulse;
+   the count says the same thing either way. */
+@media (prefers-reduced-motion: reduce) {
+  .rail-downloads.exporting {
+    animation: none;
+  }
+}
+
 /* The cog holds the badge, the way the tiles hold theirs. */
 .rail-cog {
   position: relative;
+}
+
+/* --- Exporting a conversation ----------------------------------------- */
+
+.export-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 6px 0;
+  cursor: pointer;
+}
+
+.export-choice input {
+  margin-top: 2px;
+  flex: none;
+}
+
+.export-range {
+  display: flex;
+  gap: 12px;
+  margin: 4px 0 10px 24px;
+}
+
+.export-range label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.export-range input {
+  padding: 4px 6px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  font: inherit;
 }
 
 /* --- Whispers --------------------------------------------------------- */

@@ -858,14 +858,31 @@ function RailMenu(): JSX.Element {
   const store = useStore()
   const { menu, open, close } = useContextMenu()
   const transfers = useChat((s) => s.transfers)
-  const busy = transfers.filter((t) => t.state === 'offered' || t.state === 'receiving').length
+  // What is going on behind whatever is on screen. Exports count alongside
+  // files because they are the same thing to somebody who started one and
+  // wandered off - and a paused one still counts, since it is waiting on a
+  // decision rather than finished.
+  const running = transfers.filter(
+    (t) => t.state === 'offered' || t.state === 'receiving' || t.state === 'paused'
+  )
+  const busy = running.length
+  const exporting = running.filter((t) => t.kind === 'export').length
+  // Said in the words of whatever is actually happening: "3 file(s) arriving"
+  // while a conversation is being written to disk is a sentence about the
+  // wrong thing.
+  const busyLabel =
+    exporting === busy
+      ? `${busy} export${busy === 1 ? '' : 's'} running`
+      : exporting > 0
+        ? `${busy} in progress, ${exporting} of them export${exporting === 1 ? '' : 's'}`
+        : `${busy} file${busy === 1 ? '' : 's'} arriving`
 
   return (
     <>
       <button
         type="button"
         className="rail-tile rail-cog"
-        title={busy > 0 ? `Accounts and settings - ${busy} file(s) arriving` : 'Accounts and settings'}
+        title={busy > 0 ? `Accounts and settings - ${busyLabel}` : 'Accounts and settings'}
         aria-label="Accounts and settings"
         // Opened by left click, unlike the tiles above it - it is a menu
         // button, not a thing being acted upon.
@@ -877,7 +894,9 @@ function RailMenu(): JSX.Element {
         {/* Where a minimised transfer goes, so putting one away does not look
             like losing it. A count rather than a dot, because the number is
             the thing you are checking when you look. */}
-        {busy > 0 && <span className="rail-downloads">{busy}</span>}
+        {busy > 0 && (
+          <span className={exporting > 0 ? 'rail-downloads exporting' : 'rail-downloads'}>{busy}</span>
+        )}
       </button>
       {menu && (
         <ContextMenu

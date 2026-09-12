@@ -88,6 +88,11 @@ function Row({ transfer }: { transfer: DccTransfer }): JSX.Element {
   // Only an offer somebody made to us is a question we can answer.
   const offered = transfer.state === 'offered' && !transfer.outgoing
   const waiting = transfer.state === 'offered' && transfer.outgoing
+  // An export can be put down between pages and picked back up. A DCC socket
+  // cannot, which is why this is offered on one and not the other rather than
+  // on everything that happens to be running.
+  const isExport = transfer.kind === 'export'
+  const paused = transfer.state === 'paused'
 
   return (
     <div className="download-row">
@@ -101,7 +106,7 @@ function Row({ transfer }: { transfer: DccTransfer }): JSX.Element {
         </div>
         <div className="small muted download-detail">
           <span className="download-from">
-            {transfer.outgoing ? 'to' : 'from'} {transfer.from}
+            {isExport ? 'export of' : transfer.outgoing ? 'to' : 'from'} {transfer.from}
           </span>
           {/* Titled as well as shown, because the whole of a long failure is
               worth being able to read even where it has been wrapped. */}
@@ -109,7 +114,7 @@ function Row({ transfer }: { transfer: DccTransfer }): JSX.Element {
             {describe(transfer)}
           </span>
         </div>
-        {running && <TransferBar transfer={transfer} />}
+        {(running || paused) && <TransferBar transfer={transfer} />}
       </div>
 
       <div className="download-actions">
@@ -121,10 +126,25 @@ function Row({ transfer }: { transfer: DccTransfer }): JSX.Element {
         {/* Only while there is something to stop. A finished row has nothing
             this button could do, and one that did nothing would still look
             like it might delete the file. */}
-        {(running || offered || waiting) && (
+        {isExport && (running || paused) && (
+          <IconButton
+            name={paused ? 'play_arrow' : 'pause'}
+            title={paused ? 'Carry on with this export' : 'Put this export down for now'}
+            onClick={() => void store.pauseTransfer(transfer.id, !paused)}
+          />
+        )}
+        {(running || paused || offered || waiting) && (
           <IconButton
             name="close"
-            title={offered ? 'Decline this file' : waiting ? 'Withdraw this offer' : 'Cancel this transfer'}
+            title={
+              offered
+                ? 'Decline this file'
+                : waiting
+                  ? 'Withdraw this offer'
+                  : isExport
+                    ? 'Stop this export - what has been written is kept'
+                    : 'Cancel this transfer'
+            }
             className="calling"
             onClick={() => void store.cancelTransfer(transfer.id)}
           />
@@ -135,6 +155,8 @@ function Row({ transfer }: { transfer: DccTransfer }): JSX.Element {
 }
 
 function markFor(t: DccTransfer): string {
+  if (t.kind === 'export' && t.state !== 'done' && t.state !== 'failed') return 'description'
+  if (t.state === 'paused') return 'pause_circle'
   if (t.state === 'done') return 'check_circle'
   if (t.state === 'failed') return 'error'
   if (t.state === 'declined') return 'block'
@@ -145,6 +167,17 @@ function markFor(t: DccTransfer): string {
 
 /** The one line that says where this transfer got to. */
 function describe(t: DccTransfer): string {
+  // An export is counted in messages, not bytes. Its `size` is how many the
+  // range holds and may still be zero while the history is being reached back
+  // through - which is why "so far" is said rather than a proportion of a
+  // total that is not known yet.
+  if (t.kind === 'export') {
+    const done = t.received.toLocaleString()
+    if (t.state === 'done') return `${done} messages`
+    if (t.state === 'failed') return t.error ? `Failed - ${t.error}` : 'Failed'
+    const where = t.size > 0 ? `${done} of ${t.size.toLocaleString()} messages` : `${done} messages so far`
+    return t.state === 'paused' ? `${where} · paused` : where
+  }
   switch (t.state) {
     case 'receiving':
     case 'sending': {
@@ -152,6 +185,8 @@ function describe(t: DccTransfer): string {
       const moved = `${humanSize(t.received)} of ${humanSize(t.size)}`
       return rate ? `${moved} · ${rate}` : moved
     }
+    case 'paused':
+      return `${humanSize(t.received)} of ${humanSize(t.size)} · paused`
     case 'offered':
       return `${humanSize(t.size)} · ${t.outgoing ? 'waiting for them to accept' : 'waiting for an answer'}`
     case 'done':

@@ -191,6 +191,16 @@ export interface DccTransfer {
   id: string
   accountId: string
   /**
+   * What this row is: a file over DCC, or a conversation being written to
+   * disk. They share a list because they are the same thing to somebody
+   * waiting - a long job with a size, a rate and a way to call it off - and
+   * differ only in how they are described.
+   *
+   * Absent on a row from a daemon older than exports, which can only ever
+   * have been a DCC file.
+   */
+  kind?: 'dcc' | 'export' 
+  /**
    * Which way it is going. Sending and receiving differ in almost nothing
    * else, so they share a list - what somebody wants to see is their
    * transfers, not two separate accounts of them.
@@ -213,7 +223,7 @@ export interface DccTransfer {
   received: number
   /** Bytes a second over the last interval, while it is running. */
   rate: number
-  state: 'offered' | 'receiving' | 'sending' | 'done' | 'declined' | 'failed'
+  state: 'offered' | 'receiving' | 'sending' | 'paused' | 'done' | 'declined' | 'failed'
   /** Where it landed, once it has. */
   path?: string | null
   /** Why it failed, or why it was turned down. */
