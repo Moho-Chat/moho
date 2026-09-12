@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ChoiceSetting,
   DirectorySetting,
@@ -79,16 +79,33 @@ function GlobalHighlightKeywords(): JSX.Element {
  * categories swapping a content pane on the right, sized for a handful of
  * protocols rather than dozens of categories (hence no search).
  */
-const CATEGORIES = [
-  { id: 'general', label: 'General', available: true },
-  { id: 'irc', label: 'IRC', available: true },
-  { id: 'sneedchat', label: 'Sneedchat', available: true },
-  { id: 'tor', label: 'Tor', available: true },
-  { id: 'matrix', label: 'Matrix', available: true },
-  { id: 'kick', label: 'Kick', available: true },
-  { id: 'about', label: 'About', available: true },
-  { id: 'discord', label: 'Discord', available: false },
-  { id: 'slack', label: 'Slack', available: false }
+/**
+ * The rail, and what each entry needs in order to be worth showing.
+ *
+ * `service` names the protocol an entry is about; an entry with one appears
+ * only while there is an account on it. Somebody with no IRC account has no
+ * use for a page of IRC settings, and a rail of pages that cannot apply to
+ * anything is how a settings pane stops being readable.
+ *
+ * General, Tor and About carry no `service` and are always there. Tor stays
+ * even with no account using it: it is how somebody arranges to reach a
+ * network they cannot otherwise get to, so needing an account first would be
+ * the wrong way round.
+ *
+ * Discord and Slack used to sit here marked "soon", which stopped being true
+ * for Discord some thousands of lines ago - it has a backend, it just has no
+ * settings of its own yet. An entry that exists only to say a thing that is
+ * not so is worse than no entry, and this rule would have hidden them both
+ * regardless.
+ */
+const CATEGORIES: { id: string; label: string; service?: Account['service'] }[] = [
+  { id: 'general', label: 'General' },
+  { id: 'irc', label: 'IRC', service: 'irc' },
+  { id: 'sneedchat', label: 'Sneedchat', service: 'sneedchat' },
+  { id: 'tor', label: 'Tor' },
+  { id: 'matrix', label: 'Matrix', service: 'matrix' },
+  { id: 'kick', label: 'Kick', service: 'kick' },
+  { id: 'about', label: 'About' }
 ]
 
 /**
@@ -178,18 +195,31 @@ interface UploadHost {
 
 export function SettingsPanel(): JSX.Element {
   const [selected, setSelected] = useState('general')
+  const accounts = useChat((s) => s.accounts)
+
+  const shown = useMemo(() => {
+    const have = new Set(accounts.map((a) => a.service))
+    return CATEGORIES.filter((c) => !c.service || have.has(c.service))
+  }, [accounts])
+
+  // Removing the last account of a protocol takes its page away while
+  // somebody may be reading it. Falling back rather than showing an empty
+  // pane, because a rail with nothing selected looks broken.
+  useEffect(() => {
+    if (!shown.some((c) => c.id === selected)) setSelected('general')
+  }, [shown, selected])
 
   return (
     <div className="settings">
       <div className="settings-rail">
-        {CATEGORIES.map((c) => (
+        {shown.map((c) => (
           <button
             key={c.id}
             type="button"
-            className={`settings-rail-item${selected === c.id ? ' active' : ''}${c.available ? '' : ' soon'}`}
+            className={`settings-rail-item${selected === c.id ? ' active' : ''}`}
             onClick={() => setSelected(c.id)}
           >
-            {c.available ? c.label : `${c.label} (soon)`}
+            {c.label}
           </button>
         ))}
       </div>
@@ -209,20 +239,8 @@ export function SettingsPanel(): JSX.Element {
         )}
         {selected === 'kick' && <KickSettings />}
         {selected === 'about' && <AboutSettings />}
-        {(selected === 'discord' || selected === 'slack') && (
-          <ComingSoon label={CATEGORIES.find((c) => c.id === selected)!.label} />
-        )}
       </div>
     </div>
-  )
-}
-
-function ComingSoon({ label }: { label: string }): JSX.Element {
-  return (
-    <SettingsSection
-      title={label}
-      description="Not connected yet - this gets its own settings here once its backend exists, the same way IRC's does."
-    />
   )
 }
 
