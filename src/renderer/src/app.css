@@ -5418,6 +5418,23 @@ video.lightbox-media {
   flex: none;
 }
 
+/* A recovery code, shown once. Wide-spaced and selectable because it is meant
+   to be copied or written out by hand, and a run of base58 read off a screen
+   is easy to get wrong. */
+.recovery-code {
+  display: block;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--surface-container-lowest);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
 /* --- Exporting a conversation ----------------------------------------- */
 
 .export-choice {

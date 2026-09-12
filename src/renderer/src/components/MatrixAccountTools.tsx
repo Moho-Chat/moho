@@ -57,6 +57,10 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
   // server of its own. Seeded from the account and only sent when it changes,
   // so opening this page does not rewrite a setting nobody touched.
   const [rtcFocus, setRtcFocus] = useState(account.rtcFocusUrl ?? '')
+  const [dehydrating, setDehydrating] = useState(false)
+  const [storageSecret, setStorageSecret] = useState('')
+  // The recovery code, held only long enough to be read once.
+  const [newCode, setNewCode] = useState('')
   const [restoreKey, setRestoreKey] = useState('')
   const [busy, setBusy] = useState('')
   const [deleting, setDeleting] = useState<string | null>(null)
@@ -115,6 +119,72 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
 
   return (
     <div className="matrix-tools">
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Keep a spare device for room keys</div>
+          <div className="small muted">
+            Leaves an encrypted, unused device on the homeserver so keys sent while you are
+            signed out are not lost. A new sign-in collects them with your recovery code.
+            Element calls this a dehydrated device.
+          </div>
+        </div>
+        {account.dehydration ? (
+          <span className="small muted">On</span>
+        ) : (
+          <button
+            type="button"
+            className="button subtle"
+            disabled={dehydrating}
+            onClick={() => {
+              setDehydrating(true)
+              void rpc('enableMatrixDehydration', {
+                accountId: account.id,
+                unlockWith: storageSecret.trim() || undefined
+              })
+                .then((a: { recoveryCode?: string }) => {
+                  setStorageSecret('')
+                  if (a.recoveryCode) setNewCode(a.recoveryCode)
+                  else store.toast('info', 'Spare device set up')
+                })
+                .then(() => void store.refreshAccounts())
+                .finally(() => setDehydrating(false))
+            }}
+          >
+            Set up
+          </button>
+        )}
+      </div>
+      {!account.dehydration && (
+        <div className="device-row">
+          <Icon name="key" size={18} />
+          <div className="field-row setting-text">
+            <input
+              className="text-field"
+              type="password"
+              placeholder="Recovery code or passphrase, if this account already has one"
+              value={storageSecret}
+              onChange={(e) => setStorageSecret(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
+      {/* Shown once and never again: it is not kept anywhere this daemon can
+          read it back, which is the point of it. */}
+      {newCode && (
+        <div className="device-row">
+          <Icon name="lock" size={18} />
+          <div className="setting-text">
+            <div className="small warn-text">
+              Write this down. It is the only way to collect those keys on a new sign-in, and
+              it is not stored anywhere.
+            </div>
+            <code className="recovery-code">{newCode}</code>
+          </div>
+          <button type="button" className="button subtle" onClick={() => setNewCode('')}>
+            Done
+          </button>
+        </div>
+      )}
       <div className="setting-row">
         <div className="setting-text">
           <div>Sliding sync</div>
