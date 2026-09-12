@@ -6,8 +6,28 @@ import { bufferDisplayName, classes, resolveMediaUrl, serviceIcon, serviceLabel 
 import { IRC_NETWORKS, ircNetworkFor } from '../lib/networks'
 import type { Account } from '../../../shared/wire'
 
-const ADDABLE = ['irc', 'discord', 'sneedchat', 'matrix', 'kick'] as const
-type AddableService = (typeof ADDABLE)[number]
+/**
+ * The services this window can draw a sign-in form for.
+ *
+ * Not a list of what moho supports - that is the daemon's to say, and it says
+ * it through `listProtocols`. This is the other half of the question, which
+ * only the window can answer: a protocol the daemon speaks but this has no
+ * form for cannot be added from here, and a chip that opens nothing would be
+ * worse than no chip.
+ *
+ * What is offered is the intersection, in the daemon's order. So a protocol
+ * that gains a backend appears here as soon as it gains a form, and one the
+ * daemon stops offering disappears without this file being touched.
+ */
+const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick'] as const
+type AddableService = (typeof FORMS)[number]
+
+/** What `listProtocols` answers with. */
+interface Protocol {
+  id: string
+  name: string
+  available: boolean
+}
 
 /**
  * Account states that make a service's group open itself.
@@ -50,12 +70,33 @@ export function AccountsPanel(): JSX.Element {
    */
   const [openGroups, setOpenGroups] = useMapPref<boolean>('accountGroupOpen')
 
+  // Which protocols the daemon offers, asked once. The two are deployed
+  // separately and either can be older than the other, which is the whole
+  // reason to ask rather than to assume.
+  const [protocols, setProtocols] = useState<Protocol[] | null>(null)
+  useEffect(() => {
+    void window.moho
+      .rpc<Protocol[]>('listProtocols')
+      // A daemon too old to answer leaves the window with what it can draw,
+      // which is what it did before it asked at all.
+      .catch(() => null)
+      .then(setProtocols)
+  }, [])
+
+  const addable: AddableService[] = (
+    protocols
+      ? protocols.filter((p) => p.available).map((p) => p.id)
+      : (FORMS as readonly string[]).slice()
+  ).filter((id): id is AddableService => (FORMS as readonly string[]).includes(id))
+
+  const nameFor = (service: string): string =>
+    protocols?.find((p) => p.id === service)?.name ?? serviceLabel(service)
+
   // Grouped by service, in the order the picker offers them, so the two
   // halves of this page agree about what order services come in.
-  const byService = ADDABLE.map((service) => ({
-    service,
-    accounts: accounts.filter((a) => a.service === service)
-  })).filter((group) => group.accounts.length > 0)
+  const byService = addable
+    .map((service) => ({ service, accounts: accounts.filter((a) => a.service === service) }))
+    .filter((group) => group.accounts.length > 0)
 
   return (
     <div className="panel">
@@ -66,7 +107,7 @@ export function AccountsPanel(): JSX.Element {
       <div className="panel-section">
         <h3 className="panel-heading">Add an account</h3>
         <div className="service-picker">
-          {ADDABLE.map((service) => {
+          {addable.map((service) => {
             const icon = serviceIcon(service)
             return (
               <button
@@ -76,7 +117,7 @@ export function AccountsPanel(): JSX.Element {
                 onClick={() => setAdding(adding === service ? null : service)}
               >
                 {icon.mark ? <MaskIcon src={icon.mark} size={16} /> : <Icon name={icon.glyph!} size={16} />}
-                {serviceLabel(service)}
+                {nameFor(service)}
               </button>
             )
           })}
