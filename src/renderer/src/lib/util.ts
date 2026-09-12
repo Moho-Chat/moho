@@ -224,10 +224,20 @@ export const MEDIA_SCHEME = 'moho-media'
 /**
  * Whether this is a picture, by its name.
  *
- * The same list the daemon's own upload code uses, because the two have to
- * agree: this decides which host a file is offered to, and that one decides
- * whether the host will take it. A file called an image here and refused
- * there is the trap the uploads setting used to spring.
+ * Deliberately the broad answer - every format worth drawing as a picture
+ * rather than as a paperclip - and deliberately *not* the list of what any
+ * particular image host will take. It once tried to be both, and could not
+ * be: avif is an image by any ordinary reading, and postimg.cc refuses it,
+ * so a single list either called an avif something other than a picture or
+ * offered it to a host that would reject it.
+ *
+ * The two questions are asked separately now. This one decides whether to
+ * show a preview (see Composer) and which of somebody's two upload
+ * preferences applies, images or media. Whether the chosen host will
+ * actually accept the file is asked of the daemon instead - it is the one
+ * performing the upload, so it is the one that knows - by way of
+ * `listUploadHosts` and `hostAccepts` in the store, which sends a file the
+ * picture host refuses to the other one rather than letting it fail there.
  */
 const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|bmp|avif)$/i
 
