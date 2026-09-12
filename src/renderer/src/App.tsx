@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { TitleBar } from './components/TitleBar'
 import { BufferList } from './components/BufferList'
 import { ServerRail } from './components/ServerRail'
@@ -27,6 +27,7 @@ import { FileDrop } from './components/FileDrop'
 import { TransferPanel } from './components/TransferPanel'
 import { Icon, IconButton } from './components/Icon'
 import { ConversationMenu } from './components/ConversationMenu'
+import { watchDelta, watchedKickBuffers } from './lib/kickwatch'
 import { useActiveBuffer, useChat, usePref, usePrefsReady, useStore } from './state/hooks'
 import { bufferDisplayName } from './lib/util'
 import type { BufferEntry } from './state/store'
@@ -37,6 +38,7 @@ export default function App(): JSX.Element {
   const [booted, setBooted] = useState(false)
 
   const accounts = useChat((s) => s.accounts)
+  const allBuffers = useChat((s) => s.buffers)
   const activePanel = useChat((s) => s.activePanel)
   const activeBufferId = useChat((s) => s.activeBufferId)
   // A call whose conversation is not the one on screen. The stage lives in
@@ -74,6 +76,38 @@ export default function App(): JSX.Element {
    * composer all belong to a buffer that is not on screen.
    */
   const onMentionsPage = activePanel === '' && activeGroupId === MENTIONS_GROUP_ID
+
+  // Which Kick channels are actually being watched, told to the daemon as it
+  // changes. Kick counts watch time from an authenticated subscription and
+  // only this side knows what is on screen - see lib/kickwatch.ts for why it
+  // is exactly the open conversation plus anything playing video, and nothing
+  // more.
+  const watchedRef = useRef<string[]>([])
+  useEffect(() => {
+    if (!booted) return
+    // The whole list, not just the open one: picture-in-picture plays a
+    // channel that is deliberately not the conversation on screen, and
+    // looking it up in a list of one would have silently skipped exactly the
+    // case the scoping promises to cover.
+    const serviceOf = (id: string): string | undefined =>
+      accounts.find((a) => a.id === allBuffers.find((b) => b.id === id)?.accountId)?.service
+    const now = watchedKickBuffers(
+      allBuffers,
+      activePanel === '' && !onMentionsPage ? activeBufferId : '',
+      watching?.bufferId,
+      serviceOf
+    )
+    const { start, stop } = watchDelta(watchedRef.current, now)
+    watchedRef.current = now
+    for (const bufferId of stop) {
+      void window.moho.rpc('setKickWatching', { bufferId, watching: false }).catch(() => {})
+    }
+    for (const bufferId of start) {
+      // Quietly: a channel that is not live cannot be watched, which the
+      // daemon answers rather than treats as a failure.
+      void window.moho.rpc('setKickWatching', { bufferId, watching: true }).catch(() => {})
+    }
+  }, [booted, allBuffers, accounts, activeBufferId, activePanel, onMentionsPage, watching])
 
   const openThread = useChat((s) => s.openThread)
 
