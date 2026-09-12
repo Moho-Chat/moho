@@ -225,6 +225,13 @@ export interface FormatOptions {
    * bold.
    */
   ircFormatting?: 'render' | 'strip'
+  /**
+   * Words that stand for pictures in this conversation - Kick's 7TV emotes.
+   *
+   * Per conversation, unlike every other emote here: these carry no id, so a
+   * word is only an emote in the channel whose set contains it.
+   */
+  wordEmotes?: Record<string, string>
 }
 
 /**
@@ -419,6 +426,26 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   out = out.replace(/\[emote:(\d+):([^\]]{0,64})\]/g, (_m, id: string, name: string) =>
     stow(`<img src="${kickEmoteUrl(id)}" class="custom-emoji" alt=":${escapeHtml(name)}:">`)
   )
+
+  // 7TV emotes, which are not tokens at all - a bare word that stands for a
+  // picture in this channel and is ordinary text in the next. So unlike the
+  // two above, this needs the channel's own set, and a word not in it is left
+  // exactly as it was.
+  //
+  // Whole words only, and case-sensitively: 7TV names are chosen to be typed
+  // and collide with ordinary English constantly - a channel with an emote
+  // called "ok" or "no" would otherwise turn half the conversation into
+  // pictures. The boundary is whitespace rather than \b, because names
+  // routinely contain digits and underscores and \b would match inside them.
+  if (opts.wordEmotes && Object.keys(opts.wordEmotes).length > 0) {
+    const words = opts.wordEmotes
+    out = out.replace(/(^|\s)([^\s]{1,64})(?=\s|$)/g, (whole, lead: string, word: string) => {
+      const url = Object.prototype.hasOwnProperty.call(words, word) ? words[word] : undefined
+      return url
+        ? `${lead}${stow(`<img src="${url}" class="custom-emoji" alt=":${escapeHtml(word)}:">`)}`
+        : whole
+    })
+  }
 
   // Discord channel links. What arrives is `<#1393001234568164748>` and
   // nothing else - no name anywhere in the payload - so this is the only
