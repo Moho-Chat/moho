@@ -44,7 +44,7 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
 
   const { menu, open, close } = useContextMenu()
   const [exporting, setExporting] = useState(false)
-  const [oldestHeld, setOldestHeld] = useState<number | undefined>()
+  const [held, setHeld] = useState<{ oldest?: number; count?: number }>({})
 
   const account = accounts.find((a) => a.id === buffer.accountId)
   const name = bufferDisplayName(buffer.name)
@@ -104,9 +104,12 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
         // Asked before the dialog opens so it can say what it will not be able
         // to reach, rather than finding out halfway through.
         void window.moho
-          .rpc<{ oldestHeld: number | null }>('countMessageRange', { bufferId: buffer.id, after: 0 })
-          .then((a) => setOldestHeld(a.oldestHeld ?? undefined))
-          .catch(() => setOldestHeld(undefined))
+          .rpc<{ count: number; oldestHeld: number | null }>('countMessageRange', {
+            bufferId: buffer.id,
+            after: 0
+          })
+          .then((a) => setHeld({ oldest: a.oldestHeld ?? undefined, count: a.count }))
+          .catch(() => setHeld({}))
           .finally(() => setExporting(true))
       }
     }
@@ -138,7 +141,8 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
         <ExportDialog
           title={name}
           service={account?.service}
-          oldestHeld={oldestHeld}
+          oldestHeld={held.oldest}
+          heldCount={held.count}
           onCancel={() => setExporting(false)}
           onConfirm={(range, opts) => {
             setExporting(false)

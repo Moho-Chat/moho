@@ -5421,19 +5421,33 @@ video.lightbox-media {
   flex: none;
 }
 
+/* Stacked rather than side by side. Two datetime-local fields are wider than
+   a 440px dialog has room for once the indent is taken off, and a "from" above
+   a "to" reads as a range in a way two columns do not. */
 .export-range {
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   margin: 4px 0 10px 24px;
 }
 
 .export-range label {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 8px;
+}
+
+.export-range label > span {
+  width: 40px;
+  flex: none;
 }
 
 .export-range input {
+  flex: 1;
+  min-width: 0;
+}
+
+.export-range input[type='datetime-local'] {
   padding: 4px 6px;
   border: 1px solid var(--outline-variant);
   border-radius: 6px;
