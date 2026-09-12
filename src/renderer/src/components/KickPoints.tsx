@@ -25,6 +25,9 @@ interface Reward {
   needsInput: boolean
 }
 
+/** How often the balance is asked for while this channel is on screen. */
+const POINTS_INTERVAL_MS = 60_000
+
 interface Answer {
   rewards: Reward[]
   points: number | null
@@ -37,15 +40,57 @@ export function KickPoints({ bufferId }: { bufferId: string }): JSX.Element | nu
   const [busy, setBusy] = useState('')
   const box = useRef<HTMLDivElement>(null)
 
+  const [points, setPoints] = useState<number | null>(null)
+
   const refresh = (): void => {
     void window.moho
       .rpc<Answer>('listKickRewards', { bufferId })
-      .then(setAnswer)
+      .then((a) => {
+        setAnswer(a)
+        if (a.points !== null) setPoints(a.points)
+      })
       .catch(() => setAnswer(null))
   }
 
-  // Asked on open rather than on every render: a balance is only worth being
-  // current at the moment somebody is about to spend it.
+  // The balance, shown whether or not the pane is open, and kept current
+  // while somebody is actually looking at this channel.
+  //
+  // Only while looking: this component exists only for the conversation on
+  // screen, so a channel scrolled away from stops costing anything the moment
+  // it is closed. A poll per open channel would be a request a minute for
+  // every Kick channel an account watches, forever, to keep numbers nobody is
+  // reading up to date.
+  //
+  // Paused with the window too. A minimised client is not somebody watching,
+  // and points that are a few minutes stale when the window comes back are
+  // corrected by the next tick before anyone could spend them.
+  useEffect(() => {
+    let cancelled = false
+    const ask = (): void => {
+      if (document.visibilityState !== 'visible') return
+      void window.moho
+        .rpc<{ points: number }>('kickPoints', { bufferId })
+        .then((a) => !cancelled && setPoints(a.points))
+        // A channel that will not say leaves the last number rather than
+        // blanking the plaque - it was true a minute ago, which is closer
+        // than nothing.
+        .catch(() => {})
+    }
+    setPoints(null)
+    ask()
+    const timer = setInterval(ask, POINTS_INTERVAL_MS)
+    // Coming back to the window should not wait out the rest of a minute.
+    document.addEventListener('visibilitychange', ask)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', ask)
+    }
+  }, [bufferId])
+
+  // The rest - what the points can buy - only when the pane is opened. A
+  // channel's rewards are set up once and edited rarely, so asking for them
+  // every minute would be a request spent on an answer that does not change.
   useEffect(() => {
     if (open) refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -71,7 +116,6 @@ export function KickPoints({ bufferId }: { bufferId: string }): JSX.Element | nu
     }
   }, [open])
 
-  const points = answer?.points ?? null
 
   const redeem = (reward: Reward): void => {
     setBusy(reward.id)
@@ -82,7 +126,7 @@ export function KickPoints({ bufferId }: { bufferId: string }): JSX.Element | nu
         // The balance the server now holds, rather than this one minus the
         // cost - a redeem that was refunded or cost something else should not
         // leave the plaque disagreeing with Kick.
-        setAnswer((prev) => (prev ? { ...prev, points: a.points ?? prev.points } : prev))
+        if (a.points !== null) setPoints(a.points)
       })
       .catch((e: Error) => store.toast('error', e.message))
       .finally(() => setBusy(''))
