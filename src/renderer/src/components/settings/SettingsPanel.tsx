@@ -773,6 +773,26 @@ function TorSettings(): JSX.Element {
  */
 function MatrixSettings(): JSX.Element {
   return (
+    <>
+      {/* A switch for a switch, deliberately. Sliding sync is not something to
+          choose without knowing what it costs, and putting it in every Matrix
+          account's panel would charge every user the reading for a setting
+          almost none of them want. This is where the explaining happens; the
+          account panel just gets the lever. */}
+      <SettingsSection title="Advanced">
+        <ToggleSetting
+          settingKey="matrix.showSlidingSync"
+          label="Offer sliding sync"
+          description="Adds a per-account switch for a much faster sync. Worth it in hundreds of rooms. Costs presence — nobody shows as online. Still new."
+        />
+      </SettingsSection>
+      <MembershipAnnouncements />
+    </>
+  )
+}
+
+function MembershipAnnouncements(): JSX.Element {
+  return (
     <SettingsSection
       title="Membership announcements"
       description="Shown as chat messages in the room they happened in. nobilis records them regardless of these toggles, so turning one on retroactively reveals events that already happened while it was off."
