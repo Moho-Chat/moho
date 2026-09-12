@@ -141,8 +141,6 @@ export interface RowContext {
   pinned: string[]
   /** Colour is how IRC has always been written, and also how a bot shouts. */
   ircColours: boolean
-  /** Kick's 7TV emotes for this conversation, as word -> picture. */
-  wordEmotes: Record<string, string>
 }
 
 /** The above, for one conversation. Called once per list, not once per row. */
@@ -153,7 +151,6 @@ export function useRowContext(bufferId: string): RowContext {
   const kind = useChat((s) => s.buffers).find((b) => b.id === bufferId)?.kind
   const pinned = useChat((s) => s.pinnedMessages)[bufferId]
   const [ircColours] = usePref<boolean>('irc.renderColours', true)
-  const wordEmotes = useChat((s) => s.kickWordEmotes)[bufferId]
   return useMemo(
     () => ({
       permissions: permissions ?? {},
@@ -161,10 +158,9 @@ export function useRowContext(bufferId: string): RowContext {
       emoji: emoji ?? [],
       inDirectMessage: kind === 'dm',
       pinned: pinned ?? [],
-      ircColours,
-      wordEmotes: wordEmotes ?? {}
+      ircColours
     }),
-    [permissions, smilies, emoji, kind, pinned, ircColours, wordEmotes]
+    [permissions, smilies, emoji, kind, pinned, ircColours]
   )
 }
 
@@ -332,8 +328,7 @@ function MessageRowBody({
     smilies: smilieIndex,
     emoji: bufferEmoji,
     inDirectMessage,
-    ircColours,
-    wordEmotes
+    ircColours
   } = shared
   const sniffed = useSniffedTypes()
 
@@ -409,10 +404,7 @@ function MessageRowBody({
           channels,
           // Only IRC's own traffic is drawn with IRC's codes. Elsewhere they
           // are stripped, which is what the formatter does when not told.
-          ircFormatting: service === 'irc' && ircColours ? 'render' : 'strip',
-          // Kick's 7TV emotes, which only mean anything in the channel whose
-          // set they came from.
-          wordEmotes
+          ircFormatting: service === 'irc' && ircColours ? 'render' : 'strip'
         }),
       media,
       codeBlocks,

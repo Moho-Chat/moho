@@ -452,14 +452,6 @@ export interface ChatState {
    * most of what a viewer wants to know, were nowhere.
    */
   kickStreams: Record<string, KickStream>
-  /**
-   * Kick's 7TV emotes, by buffer, as word -> picture.
-   *
-   * Per buffer because that is what they are: a 7TV emote is a bare word that
-   * stands for a picture in one channel and means nothing in the next, unlike
-   * Kick's own `[emote:id:name]`, which carries its id and resolves anywhere.
-   */
-  kickWordEmotes: Record<string, Record<string, string>>
   /** The poll and prediction running in each channel, by `cardSlot`. */
   livePolls: Record<string, LiveCard>
   /**
@@ -601,7 +593,6 @@ const INITIAL: ChatState = {
   openThread: null,
   matrixPermissions: {},
   kickStreams: {},
-  kickWordEmotes: {},
   livePolls: {},
   pinnedByBuffer: {},
   reviewCard: null,
@@ -2392,14 +2383,6 @@ export class ChatStore {
             // gesture to undo the first, and nobody would find it.
             b.id === data.bufferId ? { ...b, unread: 0, highlight: false, markedUnread: false } : b
           )
-        })
-        break
-
-      // A Kick channel's 7TV emotes: words that are pictures in this room and
-      // ordinary text everywhere else, which is why they are kept per buffer.
-      case 'kickWordEmotes':
-        this.set({
-          kickWordEmotes: { ...this.state.kickWordEmotes, [data.bufferId]: data.emotes }
         })
         break
 
