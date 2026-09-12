@@ -3,6 +3,7 @@ import { Icon, IconButton } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { useActiveBuffer, useChat, useIdSetPref, useStore } from '../state/hooks'
 import { classes, hasDirectMessages, nickColor } from '../lib/util'
+import { KickPoints } from './KickPoints'
 import type { Member } from '../../../shared/wire'
 
 /**
@@ -388,6 +389,12 @@ export function NickList(): JSX.Element {
         {members.length === 0 && <div className="nicklist-empty small muted">No member list yet.</div>}
         {blocked.length > 0 && <div className="nicklist-group small muted">{blocked.length} blocked</div>}
       </div>
+      {/* Kick's own plaque, at the foot of the list where Kick puts it. Only
+          on Kick, and only in a channel - it is a standing in this room, and
+          there is no such thing in a whisper. */}
+      {account?.service === 'kick' && buffer?.kind === 'channel' && buffer && (
+        <KickPoints bufferId={buffer.id} />
+      )}
     </div>
   )
 }
