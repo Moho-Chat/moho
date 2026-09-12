@@ -2933,6 +2933,14 @@ img.smilie {
   gap: 2px;
 }
 
+/* Holds a section's full height while only the rows near the viewport are
+   built inside it, so the sections below keep their place and the scrollbar
+   does not twitch as rows come and go. The grid it wraps is shifted down to
+   the first built row. See Section in EmojiPicker.tsx. */
+.emoji-grid-window {
+  position: relative;
+}
+
 .emoji-cell {
   display: flex;
   align-items: center;

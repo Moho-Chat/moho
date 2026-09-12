@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { resolveMediaUrl } from '../lib/util'
 import { Icon } from './Icon'
@@ -368,6 +368,7 @@ export function EmojiPicker({
       )}
 
       <div className="emoji-scroll" ref={scroll}>
+        <PickerScroll.Provider value={scroll}>
         {!stickersOnly && !q && recent.length > 0 && (
           <Section title="Recent" anchorRef={(el) => (sectionRefs.current.recent = el)}>
             {recent.map((r) => {
@@ -524,12 +525,56 @@ export function EmojiPicker({
         {unicode.length === 0 && custom.length === 0 && smilieList.length === 0 && (
           <div className="small muted emoji-empty">No matches.</div>
         )}
+        </PickerScroll.Provider>
       </div>
     </div>,
     document.body
   )
 }
 
+/**
+ * The scroller every Section measures itself against.
+ *
+ * A context rather than a prop threaded through seven call sites: a Section
+ * needs to know where the visible part of the list is, and nothing else about
+ * it does.
+ */
+const PickerScroll = createContext<React.RefObject<HTMLDivElement | null> | null>(null)
+
+/** How many rows beyond the visible ones to build, so scrolling stays ahead. */
+const OVERSCAN_ROWS = 2
+
+/**
+ * Cells built before anything has been measured.
+ *
+ * Four rather than a screenful: the measurement below needs one laid-out cell
+ * to read a width and a height off, and the column count comes from the grid's
+ * own width, not from counting cells. Building a screenful per section instead
+ * meant every section fetched and decoded one before the window could close -
+ * which for a few hundred animated GIFs is the whole cost this is here to
+ * avoid, paid anyway in the first second.
+ */
+const BOOTSTRAP_CELLS = 4
+
+/**
+ * One heading and its grid, with only the rows near the viewport built.
+ *
+ * The picker offers every emoji the account can send, which on an account in a
+ * few busy Kick channels is several hundred animated GIFs served at their full
+ * size - 500x500 for something drawn at 26. Built all at once that cost ~284MB
+ * of renderer memory, most of which Chromium's decoded-image cache never gave
+ * back (see issue #211). Nothing here is a leak: the JS heap does not move.
+ * It is simply that a decoded frame is enormous next to the cell it fills, and
+ * the fix is to not decode the ones nobody is looking at.
+ *
+ * The outer div keeps the section's full height whatever is built inside it,
+ * so every section below keeps its place and the scrollbar does not move as
+ * rows come and go. The grid is then positioned at the first built row's
+ * offset. Sizes are measured rather than hardcoded - `.emoji-cell` and
+ * `.emoji-grid` own those numbers in app.css, and a copy of them here would
+ * be a second place to change them and a silent misalignment when somebody
+ * changed only one.
+ */
 function Section({
   title,
   children,
@@ -540,12 +585,106 @@ function Section({
   /** Where the jump strip scrolls to, for the sections that have a tab. */
   anchorRef?: (el: HTMLDivElement | null) => void
 }): JSX.Element {
+  const cells = useMemo(() => React.Children.toArray(children), [children])
+  const scroll = useContext(PickerScroll)
+  const windowRef = useRef<HTMLDivElement | null>(null)
+  const gridRef = useRef<HTMLDivElement | null>(null)
+  /** Columns, row height and row pitch, read off the laid-out grid. */
+  const [metrics, setMetrics] = useState<{ cols: number; rowH: number; pitch: number } | null>(null)
+  const [range, setRange] = useState<{ from: number; to: number }>({ from: 0, to: BOOTSTRAP_CELLS })
+
+  useLayoutEffect(() => {
+    const grid = gridRef.current
+    const first = grid?.firstElementChild as HTMLElement | null
+    if (!grid || !first) return
+    const style = getComputedStyle(grid)
+    const colGap = parseFloat(style.columnGap) || 0
+    const rowGap = parseFloat(style.rowGap) || 0
+    const cellW = first.offsetWidth
+    const rowH = first.offsetHeight
+    if (!cellW || !rowH) return
+    const cols = Math.max(1, Math.round((grid.clientWidth + colGap) / (cellW + colGap)))
+    setMetrics((was) =>
+      was && was.cols === cols && was.rowH === rowH && was.pitch === rowH + rowGap
+        ? was
+        : { cols, rowH, pitch: rowH + rowGap }
+    )
+  }, [cells.length, range.from])
+
+  const rows = metrics ? Math.ceil(cells.length / metrics.cols) : 0
+  // The grid's own height, which the outer div holds whatever is built.
+  const fullHeight = metrics && rows > 0 ? rows * metrics.rowH + (rows - 1) * (metrics.pitch - metrics.rowH) : undefined
+
+  useEffect(() => {
+    const box = scroll?.current
+    const outer = windowRef.current
+    if (!box || !outer || !metrics) return
+
+    const recompute = (): void => {
+      // Where this section sits relative to the visible part of the
+      // scroller, and which of its rows the viewport is over.
+      //
+      // Measured rather than read off offsetTop: the picker is a positioned
+      // element, so offsetParent is the picker itself rather than the
+      // scroller, and offsetTop would be short by the height of the search
+      // box and the jump strip above it - which silently builds the wrong
+      // rows. Rects are relative to the same viewport for both, so their
+      // difference is the honest answer.
+      //
+      // The result is stable frame to frame because the outer div's height
+      // never depends on what is currently built.
+      const top = outer.getBoundingClientRect().top - box.getBoundingClientRect().top
+      const height = outer.offsetHeight
+
+      // The slice of this section the viewport actually covers, in the
+      // section's own coordinates. Clamped to the section at both ends, so a
+      // section entirely above or below the viewport comes out empty.
+      //
+      // Getting this wrong is not subtle: taking max(0, -top) alone reads
+      // every off-screen section as if the viewport sat at its first row, and
+      // each one then builds a screenful it will never show. With a few
+      // sections that is most of the cost this window exists to avoid.
+      const from_y = Math.max(0, Math.min(height, -top))
+      const to_y = Math.max(0, Math.min(height, -top + box.clientHeight))
+      if (to_y <= from_y) {
+        setRange((was) => (was.from === 0 && was.to === 0 ? was : { from: 0, to: 0 }))
+        return
+      }
+
+      const firstRow = Math.max(0, Math.floor(from_y / metrics.pitch) - OVERSCAN_ROWS)
+      const lastRow = Math.ceil(to_y / metrics.pitch) + OVERSCAN_ROWS
+      const from = firstRow * metrics.cols
+      const to = Math.min(cells.length, lastRow * metrics.cols)
+      setRange((was) => (was.from === from && was.to === to ? was : { from, to }))
+    }
+
+    recompute()
+    box.addEventListener('scroll', recompute, { passive: true })
+    const ro = new ResizeObserver(recompute)
+    ro.observe(box)
+    return () => {
+      box.removeEventListener('scroll', recompute)
+      ro.disconnect()
+    }
+  }, [scroll, metrics, cells.length])
+
+  const built = metrics ? cells.slice(range.from, range.to) : cells.slice(0, BOOTSTRAP_CELLS)
+  const offset = metrics ? Math.floor(range.from / metrics.cols) * metrics.pitch : 0
+
   return (
     <>
       <div className="emoji-section small muted" ref={anchorRef}>
         {title}
       </div>
-      <div className="emoji-grid">{children}</div>
+      <div ref={windowRef} className="emoji-grid-window" style={{ height: fullHeight }}>
+        <div
+          ref={gridRef}
+          className="emoji-grid"
+          style={metrics ? { transform: `translateY(${offset}px)` } : undefined}
+        >
+          {built}
+        </div>
+      </div>
     </>
   )
 }
