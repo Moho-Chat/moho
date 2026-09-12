@@ -5435,6 +5435,103 @@ video.lightbox-media {
   user-select: all;
 }
 
+/* --- Kick channel points ---------------------------------------------- */
+
+/* The plaque sits at the foot of a full-height column, so its pane has to
+   grow upward - downward would draw it off the window. `relative` here is
+   what the pane is positioned against. */
+.kick-points {
+  position: relative;
+  flex: none;
+  border-top: 1px solid var(--outline-variant);
+}
+
+.kick-points-plaque {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.kick-points-plaque:hover,
+.kick-points-plaque.open {
+  background: var(--surface-container-high);
+}
+
+.kick-points-plaque .ellipsis {
+  flex: 1;
+  text-align: left;
+}
+
+/* Capped and scrolling: a channel may offer more rewards than the window is
+   tall, and a list that runs past the top edge is a list with no top. */
+.kick-rewards {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: min(60vh, 420px);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius) var(--corner-radius) 0 0;
+  background: var(--surface-container-high);
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.kick-rewards-head {
+  padding: 8px 10px 4px;
+  flex: none;
+}
+
+.kick-rewards-list {
+  overflow-y: auto;
+  padding-bottom: 4px;
+}
+
+.kick-rewards-empty {
+  padding: 6px 10px 10px;
+}
+
+.kick-reward {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kick-reward:hover:not(:disabled) {
+  background: var(--surface-container-highest);
+}
+
+/* Shown rather than hidden, because the list is also how somebody learns what
+   a channel does - but plainly not pressable. */
+.kick-reward:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.kick-reward-cost {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--primary);
+}
+
 /* --- Exporting a conversation ----------------------------------------- */
 
 .export-choice {
