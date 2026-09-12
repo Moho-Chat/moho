@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
-import { useChat, useStore } from '../state/hooks'
+import { useChat, usePref, useStore } from '../state/hooks'
 import { resolveMediaUrl } from '../lib/util'
 import type { Account, MatrixDevice } from '../../../shared/wire'
 
@@ -61,6 +61,7 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
   const [storageSecret, setStorageSecret] = useState('')
   // The recovery code, held only long enough to be read once.
   const [newCode, setNewCode] = useState('')
+  const [showSlidingSync] = usePref<boolean>('matrix.showSlidingSync', false)
   const [restoreKey, setRestoreKey] = useState('')
   const [busy, setBusy] = useState('')
   const [deleting, setDeleting] = useState<string | null>(null)
@@ -185,34 +186,38 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
           </button>
         </div>
       )}
-      <div className="setting-row">
-        <div className="setting-text">
-          <div>Sliding sync</div>
-          <div className="small muted">
-            A newer, much lighter way of talking to the homeserver: it sends the rooms that
-            changed instead of the whole account every time. Worth it on an account in a lot of
-            rooms. Still new here — if this account stops receiving messages, turn it back off.
+      {/* Hidden unless asked for in Settings → Matrix → Advanced, where what
+          it costs is explained. Shown regardless while it is on, so an account
+          using it can always be turned back - a switch that disappears leaving
+          its setting applied is a trap. */}
+      {(showSlidingSync || account.slidingSync) && (
+        <div className="setting-row">
+          <div className="setting-text">
+            <div>Sliding sync</div>
+            <div className="small muted">
+              Reconnect the account to apply. No presence while it is on.
+            </div>
           </div>
-        </div>
-        <button
-          type="button"
-          className={account.slidingSync ? 'button' : 'button subtle'}
-          onClick={() =>
-            void rpc('setMatrixSlidingSync', { accountId: account.id, enabled: !account.slidingSync })
-              .then(() =>
-                store.toast(
-                  'info',
-                  account.slidingSync
-                    ? 'Sliding sync off — reconnect this account to go back to the old sync'
-                    : 'Sliding sync on — reconnect this account to start using it'
+          <button
+            type="button"
+            className={account.slidingSync ? 'button' : 'button subtle'}
+            onClick={() =>
+              void rpc('setMatrixSlidingSync', { accountId: account.id, enabled: !account.slidingSync })
+                .then(() =>
+                  store.toast(
+                    'info',
+                    account.slidingSync
+                      ? 'Sliding sync off — reconnect this account to go back to the old sync'
+                      : 'Sliding sync on — reconnect this account to start using it'
+                  )
                 )
-              )
-              .then(() => void store.refreshAccounts())
-          }
-        >
-          {account.slidingSync ? 'On' : 'Off'}
-        </button>
-      </div>
+                .then(() => void store.refreshAccounts())
+            }
+          >
+            {account.slidingSync ? 'On' : 'Off'}
+          </button>
+        </div>
+      )}
       <div className="setting-row">
         <div className="setting-text">
           <div>Call server</div>
