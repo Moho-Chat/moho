@@ -53,6 +53,10 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
   const [devices, setDevices] = useState<MatrixDevice[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [recoveryKey, setRecoveryKey] = useState('')
+  // Where this account's room calls go when the homeserver names no media
+  // server of its own. Seeded from the account and only sent when it changes,
+  // so opening this page does not rewrite a setting nobody touched.
+  const [rtcFocus, setRtcFocus] = useState(account.rtcFocusUrl ?? '')
   const [restoreKey, setRestoreKey] = useState('')
   const [busy, setBusy] = useState('')
   const [deleting, setDeleting] = useState<string | null>(null)
@@ -107,8 +111,48 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
       throw e
     })
 
+  const rtcFocusChanged = rtcFocus.trim() !== (account.rtcFocusUrl ?? '')
+
   return (
     <div className="matrix-tools">
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Call server</div>
+          <div className="small muted">
+            Where this account&rsquo;s room calls go. Most homeservers name one and this can stay
+            empty; a server that does not leaves calls with nowhere to go until one is given
+            here.
+          </div>
+        </div>
+      </div>
+      <div className="device-row">
+        <Icon name="cell_tower" size={18} />
+        <div className="field-row setting-text">
+          <input
+            className="text-field"
+            placeholder="https://livekit.example.org"
+            value={rtcFocus}
+            onChange={(e) => setRtcFocus(e.target.value)}
+          />
+        </div>
+        <button
+          type="button"
+          className="button subtle"
+          disabled={!rtcFocusChanged}
+          onClick={() =>
+            void rpc('setMatrixRtcFocus', { accountId: account.id, url: rtcFocus.trim() })
+              .then(() =>
+                store.toast(
+                  'info',
+                  rtcFocus.trim() ? 'Call server set' : 'Call server cleared - the homeserver decides again'
+                )
+              )
+              .then(() => void store.refreshAccounts())
+          }
+        >
+          {rtcFocus.trim() ? 'Save' : 'Clear'}
+        </button>
+      </div>
       <div className="setting-row">
         <div className="setting-text">
           <div>Sessions</div>
