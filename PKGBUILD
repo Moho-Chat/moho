@@ -14,7 +14,7 @@ pkgrel=1
 pkgdesc="Unified desktop chat client for IRC, Discord, Sneedchat and Matrix"
 arch=('x86_64')
 url="https://git.salastil.com/Salastil/moho"
-license=('GPL3' 'AGPL3')
+license=('GPL3')
 # Electron ships its own copy of Chromium, but still links against the
 # system's GTK/NSS/audio stack at runtime.
 depends=('gtk3' 'nss' 'alsa-lib' 'libxss' 'libnotify')
