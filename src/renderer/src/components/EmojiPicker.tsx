@@ -247,19 +247,27 @@ export function EmojiPicker({
   // reordered: a section's place is how somebody finds it again, and the jump
   // strip above is drawn from this same order.
   //
-  // The ones that reach this conversation come first. An emote that cannot be
-  // sent here is still worth showing - it is how somebody learns what Nitro or
-  // a subscription would buy - but it should not sit between them and the
-  // ones they can actually use.
-  const sourceSections = useMemo(() => {
-    const matching = sources
-      .map((src) => ({
-        ...src,
-        emoji: q ? src.emoji.filter((e) => e.name.toLowerCase().includes(q)) : src.emoji
-      }))
-      .filter((src) => src.emoji.length > 0)
-    return [...matching.filter((s) => s.usableHere), ...matching.filter((s) => !s.usableHere)]
-  }, [sources, q])
+  // A source that belongs somewhere else and cannot be sent from here is
+  // dropped entirely. Somewhere else's emoji are not an offer - they are a
+  // list of things that would not work, and on an account in thirty Discord
+  // guilds or twenty Kick channels that list is the picker.
+  //
+  // A locked entry inside a source that *does* belong here is the opposite,
+  // and stays: a subscriber emote in the channel you are reading is a real
+  // offer, and greying it out is how somebody finds out what subscribing to
+  // this streamer would buy. The difference is whether the answer is "not
+  // yours" or "not here".
+  const sourceSections = useMemo(
+    () =>
+      sources
+        .filter((src) => src.usableHere)
+        .map((src) => ({
+          ...src,
+          emoji: q ? src.emoji.filter((e) => e.name.toLowerCase().includes(q)) : src.emoji
+        }))
+        .filter((src) => src.emoji.length > 0),
+    [sources, q]
+  )
 
   // Kept for a daemon too old to answer `listAllEmoji`, which is the only
   // case this still runs in - `customEmoji` is the buffer's own list.
@@ -342,8 +350,8 @@ export function EmojiPicker({
             <button
               key={src.id}
               type="button"
-              className={src.usableHere ? 'emoji-jump-tab' : 'emoji-jump-tab locked'}
-              title={src.usableHere ? src.name : `${src.name} — cannot be sent here`}
+              className="emoji-jump-tab"
+              title={src.name}
               onClick={() => jumpTo(src.id)}
             >
               {src.iconUrl ? (
@@ -394,18 +402,14 @@ export function EmojiPicker({
         {sourceSections.map((src) => (
           <Section
             key={src.id}
-            title={src.usableHere ? src.name : `${src.name} — not here`}
+            title={src.name}
             anchorRef={(el) => (sectionRefs.current[src.id] = el)}
           >
             {src.emoji.map((e) => {
-              // Two different reasons a cell cannot be used, and they are
-              // worth telling apart: `locked` is "you have not paid for
-              // this", `!usableHere` is "you have, but not in this room".
-              const why = e.locked
-                ? `${e.name} — subscriber only`
-                : !src.usableHere
-                  ? `${e.name} — cannot be sent in this conversation`
-                  : ''
+              // Only one reason left: a source that could not be used here
+              // at all was dropped above, so a cell that cannot be pressed is
+              // one this account has not paid for - in a room it is reading.
+              const why = e.locked ? `${e.name} — subscriber only` : ''
               return (
                 <button
                   key={`${src.id}:${e.id}`}
