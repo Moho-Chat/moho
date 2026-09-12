@@ -517,3 +517,30 @@ jobs:
             echo "dropping $asset"
             gh release delete-asset latest "$asset" --yes
           done
+
+      # Last, because this is what dates the release, and it should say when
+      # the files below it were finished rather than when the job started.
+      #
+      # `gh release edit` above rewrites the title, the body and the assets,
+      # but it cannot touch published_at - that field only moves when a
+      # release goes from draft to published, and this one was published once,
+      # in the run that first created it. Everything after that refreshed the
+      # contents underneath a header still dated to that first run, so the
+      # page read as though the build had stopped publishing while it was in
+      # fact replacing both files every push. Twelve builds landed behind a
+      # timestamp that never moved before anyone noticed.
+      #
+      # Draft and back is the only way to move it. Addressed by release id
+      # rather than by tag because a draft is not reliably addressable by tag,
+      # and the id is read while the release is still published.
+      #
+      # The release is invisible between the two calls - a second or so - and
+      # /releases/latest 404s for anyone who lands in exactly that gap. That
+      # is the same brief exposure the concurrency note above already accepts,
+      # and it is at the very end, after the assets are in place, so the
+      # release never reappears holding the wrong files.
+      - name: date the release to now
+        run: |
+          id="$(gh api "repos/$GH_REPO/releases/tags/latest" -q .id)"
+          gh api -X PATCH "repos/$GH_REPO/releases/$id" -F draft=true  >/dev/null
+          gh api -X PATCH "repos/$GH_REPO/releases/$id" -F draft=false >/dev/null
