@@ -117,6 +117,34 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
     <div className="matrix-tools">
       <div className="setting-row">
         <div className="setting-text">
+          <div>Sliding sync</div>
+          <div className="small muted">
+            A newer, much lighter way of talking to the homeserver: it sends the rooms that
+            changed instead of the whole account every time. Worth it on an account in a lot of
+            rooms. Still new here — if this account stops receiving messages, turn it back off.
+          </div>
+        </div>
+        <button
+          type="button"
+          className={account.slidingSync ? 'button' : 'button subtle'}
+          onClick={() =>
+            void rpc('setMatrixSlidingSync', { accountId: account.id, enabled: !account.slidingSync })
+              .then(() =>
+                store.toast(
+                  'info',
+                  account.slidingSync
+                    ? 'Sliding sync off — reconnect this account to go back to the old sync'
+                    : 'Sliding sync on — reconnect this account to start using it'
+                )
+              )
+              .then(() => void store.refreshAccounts())
+          }
+        >
+          {account.slidingSync ? 'On' : 'Off'}
+        </button>
+      </div>
+      <div className="setting-row">
+        <div className="setting-text">
           <div>Call server</div>
           <div className="small muted">
             Where this account&rsquo;s room calls go. Most homeservers name one and this can stay
