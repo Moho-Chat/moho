@@ -5370,6 +5370,42 @@ video.lightbox-media {
   position: relative;
 }
 
+/* The conversation's name at the top of the window, which is also the way
+   into its menu. Styled as the heading it already was until it is reached for:
+   a header that looked like a row of buttons would be busier than the thing it
+   is heading. */
+.header-nameplate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  padding: 3px 6px;
+  margin: -3px 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.header-nameplate:hover,
+.header-nameplate.open {
+  background: var(--surface-container-high);
+}
+
+.header-nameplate:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.header-nameplate .main-header-title {
+  flex: 1;
+  min-width: 0;
+}
+
 /* --- Exporting a conversation ----------------------------------------- */
 
 .export-choice {
