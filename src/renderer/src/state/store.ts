@@ -46,6 +46,16 @@ import type { PopoutState } from '../../../shared/ipc'
 export interface BufferEntry extends WireBuffer {
   unread: number
   highlight: boolean
+  /**
+   * Left unread on purpose, rather than merely not read yet.
+   *
+   * Separate from `unread` because it outlives the count: a room marked this
+   * way stays marked after its messages have been seen, which is the whole
+   * point - it is a note to come back, not a tally. Matrix only, since it is
+   * the one service here with an account-level place to keep it, which is what
+   * lets the mark follow somebody to their phone.
+   */
+  markedUnread?: boolean
 }
 
 /** A wire Message plus local optimistic-send bookkeeping. */
@@ -1488,6 +1498,27 @@ export class ChatStore {
     }
   }
 
+  /**
+   * Leaves a room unread on purpose.
+   *
+   * Set optimistically as well as sent, because the answer arrives back
+   * through sync rather than as a reply - waiting for it would leave the row
+   * looking unchanged for a whole sync cycle after somebody pressed the thing.
+   */
+  async markUnread(bufferId: string): Promise<void> {
+    this.set({
+      buffers: this.state.buffers.map((b) => (b.id === bufferId ? { ...b, markedUnread: true } : b))
+    })
+    try {
+      await window.moho.rpc('setMatrixMarkedUnread', { bufferId, unread: true })
+    } catch (e) {
+      this.set({
+        buffers: this.state.buffers.map((b) => (b.id === bufferId ? { ...b, markedUnread: false } : b))
+      })
+      this.toast('error', `Couldn't mark that unread: ${(e as Error).message}`)
+    }
+  }
+
   /** Puts an export down between pages, or picks it back up. */
   async pauseTransfer(id: string, paused: boolean): Promise<void> {
     try {
@@ -2347,7 +2378,19 @@ export class ChatStore {
       case 'bufferRead':
         this.set({
           buffers: this.state.buffers.map((b) =>
-            b.id === data.bufferId ? { ...b, unread: 0, highlight: false } : b
+            // Reading a room is how a deliberate mark is taken off, so the
+            // flag clears with the count. Anything else would need a second
+            // gesture to undo the first, and nobody would find it.
+            b.id === data.bufferId ? { ...b, unread: 0, highlight: false, markedUnread: false } : b
+          )
+        })
+        break
+
+      // Somebody left this room unread, here or on another client.
+      case 'markedUnread':
+        this.set({
+          buffers: this.state.buffers.map((b) =>
+            b.id === data.bufferId ? { ...b, markedUnread: !!data.unread } : b
           )
         })
         break

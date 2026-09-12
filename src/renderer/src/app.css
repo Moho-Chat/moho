@@ -5406,6 +5406,18 @@ video.lightbox-media {
   min-width: 0;
 }
 
+/* A room somebody deliberately left unread, with nothing new in it. Sized and
+   placed like the count it stands in for, so the column does not shift when a
+   marked room gains a real unread. */
+.unread-dot {
+  width: 9px;
+  height: 9px;
+  margin: 0 4px;
+  border-radius: 999px;
+  background: var(--primary);
+  flex: none;
+}
+
 /* --- Exporting a conversation ----------------------------------------- */
 
 .export-choice {

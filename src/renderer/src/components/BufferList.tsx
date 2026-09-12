@@ -313,6 +313,7 @@ export function BufferList(): JSX.Element {
       poppedOut={popouts.open.includes(b.id)}
       onPopOut={() => store.popOut(b.id)}
       onDock={() => store.dock(b.id)}
+      onMarkUnread={() => void store.markUnread(b.id)}
       // Only where there is somewhere to drop it. A list with no headings of
       // your own has nothing a channel could be filed under, and a drag that
       // can only ever be refused is worse than one the row does not offer.
@@ -719,6 +720,8 @@ interface BufferRowProps {
   poppedOut: boolean
   onPopOut: () => void
   onDock: () => void
+  /** Matrix only: leave it unread on purpose. */
+  onMarkUnread?: () => void
   draggable: boolean
   /** Being carried right now. */
   lifted: boolean
@@ -757,6 +760,7 @@ function BufferRow({
   poppedOut,
   onPopOut,
   onDock,
+  onMarkUnread,
   draggable,
   lifted,
   filed,
@@ -829,7 +833,9 @@ function BufferRow({
     onHangUp,
     onFile,
     onPopOut,
-    onDock
+    onDock,
+    onMarkUnread: account?.service === 'matrix' ? onMarkUnread : undefined,
+    markedUnread: buffer.markedUnread
   })
 
   return (
@@ -870,13 +876,17 @@ function BufferRow({
             arrive is worse than either on its own. */}
         {live ? (
           <span className="live-badge">LIVE</span>
+        ) : buffer.unread > 0 && !muted ? (
+          <span className={classes('unread-badge', buffer.highlight && 'highlight')}>
+            {buffer.unread > 99 ? '99+' : buffer.unread}
+          </span>
         ) : (
-          buffer.unread > 0 &&
-          !muted && (
-            <span className={classes('unread-badge', buffer.highlight && 'highlight')}>
-              {buffer.unread > 99 ? '99+' : buffer.unread}
-            </span>
-          )
+          // Left unread on purpose, with nothing new in it. A dot rather than
+          // a count, because there is no number to show - the room was read
+          // and then deliberately put back, and what it is saying is "come
+          // back to this", not "there are four of something".
+          buffer.markedUnread &&
+          !muted && <span className="unread-dot" aria-label="Marked as unread" />
         )}
       </button>
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={entries} onClose={close} />}

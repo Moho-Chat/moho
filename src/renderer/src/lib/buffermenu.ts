@@ -44,6 +44,14 @@ export interface BufferMenuInput {
   onFile: (categoryId: string) => void
   onPopOut: () => void
   onDock: () => void
+  /**
+   * Leave it unread on purpose. Absent where the service has nowhere to keep
+   * such a mark - only Matrix has account data for it, and an entry that
+   * silently did nothing anywhere else would be worse than no entry.
+   */
+  onMarkUnread?: () => void
+  /** Already marked, so the entry has nothing left to offer. */
+  markedUnread?: boolean
 }
 
 /** What leaving is called, which depends on what is being left. */
@@ -81,7 +89,9 @@ export function bufferMenuEntries({
   onHangUp,
   onFile,
   onPopOut,
-  onDock
+  onDock,
+  onMarkUnread,
+  markedUnread
 }: BufferMenuInput): MenuEntry[] {
   return [
     ...(canCall
@@ -150,6 +160,13 @@ export function bufferMenuEntries({
             onClick: onToggleAutojoin
           }
         ] as MenuEntry[])
+      : []),
+    // Above pin and mute because it is about this conversation now, where
+    // those two are about it always. Offered only where it can be kept, and
+    // not offered again once it is set - reading the room is what takes it
+    // off, which is the gesture somebody already has.
+    ...(onMarkUnread && !markedUnread
+      ? ([{ label: 'Mark as unread', icon: 'mark_chat_unread', onClick: onMarkUnread }] as MenuEntry[])
       : []),
     { label: pinned ? 'Unpin' : 'Pin', icon: 'push_pin', onClick: onTogglePin },
     // A mute made on the account itself is not this window's to undo, and an
