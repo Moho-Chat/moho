@@ -225,7 +225,7 @@ export function MediaEmbed({
     // Browsers give no pause control over an animated GIF, so "don't autoplay"
     // is expressed by not loading it until asked.
     const animated =
-      attachment?.mimetype === 'image/gif' || /\.(gif|webp)(\?\S*)?$/i.test(fullSrc)
+      attachment?.mimetype === 'image/gif' || /\.(gif|webp|avif)(\?\S*)?$/i.test(fullSrc)
     if (animated && !autoplay && !playing) {
       return (
         <button type="button" className="media-embed paused" onClick={() => setPlaying(true)}>

@@ -546,7 +546,7 @@ export function hostnameOf(url: string): string {
  */
 export const OPAQUE_IMAGE_HOSTS = ['i.ddos.lgbt']
 
-const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp)(\?\S*)?$/i
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|avif)(\?\S*)?$/i
 const VIDEO_EXT_RE = /\.(mp4|webm|mov|mkv|ogv)(\?\S*)?$/i
 
 /**
