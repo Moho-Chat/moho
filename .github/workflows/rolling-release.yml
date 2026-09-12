@@ -282,8 +282,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake gcc-mingw-w64-x86-64
-          sudo apt-get install -y --no-install-recommends wine64 \
-            || sudo apt-get install -y --no-install-recommends wine
+          sudo apt-get install -y --no-install-recommends wine \
+            || sudo apt-get install -y --no-install-recommends wine64
+          # Ubuntu 24.04's wine64 package installs the binary as `wine64` and
+          # leaves no `wine` on PATH, which is the name electron-builder looks
+          # for - the second run installed it successfully and then could not
+          # find it. Bridge the two names rather than betting on which package
+          # a future runner image carries.
+          command -v wine >/dev/null || sudo ln -s "$(command -v wine64)" /usr/local/bin/wine
           wine --version
 
       - name: rust toolchain
