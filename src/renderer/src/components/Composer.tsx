@@ -866,8 +866,12 @@ export function Composer(): JSX.Element | null {
       {pickerOpen && (
         <EmojiPicker
           anchor={emojiButtonRef.current}
-          // Only the active buffer's own guild emoji are offered - nobilis
-          // already filters that list to what's actually usable there.
+          // Which conversation this is for. The picker asks the daemon what
+          // this account can send anywhere, and the answer says which of it
+          // reaches here - see #205.
+          bufferId={buffer.id}
+          // Only reached with a daemon too old to answer that, where this is
+          // what the picker showed before it asked.
           customEmoji={bufferEmojiByBuffer[buffer.id] || []}
           // Recent picks belong to whoever is signed in here, not to the app.
           accountId={account?.id}

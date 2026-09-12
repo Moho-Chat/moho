@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { resolveMediaUrl } from '../lib/util'
+import { Icon } from './Icon'
 import { discordEmojiUrl, emojiPreview, type SmilieEntry } from '../lib/format'
 import type { CustomEmoji } from '../../../shared/wire'
 
@@ -108,8 +109,30 @@ export interface StickerEntry {
   url?: string | null
 }
 
+/** One place emoji come from, as `listAllEmoji` answers. */
+export interface EmojiSource {
+  id: string
+  name: string
+  service: string
+  /** "text" inserts into the message; "event" sends on its own. */
+  kind: string
+  iconUrl?: string
+  /** Whether these can be sent in the conversation the picker was opened in. */
+  usableHere: boolean
+  emoji: {
+    id: string
+    name: string
+    url?: string
+    animated?: boolean
+    /** Owned somewhere this account has not paid into. */
+    locked?: boolean
+  }[]
+}
+
 interface Props {
   anchor: HTMLElement | null
+  /** Which conversation this is for, so the daemon can say what reaches it. */
+  bufferId?: string
   customEmoji?: CustomEmoji[]
   smilies?: SmilieEntry[]
   /**
@@ -135,6 +158,7 @@ interface Props {
 
 export function EmojiPicker({
   anchor,
+  bufferId,
   customEmoji = [],
   smilies = [],
   stickers = [],
@@ -148,6 +172,22 @@ export function EmojiPicker({
   const [query, setQuery] = useState('')
   const [pos, setPos] = useState({ left: 0, top: 0 })
   const [recent, setRecent] = useState<string[]>(() => readRecent(accountId))
+  // Everything this account can send, wherever it came from. Asked of the
+  // daemon rather than assembled here, because the answer depends on things
+  // only it knows - a Nitro subscription, a Kick channel's standing.
+  const [sources, setSources] = useState<EmojiSource[]>([])
+  const scroll = useRef<HTMLDivElement>(null)
+  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
+
+  useEffect(() => {
+    if (stickersOnly || !bufferId) return
+    void window.moho
+      .rpc<EmojiSource[]>('listAllEmoji', { bufferId })
+      // An older daemon has no such method; the buffer's own emoji below are
+      // what this showed before it asked, so that is what it falls back to.
+      .catch(() => [])
+      .then(setSources)
+  }, [bufferId, stickersOnly])
 
   // The picker is normally opened fresh, but it stays up across a buffer
   // switch - and that switch can cross from one account to another, at which
@@ -203,10 +243,28 @@ export function EmojiPicker({
     [q, customEmoji]
   )
 
-  // Grouped in the order the daemon listed them, so a channel's own emotes
-  // stay above the global sets rather than being alphabetised away from where
-  // whoever is watching expects them.
+  // The sources the daemon listed, filtered by the search but never
+  // reordered: a section's place is how somebody finds it again, and the jump
+  // strip above is drawn from this same order.
+  //
+  // The ones that reach this conversation come first. An emote that cannot be
+  // sent here is still worth showing - it is how somebody learns what Nitro or
+  // a subscription would buy - but it should not sit between them and the
+  // ones they can actually use.
+  const sourceSections = useMemo(() => {
+    const matching = sources
+      .map((src) => ({
+        ...src,
+        emoji: q ? src.emoji.filter((e) => e.name.toLowerCase().includes(q)) : src.emoji
+      }))
+      .filter((src) => src.emoji.length > 0)
+    return [...matching.filter((s) => s.usableHere), ...matching.filter((s) => !s.usableHere)]
+  }, [sources, q])
+
+  // Kept for a daemon too old to answer `listAllEmoji`, which is the only
+  // case this still runs in - `customEmoji` is the buffer's own list.
   const customSections = useMemo<[string, CustomEmoji[]][]>(() => {
+    if (sources.length > 0) return []
     const groups: [string, CustomEmoji[]][] = []
     for (const e of custom) {
       const title = e.set ?? 'Server emoji'
@@ -215,7 +273,11 @@ export function EmojiPicker({
       else groups.push([title, [e]])
     }
     return groups
-  }, [custom])
+  }, [custom, sources])
+
+  const jumpTo = (id: string): void => {
+    sectionRefs.current[id]?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }
   const smilieList = useMemo(
     () =>
       q
@@ -266,9 +328,40 @@ export function EmojiPicker({
         onChange={(e) => setQuery(e.target.value)}
       />
 
-      <div className="emoji-scroll">
+      {/* One icon per section, to move down a list that is now long enough
+          to need it. Recent first because it is the one people reach for
+          most, and it is where the list starts. */}
+      {sourceSections.length > 0 && (
+        <div className="emoji-jump">
+          {!q && recent.length > 0 && (
+            <button type="button" className="emoji-jump-tab" title="Recent" onClick={() => jumpTo('recent')}>
+              <Icon name="history" size={16} />
+            </button>
+          )}
+          {sourceSections.map((src) => (
+            <button
+              key={src.id}
+              type="button"
+              className={src.usableHere ? 'emoji-jump-tab' : 'emoji-jump-tab locked'}
+              title={src.usableHere ? src.name : `${src.name} — cannot be sent here`}
+              onClick={() => jumpTo(src.id)}
+            >
+              {src.iconUrl ? (
+                <img src={resolveMediaUrl(src.iconUrl)} alt="" />
+              ) : (
+                <span className="emoji-jump-initial">{src.name.slice(0, 1).toUpperCase()}</span>
+              )}
+            </button>
+          ))}
+          <button type="button" className="emoji-jump-tab" title="Emoji" onClick={() => jumpTo('unicode')}>
+            <Icon name="mood" size={16} />
+          </button>
+        </div>
+      )}
+
+      <div className="emoji-scroll" ref={scroll}>
         {!stickersOnly && !q && recent.length > 0 && (
-          <Section title="Recent">
+          <Section title="Recent" anchorRef={(el) => (sectionRefs.current.recent = el)}>
             {recent.map((r) => {
               // A recent is stored as the text that gets sent, which for a
               // custom emoji or a shortcode is a stand-in rather than the
@@ -298,6 +391,43 @@ export function EmojiPicker({
           </Section>
         )}
 
+        {sourceSections.map((src) => (
+          <Section
+            key={src.id}
+            title={src.usableHere ? src.name : `${src.name} — not here`}
+            anchorRef={(el) => (sectionRefs.current[src.id] = el)}
+          >
+            {src.emoji.map((e) => {
+              // Two different reasons a cell cannot be used, and they are
+              // worth telling apart: `locked` is "you have not paid for
+              // this", `!usableHere` is "you have, but not in this room".
+              const why = e.locked
+                ? `${e.name} — subscriber only`
+                : !src.usableHere
+                  ? `${e.name} — cannot be sent in this conversation`
+                  : ''
+              return (
+                <button
+                  key={`${src.id}:${e.id}`}
+                  type="button"
+                  className={why ? 'emoji-cell locked' : 'emoji-cell'}
+                  disabled={!!why}
+                  title={why || e.name}
+                  onClick={() => pick(e.id)}
+                >
+                  {e.url ? (
+                    <img src={resolveMediaUrl(e.url)} alt={e.name} loading="lazy" />
+                  ) : src.service === 'discord' ? (
+                    <img src={discordEmojiUrl(e.id, 48)} alt={e.name} loading="lazy" />
+                  ) : (
+                    <span className="emoji-token">{e.name}</span>
+                  )}
+                </button>
+              )
+            })}
+          </Section>
+        ))}
+
         {packs.map(([pack, entries]) => (
           <Section key={pack} title={pack}>
             {entries.map((sticker) => (
@@ -326,7 +456,7 @@ export function EmojiPicker({
         )}
 
         {!stickersOnly && unicode.length > 0 && (
-          <Section title="Emoji">
+          <Section title="Emoji" anchorRef={(el) => (sectionRefs.current.unicode = el)}>
             {unicode.map((e) => (
               <button
                 key={e.emoji}
@@ -396,10 +526,21 @@ export function EmojiPicker({
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
+function Section({
+  title,
+  children,
+  anchorRef
+}: {
+  title: string
+  children: React.ReactNode
+  /** Where the jump strip scrolls to, for the sections that have a tab. */
+  anchorRef?: (el: HTMLDivElement | null) => void
+}): JSX.Element {
   return (
     <>
-      <div className="emoji-section small muted">{title}</div>
+      <div className="emoji-section small muted" ref={anchorRef}>
+        {title}
+      </div>
       <div className="emoji-grid">{children}</div>
     </>
   )

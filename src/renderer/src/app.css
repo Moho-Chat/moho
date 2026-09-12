@@ -5435,6 +5435,67 @@ video.lightbox-media {
   user-select: all;
 }
 
+/* The strip of section icons. Horizontal and scrollable rather than wrapping:
+   an account in thirty guilds would otherwise push the emoji themselves off
+   the bottom of the picker with a block of tabs. */
+.emoji-jump {
+  display: flex;
+  gap: 2px;
+  flex: none;
+  padding: 4px 2px;
+  border-bottom: 1px solid var(--outline-variant);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.emoji-jump::-webkit-scrollbar {
+  display: none;
+}
+
+.emoji-jump-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.emoji-jump-tab:hover {
+  background: var(--surface-container-highest);
+}
+
+.emoji-jump-tab img {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* A source whose emoji cannot be sent here is still reachable - it is how
+   somebody learns what a subscription would buy - but says so. */
+.emoji-jump-tab.locked {
+  opacity: 0.4;
+}
+
+.emoji-jump-initial {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Same reasoning as the tab: shown, plainly unusable, and the title says
+   which of the two reasons it is. */
+.emoji-cell.locked {
+  opacity: 0.35;
+  cursor: default;
+}
+
 /* --- Kick channel points ---------------------------------------------- */
 
 /* The plaque sits at the foot of a full-height column, so its pane has to
