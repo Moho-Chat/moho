@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { resolveMediaUrl } from '../lib/util'
 import { Icon } from './Icon'
 import { discordEmojiUrl, emojiPreview, type SmilieEntry } from '../lib/format'
+import { drawableEmoteUrl, onLocalEmotes } from '../lib/emotecache'
 import type { CustomEmoji } from '../../../shared/wire'
 
 /**
@@ -69,7 +70,7 @@ function emojiToken(e: CustomEmoji): string {
 
 /** Where its picture is: said outright where the service gives one. */
 function emojiImage(e: CustomEmoji): string {
-  return e.url ?? discordEmojiUrl(e.id)
+  return e.url ? drawableEmoteUrl(e.url) : discordEmojiUrl(e.id)
 }
 
 const MAX_RECENT = 16
@@ -341,6 +342,11 @@ export function EmojiPicker({
     return [...byPack.entries()]
   }, [q, stickers])
 
+  // Redrawn when small copies arrive, so a cell that opened on Kick's own
+  // full-size URL swaps to the shrunk one rather than waiting for a scroll.
+  const [, setEmoteTick] = useState(0)
+  useEffect(() => onLocalEmotes(() => setEmoteTick((n) => n + 1)), [])
+
   const pick = (text: string): void => {
     const next = [text, ...recent.filter((r) => r !== text)].slice(0, MAX_RECENT)
     setRecent(next)
@@ -451,7 +457,7 @@ export function EmojiPicker({
                   onClick={() => pick(e.id)}
                 >
                   {e.url ? (
-                    <img src={resolveMediaUrl(e.url)} alt={e.name} loading="lazy" />
+                    <img src={resolveMediaUrl(drawableEmoteUrl(e.url))} alt={e.name} loading="lazy" />
                   ) : src.service === 'discord' ? (
                     <img src={discordEmojiUrl(e.id, 48)} alt={e.name} loading="lazy" />
                   ) : (
