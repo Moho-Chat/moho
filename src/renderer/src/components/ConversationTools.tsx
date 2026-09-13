@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
 import { AddToConversation } from './AddToConversation'
 import { DiscordInvite } from './DiscordInvite'
+import { RoomSettings } from './RoomSettings'
 import { HeaderPopover } from './HeaderPopover'
 import { useChat, useStore } from '../state/hooks'
 import { bufferDisplayName, classes, formatFullTime } from '../lib/util'
@@ -923,6 +924,11 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
       {/* Beside the pins, because it is the same kind of fact about a room:
           something the room keeps, rather than something said in it. */}
       {isMatrix && buffer.kind !== 'server' && <RoomWidgets buffer={buffer} />}
+
+      {/* And the room's own settings, next to them for the same reason.
+          Only on a room: a direct message has no history for anybody to
+          join and read. */}
+      {isMatrix && buffer.kind === 'channel' && <RoomSettings buffer={buffer} />}
 
       {/* What this channel has asked before now. Two buttons rather than one
           list, because a poll and a prediction are different questions -
