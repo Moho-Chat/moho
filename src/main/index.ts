@@ -256,6 +256,27 @@ function createWindow(): void {
   loadRenderer(mainWindow)
 }
 
+/**
+ * The directory this machine keeps throwaway files in.
+ *
+ * Asked of Electron, which knows the platform's answer - `~/.cache`,
+ * `%LOCALAPPDATA%`, `~/Library/Caches` - but does not list `cache` among the
+ * names in `getPath`'s typings, hence the widened signature and the guard.
+ *
+ * The fallback is the XDG rule, and it is a fallback rather than the rule
+ * because on Windows it produces `C:\Users\<name>\.cache`: a dotfile
+ * directory in the profile root, which works and is not where anything else on
+ * that system looks. nobilis learned that one the hard way with its own data
+ * directory - see `default_data_dir` there.
+ */
+function cacheRoot(): string {
+  try {
+    return (app.getPath as (name: string) => string)('cache')
+  } catch {
+    return process.env['XDG_CACHE_HOME'] || path.join(app.getPath('home'), '.cache')
+  }
+}
+
 function loadRenderer(win: BrowserWindow): void {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     void win.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -781,11 +802,7 @@ app.whenReady().then(() => {
   // Before anything worth logging happens. Everything the daemon says is
   // piped through `log`, and in a launched build stdout is /dev/null - so
   // without this there is no record of a backend failing, anywhere, ever.
-  // The XDG rule spelled out rather than `app.getPath('cache')`: Electron
-  // resolves that path at runtime but does not admit it in getPath's typings,
-  // and this is the same answer it computes - $XDG_CACHE_HOME, or ~/.cache.
-  const cacheRoot = process.env['XDG_CACHE_HOME'] || path.join(app.getPath('home'), '.cache')
-  log.toDirectory(path.join(cacheRoot, 'moho'))
+  log.toDirectory(path.join(cacheRoot(), 'moho'))
   log.info('moho starting, logging to', log.file() ?? '(nowhere)')
 
   electronApp.setAppUserModelId('com.salastil.moho')
