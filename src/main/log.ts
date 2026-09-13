@@ -60,15 +60,20 @@ let fileBroken = false
 
 /**
  * Where the log file goes. Called once at startup, from the one place that
- * knows - `app.getPath('userData')`.
+ * knows the app's own directories.
  *
  * Passed in rather than read here so this module never imports electron: it is
  * the lowest thing in the main process and everything else imports it, and a
  * log that cannot be exercised without standing up an app is a log whose
  * rotation nobody checks.
  *
- * Deliberately not the daemon's data directory, which is where the ticket
- * suggested it. The client does not know that path - it spawns nobilis without
+ * Under the cache directory rather than the config one: a log is re-derivable
+ * and disposable, and nothing here should be mistaken for state worth backing
+ * up or carrying to another machine. Electron's own `cache` path is the root
+ * `~/.cache`, so the caller passes the app's own directory beneath it.
+ *
+ * Not the daemon's data directory either, which is where the ticket suggested
+ * it. The client does not know that path - it spawns nobilis without
  * `--data-dir` and lets the daemon resolve its own, XDG rules and legacy
  * fallbacks included - so writing there would mean reimplementing somebody
  * else's path logic and being wrong the day it changes.
@@ -81,6 +86,9 @@ function toDirectory(dir: string): void {
 function openFile(): void {
   if (fileBroken || !directory) return
   try {
+    // Unlike userData, a cache directory is not created for us and may not
+    // exist at all on a first run.
+    fs.mkdirSync(directory, { recursive: true })
     const file = path.join(directory, FILE)
     // Pick up where the last run left off, so a restart does not lose the
     // lines that explain why it restarted.

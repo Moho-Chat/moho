@@ -781,7 +781,11 @@ app.whenReady().then(() => {
   // Before anything worth logging happens. Everything the daemon says is
   // piped through `log`, and in a launched build stdout is /dev/null - so
   // without this there is no record of a backend failing, anywhere, ever.
-  log.toDirectory(app.getPath('userData'))
+  // The XDG rule spelled out rather than `app.getPath('cache')`: Electron
+  // resolves that path at runtime but does not admit it in getPath's typings,
+  // and this is the same answer it computes - $XDG_CACHE_HOME, or ~/.cache.
+  const cacheRoot = process.env['XDG_CACHE_HOME'] || path.join(app.getPath('home'), '.cache')
+  log.toDirectory(path.join(cacheRoot, 'moho'))
   log.info('moho starting, logging to', log.file() ?? '(nowhere)')
 
   electronApp.setAppUserModelId('com.salastil.moho')
