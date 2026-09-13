@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { IconButton } from './Icon'
+import { Icon, IconButton } from './Icon'
 import { HeaderPopover } from './HeaderPopover'
 import { ChoiceSetting } from './settings/controls'
 import { useStore } from '../state/hooks'
@@ -18,6 +18,22 @@ interface Version {
   default: string
   behind: boolean
   canUpgrade: boolean
+}
+
+/** One entry of a published ban list. */
+interface PolicyRule {
+  about: string
+  entity: string
+  recommendation: string
+  reason: string
+}
+
+/** What a room refuses, and whose judgement it follows. */
+interface Policy {
+  serverAcl: { present: boolean; allow: string[]; deny: string[]; allowIpLiterals: boolean }
+  policyServer: string | null
+  rules: PolicyRule[]
+  canChange: boolean
 }
 
 /**
@@ -42,11 +58,24 @@ export function RoomSettings({ buffer }: { buffer: BufferEntry }): JSX.Element {
   const [upgrading, setUpgrading] = useState(false)
   const [confirmUpgrade, setConfirmUpgrade] = useState(false)
   const [saving, setSaving] = useState(false)
+  /**
+   * The room's moderation state, and whether anybody has asked for it.
+   *
+   * Behind a second press rather than loaded with the panel: it needs the
+   * room's whole state, which on a large room is a big answer to a question
+   * almost nobody is asking. `null` means "not asked"; a loaded object means
+   * asked and answered.
+   */
+  const [policy, setPolicy] = useState<Policy | null>(null)
+  const [policyOpen, setPolicyOpen] = useState(false)
+  const [denying, setDenying] = useState('')
 
   const load = (): void => {
     setHistory(null)
     setVersion(null)
     setConfirmUpgrade(false)
+    setPolicy(null)
+    setPolicyOpen(false)
     void window.moho
       .rpc<Choice>('matrixHistoryVisibility', { bufferId: buffer.id })
       .then(setHistory)
@@ -81,6 +110,25 @@ export function RoomSettings({ buffer }: { buffer: BufferEntry }): JSX.Element {
         store.toast('error', `Couldn't change that: ${e.message}`)
       })
       .finally(() => setSaving(false))
+  }
+
+  /**
+   * Refusing a server, or letting it back in.
+   *
+   * Only the deny list is offered. The allow list is the half that can shut a
+   * room to its own members, in a way that then cannot be undone from inside
+   * it - the daemon refuses to write an empty one, and there is no control
+   * here that would try.
+   */
+  const deny = async (server: string, denied: boolean): Promise<void> => {
+    try {
+      await window.moho.rpc('setMatrixServerDenied', { bufferId: buffer.id, server, denied })
+      setDenying('')
+      setPolicy(await window.moho.rpc<Policy>('matrixRoomPolicy', { bufferId: buffer.id }))
+      store.toast('info', denied ? `${server} is refused here` : `${server} is allowed again`)
+    } catch (e) {
+      store.toast('error', `Couldn’t change that: ${(e as Error).message}`)
+    }
   }
 
   return (
@@ -119,6 +167,124 @@ export function RoomSettings({ buffer }: { buffer: BufferEntry }): JSX.Element {
                 <div className="small muted">
                   Anyone can read this room without joining it, including people with no account.
                 </div>
+              )}
+            </>
+          )}
+
+          {/* What the room refuses, and whose judgement it follows. Behind
+              its own press because reading it needs the room's whole state -
+              a big answer on a large room, to a question almost nobody is
+              asking, but the only answer there is when somebody does ask why
+              a message from another server never arrived. */}
+          <div className="setting-row">
+            <div className="setting-text">
+              <div>Moderation</div>
+              <div className="small muted">
+                Which servers this room takes events from, and any ban lists it publishes.
+              </div>
+            </div>
+            {!policyOpen && (
+              <button
+                type="button"
+                className="button subtle"
+                onClick={() => {
+                  setPolicyOpen(true)
+                  void window.moho
+                    .rpc<Policy>('matrixRoomPolicy', { bufferId: buffer.id })
+                    .then(setPolicy)
+                    .catch((e: Error) => {
+                      store.toast('error', e.message)
+                      setPolicyOpen(false)
+                    })
+                }}
+              >
+                Show
+              </button>
+            )}
+          </div>
+
+          {policyOpen && !policy && <div className="small muted">Reading the room…</div>}
+
+          {policy && (
+            <>
+              {/* "No ACL" and "an ACL that allows everything" behave the same
+                  and mean different things - one is a room nobody has had to
+                  think about, the other is a decision. */}
+              {!policy.serverAcl.present ? (
+                <div className="small muted">
+                  No server ACL. Every server this room federates with can take part.
+                </div>
+              ) : (
+                <>
+                  <div className="small muted">
+                    Allowed: {policy.serverAcl.allow.join(', ') || '(nobody — this room is closed)'}
+                    {!policy.serverAcl.allowIpLiterals && ' · servers named by IP address are refused'}
+                  </div>
+                  {policy.serverAcl.deny.map((server) => (
+                    <div key={server} className="device-row">
+                      <Icon name="block" size={18} color="var(--warning)" />
+                      <div className="setting-text">
+                        <div className="ellipsis">{server}</div>
+                      </div>
+                      {policy.canChange && (
+                        <button
+                          type="button"
+                          className="button subtle"
+                          onClick={() => void deny(server, false)}
+                        >
+                          Allow again
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {policy.canChange && (
+                <div className="field-row">
+                  <input
+                    className="text-field"
+                    placeholder="Refuse a server, by name"
+                    value={denying}
+                    onChange={(e) => setDenying(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && denying.trim() && void deny(denying.trim(), true)}
+                  />
+                  <button
+                    type="button"
+                    className="button subtle"
+                    disabled={!denying.trim()}
+                    onClick={() => void deny(denying.trim(), true)}
+                  >
+                    Refuse it
+                  </button>
+                </div>
+              )}
+
+              {policy.policyServer && (
+                <div className="small muted">
+                  Events in this room are vetted by {policy.policyServer}.
+                </div>
+              )}
+
+              {policy.rules.length > 0 && (
+                <>
+                  <div className="small muted">
+                    This room publishes {policy.rules.length}{' '}
+                    {policy.rules.length === 1 ? 'rule' : 'rules'} for others to follow.
+                  </div>
+                  {policy.rules.map((rule) => (
+                    <div key={`${rule.about}:${rule.entity}`} className="device-row">
+                      <Icon name="gavel" size={18} />
+                      <div className="setting-text">
+                        <div className="ellipsis">{rule.entity}</div>
+                        <div className="small muted ellipsis">
+                          {rule.about}
+                          {rule.reason ? ` — ${rule.reason}` : ''}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </>
               )}
             </>
           )}
