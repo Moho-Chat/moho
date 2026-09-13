@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
 import { Avatar } from './Avatar'
 import { ReasonPrompt } from './ReasonPrompt'
+import { EventSource } from './EventSource'
 import { ForwardPicker } from './ForwardPicker'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { MediaEmbed } from './MediaEmbed'
@@ -318,6 +319,7 @@ function MessageRowBody({
   const [pickerOpen, setPickerOpen] = useState(false)
   /** Writing the reason for a report, before it is sent. */
   const [reporting, setReporting] = useState(false)
+  const [sourceOpen, setSourceOpen] = useState(false)
   /** Choosing where to send this message on to. */
   const [forwarding, setForwarding] = useState(false)
   const reactButtonRef = useRef<HTMLButtonElement>(null)
@@ -562,6 +564,29 @@ function MessageRowBody({
             icon: 'open_in_new',
             onClick: () => void store.openInDiscord(bufferId, message.id)
           }
+        ] as MenuEntry[])
+      : []),
+    // The two things somebody reaches for when a message is wrong: an
+    // address to quote it by, and what it actually says. A permalink is how
+    // a message is shown to somebody outside the room, and the source is how
+    // a malformed event is described to whoever can fix it - without either,
+    // a bug in a room can only be described in prose.
+    ...(service === 'matrix' && !isSystem && message.id
+      ? ([
+          {
+            label: 'Copy link to this message',
+            icon: 'link',
+            onClick: () => {
+              void window.moho
+                .rpc<{ url: string }>('matrixMessageLink', { bufferId, messageId: message.id })
+                .then(({ url }) => {
+                  void window.moho.copyText(url)
+                  store.toast('info', 'Link copied')
+                })
+                .catch((e: Error) => store.toast('error', e.message))
+            }
+          },
+          { label: 'View source', icon: 'data_object', onClick: () => setSourceOpen(true) }
         ] as MenuEntry[])
       : []),
     ...(message.failed
@@ -1040,6 +1065,9 @@ function MessageRowBody({
           messageId={message.id}
           onClose={() => setForwarding(false)}
         />
+      )}
+      {sourceOpen && (
+        <EventSource bufferId={bufferId} messageId={message.id} onClose={() => setSourceOpen(false)} />
       )}
       {reporting && (
         <ReasonPrompt

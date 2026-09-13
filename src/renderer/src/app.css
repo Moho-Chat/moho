@@ -6675,3 +6675,53 @@ video.lightbox-media {
 .follow-button.following {
   color: var(--error);
 }
+
+/* --- Message source --------------------------------------------------- */
+
+/* The event behind a message, for when what is on screen is wrong. Built like
+   the prompts beside it and capped well short of the window: an event from a
+   bridge runs to hundreds of lines, and a dialog as tall as the conversation
+   behind it has its close button off screen. */
+.event-source {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  width: min(680px, 90vw);
+  max-height: calc(100vh - 96px);
+  margin: auto;
+  padding: var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  overflow-y: auto;
+}
+
+.event-source-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.event-source-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.event-source-json {
+  margin: 0;
+  max-height: 40vh;
+  padding: var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-lowest);
+  color: var(--surface-variant-text);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  /* Both axes in its own box: JSON has long lines, and wrapping them would
+     destroy the indentation that makes it readable at all. */
+  overflow: auto;
+  white-space: pre;
+}
