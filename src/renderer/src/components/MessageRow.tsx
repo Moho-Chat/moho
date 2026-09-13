@@ -877,8 +877,20 @@ function MessageRowBody({
                   />
                 </div>
               )}
-              {/* The thing the embed is about, inside the card describing it
-                  rather than repeated below it. */}
+              {/* The picture the card is about, where the card brought one
+                  of its own. A Matrix link preview is unfurled by the
+                  homeserver and arrives as a file the daemon has already
+                  fetched - so there is nothing to sniff and nothing to pair
+                  it with, unlike Discord's below. */}
+              {embed.imageUrl && !embedMedia.claimed.has(i) && (
+                <img
+                  className="rich-embed-image"
+                  src={resolveMediaUrl(embed.imageUrl)}
+                  alt=""
+                  loading="lazy"
+                  onClick={() => embed.url && void window.moho.openExternal(embed.url)}
+                />
+              )}
               {embedMedia.claimed.has(i) && (
                 <div className="rich-embed-media">
                   <MediaEmbed

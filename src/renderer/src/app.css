@@ -6676,6 +6676,21 @@ video.lightbox-media {
   color: var(--error);
 }
 
+/* --- Link previews ---------------------------------------------------- */
+
+/* The picture a homeserver found behind a link. Capped rather than sized to
+   the card: a preview image is often a 1200px banner, and a card as wide as
+   the conversation would turn every posted link into the loudest thing in the
+   room. */
+.rich-embed-image {
+  max-width: 100%;
+  max-height: 220px;
+  margin-top: var(--spacing-xs);
+  border-radius: var(--corner-radius-small);
+  object-fit: cover;
+  cursor: pointer;
+}
+
 /* --- Jump to a date --------------------------------------------------- */
 
 /* Under the search box, because it answers the same question by a different

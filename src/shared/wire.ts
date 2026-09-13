@@ -400,6 +400,16 @@ export interface Embed {
   color?: number
   timestamp?: string
   url?: string
+  /**
+   * The picture on the card, as a local path.
+   *
+   * A link preview is mostly its picture. Matrix's homeserver-side unfurling
+   * answers with an mxc URI needing a token no window holds, so the daemon
+   * fetches it and what arrives here is the file. Discord's own embeds carry
+   * none of these - their thumbnails come through the message's media
+   * sniffing and are paired with the card separately.
+   */
+  imageUrl?: string
 }
 
 /**
