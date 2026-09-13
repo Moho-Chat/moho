@@ -49,7 +49,6 @@ interface CrossSigningStatus {
 export function MatrixAccountTools({ account }: { account: Account }): JSX.Element {
   const store = useStore()
   const verification = useChat((s) => s.matrixVerification)
-  const ignored = useChat((s) => s.matrixIgnored)[account.id] || []
   const [devices, setDevices] = useState<MatrixDevice[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [recoveryKey, setRecoveryKey] = useState('')
@@ -90,10 +89,6 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
         setProfileName(answer.displayName || '')
       })
       .catch(() => setProfile(null))
-    void window.moho
-      .rpc<{ users: string[] }>('listMatrixIgnored', { accountId: account.id })
-      .then((answer) => store.noteIgnored(account.id, answer.users))
-      .catch(() => {})
     void window.moho
       .rpc<CrossSigningStatus>('matrixCrossSigningStatus', { accountId: account.id })
       .then(setCrossSigning)
@@ -485,36 +480,6 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
           Import
         </button>
       </div>
-
-      {/* Who this account has asked never to hear from, and the way back.
-          Listed here rather than only offered from a message, because the
-          person you want to un-ignore is by definition somebody whose
-          messages you can no longer see. */}
-      {ignored.length > 0 && (
-        <div className="setting-row">
-          <div className="setting-text">
-            <div>Ignored</div>
-            <div className="small muted">
-              Kept on the account, so it holds on every client you sign in from.
-            </div>
-          </div>
-        </div>
-      )}
-      {ignored.map((userId) => (
-        <div key={userId} className="device-row">
-          <Icon name="block" size={18} color="var(--warning)" />
-          <div className="setting-text">
-            <div className="ellipsis">{userId}</div>
-          </div>
-          <button
-            type="button"
-            className="button subtle"
-            onClick={() => store.setIgnored(account.id, userId, false)}
-          >
-            Stop ignoring
-          </button>
-        </div>
-      ))}
 
       {loading && <p className="small muted">Loading sessions…</p>}
       {devices?.length === 0 && <p className="small muted">No other sessions signed in.</p>}

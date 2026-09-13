@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
+import { IgnoreList } from './IgnoreList'
 import { useChat, useMapPref, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, classes, resolveMediaUrl, serviceIcon, serviceLabel } from '../lib/util'
 import { IRC_NETWORKS, ircNetworkFor } from '../lib/networks'
@@ -451,6 +452,12 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
           {account.service === 'sneedchat' && <SneedChatBrowserLogin accountId={account.id} />}
 
           {account.service === 'kick' && <KickFollowSync account={account} />}
+
+          {/* Every service, after the per-service tools. Ignoring is
+              cross-protocol and has been since #131; reading the list back
+              was Matrix-only, which made it a setting somebody could switch
+              on and never find again. */}
+          <IgnoreList account={account} />
 
           <button
             type="button"
