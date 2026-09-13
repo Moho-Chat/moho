@@ -12,6 +12,14 @@ interface Choice {
   canChange: boolean
 }
 
+/** What room version this room is on, and whether it is worth moving. */
+interface Version {
+  current: string
+  default: string
+  behind: boolean
+  canUpgrade: boolean
+}
+
 /**
  * The settings a room keeps about itself.
  *
@@ -30,14 +38,26 @@ export function RoomSettings({ buffer }: { buffer: BufferEntry }): JSX.Element {
   const button = useRef<HTMLSpanElement>(null)
   const [open, setOpen] = useState(false)
   const [history, setHistory] = useState<Choice | null>(null)
+  const [version, setVersion] = useState<Version | null>(null)
+  const [upgrading, setUpgrading] = useState(false)
+  const [confirmUpgrade, setConfirmUpgrade] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const load = (): void => {
     setHistory(null)
+    setVersion(null)
+    setConfirmUpgrade(false)
     void window.moho
       .rpc<Choice>('matrixHistoryVisibility', { bufferId: buffer.id })
       .then(setHistory)
       .catch((e: Error) => store.toast('error', e.message))
+    void window.moho
+      .rpc<Version>('matrixRoomVersion', { bufferId: buffer.id })
+      .then(setVersion)
+      // Quietly. A room whose version is not known yet is a room with
+      // nothing to say here, not an error to put in front of somebody who
+      // came to change something else.
+      .catch(() => setVersion(null))
   }
 
   const show = (): void => {
@@ -101,6 +121,48 @@ export function RoomSettings({ buffer }: { buffer: BufferEntry }): JSX.Element {
                 </div>
               )}
             </>
+          )}
+
+          {/* Not a setting: an upgrade makes a new room and leaves a
+              tombstone pointing at it. Offered only where there is somewhere
+              to go and somebody who can make the tombstone - and with what
+              it costs written out, because the conversation does not come
+              with it. */}
+          {version?.behind && version.canUpgrade && (
+            <div className="setting-row">
+              <div className="setting-text">
+                <div>Room version {version.current}</div>
+                <div className="small muted">
+                  {confirmUpgrade
+                    ? `This makes a new room on version ${version.default} and leaves a pointer here. The conversation above stays in this room, and the people in it move across as their clients notice.`
+                    : `This server now makes rooms on version ${version.default}.`}
+                </div>
+              </div>
+              {confirmUpgrade ? (
+                <button
+                  type="button"
+                  className="button danger"
+                  disabled={upgrading}
+                  onClick={() => {
+                    setUpgrading(true)
+                    void window.moho
+                      .rpc<{ roomId: string }>('upgradeMatrixRoom', { bufferId: buffer.id })
+                      .then(() => {
+                        store.toast('info', 'Upgraded — the new room is in your list')
+                        setOpen(false)
+                      })
+                      .catch((e: Error) => store.toast('error', `Couldn’t upgrade: ${e.message}`))
+                      .finally(() => setUpgrading(false))
+                  }}
+                >
+                  Upgrade it
+                </button>
+              ) : (
+                <button type="button" className="button subtle" onClick={() => setConfirmUpgrade(true)}>
+                  Upgrade…
+                </button>
+              )}
+            </div>
           )}
         </HeaderPopover>
       )}
