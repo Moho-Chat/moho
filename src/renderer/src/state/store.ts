@@ -515,6 +515,13 @@ export interface ChatState {
     video: boolean
     muted: boolean
     sharingScreen: boolean
+    /** Whether this end is sending a picture. */
+    cameraOn: boolean
+    /**
+     * Whether the call is held on a media server rather than between two
+     * people. It decides what can be offered: a camera needs the server.
+     */
+    onServer: boolean
   } | null
   /** Who each Matrix account has asked never to hear from. */
   ignoredByAccount: Record<string, string[]>
@@ -900,7 +907,11 @@ export class ChatStore {
             phase,
             video: group.video,
             muted: this.state.activeCall?.muted ?? false,
-            sharingScreen: false
+            sharingScreen: false,
+            // A call joined with video starts sending one; otherwise the
+            // camera is off until somebody turns it on.
+            cameraOn: group.video,
+            onServer: true
           }
         })
         return
@@ -917,7 +928,9 @@ export class ChatStore {
           phase,
           video: call.video,
           muted: this.state.activeCall?.muted ?? false,
-          sharingScreen: call.call.sharingScreen
+          sharingScreen: call.call.sharingScreen,
+          cameraOn: false,
+          onServer: false
         }
       })
     },
@@ -2049,7 +2062,11 @@ export class ChatStore {
         phase: 'connecting',
         video,
         muted: false,
-        sharingScreen: false
+        sharingScreen: false,
+        // Joined with video means the camera is already on; joined without
+        // means it is off until somebody asks for it.
+        cameraOn: video,
+        onServer: true
       }
     })
     await this.matrixCalls.joinGroup(account.id, bufferId, video)
@@ -2210,6 +2227,27 @@ export class ChatStore {
     if (!call) return
     const muted = call.call.toggleMute()
     this.set({ activeCall: { ...this.state.activeCall, muted } })
+  }
+
+  /**
+   * Turns the camera on, or off, in a call already running.
+   *
+   * Only on a media server. A one-to-one Matrix call is voice here - see #189 -
+   * and offering a camera button that cannot do anything would be worse than
+   * not offering one.
+   */
+  async toggleCamera(): Promise<void> {
+    if (!this.state.activeCall) return
+    const group = this.matrixCalls.currentGroup
+    if (!group?.sfu) {
+      this.toast('info', 'A camera needs a call held on a media server.')
+      return
+    }
+    const on = await group.sfu.toggleCamera().catch((e: Error) => {
+      this.toast('error', e.message)
+      return false
+    })
+    this.set({ activeCall: { ...this.state.activeCall, cameraOn: on } })
   }
 
   /**
