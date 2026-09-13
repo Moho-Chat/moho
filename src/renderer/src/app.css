@@ -6676,6 +6676,33 @@ video.lightbox-media {
   color: var(--error);
 }
 
+/* --- Jump to a date --------------------------------------------------- */
+
+/* Under the search box, because it answers the same question by a different
+   route - and in an encrypted room, which the server cannot search, it is the
+   only route. */
+.search-date {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.search-date input[type='date'] {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--surface-text);
+  font: inherit;
+}
+
+/* The picker's own button, which renders as a dark glyph on a dark field
+   without this. */
+.search-date input[type='date']::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+  cursor: pointer;
+}
+
 /* --- Message source --------------------------------------------------- */
 
 /* The event behind a message, for when what is on screen is wrong. Built like

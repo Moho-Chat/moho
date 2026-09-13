@@ -19,6 +19,13 @@ interface DiscordThread {
   messageCount?: number
 }
 
+/** Today, as a `date` field spells it - local, not UTC. */
+function today(): string {
+  const d = new Date()
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
 /** What Discord's own search hands back. */
 interface DiscordSearch {
   results: Message[]
@@ -586,6 +593,9 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   const [jumping, setJumping] = useState(false)
   const [calling, setCalling] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  /** The day somebody asked to read back to, as the date field spells it. */
+  const [date, setDate] = useState('')
+  const [jumpingToDate, setJumpingToDate] = useState(false)
   /** This room, or every room this account is in. */
   const [scope, setScope] = useState<'room' | 'account'>('room')
   const [roomNames, setRoomNames] = useState<Record<string, string>>({})
@@ -766,6 +776,47 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
     store.setJumpTarget(id)
     setResults(null)
     setSearchOpen(false)
+  }
+
+  /**
+   * Reads back to a particular day.
+   *
+   * The server is asked where that day is; everything after that is the path
+   * a search result already takes. Forwards from midnight, because a date
+   * means "that day" rather than "whatever came before it" - asking backwards
+   * lands on the last message of the day before.
+   *
+   * A day after everything in the room finds nothing forwards, which is the
+   * one case worth a second question: asking backwards from it lands on the
+   * last thing anybody said, which is the honest answer to "take me to
+   * Tuesday" in a room that went quiet in March.
+   */
+  const jumpToDate = async (day: string): Promise<void> => {
+    // Local midnight rather than UTC: somebody picking the 3rd means the 3rd
+    // where they are, and a UTC midnight is the 2nd for most of the Americas.
+    const midnight = new Date(`${day}T00:00:00`)
+    if (Number.isNaN(midnight.getTime())) return
+    const ts = Math.floor(midnight.getTime() / 1000)
+
+    setJumpingToDate(true)
+    try {
+      let found = await window.moho
+        .rpc<{ eventId: string }>('matrixEventAtDate', { bufferId: buffer.id, ts, forwards: true })
+        .catch(() => null)
+      if (!found) {
+        found = await window.moho
+          .rpc<{ eventId: string }>('matrixEventAtDate', { bufferId: buffer.id, ts, forwards: false })
+          .catch(() => null)
+      }
+      if (!found) {
+        store.toast('info', 'Nothing was said in this room around then')
+        return
+      }
+      await jumpTo(found.eventId)
+      setDate('')
+    } finally {
+      setJumpingToDate(false)
+    }
   }
 
   const call = (): void => {
@@ -1040,6 +1091,37 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
               >
                 Everywhere
               </button>
+            </div>
+          )}
+
+          {/* Reading back to a particular day, which until now meant
+              scrolling to it. Beside the search because it answers the same
+              question - "where was that" - and because an encrypted room
+              cannot be searched at all, which leaves the date as the only
+              way back into it.
+
+              Matrix only: it is the one protocol here whose server will say
+              where in a room a given day is. */}
+          {isMatrix && (
+            <div className="search-date">
+              <label className="small muted" htmlFor="jump-date">
+                Or jump to a date
+              </label>
+              <div className="popover-field">
+                <Icon name="calendar_month" size={16} />
+                <input
+                  id="jump-date"
+                  type="date"
+                  value={date}
+                  // Nothing was said in this room tomorrow.
+                  max={today()}
+                  disabled={jumpingToDate}
+                  onChange={(e) => {
+                    setDate(e.target.value)
+                    if (e.target.value) void jumpToDate(e.target.value)
+                  }}
+                />
+              </div>
             </div>
           )}
 
