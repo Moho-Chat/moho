@@ -507,6 +507,8 @@ export interface ChatState {
   discordModal: DiscordModal | null
   /** The screens and windows on offer, while somebody is choosing one. */
   screenSources: { id: string; name: string; thumbnail: string }[] | null
+  /** Whether this window is sharing a screen into a Discord call. */
+  discordSharing: boolean
   activeCall: {
     accountId: string
     bufferId: string
@@ -615,6 +617,7 @@ const INITIAL: ChatState = {
   screenSources: null,
   discordModal: null,
   activeCall: null,
+  discordSharing: false,
   ignoredByAccount: {},
   matrixWidgets: {},
   matrixInvites: {},
@@ -837,6 +840,14 @@ export class ChatStore {
   private toastSeq = 0
   /** Who is talking in a call this window is holding. */
   private levels = new Levels()
+  /**
+   * The Discord screen share, while one is running.
+   *
+   * Held rather than put in state because it is a live object with a socket
+   * and an encoder behind it, and state is for what gets drawn - which is
+   * `discordSharing` beside it.
+   */
+  private discordShare: { stop: () => void; stream: MediaStream } | null = null
   /**
    * The Matrix call engine, one per window.
    *
@@ -2308,6 +2319,20 @@ export class ChatStore {
    * windows somebody actually has open is the only way to choose one.
    */
   async toggleScreenShare(): Promise<void> {
+    // A Discord call is not a Matrix one and has no activeCall behind it -
+    // its audio lives in the daemon - so it is answered first and on its own
+    // terms. The gesture and the button are the same either way, which is
+    // the whole point of asking here rather than in two places.
+    // A conversation is needed as well as a session: the stream is asked for
+    // against a channel, and a call whose buffer this window has never opened
+    // has nothing to ask against.
+    const discord = this.state.voiceSessions.find(
+      (s) => s.accountId.startsWith('discord:') && !!s.bufferId
+    )
+    if (discord?.bufferId && !this.state.activeCall) {
+      await this.toggleDiscordScreenShare(discord.accountId, discord.bufferId)
+      return
+    }
     if (!this.state.activeCall) return
     // On a media server the picker is LiveKit's own job, and Electron's
     // source list is what answers it - see the permission handler in main.
@@ -2350,6 +2375,81 @@ export class ChatStore {
     } catch (e) {
       this.toast('error', `Couldn't share the screen: ${(e as Error).message}`)
     }
+  }
+
+  /**
+   * Sharing a screen into a Discord call.
+   *
+   * Three parts in three places, which is what the protocol forces: the
+   * gateway is asked for a stream, the daemon opens the connection Discord
+   * answers with, and this window encodes the picture - because Chromium has
+   * the encoders and the daemon has none. The same division the Matrix calls
+   * draw from the other side, where the browser holds the whole call because
+   * WebRTC is the browser's.
+   */
+  async toggleDiscordScreenShare(accountId: string, bufferId: string): Promise<void> {
+    if (this.discordShare) {
+      this.discordShare.stop()
+      this.discordShare = null
+      this.set({ discordSharing: false })
+      await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
+      return
+    }
+
+    try {
+      const sources = await window.moho.screenSources()
+      if (sources.length === 0) {
+        this.toast('info', 'Nothing to share')
+        return
+      }
+      // The same picker the Matrix path uses, for the same reason: Electron
+      // will not answer getDisplayMedia without being told which source.
+      const source = await this.askForScreenSource(sources)
+      if (!source) return
+
+      await window.moho.rpc('startDiscordScreenShare', { bufferId })
+
+      // The connection is opened by the daemon when Discord answers, which
+      // is a round trip away. Waited for rather than assumed: a capture
+      // opened against a connection that never arrived is a camera light on
+      // for nothing.
+      const ready = await this.waitForDiscordStream(accountId)
+      if (!ready) {
+        this.toast('error', 'Discord never opened the stream')
+        await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
+        return
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: source.id }
+        }
+      } as unknown as MediaStreamConstraints)
+      const { shareScreen } = await import('../lib/discordscreen')
+      this.discordShare = await shareScreen(accountId, stream, (message) => {
+        this.toast('error', message)
+        this.discordShare = null
+        this.set({ discordSharing: false })
+        void window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
+      })
+      this.set({ discordSharing: true })
+    } catch (e) {
+      this.toast('error', `Couldn't share the screen: ${(e as Error).message}`)
+      await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
+    }
+  }
+
+  /** Waits for the daemon to say the stream connection is up. */
+  private async waitForDiscordStream(accountId: string): Promise<boolean> {
+    for (let i = 0; i < 30; i++) {
+      const answer = await window.moho
+        .rpc<{ ready: boolean }>('discordScreenShareReady', { accountId })
+        .catch(() => ({ ready: false }))
+      if (answer.ready) return true
+      await new Promise((r) => setTimeout(r, 200))
+    }
+    return false
   }
 
   /** Follows a Kick channel, or stops. The header reads the answer back. */
