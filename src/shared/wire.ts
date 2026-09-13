@@ -399,6 +399,18 @@ export interface Attachment {
   path?: string
   thumbnailPath?: string
   url?: string
+  /** How long the recording runs, where the service says. */
+  durationSecs?: number
+  /**
+   * The picture of the sound, as the sender's client drew it: Discord sends up
+   * to 256 base64'd bytes, each one an amplitude sample.
+   */
+  waveform?: string
+  /**
+   * Somebody spoke this rather than attaching a file of it - the service's own
+   * flag, not a guess from the mimetype.
+   */
+  voice?: boolean
 }
 
 export interface Message {

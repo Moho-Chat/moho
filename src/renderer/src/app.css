@@ -3547,6 +3547,76 @@ img.smilie {
   height: 32px;
 }
 
+/* --- a voice message ------------------------------------------------- */
+
+/* Sized like the audio row it replaces rather than like a media embed: this
+   is a control, not a picture, and it sits inline in a conversation. */
+.voice-message {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-s);
+  background: var(--surface-container-high);
+  border-radius: var(--corner-radius-small);
+  max-width: 420px;
+}
+
+.voice-message.failed {
+  gap: var(--spacing-xs);
+}
+
+.voice-play {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  color: var(--on-primary);
+  background: var(--primary);
+  cursor: pointer;
+}
+
+.voice-play:hover {
+  filter: brightness(1.1);
+}
+
+/* The picture of the sound. Clickable along its length, which is what makes
+   it a scrubber as well as a display. */
+.voice-wave {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  height: 28px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.voice-bar {
+  flex: 1;
+  min-width: 1px;
+  border-radius: 1px;
+  background: var(--outline-strong);
+  /* Grown from the middle, so a loud moment reads as loud in both directions
+     rather than as a column standing on the floor. */
+  align-self: center;
+}
+
+/* How far in the listener is. The played part keeps its shape and changes
+   colour, so the waveform stays readable as a whole while it plays. */
+.voice-bar.played {
+  background: var(--primary);
+}
+
+.voice-time {
+  flex: none;
+  min-width: 34px;
+  text-align: right;
+}
+
 .media-embed.file-card {
   display: flex;
   align-items: center;
