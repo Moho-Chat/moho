@@ -2414,8 +2414,11 @@ export class ChatStore {
       // opened against a connection that never arrived is a camera light on
       // for nothing.
       const ready = await this.waitForDiscordStream(accountId)
-      if (!ready) {
-        this.toast('error', 'Discord never opened the stream')
+      if (!ready.ready) {
+        // The server's own refusal where there is one. "Discord never
+        // opened the stream" is true and useless; a token it would not take
+        // or a server it could not find is a sentence somebody can act on.
+        this.toast('error', ready.error ? `Couldn’t open the stream: ${ready.error}` : 'Discord never opened the stream')
         await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
         return
       }
@@ -2441,15 +2444,21 @@ export class ChatStore {
   }
 
   /** Waits for the daemon to say the stream connection is up. */
-  private async waitForDiscordStream(accountId: string): Promise<boolean> {
+  private async waitForDiscordStream(
+    accountId: string
+  ): Promise<{ ready: boolean; error?: string }> {
+    let lastError: string | undefined
     for (let i = 0; i < 30; i++) {
       const answer = await window.moho
-        .rpc<{ ready: boolean }>('discordScreenShareReady', { accountId })
-        .catch(() => ({ ready: false }))
-      if (answer.ready) return true
+        .rpc<{ ready: boolean; error?: string }>('discordScreenShareReady', { accountId })
+        .catch(() => ({ ready: false, error: undefined }))
+      if (answer.ready) return { ready: true }
+      // Kept as it goes past: the daemon hands the reason over once, and the
+      // poll that sees it is not the one that gives up.
+      if (answer.error) lastError = answer.error
       await new Promise((r) => setTimeout(r, 200))
     }
-    return false
+    return { ready: false, error: lastError }
   }
 
   /** Follows a Kick channel, or stops. The header reads the answer back. */
