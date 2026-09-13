@@ -518,6 +518,8 @@ export interface ChatState {
   } | null
   /** Who each Matrix account has asked never to hear from. */
   ignoredByAccount: Record<string, string[]>
+  /** Buffer id -> what that Matrix room has hung on its wall. */
+  matrixWidgets: Record<string, unknown[]>
   /** Rooms each Matrix account has been invited to and not answered. */
   matrixInvites: Record<string, MatrixInvite[]>
   /**
@@ -607,6 +609,7 @@ const INITIAL: ChatState = {
   discordModal: null,
   activeCall: null,
   ignoredByAccount: {},
+  matrixWidgets: {},
   matrixInvites: {},
   profile: null,
   replyingTo: null,
@@ -2507,6 +2510,15 @@ export class ChatStore {
           ignoredByAccount: {
             ...this.state.ignoredByAccount,
             [data.accountId as string]: (data.users as string[]) || []
+          }
+        })
+        break
+
+      case 'matrixWidgets':
+        this.set({
+          matrixWidgets: {
+            ...this.state.matrixWidgets,
+            [data.bufferId as string]: (data.widgets as unknown[]) || []
           }
         })
         break

@@ -351,6 +351,100 @@ function DiscordThreads({ buffer }: { buffer: BufferEntry }): JSX.Element {
  * business and the thing everyone is meant to have read, and any of those can
  * be long. The count on the button is what makes it worth opening.
  */
+/** One of the things a room keeps pinned to its wall. */
+interface RoomWidget {
+  id: string
+  kind: string
+  name: string
+  url: string
+  creator: string
+  openable: boolean
+}
+
+/**
+ * What a room has hung on its wall: a jitsi, an etherpad, a whiteboard, a
+ * dashboard somebody wrote.
+ *
+ * Listed, not drawn. A widget is somebody else's web page, and this client's
+ * whole posture is that content from a room never reaches a renderer that can
+ * navigate - so it opens in a browser, where somebody else's page belongs.
+ * A room that keeps one used to show nothing of it at all, which made the room
+ * look emptier here than it is.
+ */
+function RoomWidgets({ buffer }: { buffer: BufferEntry }): JSX.Element | null {
+  const store = useStore()
+  const known = useChat((s) => s.matrixWidgets)[buffer.id]
+  const [open, setOpen] = useState(false)
+  const [rows, setRows] = useState<RoomWidget[] | null>(null)
+  const button = useRef<HTMLSpanElement>(null)
+
+  const show = (): void => {
+    if (open) {
+      setOpen(false)
+      return
+    }
+    setOpen(true)
+    setRows(null)
+    void window.moho
+      .rpc<RoomWidget[]>('listMatrixWidgets', { bufferId: buffer.id })
+      .then(setRows)
+      .catch((e: Error) => {
+        store.toast('error', e.message)
+        setRows([])
+      })
+  }
+
+  // A room with nothing on its wall gets no button. Unlike pins, the answer is
+  // always known - widgets are room state and arrive with the room - so there
+  // is no "ask and find out" case to leave the button open for.
+  const count = known?.length ?? 0
+  if (count === 0) return null
+
+  return (
+    <>
+      <span ref={button} className="header-anchor">
+        <IconButton
+          name="widgets"
+          title={`${count} ${count === 1 ? 'widget' : 'widgets'} in this room`}
+          className={open ? 'active' : undefined}
+          onClick={show}
+        />
+      </span>
+      {open && (
+        <HeaderPopover anchor={button.current} width={360} onClose={() => setOpen(false)}>
+          <div className="small muted">On this room&apos;s wall</div>
+          {rows === null && <div className="small muted">Looking…</div>}
+          {rows?.length === 0 && <div className="small muted">Nothing here.</div>}
+          {rows?.map((widget) => (
+            <div key={widget.id} className="pinned-row">
+              <div className="setting-text">
+                <div className="ellipsis">{widget.name}</div>
+                <div className="small muted ellipsis">
+                  {widget.creator ? `${widget.kind} — added by ${widget.creator}` : widget.kind}
+                </div>
+              </div>
+              {/* Not openable means the url still carries a variable only an
+                  integration manager can fill, and this client has none.
+                  Saying so beats offering a link that 404s. */}
+              {widget.openable ? (
+                <IconButton
+                  name="open_in_new"
+                  title="Open in your browser"
+                  onClick={() => void window.moho.openExternal(widget.url)}
+                />
+              ) : (
+                <span className="small muted" title={widget.url}>
+                  needs an integration manager
+                </span>
+              )}
+            </div>
+          ))}
+        </HeaderPopover>
+      )}
+    </>
+  )
+}
+
 function PinnedMessages({ buffer }: { buffer: BufferEntry }): JSX.Element | null {
   const store = useStore()
   const known = useChat((s) => s.pinnedMessages)[buffer.id]
@@ -825,6 +919,10 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
       {isMatrix && buffer.kind !== 'server' && <ThreadList buffer={buffer} />}
       {isDiscord && buffer.kind === 'channel' && <DiscordThreads buffer={buffer} />}
       {(isMatrix || isDiscord) && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
+
+      {/* Beside the pins, because it is the same kind of fact about a room:
+          something the room keeps, rather than something said in it. */}
+      {isMatrix && buffer.kind !== 'server' && <RoomWidgets buffer={buffer} />}
 
       {/* What this channel has asked before now. Two buttons rather than one
           list, because a poll and a prediction are different questions -
