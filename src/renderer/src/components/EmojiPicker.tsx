@@ -100,6 +100,19 @@ function readRecent(accountId?: string): string[] {
   }
 }
 
+/**
+ * Whether this account keeps its recent picks on the account rather than in
+ * this window.
+ *
+ * Matrix does, in account data, so the list follows the person to their
+ * phone and back. Nothing else here has anywhere to put it - and on the
+ * services whose emoji are guild- or channel-bound, a list that travelled
+ * would travel to places the emoji in it cannot be sent.
+ */
+function travels(accountId?: string): boolean {
+  return !!accountId?.startsWith('matrix:')
+}
+
 /** One image out of a Matrix sticker pack, as the daemon offers it. */
 export interface StickerEntry {
   name: string
@@ -195,6 +208,19 @@ export function EmojiPicker({
   // point the list on screen belongs to somebody else.
   useEffect(() => {
     setRecent(readRecent(accountId))
+    // Where the account keeps the list itself, that copy wins: it is the one
+    // that has seen every client, and the local one is only ever this
+    // machine's view of it. Asked each time the picker changes account
+    // rather than held, because the answer changes elsewhere.
+    if (!travels(accountId)) return
+    void window.moho
+      .rpc<string[]>('matrixRecentEmoji', { accountId })
+      // An older daemon does not answer this, and an account that has never
+      // picked one has nothing to say. Both leave the local list alone.
+      .then((list) => {
+        if (list.length > 0) setRecent(list)
+      })
+      .catch(() => {})
   }, [accountId])
 
   // Anchored above and right-aligned to the button that opened it, and kept
@@ -354,6 +380,13 @@ export function EmojiPicker({
       localStorage.setItem(recentKey(accountId), JSON.stringify(next))
     } catch {
       /* a full or disabled store just means recents don't persist */
+    }
+    // And on the account, where it has somewhere to go. Fire and forget: the
+    // list on screen is already right, and a failed write means one pick is
+    // not carried to another client - not something to interrupt somebody
+    // mid-sentence about.
+    if (travels(accountId)) {
+      void window.moho.rpc('matrixEmojiUsed', { accountId, emoji: text }).catch(() => {})
     }
     onSelect(text)
   }
