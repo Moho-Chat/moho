@@ -1521,6 +1521,49 @@ export class ChatStore {
    * through sync rather than as a reply - waiting for it would leave the row
    * looking unchanged for a whole sync cycle after somebody pressed the thing.
    */
+  /**
+   * Files a conversation on the account itself: starred to the top of the
+   * list, or pushed to the bottom.
+   *
+   * Matrix's room tags, which travel - so this is not the same as the
+   * window's own pin, and undoing it here undoes it everywhere the account is
+   * signed in.
+   *
+   * The two are exclusive. Being at the top and at the bottom is not a state,
+   * and Element treats them that way, so starring a room that was low
+   * priority takes the low priority off rather than leaving a room that
+   * claims both.
+   */
+  async setRoomTag(bufferId: string, tag: 'favourite' | 'lowPriority', on: boolean): Promise<void> {
+    const other = tag === 'favourite' ? 'lowPriority' : 'favourite'
+    const name = tag === 'favourite' ? 'm.favourite' : 'm.lowpriority'
+    const otherName = tag === 'favourite' ? 'm.lowpriority' : 'm.favourite'
+    const before = this.state.buffers
+    // Moved now rather than when the server says so. The daemon says the same
+    // thing back a moment later; this only means the row moves when the menu
+    // item is clicked.
+    this.set({
+      buffers: before.map((b) =>
+        b.id === bufferId ? { ...b, [tag]: on, ...(on ? { [other]: false } : {}) } : b
+      )
+    })
+    const hadOther = !!before.find((b) => b.id === bufferId)?.[other]
+    try {
+      await window.moho.rpc('setMatrixRoomTag', { bufferId, tag: name, on })
+      // Clearing the opposite tag is a tidy-up, not part of the request:
+      // failing it would undo a change the server has already accepted. Only
+      // where there is something to clear, so the ordinary case is one call.
+      if (on && hadOther) {
+        await window.moho
+          .rpc('setMatrixRoomTag', { bufferId, tag: otherName, on: false })
+          .catch(() => {})
+      }
+    } catch (e) {
+      this.set({ buffers: before })
+      this.toast('error', `Couldn't file that conversation: ${(e as Error).message}`)
+    }
+  }
+
   async markUnread(bufferId: string): Promise<void> {
     this.set({
       buffers: this.state.buffers.map((b) => (b.id === bufferId ? { ...b, markedUnread: true } : b))

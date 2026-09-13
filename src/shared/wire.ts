@@ -114,6 +114,20 @@ export interface Buffer {
    */
   serverMuted?: boolean
   /**
+   * Starred on the account itself - Matrix's `m.favourite` tag today.
+   *
+   * Separate from this window's pin because it was very likely set in another
+   * client, and finding it honoured here is the whole point of a tag that
+   * travels. Both lift a conversation to the top of the list.
+   */
+  favourite?: boolean
+  /**
+   * The other end of the same idea: `m.lowpriority`, a room the account has
+   * pushed to the bottom. Not muted - it still says when somebody speaks, it
+   * just stops competing for the top of the rail.
+   */
+  lowPriority?: boolean
+  /**
    * Set while the buffer exists but the service has not yet said what is in
    * it - a Matrix room between joining it and its first sync. The list draws
    * a spinner against it and the empty room says so rather than looking like

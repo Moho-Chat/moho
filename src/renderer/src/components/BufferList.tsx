@@ -192,10 +192,19 @@ export function BufferList(): JSX.Element {
         ? visible.filter(isDirectMessage)
         : visible.filter((b) => b.groupId === activeGroup.id)
 
-    // Server buffer above everything; then pinned, DMs, channels.
+    // Server buffer above everything; then favourites and pins, DMs,
+    // channels, and last whatever the account has pushed down.
+    //
+    // A favourite sits with the pins because it is the same intent said in a
+    // different place: the pin was made in this window, the favourite on the
+    // account - very likely in another client - and somebody who starred four
+    // rooms in Element expects to find them at the top here too. Low priority
+    // is the same idea pointing the other way, and it loses to a pin made
+    // here: an explicit local gesture beats a filing decision made elsewhere.
     const band = (b: BufferEntry): number => {
       if (b.kind === 'server') return 0
-      if (!isPinnedPage && pinned.includes(b.id)) return 1
+      if (!isPinnedPage && (pinned.includes(b.id) || b.favourite)) return 1
+      if (b.lowPriority) return 4
       if (b.kind === 'dm') return 2
       return 3
     }
@@ -314,6 +323,7 @@ export function BufferList(): JSX.Element {
       onPopOut={() => store.popOut(b.id)}
       onDock={() => store.dock(b.id)}
       onMarkUnread={() => void store.markUnread(b.id)}
+      onTag={(tag, on) => void store.setRoomTag(b.id, tag, on)}
       // Only where there is somewhere to drop it. A list with no headings of
       // your own has nothing a channel could be filed under, and a drag that
       // can only ever be refused is worse than one the row does not offer.
@@ -722,6 +732,7 @@ interface BufferRowProps {
   onDock: () => void
   /** Matrix only: leave it unread on purpose. */
   onMarkUnread?: () => void
+  onTag?: (tag: 'favourite' | 'lowPriority', on: boolean) => void
   draggable: boolean
   /** Being carried right now. */
   lifted: boolean
@@ -761,6 +772,7 @@ function BufferRow({
   onPopOut,
   onDock,
   onMarkUnread,
+  onTag,
   draggable,
   lifted,
   filed,
@@ -835,6 +847,7 @@ function BufferRow({
     onPopOut,
     onDock,
     onMarkUnread: account?.service === 'matrix' ? onMarkUnread : undefined,
+    onTag: account?.service === 'matrix' ? onTag : undefined,
     markedUnread: buffer.markedUnread
   })
 
