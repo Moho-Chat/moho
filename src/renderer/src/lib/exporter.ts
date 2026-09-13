@@ -1,5 +1,5 @@
 import { escapeHtml, extractMedia, formatMessage } from './format'
-import { fileNameOf } from './util'
+import { fileNameOf, isChatKind } from './util'
 import type { Message } from '../../../shared/wire'
 
 /**
@@ -203,7 +203,11 @@ async function renderMessage(
     cards += `<blockquote>${bits.join('<br>')}${link}</blockquote>`
   }
 
-  const system = m.kind && m.kind !== 'chat' ? ' system' : ''
+  // The same question the live view asks, rather than a second answer to it:
+  // "chat" is what IRC, Discord and Sneedchat call a message and "message" is
+  // what Matrix calls one, so a literal comparison greyed out every Matrix
+  // line in an export as though nobody had said it.
+  const system = isChatKind(m.kind) ? '' : ' system'
   const who = m.isAction ? `* ${m.from}` : m.from
   const edited = m.edited ? ' <span class="dim">(edited)</span>' : ''
   return (

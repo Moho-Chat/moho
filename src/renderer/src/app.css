@@ -5877,6 +5877,40 @@ video.lightbox-media {
   font: inherit;
 }
 
+/* --- Notices ---------------------------------------------------------- */
+
+/* Matrix's m.notice: an announcement rather than a sentence. What bots and
+   bridges send, and what a homeserver's own notices arrive as.
+
+   Held back rather than hidden. The body takes the muted ink and the name
+   keeps its colour, so a bridge relaying a hundred build results reads as a
+   hundred announcements while the people talking still stand out - which is
+   the whole reason the msgtype exists. The rule sits on the body alone so a
+   notice that mentions you can still be highlighted over the top of it. */
+.message-row.notice .message-body {
+  color: var(--text-muted);
+}
+
+/* The rail rather than a tag on the byline, because a run of notices is
+   grouped and only the first of a run has a byline to hang anything on -
+   which is exactly the case a bridge produces. */
+.message-row.notice {
+  box-shadow: inset 2px 0 0 var(--border);
+}
+
+.notice-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: var(--spacing-xs);
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-style: normal;
+  text-transform: lowercase;
+}
+
 /* --- Whispers --------------------------------------------------------- */
 
 /* Said privately rather than to the room. Highlighted like a mention, because

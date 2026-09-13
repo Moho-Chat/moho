@@ -42,6 +42,7 @@ import {
   formatTime,
   hasDirectMessages,
   isChatKind,
+  isNotice,
   isReward,
   isWhisper,
   nickColor,
@@ -343,6 +344,11 @@ function MessageRowBody({
   // Said to you rather than to the room. Drawn differently on purpose: the
   // whole risk with a private message is reading it as a public one.
   const whispered = isWhisper(message.kind)
+  // An announcement rather than a sentence. Kept in the conversation and
+  // drawn a shade back from it - the point of m.notice is that a bridge
+  // relaying a hundred build results should not read like a hundred people
+  // talking.
+  const notice = isNotice(message.kind)
   const reward = isReward(message.kind)
   // Both of the modes that draw an avatar column. Bubbles is otherwise
   // nothing like comfy, but it wants the same picture beside the same first
@@ -609,6 +615,7 @@ function MessageRowBody({
           'message-row',
           message.isHighlight && 'highlight',
           whispered && 'whisper',
+          notice && 'notice',
           message.pending && 'pending',
           message.failed && 'failed',
           isSystem && 'system',
@@ -692,6 +699,18 @@ function MessageRowBody({
                   {badgeLabel(badge)}
                 </span>
               ))}
+            </span>
+          )}
+
+          {/* Named as well as toned down. The muted body says "less
+              important", which a long or unlucky message can say by accident;
+              the word says what it actually is. Only where there is a byline
+              to put it on - a run of notices is grouped, and the rail down
+              the edge is what carries it there. */}
+          {notice && !grouped && (
+            <span className="notice-tag small">
+              <Icon name="smart_toy" size={11} />
+              <span>notice</span>
             </span>
           )}
 

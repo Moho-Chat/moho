@@ -120,7 +120,21 @@ export function serviceLabel(service: string): string {
  * grey system line with no author or avatar.
  */
 export function isChatKind(kind: string | undefined): boolean {
-  return kind === 'chat' || kind === 'message' || kind === 'whisper'
+  return kind === 'chat' || kind === 'message' || kind === 'whisper' || kind === 'notice'
+}
+
+/**
+ * An announcement rather than a sentence: Matrix's `m.notice`, which is what
+ * bots and bridges send and what a homeserver's own notices arrive as.
+ *
+ * Still a chat line - it has a sender, it can be replied to and redacted, and
+ * it belongs in the conversation rather than in the grey system stream. Only
+ * its weight changes, which is the entire reason the msgtype exists: in a
+ * room with an active bridge, automated traffic drawn like people talking
+ * makes the people impossible to find.
+ */
+export function isNotice(kind: string | undefined): boolean {
+  return kind === 'notice'
 }
 
 /**
