@@ -3717,6 +3717,50 @@ img.smilie {
   background: var(--primary);
 }
 
+/* The speaker and its slider. The wrapper is what the pointer is over, so
+   the popover survives the trip from the icon down to the control. */
+.voice-volume {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Above the speaker, because below it is where the next message is. Centred
+   on the icon and allowed to escape the pill - the pill is 34px tall and a
+   usable slider is not. */
+.voice-volume-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xs) var(--spacing-xxs);
+  background: var(--surface-container-highest);
+  border: 1px solid var(--outline);
+  border-radius: var(--corner-radius-small);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  z-index: 3;
+}
+
+/* The other way up, for a message with nothing above it. */
+.voice-volume-popover.below {
+  bottom: auto;
+  top: calc(100% + 6px);
+}
+
+/* Vertical, like every volume control that pops out of a speaker icon: up is
+   louder, which needs no label. */
+.voice-volume-popover input[type='range'] {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 18px;
+  height: 76px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
 .voice-mute {
   display: flex;
   align-items: center;

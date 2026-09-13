@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { resolveMediaUrl } from '../lib/util'
+import { useStore } from '../state/hooks'
 import type { Attachment } from '../../../shared/wire'
 
 /**
@@ -19,6 +20,7 @@ import type { Attachment } from '../../../shared/wire'
  * the thing being decided about.
  */
 export function VoiceMessage({ attachment }: { attachment: Attachment }): JSX.Element {
+  const store = useStore()
   const audio = useRef<HTMLAudioElement>(null)
   const [playing, setPlaying] = useState(false)
   const [at, setAt] = useState(0)
@@ -31,6 +33,27 @@ export function VoiceMessage({ attachment }: { attachment: Attachment }): JSX.El
    */
   const [speed, setSpeed] = useState(1)
   const [muted, setMuted] = useState(false)
+  /**
+   * How loud this one is, separately from everything else.
+   *
+   * Per message rather than a setting, because that is the problem it solves:
+   * one person records at arm's length and the next one shouts, and the fix
+   * wanted is for *this* message, now, not a preference to go and change.
+   */
+  const [volume, setVolume] = useState(1)
+  /** Whether the slider is showing. Hovering the speaker is what opens it. */
+  const [volumeOpen, setVolumeOpen] = useState(false)
+  /**
+   * Which side of the speaker it opens on.
+   *
+   * Above by default, because below is where the next message is - but a
+   * voice message near the top of the log has nothing above it, and a slider
+   * that opens off-screen is a control nobody can reach. Decided when it
+   * opens, from where the speaker actually is.
+   */
+  const [volumeBelow, setVolumeBelow] = useState(false)
+  const speaker = useRef<HTMLSpanElement>(null)
+  const [saving, setSaving] = useState(false)
   /**
    * Whether anybody has actually asked to hear this yet.
    *
@@ -76,7 +99,8 @@ export function VoiceMessage({ attachment }: { attachment: Attachment }): JSX.El
     if (!el) return
     el.playbackRate = speed
     el.muted = muted
-  }, [speed, muted])
+    el.volume = volume
+  }, [speed, muted, volume])
 
   const toggle = (): void => {
     const el = audio.current
@@ -89,6 +113,26 @@ export function VoiceMessage({ attachment }: { attachment: Attachment }): JSX.El
       el.pause()
       setPlaying(false)
     }
+  }
+
+  /**
+   * Keeping it.
+   *
+   * A voice message is the one kind of attachment with no obvious way to save
+   * it: a picture can be right-clicked and a file has a name to click, while
+   * this is a control with the file hidden inside it. Discord's CDN link
+   * expires, so "I will get it later" is not available either.
+   */
+  const download = (): void => {
+    if (saving) return
+    setSaving(true)
+    void window.moho
+      .downloadMedia(attachment.url || attachment.path || '', attachment.filename || 'voice-message.ogg')
+      .then((res) =>
+        store.toast(res.error ? 'error' : 'info', res.error ? `Couldn't save: ${res.error}` : `Saved to ${res.path}`)
+      )
+      .catch((e: Error) => store.toast('error', `Couldn't save: ${e.message}`))
+      .finally(() => setSaving(false))
   }
 
   /** Scrubbing, by clicking the picture of the sound at the point wanted. */
@@ -153,14 +197,63 @@ export function VoiceMessage({ attachment }: { attachment: Attachment }): JSX.El
         >
           {speed}x
         </button>
+        {/* Hover for the slider, click to mute - which is what Discord does,
+            and is the right way round: muting is the common act and wants one
+            gesture, while setting a level is the rare one and can afford to
+            be found. The wrapper carries the hover rather than the button, so
+            moving from the speaker onto the slider does not close it. */}
+        <span
+          className="voice-volume"
+          ref={speaker}
+          onMouseEnter={() => {
+            // 96px is the popover's own height plus its gap; anything less
+            // above the speaker and it would be drawn past the top of the
+            // window.
+            const top = speaker.current?.getBoundingClientRect().top ?? 0
+            setVolumeBelow(top < 96)
+            setVolumeOpen(true)
+          }}
+          onMouseLeave={() => setVolumeOpen(false)}
+        >
+          <button
+            type="button"
+            className="voice-mute"
+            title={muted ? 'Unmute' : 'Mute'}
+            aria-label={muted ? 'Unmute' : 'Mute'}
+            onClick={() => setMuted(!muted)}
+          >
+            <Icon name={muted || volume === 0 ? 'volume_off' : 'volume_up'} size={18} />
+          </button>
+          {volumeOpen && (
+            <span className={volumeBelow ? 'voice-volume-popover below' : 'voice-volume-popover'}>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={muted ? 0 : volume}
+                aria-label="Volume for this message"
+                onChange={(e) => {
+                  const next = Number(e.target.value)
+                  setVolume(next)
+                  // Dragging the slider off zero is somebody asking to hear
+                  // it; leaving it muted would make the control look broken.
+                  if (next > 0 && muted) setMuted(false)
+                }}
+              />
+            </span>
+          )}
+        </span>
+
         <button
           type="button"
           className="voice-mute"
-          title={muted ? 'Unmute' : 'Mute'}
-          aria-label={muted ? 'Unmute' : 'Mute'}
-          onClick={() => setMuted(!muted)}
+          title="Save this voice message"
+          aria-label="Save this voice message"
+          disabled={saving}
+          onClick={download}
         >
-          <Icon name={muted ? 'volume_off' : 'volume_up'} size={18} />
+          <Icon name="download" size={18} />
         </button>
       </span>
 
