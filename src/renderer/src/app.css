@@ -3547,6 +3547,232 @@ img.smilie {
   height: 32px;
 }
 
+/* --- recording one --------------------------------------------------- */
+
+.voice-recorder {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding-left: var(--spacing-xxs);
+}
+
+/* The thing that says this is live. Slow, because a fast blink beside a
+   timer reads as an alarm. */
+.voice-recording-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--error);
+  animation: voice-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes voice-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-recording-dot {
+    animation: none;
+  }
+}
+
+/* What the microphone is hearing, which is how somebody knows it is the one
+   they think it is before they send silence to a friend. */
+.voice-meter {
+  width: 56px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-container-highest);
+  overflow: hidden;
+}
+
+.voice-meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--primary);
+  transition: width 120ms linear;
+}
+
+/* --- a voice message ------------------------------------------------- */
+
+/* Sized like the audio row it replaces rather than like a media embed: this
+   is a control, not a picture, and it sits inline in a conversation. */
+/* Shaped after the thing it is: a pill with a picture of the sound in it,
+   which is what every client that draws these settles on. Inline-flex and
+   width:max-content so it is as wide as it needs and no wider - a voice
+   message is a short thing and a full-width bar claims to be a document. */
+.voice-message {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-s) var(--spacing-xs) var(--spacing-xs);
+  background: var(--surface-container-high);
+  /* A large radius rather than the small one the media cards use: this is a
+     control, and the shape is most of what says so at a glance. */
+  border-radius: 999px;
+  width: max-content;
+  max-width: 100%;
+}
+
+.voice-message.failed {
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-m);
+}
+
+.voice-play {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  color: var(--on-primary);
+  background: var(--primary);
+  cursor: pointer;
+}
+
+.voice-play:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+
+.voice-play:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* The picture of the sound. Clickable along its length, which makes it a
+   scrubber as well as a display. */
+.voice-wave {
+  display: flex;
+  align-items: center;
+  /* Enough gap to read as separate bars at this width; less and it is a
+     smear, more and a short message looks like a dotted line. */
+  gap: 3px;
+  flex: 1;
+  height: 22px;
+  /* Small, because the bar count now follows the length of the recording -
+     the control should be allowed to be short when the message is. */
+  min-width: 64px;
+  cursor: pointer;
+}
+
+.voice-bar {
+  flex: 1;
+  min-width: 3px;
+  max-width: 4px;
+  /* Rounded caps, which is the difference between a waveform and a bar
+     chart. At this width the radius is half the bar, so each one is a
+     lozenge however tall it happens to be. */
+  border-radius: 2px;
+  background: var(--outline-strong);
+  align-self: center;
+  transition: background-color 90ms linear;
+}
+
+/* How far in the listener is: the played part changes colour and keeps its
+   shape, so the waveform stays readable as a whole while it plays. */
+.voice-bar.played {
+  background: var(--primary);
+}
+
+.voice-time {
+  flex: none;
+  min-width: 32px;
+  text-align: right;
+}
+
+/* The speed and the speaker. Deliberately quiet - they are adjustments to
+   something already playing, not the reason the control exists. */
+.voice-extra {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  flex: none;
+}
+
+.voice-speed {
+  padding: 2px 7px;
+  border: none;
+  border-radius: 999px;
+  font: inherit;
+  font-size: var(--font-size-small);
+  font-variant-numeric: tabular-nums;
+  color: var(--surface-variant-text);
+  background: var(--surface-container-highest);
+  cursor: pointer;
+}
+
+.voice-speed:hover,
+.voice-mute:hover {
+  color: var(--surface-text);
+}
+
+/* Marked as changed-from-default, so a message left at double speed does not
+   quietly stay that way unnoticed. */
+.voice-speed.changed {
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+/* The speaker and its slider. The wrapper is what the pointer is over, so
+   the popover survives the trip from the icon down to the control. */
+.voice-volume {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Above the speaker, because below it is where the next message is. Centred
+   on the icon and allowed to escape the pill - the pill is 34px tall and a
+   usable slider is not. */
+.voice-volume-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xs) var(--spacing-xxs);
+  background: var(--surface-container-highest);
+  border: 1px solid var(--outline);
+  border-radius: var(--corner-radius-small);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  z-index: 3;
+}
+
+/* The other way up, for a message with nothing above it. */
+.voice-volume-popover.below {
+  bottom: auto;
+  top: calc(100% + 6px);
+}
+
+/* Vertical, like every volume control that pops out of a speaker icon: up is
+   louder, which needs no label. */
+.voice-volume-popover input[type='range'] {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 18px;
+  height: 76px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.voice-mute {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  border-radius: 50%;
+  color: var(--surface-variant-text);
+  background: none;
+  cursor: pointer;
+}
+
 .media-embed.file-card {
   display: flex;
   align-items: center;

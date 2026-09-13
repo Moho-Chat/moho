@@ -3,6 +3,7 @@ import { Icon, IconButton } from './Icon'
 import { Avatar } from './Avatar'
 import { EmojiPicker, type StickerEntry } from './EmojiPicker'
 import { PlaceField } from './PlaceField'
+import { VoiceRecorder } from './VoiceRecorder'
 import { useActiveBuffer, useChat, useStore } from '../state/hooks'
 import { emojiPreview } from '../lib/format'
 import { bufferDisplayName, classes, fileNameOf, isImageFile, resolveMediaUrl } from '../lib/util'
@@ -821,6 +822,12 @@ export function Composer(): JSX.Element | null {
             <Icon name="location_on" size={18} />
           </button>
         )}
+
+        {/* Saying it rather than typing it. The two services that have voice
+            messages at all: Discord's flag and base64 waveform, and Matrix's
+            MSC3245 marker with integers. The daemon speaks both from one
+            recording, so this is the same button either way. */}
+        {(service === 'discord' || service === 'matrix') && <VoiceRecorder bufferId={buffer.id} />}
 
         <IconButton
           name="add"

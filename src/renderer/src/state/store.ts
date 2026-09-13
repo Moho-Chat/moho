@@ -517,7 +517,7 @@ export interface ChatState {
     sharingScreen: boolean
   } | null
   /** Who each Matrix account has asked never to hear from. */
-  matrixIgnored: Record<string, string[]>
+  ignoredByAccount: Record<string, string[]>
   /** Rooms each Matrix account has been invited to and not answered. */
   matrixInvites: Record<string, MatrixInvite[]>
   /**
@@ -606,7 +606,7 @@ const INITIAL: ChatState = {
   screenSources: null,
   discordModal: null,
   activeCall: null,
-  matrixIgnored: {},
+  ignoredByAccount: {},
   matrixInvites: {},
   profile: null,
   replyingTo: null,
@@ -1833,17 +1833,34 @@ export class ChatStore {
     this.set({ reviewCard: card })
   }
 
+  /**
+   * Who this account is ignoring, asked of the daemon.
+   *
+   * `listIgnored` rather than `listMatrixIgnored`: the daemon answers for
+   * every service - the homeserver's list for Matrix, its own for the
+   * protocols that have nowhere to keep one - and asking the Matrix-only
+   * question was why ignoring on IRC, Discord and Kick was a one-way door.
+   */
+  refreshIgnored(accountId: string): void {
+    void window.moho
+      .rpc<string[]>('listIgnored', { accountId })
+      .then((users) => this.noteIgnored(accountId, users ?? []))
+      // Quietly: an account still connecting has no answer yet, and this runs
+      // whenever a panel opens.
+      .catch(() => {})
+  }
+
   /** Seeds the ignore list from a direct read, before any event arrives. */
   noteIgnored(accountId: string, users: string[]): void {
-    this.set({ matrixIgnored: { ...this.state.matrixIgnored, [accountId]: users } })
+    this.set({ ignoredByAccount: { ...this.state.ignoredByAccount, [accountId]: users } })
   }
 
   /**
-   * Ignores somebody on Matrix, or stops.
+   * Ignores somebody, or stops. Every service, not only Matrix.
    *
-   * The account's own list rather than this window's `blockedNicks`: it
-   * travels to every client signed in, which is what blocking somebody
-   * means, and it agrees with Element.
+   * The account's own list rather than this window's `blockedNicks`: where the
+   * service has one it travels to every client signed in, which is what
+   * blocking somebody means, and it agrees with Element.
    */
   setIgnored(accountId: string, target: string, ignored: boolean): void {
     void window.moho
@@ -1855,6 +1872,11 @@ export class ChatStore {
         // this is moho refusing to show what still arrives.
         const scope = answer?.scope === 'account' ? '' : ' here'
         this.toast('info', ignored ? `Ignoring ${target}${scope}` : `No longer ignoring ${target}`)
+        // Read back rather than patched locally. Matrix pushes its list on
+        // sync, but for the services whose list this daemon keeps itself
+        // nothing announces a change, so the panel would go on showing what
+        // was true when it opened.
+        this.refreshIgnored(accountId)
       })
       .catch((e: Error) => this.toast('error', e.message))
   }
@@ -2478,10 +2500,12 @@ export class ChatStore {
         })
         break
 
+      // The daemon's name for it, because only Matrix has a list the server
+      // pushes; the state it lands in is every service's.
       case 'matrixIgnored':
         this.set({
-          matrixIgnored: {
-            ...this.state.matrixIgnored,
+          ignoredByAccount: {
+            ...this.state.ignoredByAccount,
             [data.accountId as string]: (data.users as string[]) || []
           }
         })

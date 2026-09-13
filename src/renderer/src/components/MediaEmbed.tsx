@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Icon } from './Icon'
 import { Lightbox } from './Lightbox'
+import { VoiceMessage } from './VoiceMessage'
 import { fullImageFor, knownFullImage } from '../lib/fullimage'
 import { resolveMediaUrl } from '../lib/util'
 import type { MediaItem } from '../lib/format'
@@ -358,6 +359,14 @@ export function MediaEmbed({
         )}
       </>
     )
+  }
+
+  // Somebody speaking rather than a sound file somebody attached. The service
+  // says which, and the two want different controls: a voice message is short,
+  // has a length worth knowing before it is fetched, and comes with a picture
+  // of itself.
+  if (kind === 'audio' && attachment?.voice) {
+    return <VoiceMessage attachment={attachment} />
   }
 
   if (kind === 'audio') {
