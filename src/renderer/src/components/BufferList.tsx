@@ -23,6 +23,7 @@ import type { BufferGroup } from '../../../shared/wire'
 import {
   bufferDisplayName,
   bufferKindGlyph,
+  serviceRoomGlyph,
   classes,
   resolveMediaUrl,
   serviceIcon
@@ -808,6 +809,11 @@ function BufferRow({
     <Avatar name={buffer.name} url={buffer.avatarUrl} size={22} status={status} />
   ) : buffer.avatarUrl ? (
     <img className="buffer-avatar" src={resolveMediaUrl(buffer.avatarUrl)} alt="" />
+  ) : buffer.serviceRoom ? (
+    // The server's own room. Marked here because the fact worth knowing is
+    // that it is not one of the others - a notice about a quota is easy to
+    // scroll past when it arrives in what looks like a room a stranger made.
+    <Icon name={serviceRoomGlyph()} size={15} />
   ) : (
     <Icon name={bufferKindGlyph(buffer.kind)} size={15} />
   )

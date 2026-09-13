@@ -176,6 +176,19 @@ export function bufferKindGlyph(kind: string): string {
 }
 
 /**
+ * The mark on a conversation that is the service talking rather than a
+ * person: Matrix's server notices room.
+ *
+ * Its own glyph rather than the channel hash, because the thing worth knowing
+ * about that room is precisely that it is not one of the others - a message
+ * about a quota or an account restriction is easy to scroll past when it
+ * arrives in what looks like a room a stranger made.
+ */
+export function serviceRoomGlyph(): string {
+  return 'campaign'
+}
+
+/**
  * Deterministic per-nick colour, so the same person keeps the same colour
  * across sessions and buffers. Hue-only variation against a fixed saturation
  * and lightness keeps every result legible on the dark surface.

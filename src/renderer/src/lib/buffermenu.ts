@@ -228,13 +228,26 @@ export function bufferMenuEntries({
     { label: 'Hide', icon: 'visibility_off', onClick: onHide },
     ...(buffer.kind === 'server'
       ? []
-      : ([
-          {
-            label: leaveLabel(buffer, account?.service),
-            icon: 'close',
-            danger: true,
-            onClick: onClose
-          }
-        ] as MenuEntry[]))
+      : buffer.serviceRoom
+        ? // The server's own room, which the server will not let anybody
+          // leave. Said rather than hidden: an entry that is simply absent
+          // reads as a client that forgot, where this reads as the fact it
+          // is - and hiding it would leave somebody hunting for the gesture.
+          ([
+            {
+              label: 'Your server keeps this room open',
+              icon: 'lock',
+              disabled: true,
+              onClick: () => {}
+            }
+          ] as MenuEntry[])
+        : ([
+            {
+              label: leaveLabel(buffer, account?.service),
+              icon: 'close',
+              danger: true,
+              onClick: onClose
+            }
+          ] as MenuEntry[]))
   ]
 }

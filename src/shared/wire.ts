@@ -128,6 +128,15 @@ export interface Buffer {
    */
   lowPriority?: boolean
   /**
+   * This conversation is the service itself talking to the account.
+   *
+   * Matrix's server notices room - a terms-of-service change, a quota, an
+   * account restriction. Marked because it otherwise looks exactly like an
+   * ordinary room from a stranger, and because it cannot be left: the server
+   * refuses, so offering to leave it is offering something that fails.
+   */
+  serviceRoom?: boolean
+  /**
    * Set while the buffer exists but the service has not yet said what is in
    * it - a Matrix room between joining it and its first sync. The list draws
    * a spinner against it and the empty room says so rather than looking like
