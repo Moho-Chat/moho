@@ -1,4 +1,6 @@
 import type { SneedchatSmilie } from '../../../shared/wire'
+import { drawableEmoteUrl } from './emotecache'
+import { resolveMediaUrl } from './util'
 // Shared with the main process, which is what actually opens a clicked link.
 export { clearnetLinks } from '../../../shared/clearnet'
 
@@ -55,12 +57,16 @@ export function discordEmojiUrl(id: string, size = 44): string {
 /**
  * The picture for a Kick emote.
  *
- * One size only. The `/default` and `/small` variants other emote hosts serve
- * are a 403 here, so asking for anything but fullsize is a broken image in
- * every message rather than a smaller one.
+ * One size only, from Kick: the `/default` and `/small` variants other emote
+ * hosts serve are a 403 here, so asking for anything but fullsize is a broken
+ * image in every message rather than a smaller one.
+ *
+ * Which is why the daemon keeps a shrunk copy instead, and why this asks for
+ * that first - fullsize is 500x500 and animated, for a picture drawn at about
+ * twenty pixels in a message. See lib/emotecache.
  */
 export function kickEmoteUrl(id: string): string {
-  return `https://files.kick.com/emotes/${id}/fullsize`
+  return resolveMediaUrl(drawableEmoteUrl(`https://files.kick.com/emotes/${id}/fullsize`))
 }
 
 /** What something picked out of the emoji list looks like, when it isn't text. */

@@ -31,6 +31,7 @@ import { watchDelta, watchedKickBuffers } from './lib/kickwatch'
 import { useActiveBuffer, useChat, usePref, usePrefsReady, useStore } from './state/hooks'
 import { bufferDisplayName } from './lib/util'
 import type { BufferEntry } from './state/store'
+import { loadLocalEmotes } from './lib/emotecache'
 
 export default function App(): JSX.Element {
   const store = useStore()
@@ -67,6 +68,11 @@ export default function App(): JSX.Element {
     if (!prefsReady || booted) return
     setBooted(true)
     void store.init(savedBufferId, savedGroupId)
+    // What the daemon has already shrunk, asked for once. Without it every
+    // Kick emote would be drawn at its full 500x500 once per session before
+    // its small copy was noticed - the cache is on disk and outlives the
+    // window, so there is no reason to rediscover it a megabyte at a time.
+    void loadLocalEmotes()
     return () => store.dispose()
   }, [prefsReady, booted, savedBufferId, savedGroupId, store])
 
