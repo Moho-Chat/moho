@@ -6676,6 +6676,77 @@ video.lightbox-media {
   color: var(--error);
 }
 
+/* --- Looking into a room ---------------------------------------------- */
+
+/* What is in a room, read from outside it. Sits under the list rather than
+   over it, so the row it came from stays visible - the point of looking is to
+   decide about that room, and a panel covering it takes away what the decision
+   is about. */
+.room-peek {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin: var(--spacing-s) 0;
+  padding: var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-lowest);
+}
+
+.room-peek-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  font-weight: 500;
+}
+
+.room-peek-head .ellipsis {
+  flex: 1;
+  min-width: 0;
+}
+
+.room-peek-topic {
+  color: var(--surface-variant-text);
+  /* A topic can be a paragraph. Three lines is enough to judge a room by and
+     short enough that the conversation under it stays on screen. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.room-peek-log {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.room-peek-line {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: baseline;
+}
+
+.room-peek-from {
+  flex: none;
+  max-width: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--surface-variant-text);
+  font-size: 0.82rem;
+}
+
+.room-peek-body {
+  min-width: 0;
+  font-size: 0.85rem;
+  /* Somebody else's text, from a room nobody here has joined: it wraps and
+     it never stretches the dialog. */
+  overflow-wrap: anywhere;
+}
+
 /* --- Link previews ---------------------------------------------------- */
 
 /* The picture a homeserver found behind a link. Capped rather than sized to
