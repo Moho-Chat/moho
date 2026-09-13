@@ -251,6 +251,67 @@ export class MatrixCalls {
   }
 
   /**
+   * Whether this end is sending a camera, in whatever kind of call it is in.
+   *
+   * One question with one answer, because the button asking it is one button
+   * - the caller has no business knowing whether this call is a mesh, a media
+   * server or a single connection.
+   */
+  get cameraOn(): boolean {
+    if (this.group?.sfu) return this.group.sfu.cameraOn
+    if (this.group) return this.group.peers.values().next().value?.call.cameraOn ?? !!this.group.local?.getVideoTracks().some((t) => t.readyState === 'live')
+    return this.active?.call.cameraOn ?? false
+  }
+
+  /**
+   * Turns the camera on or off, wherever this end is.
+   *
+   * Three shapes of call and one gesture. On a media server the server's own
+   * client does it; on a mesh the camera is opened once here and lent to
+   * every leg, because five connections asking the machine for the same
+   * camera get one capture and four refusals; in a call between two people
+   * the one connection opens its own.
+   *
+   * Returns whether the camera is now on.
+   */
+  async setCamera(on: boolean): Promise<boolean> {
+    if (this.group?.sfu) {
+      return await this.group.sfu.toggleCamera()
+    }
+
+    if (this.group) {
+      const group = this.group
+      if (on) {
+        // Added to the capture the whole call shares, so this end's own tile
+        // shows it too - `local` is what the self tile is pointed at.
+        let track = group.local?.getVideoTracks().find((t) => t.readyState === 'live')
+        if (!track) {
+          const opened = await navigator.mediaDevices.getUserMedia({ video: true })
+          track = opened.getVideoTracks()[0]
+          if (!track) return false
+          if (!group.local) group.local = new MediaStream()
+          group.local.addTrack(track)
+        }
+        const lent = new MediaStream([track])
+        for (const peer of group.peers.values()) await peer.call.setCamera(true, lent)
+        return true
+      }
+      for (const peer of group.peers.values()) await peer.call.setCamera(false)
+      // Stopped once, here, because this is where it was opened - each leg
+      // spares a lent track deliberately.
+      for (const track of group.local?.getVideoTracks() ?? []) {
+        track.stop()
+        group.local?.removeTrack(track)
+      }
+      return false
+    }
+
+    const call = this.active
+    if (!call) return false
+    return await call.call.setCamera(on)
+  }
+
+  /**
    * Joins the room's call, starting one if nobody is in it yet.
    *
    * Joining *is* starting: publishing this end's membership is what makes a

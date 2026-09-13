@@ -908,9 +908,10 @@ export class ChatStore {
             video: group.video,
             muted: this.state.activeCall?.muted ?? false,
             sharingScreen: false,
-            // A call joined with video starts sending one; otherwise the
-            // camera is off until somebody turns it on.
-            cameraOn: group.video,
+            // Asked of the call, for the same reason the one-to-one branch
+            // below does: this runs on every phase change, and a fixed
+            // answer would undo a camera somebody had just turned on.
+            cameraOn: this.matrixCalls.cameraOn,
             onServer: true
           }
         })
@@ -929,7 +930,12 @@ export class ChatStore {
           video: call.video,
           muted: this.state.activeCall?.muted ?? false,
           sharingScreen: call.call.sharingScreen,
-          cameraOn: false,
+          // Asked of the call rather than assumed. A call placed with video
+          // is already sending a camera, one placed without is not, and one
+          // where somebody has pressed the button since is neither - this
+          // block runs on every phase change and would otherwise put the
+          // button back to "off" the moment the call connected.
+          cameraOn: call.call.cameraOn,
           onServer: false
         }
       })
@@ -2275,19 +2281,20 @@ export class ChatStore {
   /**
    * Turns the camera on, or off, in a call already running.
    *
-   * Only on a media server. A one-to-one Matrix call is voice here - see #189 -
-   * and offering a camera button that cannot do anything would be worse than
-   * not offering one.
+   * One gesture for all three shapes of call - a media server, a mesh between
+   * several people, a single connection between two - because the button
+   * asking for it is one button and the person pressing it is asking one
+   * thing. Which of the three this is belongs to the call, not to the
+   * control.
    */
   async toggleCamera(): Promise<void> {
     if (!this.state.activeCall) return
-    const group = this.matrixCalls.currentGroup
-    if (!group?.sfu) {
-      this.toast('info', 'A camera needs a call held on a media server.')
-      return
-    }
-    const on = await group.sfu.toggleCamera().catch((e: Error) => {
-      this.toast('error', e.message)
+    const want = !this.matrixCalls.cameraOn
+    const on = await this.matrixCalls.setCamera(want).catch((e: Error) => {
+      // The usual failure is a machine with no camera, or one already taken
+      // by something else. Both are worth a sentence: a button that appears
+      // to do nothing is the worse outcome.
+      this.toast('error', `Couldn't turn the camera on: ${e.message}`)
       return false
     })
     this.set({ activeCall: { ...this.state.activeCall, cameraOn: on } })

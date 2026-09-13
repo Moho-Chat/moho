@@ -22,8 +22,9 @@ again and everything is where you left it.
 - **It stays connected.** The daemon keeps IRC registered, Matrix syncing and Tor circuits
   open while the window is shut. Quitting says a proper goodbye rather than dropping the
   socket, so you don't come back to a ghosted nick.
-- **Voice calls.** Real audio on Discord and on Matrix, including the group calls Element
-  holds on a media server. No video or screen share yet.
+- **Calls.** Real audio on Discord and on Matrix, including the group calls Element holds
+  on a media server. On Matrix the camera and the screen both work, and either can be turned
+  on part-way through a call. Discord is voice only for now.
 - **Matrix, properly encrypted.** End-to-end encryption with device verification by emoji or
   QR, cross-signing, key backup, and encrypted attachments.
 - **Sneedchat over Tor.** An embedded Tor client, the site's proof-of-work gate and its login
