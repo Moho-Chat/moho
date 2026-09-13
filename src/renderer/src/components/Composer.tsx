@@ -823,10 +823,11 @@ export function Composer(): JSX.Element | null {
           </button>
         )}
 
-        {/* Saying it rather than typing it. Discord only, because it is the
-            one service here whose voice messages this speaks - Matrix shapes
-            them differently and is its own piece of work. */}
-        {service === 'discord' && <VoiceRecorder bufferId={buffer.id} />}
+        {/* Saying it rather than typing it. The two services that have voice
+            messages at all: Discord's flag and base64 waveform, and Matrix's
+            MSC3245 marker with integers. The daemon speaks both from one
+            recording, so this is the same button either way. */}
+        {(service === 'discord' || service === 'matrix') && <VoiceRecorder bufferId={buffer.id} />}
 
         <IconButton
           name="add"
