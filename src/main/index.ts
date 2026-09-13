@@ -778,6 +778,12 @@ app.whenReady().then(() => {
   // claim a tray icon or register a hotkey on the way.
   if (!isPrimaryInstance) return
 
+  // Before anything worth logging happens. Everything the daemon says is
+  // piped through `log`, and in a launched build stdout is /dev/null - so
+  // without this there is no record of a backend failing, anywhere, ever.
+  log.toDirectory(app.getPath('userData'))
+  log.info('moho starting, logging to', log.file() ?? '(nowhere)')
+
   electronApp.setAppUserModelId('com.salastil.moho')
   app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
 
