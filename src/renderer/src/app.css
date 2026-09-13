@@ -3598,18 +3598,26 @@ img.smilie {
 
 /* Sized like the audio row it replaces rather than like a media embed: this
    is a control, not a picture, and it sits inline in a conversation. */
+/* Shaped after the thing it is: a pill with a picture of the sound in it,
+   which is what every client that draws these settles on. Inline-flex and
+   width:max-content so it is as wide as it needs and no wider - a voice
+   message is a short thing and a full-width bar claims to be a document. */
 .voice-message {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: var(--spacing-s);
-  padding: var(--spacing-xs) var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-s) var(--spacing-xs) var(--spacing-xs);
   background: var(--surface-container-high);
-  border-radius: var(--corner-radius-small);
-  max-width: 420px;
+  /* A large radius rather than the small one the media cards use: this is a
+     control, and the shape is most of what says so at a glance. */
+  border-radius: 999px;
+  width: max-content;
+  max-width: 100%;
 }
 
 .voice-message.failed {
   gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-m);
 }
 
 .voice-play {
@@ -3617,8 +3625,8 @@ img.smilie {
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border: none;
   border-radius: 50%;
   color: var(--on-primary);
@@ -3626,42 +3634,99 @@ img.smilie {
   cursor: pointer;
 }
 
-.voice-play:hover {
-  filter: brightness(1.1);
+.voice-play:hover:not(:disabled) {
+  filter: brightness(1.12);
 }
 
-/* The picture of the sound. Clickable along its length, which is what makes
-   it a scrubber as well as a display. */
+.voice-play:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* The picture of the sound. Clickable along its length, which makes it a
+   scrubber as well as a display. */
 .voice-wave {
   display: flex;
   align-items: center;
-  gap: 2px;
+  /* Enough gap to read as separate bars at this width; less and it is a
+     smear, more and a short message looks like a dotted line. */
+  gap: 3px;
   flex: 1;
-  height: 28px;
-  min-width: 0;
+  height: 22px;
+  /* Small, because the bar count now follows the length of the recording -
+     the control should be allowed to be short when the message is. */
+  min-width: 64px;
   cursor: pointer;
 }
 
 .voice-bar {
   flex: 1;
-  min-width: 1px;
-  border-radius: 1px;
+  min-width: 3px;
+  max-width: 4px;
+  /* Rounded caps, which is the difference between a waveform and a bar
+     chart. At this width the radius is half the bar, so each one is a
+     lozenge however tall it happens to be. */
+  border-radius: 2px;
   background: var(--outline-strong);
-  /* Grown from the middle, so a loud moment reads as loud in both directions
-     rather than as a column standing on the floor. */
   align-self: center;
+  transition: background-color 90ms linear;
 }
 
-/* How far in the listener is. The played part keeps its shape and changes
-   colour, so the waveform stays readable as a whole while it plays. */
+/* How far in the listener is: the played part changes colour and keeps its
+   shape, so the waveform stays readable as a whole while it plays. */
 .voice-bar.played {
   background: var(--primary);
 }
 
 .voice-time {
   flex: none;
-  min-width: 34px;
+  min-width: 32px;
   text-align: right;
+}
+
+/* The speed and the speaker. Deliberately quiet - they are adjustments to
+   something already playing, not the reason the control exists. */
+.voice-extra {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  flex: none;
+}
+
+.voice-speed {
+  padding: 2px 7px;
+  border: none;
+  border-radius: 999px;
+  font: inherit;
+  font-size: var(--font-size-small);
+  font-variant-numeric: tabular-nums;
+  color: var(--surface-variant-text);
+  background: var(--surface-container-highest);
+  cursor: pointer;
+}
+
+.voice-speed:hover,
+.voice-mute:hover {
+  color: var(--surface-text);
+}
+
+/* Marked as changed-from-default, so a message left at double speed does not
+   quietly stay that way unnoticed. */
+.voice-speed.changed {
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.voice-mute {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  border-radius: 50%;
+  color: var(--surface-variant-text);
+  background: none;
+  cursor: pointer;
 }
 
 .media-embed.file-card {

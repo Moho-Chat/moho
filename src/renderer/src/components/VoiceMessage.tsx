@@ -24,6 +24,14 @@ export function VoiceMessage({ attachment }: { attachment: Attachment }): JSX.El
   const [at, setAt] = useState(0)
   const [failed, setFailed] = useState(false)
   /**
+   * Faster playback, because a voice message is often somebody taking thirty
+   * seconds to say one sentence. Cycled through a short list rather than being
+   * a slider: the useful answers are "normal", "a bit quicker" and "get on
+   * with it", and a slider offers a hundred that are not.
+   */
+  const [speed, setSpeed] = useState(1)
+  const [muted, setMuted] = useState(false)
+  /**
    * Whether anybody has actually asked to hear this yet.
    *
    * The element reports an error for a source it cannot load, and a Discord
@@ -36,12 +44,16 @@ export function VoiceMessage({ attachment }: { attachment: Attachment }): JSX.El
   const asked = useRef(false)
 
   const src = resolveMediaUrl(attachment.path || attachment.url || '')
-  const bars = useBars(attachment.waveform)
   // The sender's figure where there is one. An audio element only knows the
   // length once it has enough of the file to say, which is after the fetch
   // this display exists to let somebody avoid.
   const total = attachment.durationSecs ?? audio.current?.duration ?? 0
   const played = total > 0 ? Math.min(1, at / total) : 0
+  // As many bars as the recording has time for, rather than a fixed number
+  // stretched across whatever it is. Four a second reads as speech; a
+  // two-second message drawn with forty-four bars looks like a long one, and
+  // the width of the control stops saying anything about the length.
+  const bars = useBars(attachment.waveform, Math.max(MIN_BARS, Math.min(BARS, Math.round(total * 4))))
 
   useEffect(() => {
     const el = audio.current
@@ -58,6 +70,13 @@ export function VoiceMessage({ attachment }: { attachment: Attachment }): JSX.El
       el.removeEventListener('ended', ended)
     }
   }, [src])
+
+  useEffect(() => {
+    const el = audio.current
+    if (!el) return
+    el.playbackRate = speed
+    el.muted = muted
+  }, [speed, muted])
 
   const toggle = (): void => {
     const el = audio.current
@@ -108,17 +127,41 @@ export function VoiceMessage({ attachment }: { attachment: Attachment }): JSX.El
         {bars.map((height, i) => (
           <span
             key={i}
-            className={i / bars.length <= played ? 'voice-bar played' : 'voice-bar'}
-            // A floor, so silence is still a mark on the line rather than a
-            // gap: the bar says where in the message you are, and a run of
-            // quiet is part of what somebody said.
-            style={{ height: `${Math.max(8, height * 100)}%` }}
+            // Strictly past, so a message nobody has started shows no
+            // progress at all - at zero the first bar was coming up
+            // coloured, which reads as already part-listened-to.
+            className={(i + 1) / bars.length <= played ? 'voice-bar played' : 'voice-bar'}
+            // A floor with some height to it. Silence has to stay a bar
+            // rather than become a dot: a pause is part of what somebody
+            // said, it is part of the length being scrubbed through, and a
+            // row of specks reads as a control that failed to load.
+            style={{ height: `${Math.max(22, height * 100)}%` }}
           />
         ))}
       </div>
 
       <span className="voice-time small muted tabular">
         {clock(playing || at > 0 ? at : total)}
+      </span>
+
+      <span className="voice-extra">
+        <button
+          type="button"
+          className={speed === 1 ? 'voice-speed' : 'voice-speed changed'}
+          title="Playback speed"
+          onClick={() => setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length])}
+        >
+          {speed}x
+        </button>
+        <button
+          type="button"
+          className="voice-mute"
+          title={muted ? 'Unmute' : 'Mute'}
+          aria-label={muted ? 'Unmute' : 'Mute'}
+          onClick={() => setMuted(!muted)}
+        >
+          <Icon name={muted ? 'volume_off' : 'volume_up'} size={18} />
+        </button>
       </span>
 
       <audio
@@ -141,11 +184,22 @@ export function VoiceMessage({ attachment }: { attachment: Attachment }): JSX.El
  * averaged down rather than picked from, so a short spike does not vanish
  * because the sampling happened to step over it.
  */
-const BARS = 48
+const BARS = 40
+
+/**
+ * The fewest bars to draw.
+ *
+ * A one-second message still has to look like a waveform rather than like
+ * three marks, and something has to be clickable to seek with.
+ */
+const MIN_BARS = 14
+
+/** The speeds worth having, in the order the button walks through them. */
+const SPEEDS = [1, 1.5, 2]
 
 /** The sender's waveform, decoded and reduced to the bars actually drawn. */
-function useBars(waveform: string | undefined): number[] {
-  return useMemo(() => barsFrom(waveform), [waveform])
+function useBars(waveform: string | undefined, count: number): number[] {
+  return useMemo(() => barsFrom(waveform, count), [waveform, count])
 }
 
 /**
