@@ -138,6 +138,14 @@ export function NickList(): JSX.Element {
   const hasPresence = members.some((m) => m.status !== undefined)
   // Calling is Discord-only for now, and needs an account id to place from.
   const canCall = account?.service === 'discord'
+  // Somebody can be added to a group message from the header, and until now
+  // could never be taken out again from anywhere. The same test the add side
+  // uses: a Discord direct message with more than one other person in it is a
+  // group, and a one-to-one is not something anybody can be removed from.
+  const isGroupDm =
+    account?.service === 'discord' &&
+    buffer?.kind === 'dm' &&
+    members.filter((m) => m.userId).length > 1
   // Matrix answers this from the server, which is where its power levels live.
   // IRC's answer is already on screen: the member list carries every nick's
   // prefix, including ours, so what we may do is whatever our own prefix says.
@@ -259,6 +267,21 @@ export function NickList(): JSX.Element {
                 canWhisper={account?.service === 'sneedchat'}
                 canSendFile={account?.service === 'irc'}
                 canCall={canCall && !!member.userId}
+                onRemoveFromGroup={
+                  isGroupDm && member.userId
+                    ? () => {
+                        if (!buffer || !account) return
+                        void window.moho
+                          .rpc('removeFromDiscordGroupDm', {
+                            accountId: account.id,
+                            bufferId: buffer.id,
+                            userId: member.userId
+                          })
+                          .then(() => store.toast('info', `Removed ${member.nick} from this group.`))
+                          .catch((e: Error) => store.toast('error', e.message))
+                      }
+                    : undefined
+                }
                 perms={perms}
                 service={account?.service}
                 onSetPower={(level) => {
@@ -409,6 +432,12 @@ interface MemberRowProps {
   canWhisper: boolean
   /** IRC carries a file directly between two people; nothing else here does. */
   canSendFile: boolean
+  /**
+   * Taking somebody out of a group message. Present only where that is a real
+   * thing to do - a Discord group, never a one-to-one, and never for somebody
+   * with no id to name them by.
+   */
+  onRemoveFromGroup?: () => void
   perms: {
     canKick?: boolean
     canBan?: boolean
@@ -458,7 +487,8 @@ function MemberRow({
   onSendFile,
   canCall,
   onCall,
-  onProfile
+  onProfile,
+  onRemoveFromGroup
 }: MemberRowProps): JSX.Element {
   const { menu, open, close } = useContextMenu()
 
@@ -491,6 +521,19 @@ function MemberRow({
         onIgnore(!blocked)
       }
     },
+    // Beside ignoring rather than with the moderation below it: a group
+    // message has no moderators, and this is not a power anybody was granted -
+    // Discord lets everybody in a group remove everybody else.
+    ...(onRemoveFromGroup
+      ? ([
+          {
+            label: `Remove ${member.nick} from this group`,
+            icon: 'person_remove',
+            danger: true,
+            onClick: onRemoveFromGroup
+          }
+        ] as MenuEntry[])
+      : []),
     ...(perms.canMute
       ? ([{ label: 'Mute', icon: 'volume_off', onClick: () => onModerate('mute') }] as MenuEntry[])
       : []),
