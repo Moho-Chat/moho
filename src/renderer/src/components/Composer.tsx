@@ -3,6 +3,7 @@ import { Icon, IconButton } from './Icon'
 import { Avatar } from './Avatar'
 import { EmojiPicker, type StickerEntry } from './EmojiPicker'
 import { PlaceField } from './PlaceField'
+import { VoiceRecorder } from './VoiceRecorder'
 import { useActiveBuffer, useChat, useStore } from '../state/hooks'
 import { emojiPreview } from '../lib/format'
 import { bufferDisplayName, classes, fileNameOf, isImageFile, resolveMediaUrl } from '../lib/util'
@@ -821,6 +822,11 @@ export function Composer(): JSX.Element | null {
             <Icon name="location_on" size={18} />
           </button>
         )}
+
+        {/* Saying it rather than typing it. Discord only, because it is the
+            one service here whose voice messages this speaks - Matrix shapes
+            them differently and is its own piece of work. */}
+        {service === 'discord' && <VoiceRecorder bufferId={buffer.id} />}
 
         <IconButton
           name="add"

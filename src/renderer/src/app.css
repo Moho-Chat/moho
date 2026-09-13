@@ -3547,6 +3547,53 @@ img.smilie {
   height: 32px;
 }
 
+/* --- recording one --------------------------------------------------- */
+
+.voice-recorder {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding-left: var(--spacing-xxs);
+}
+
+/* The thing that says this is live. Slow, because a fast blink beside a
+   timer reads as an alarm. */
+.voice-recording-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--error);
+  animation: voice-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes voice-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-recording-dot {
+    animation: none;
+  }
+}
+
+/* What the microphone is hearing, which is how somebody knows it is the one
+   they think it is before they send silence to a friend. */
+.voice-meter {
+  width: 56px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-container-highest);
+  overflow: hidden;
+}
+
+.voice-meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--primary);
+  transition: width 120ms linear;
+}
+
 /* --- a voice message ------------------------------------------------- */
 
 /* Sized like the audio row it replaces rather than like a media embed: this
