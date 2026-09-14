@@ -2408,6 +2408,7 @@ export class ChatStore {
       if (!source) return
 
       await window.moho.rpc('startDiscordScreenShare', { bufferId })
+      this.toast('info', 'Setting up the stream…')
 
       // The connection is opened by the daemon when Discord answers, which
       // is a round trip away. Waited for rather than assumed: a capture
@@ -2448,7 +2449,11 @@ export class ChatStore {
     accountId: string
   ): Promise<{ ready: boolean; error?: string }> {
     let lastError: string | undefined
-    for (let i = 0; i < 30; i++) {
+    // Twenty seconds. The wait is not just a round trip: Discord requires
+    // its end-to-end encryption on a stream, and the group has to form -
+    // key package up, external sender down, proposals answered with a commit
+    // - before a picture encrypted for it would mean anything to anybody.
+    for (let i = 0; i < 100; i++) {
       const answer = await window.moho
         .rpc<{ ready: boolean; error?: string }>('discordScreenShareReady', { accountId })
         .catch(() => ({ ready: false, error: undefined }))
