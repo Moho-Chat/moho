@@ -3641,6 +3641,7 @@ export class ChatStore {
     try {
       await window.moho.rpc('partBuffer', { bufferId })
       if (this.state.activeBufferId === bufferId) this.set({ activeBufferId: '' })
+      await this.refreshAccounts()
     } catch (e) {
       this.toast('error', (e as Error).message)
     }

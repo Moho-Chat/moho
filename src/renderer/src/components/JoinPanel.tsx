@@ -6,7 +6,7 @@ import { KNOWN_SNEEDCHAT_ROOMS } from '../lib/sneedchat'
 import { useChat, useStore } from '../state/hooks'
 import { classes, resolveMediaUrl } from '../lib/util'
 import { CaptchaCancelled, rpcAnsweringCaptcha } from '../lib/captcha'
-import type { Account, DiscordFriend } from '../../../shared/wire'
+import type { Account, DiscordFriend, SneedChatRoom } from '../../../shared/wire'
 
 /**
  * How many other people a Discord group message holds - ten including you.
@@ -554,7 +554,13 @@ function FindRoomButton({ account }: { account: Account }): JSX.Element {
  */
 function SneedchatRooms({ account }: { account: Account }): JSX.Element {
   const store = useStore()
-  const enabled = account.sneedchatRooms ?? []
+  const [localRooms, setLocalRooms] = useState<SneedChatRoom[] | null>(null)
+  const enabled = localRooms ?? account.sneedchatRooms ?? []
+
+  useEffect(() => {
+    setLocalRooms(null)
+  }, [account.sneedchatRooms])
+
   /**
    * The catalogue, from the site.
    *
@@ -591,15 +597,29 @@ function SneedchatRooms({ account }: { account: Account }): JSX.Element {
     }
   }, [account.id])
 
+  /** The #general room entry, used as the minimum when the last room is unchecked. */
+  const GENERAL: SneedChatRoom = { id: 1, name: 'general' }
+
   const toggle = (id: number, on: boolean): void => {
-    const next = on
+    const target = rooms.find((r) => r.id === id)
+    if (on && !target) return
+    let next = on
       ? enabled.some((r) => r.id === id)
         ? enabled
-        : [...enabled, rooms.find((r) => r.id === id)!]
+        : [...enabled, target!]
       : enabled.filter((r) => r.id !== id)
+    // An account with no rooms falls back to #general on the daemon side;
+    // reflect that here so the checkbox stays ticked rather than showing an
+    // empty list that silently means #general.
+    if (next.length === 0) next = [GENERAL]
+    setLocalRooms(next)
     void window.moho
       .rpc('setSneedChatRooms', { accountId: account.id, rooms: next })
-      .catch((e: Error) => store.toast('error', e.message))
+      .then(() => store.refreshAccounts())
+      .catch((e: Error) => {
+        setLocalRooms(null)
+        store.toast('error', e.message)
+      })
   }
 
   return (
@@ -613,6 +633,7 @@ function SneedchatRooms({ account }: { account: Account }): JSX.Element {
             <input
               type="checkbox"
               checked={enabled.some((r) => r.id === room.id)}
+              disabled={room.id === 1 && enabled.length === 1 && enabled[0].id === 1}
               onChange={(e) => toggle(room.id, e.target.checked)}
             />
             <span>#{room.name}</span>
@@ -631,7 +652,7 @@ function SneedchatRooms({ account }: { account: Account }): JSX.Element {
             anybody has been here. Worth saying, or an empty list reads as
             "connected to nothing". */}
         {enabled.length === 0 && (
-          <span className="small muted">None chosen - this account uses #general.</span>
+          <span className="small muted">None chosen &mdash; this account uses #general.</span>
         )}
       </div>
     </div>
