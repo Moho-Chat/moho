@@ -509,6 +509,17 @@ export interface ChatState {
   screenSources: { id: string; name: string; thumbnail: string }[] | null
   /** Whether this window is sharing a screen into a Discord call. */
   discordSharing: boolean
+  /**
+   * Who is streaming right now, by Discord user id, and the key their stream
+   * is named by.
+   *
+   * Kept here rather than derived from the voice roster because the roster
+   * says *that* somebody is streaming and this says *which* stream - and the
+   * key is what watching one is asked for by.
+   */
+  discordStreams: Record<string, string>
+  /** The stream being watched, if any. One at a time, deliberately. */
+  discordWatching: { accountId: string; streamKey: string; userId: string; nick: string } | null
   activeCall: {
     accountId: string
     bufferId: string
@@ -618,6 +629,8 @@ const INITIAL: ChatState = {
   discordModal: null,
   activeCall: null,
   discordSharing: false,
+  discordStreams: {},
+  discordWatching: null,
   ignoredByAccount: {},
   matrixWidgets: {},
   matrixInvites: {},
@@ -2659,6 +2672,25 @@ export class ChatStore {
         void this.refreshVoiceSessions()
         break
 
+      // Somebody's Go Live stream came up, changed or went away. The
+      // daemon reports every one of them, this account's included; what is
+      // kept is the key, because that is what asking to watch needs.
+      case 'discordStream': {
+        const d = data as { streamKey?: string; userId?: string; gone?: boolean }
+        if (!d.streamKey || !d.userId) break
+        const streams = { ...this.state.discordStreams }
+        if (d.gone) delete streams[d.userId]
+        else streams[d.userId] = d.streamKey
+        this.set({ discordStreams: streams })
+        // A stream that ends while being watched leaves a decoder pointed at
+        // nothing and a frozen last frame on screen, which reads as a stalled
+        // connection rather than as somebody having stopped.
+        if (d.gone && this.state.discordWatching?.streamKey === d.streamKey) {
+          this.stopWatchingDiscordStream()
+        }
+        break
+      }
+
       // A conversation started or stopped ringing.
       case 'incomingCall':
         this.setRinging(data as IncomingCall)
@@ -3879,6 +3911,43 @@ export class ChatStore {
     } catch (e) {
       this.toast('error', (e as Error).message)
     }
+  }
+
+  /**
+   * Starts watching somebody else's screen.
+   *
+   * Two separate things have to happen and only one of them is here: the
+   * daemon is asked to join the stream and begin receiving, and the window
+   * puts a decoder on the frames when they arrive. This does the first and
+   * records the second's subject; the tile that draws it opens the decoder,
+   * because the decoder needs a canvas and this has none.
+   */
+  async watchDiscordStream(accountId: string, userId: string, nick: string): Promise<void> {
+    const streamKey = this.state.discordStreams[userId]
+    if (!streamKey) {
+      this.toast('info', 'That stream has not started yet')
+      return
+    }
+    // One at a time. Two decoders and two connections would both work, and
+    // the window has one place to draw a picture.
+    if (this.state.discordWatching) await this.stopWatchingDiscordStream()
+    try {
+      await window.moho.rpc('watchDiscordStream', { accountId, streamKey })
+      this.set({ discordWatching: { accountId, streamKey, userId, nick } })
+    } catch (e) {
+      this.toast('error', `Couldn't watch that stream: ${(e as Error).message}`)
+    }
+  }
+
+  async stopWatchingDiscordStream(): Promise<void> {
+    const watching = this.state.discordWatching
+    this.set({ discordWatching: null })
+    if (!watching) return
+    await window.moho
+      .rpc('stopWatchingDiscordStream', { accountId: watching.accountId, streamKey: watching.streamKey })
+      .catch(() => {
+        /* the connection is going away regardless; nothing here can fix it */
+      })
   }
 
   toast(kind: 'info' | 'error', text: string): void {

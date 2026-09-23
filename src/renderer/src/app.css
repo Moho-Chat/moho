@@ -2077,6 +2077,41 @@ img.composer-emoji {
   cursor: not-allowed;
 }
 
+/* The one being watched, so a row of Live badges says which one is open. */
+.call-watch.active {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* Somebody else's shared screen, above the row of faces rather than among
+   them: it is the thing being looked at, and a picture sized like an avatar
+   is not worth having. */
+.discord-stream-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  margin-bottom: var(--spacing-xs);
+}
+
+.discord-stream-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+}
+
+/* Height-capped rather than free: the canvas takes its pixel size from the
+   stream, and a 1080p share would otherwise push the roster off the panel.
+   `contain` because the sender chooses the shape and letterboxing a picture
+   is better than stretching somebody's desktop. */
+.discord-stream-canvas {
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: var(--corner-radius-small);
+  background: #000;
+}
+
 /* The bar that appears while picking people for a group message. */
 .group-dm-bar {
   display: flex;
