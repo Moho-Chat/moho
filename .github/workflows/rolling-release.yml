@@ -77,7 +77,22 @@ jobs:
   # PKGBUILD's check() already does locally.
   # --------------------------------------------------------------------
   build-linux:
-    runs-on: ubuntu-latest
+    # Pinned to the oldest distribution moho supports, because the daemon is a
+    # native binary and glibc symbol versions only go forwards: one built
+    # against 2.39 refuses to start on anything older, whatever the AppImage
+    # around it can do. Built here on Arch that floor came out at 2.39 and on
+    # ubuntu-latest (24.04) it would be the same, while Ubuntu 22.04 has 2.35 -
+    # so the released daemon would not run on a distribution this project
+    # claims to support, and the failure would look like the app starting and
+    # the backend never coming up.
+    #
+    # Building on 22.04 sets the floor at 2.35, which every newer target
+    # satisfies: Debian 13 is on 2.41, Ubuntu 24.04 on 2.39. The Windows job
+    # needs none of this - it cross-builds with mingw and links no glibc at
+    # all. When this label is eventually retired, the replacement is a
+    # `container: ubuntu:22.04` on a current runner, not a bump to the next
+    # label along.
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     outputs:
       # Published for the release body. It must not be recomputed there:
@@ -190,6 +205,22 @@ jobs:
 
       - name: build the daemon
         run: npm run daemon
+
+      # The runner pin above is load-bearing and invisible: nothing about a
+      # daemon built on too new a distribution looks wrong until somebody on
+      # an older one finds the backend never starts. So it is asserted rather
+      # than trusted, here where the answer is cheap and the failure names
+      # itself.
+      - name: the daemon runs on the oldest target
+        run: |
+          floor="$(objdump -T nobilis/target/release/nobilis \
+            | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)"
+          echo "highest glibc symbol required: $floor"
+          highest="$(printf '%s\n' "${floor#GLIBC_}" 2.35 | sort -V | tail -1)"
+          if [ "$highest" != "2.35" ]; then
+            echo "::error::the daemon needs $floor, which Ubuntu 22.04 (2.35) does not have"
+            exit 1
+          fi
 
       # Reuses the release artifacts built one step above. The 19 tests that
       # want the network, Tor, a sound device or real credentials are all
