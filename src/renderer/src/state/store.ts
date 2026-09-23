@@ -507,6 +507,8 @@ export interface ChatState {
   discordModal: DiscordModal | null
   /** The screens and windows on offer, while somebody is choosing one. */
   screenSources: { id: string; name: string; thumbnail: string }[] | null
+  /** Whether this window is sharing a screen into a Discord call. */
+  discordSharing: boolean
   activeCall: {
     accountId: string
     bufferId: string
@@ -515,9 +517,18 @@ export interface ChatState {
     video: boolean
     muted: boolean
     sharingScreen: boolean
+    /** Whether this end is sending a picture. */
+    cameraOn: boolean
+    /**
+     * Whether the call is held on a media server rather than between two
+     * people. It decides what can be offered: a camera needs the server.
+     */
+    onServer: boolean
   } | null
   /** Who each Matrix account has asked never to hear from. */
   ignoredByAccount: Record<string, string[]>
+  /** Buffer id -> what that Matrix room has hung on its wall. */
+  matrixWidgets: Record<string, unknown[]>
   /** Rooms each Matrix account has been invited to and not answered. */
   matrixInvites: Record<string, MatrixInvite[]>
   /**
@@ -606,7 +617,9 @@ const INITIAL: ChatState = {
   screenSources: null,
   discordModal: null,
   activeCall: null,
+  discordSharing: false,
   ignoredByAccount: {},
+  matrixWidgets: {},
   matrixInvites: {},
   profile: null,
   replyingTo: null,
@@ -828,6 +841,14 @@ export class ChatStore {
   /** Who is talking in a call this window is holding. */
   private levels = new Levels()
   /**
+   * The Discord screen share, while one is running.
+   *
+   * Held rather than put in state because it is a live object with a socket
+   * and an encoder behind it, and state is for what gets drawn - which is
+   * `discordSharing` beside it.
+   */
+  private discordShare: { stop: () => void; stream: MediaStream } | null = null
+  /**
    * The Matrix call engine, one per window.
    *
    * Built here rather than per component so a call survives the panel that
@@ -897,7 +918,12 @@ export class ChatStore {
             phase,
             video: group.video,
             muted: this.state.activeCall?.muted ?? false,
-            sharingScreen: false
+            sharingScreen: false,
+            // Asked of the call, for the same reason the one-to-one branch
+            // below does: this runs on every phase change, and a fixed
+            // answer would undo a camera somebody had just turned on.
+            cameraOn: this.matrixCalls.cameraOn,
+            onServer: true
           }
         })
         return
@@ -914,7 +940,14 @@ export class ChatStore {
           phase,
           video: call.video,
           muted: this.state.activeCall?.muted ?? false,
-          sharingScreen: call.call.sharingScreen
+          sharingScreen: call.call.sharingScreen,
+          // Asked of the call rather than assumed. A call placed with video
+          // is already sending a camera, one placed without is not, and one
+          // where somebody has pressed the button since is neither - this
+          // block runs on every phase change and would otherwise put the
+          // button back to "off" the moment the call connected.
+          cameraOn: call.call.cameraOn,
+          onServer: false
         }
       })
     },
@@ -1505,6 +1538,49 @@ export class ChatStore {
    * through sync rather than as a reply - waiting for it would leave the row
    * looking unchanged for a whole sync cycle after somebody pressed the thing.
    */
+  /**
+   * Files a conversation on the account itself: starred to the top of the
+   * list, or pushed to the bottom.
+   *
+   * Matrix's room tags, which travel - so this is not the same as the
+   * window's own pin, and undoing it here undoes it everywhere the account is
+   * signed in.
+   *
+   * The two are exclusive. Being at the top and at the bottom is not a state,
+   * and Element treats them that way, so starring a room that was low
+   * priority takes the low priority off rather than leaving a room that
+   * claims both.
+   */
+  async setRoomTag(bufferId: string, tag: 'favourite' | 'lowPriority', on: boolean): Promise<void> {
+    const other = tag === 'favourite' ? 'lowPriority' : 'favourite'
+    const name = tag === 'favourite' ? 'm.favourite' : 'm.lowpriority'
+    const otherName = tag === 'favourite' ? 'm.lowpriority' : 'm.favourite'
+    const before = this.state.buffers
+    // Moved now rather than when the server says so. The daemon says the same
+    // thing back a moment later; this only means the row moves when the menu
+    // item is clicked.
+    this.set({
+      buffers: before.map((b) =>
+        b.id === bufferId ? { ...b, [tag]: on, ...(on ? { [other]: false } : {}) } : b
+      )
+    })
+    const hadOther = !!before.find((b) => b.id === bufferId)?.[other]
+    try {
+      await window.moho.rpc('setMatrixRoomTag', { bufferId, tag: name, on })
+      // Clearing the opposite tag is a tidy-up, not part of the request:
+      // failing it would undo a change the server has already accepted. Only
+      // where there is something to clear, so the ordinary case is one call.
+      if (on && hadOther) {
+        await window.moho
+          .rpc('setMatrixRoomTag', { bufferId, tag: otherName, on: false })
+          .catch(() => {})
+      }
+    } catch (e) {
+      this.set({ buffers: before })
+      this.toast('error', `Couldn't file that conversation: ${(e as Error).message}`)
+    }
+  }
+
   async markUnread(bufferId: string): Promise<void> {
     this.set({
       buffers: this.state.buffers.map((b) => (b.id === bufferId ? { ...b, markedUnread: true } : b))
@@ -2046,7 +2122,11 @@ export class ChatStore {
         phase: 'connecting',
         video,
         muted: false,
-        sharingScreen: false
+        sharingScreen: false,
+        // Joined with video means the camera is already on; joined without
+        // means it is off until somebody asks for it.
+        cameraOn: video,
+        onServer: true
       }
     })
     await this.matrixCalls.joinGroup(account.id, bufferId, video)
@@ -2210,6 +2290,28 @@ export class ChatStore {
   }
 
   /**
+   * Turns the camera on, or off, in a call already running.
+   *
+   * One gesture for all three shapes of call - a media server, a mesh between
+   * several people, a single connection between two - because the button
+   * asking for it is one button and the person pressing it is asking one
+   * thing. Which of the three this is belongs to the call, not to the
+   * control.
+   */
+  async toggleCamera(): Promise<void> {
+    if (!this.state.activeCall) return
+    const want = !this.matrixCalls.cameraOn
+    const on = await this.matrixCalls.setCamera(want).catch((e: Error) => {
+      // The usual failure is a machine with no camera, or one already taken
+      // by something else. Both are worth a sentence: a button that appears
+      // to do nothing is the worse outcome.
+      this.toast('error', `Couldn't turn the camera on: ${e.message}`)
+      return false
+    })
+    this.set({ activeCall: { ...this.state.activeCall, cameraOn: on } })
+  }
+
+  /**
    * Shares a screen or a window into the call.
    *
    * The picker is the desktop's rather than the browser's: Electron will not
@@ -2217,6 +2319,20 @@ export class ChatStore {
    * windows somebody actually has open is the only way to choose one.
    */
   async toggleScreenShare(): Promise<void> {
+    // A Discord call is not a Matrix one and has no activeCall behind it -
+    // its audio lives in the daemon - so it is answered first and on its own
+    // terms. The gesture and the button are the same either way, which is
+    // the whole point of asking here rather than in two places.
+    // A conversation is needed as well as a session: the stream is asked for
+    // against a channel, and a call whose buffer this window has never opened
+    // has nothing to ask against.
+    const discord = this.state.voiceSessions.find(
+      (s) => s.accountId.startsWith('discord:') && !!s.bufferId
+    )
+    if (discord?.bufferId && !this.state.activeCall) {
+      await this.toggleDiscordScreenShare(discord.accountId, discord.bufferId)
+      return
+    }
     if (!this.state.activeCall) return
     // On a media server the picker is LiveKit's own job, and Electron's
     // source list is what answers it - see the permission handler in main.
@@ -2259,6 +2375,95 @@ export class ChatStore {
     } catch (e) {
       this.toast('error', `Couldn't share the screen: ${(e as Error).message}`)
     }
+  }
+
+  /**
+   * Sharing a screen into a Discord call.
+   *
+   * Three parts in three places, which is what the protocol forces: the
+   * gateway is asked for a stream, the daemon opens the connection Discord
+   * answers with, and this window encodes the picture - because Chromium has
+   * the encoders and the daemon has none. The same division the Matrix calls
+   * draw from the other side, where the browser holds the whole call because
+   * WebRTC is the browser's.
+   */
+  async toggleDiscordScreenShare(accountId: string, bufferId: string): Promise<void> {
+    if (this.discordShare) {
+      this.discordShare.stop()
+      this.discordShare = null
+      this.set({ discordSharing: false })
+      await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
+      return
+    }
+
+    try {
+      const sources = await window.moho.screenSources()
+      if (sources.length === 0) {
+        this.toast('info', 'Nothing to share')
+        return
+      }
+      // The same picker the Matrix path uses, for the same reason: Electron
+      // will not answer getDisplayMedia without being told which source.
+      const source = await this.askForScreenSource(sources)
+      if (!source) return
+
+      await window.moho.rpc('startDiscordScreenShare', { bufferId })
+      this.toast('info', 'Setting up the stream…')
+
+      // The connection is opened by the daemon when Discord answers, which
+      // is a round trip away. Waited for rather than assumed: a capture
+      // opened against a connection that never arrived is a camera light on
+      // for nothing.
+      const ready = await this.waitForDiscordStream(accountId)
+      if (!ready.ready) {
+        // The server's own refusal where there is one. "Discord never
+        // opened the stream" is true and useless; a token it would not take
+        // or a server it could not find is a sentence somebody can act on.
+        this.toast('error', ready.error ? `Couldn’t open the stream: ${ready.error}` : 'Discord never opened the stream')
+        await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
+        return
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: source.id }
+        }
+      } as unknown as MediaStreamConstraints)
+      const { shareScreen } = await import('../lib/discordscreen')
+      this.discordShare = await shareScreen(accountId, stream, (message) => {
+        this.toast('error', message)
+        this.discordShare = null
+        this.set({ discordSharing: false })
+        void window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
+      })
+      this.set({ discordSharing: true })
+    } catch (e) {
+      this.toast('error', `Couldn't share the screen: ${(e as Error).message}`)
+      await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
+    }
+  }
+
+  /** Waits for the daemon to say the stream connection is up. */
+  private async waitForDiscordStream(
+    accountId: string
+  ): Promise<{ ready: boolean; error?: string }> {
+    let lastError: string | undefined
+    // Twenty seconds. The wait is not just a round trip: Discord requires
+    // its end-to-end encryption on a stream, and the group has to form -
+    // key package up, external sender down, proposals answered with a commit
+    // - before a picture encrypted for it would mean anything to anybody.
+    for (let i = 0; i < 100; i++) {
+      const answer = await window.moho
+        .rpc<{ ready: boolean; error?: string }>('discordScreenShareReady', { accountId })
+        .catch(() => ({ ready: false, error: undefined }))
+      if (answer.ready) return { ready: true }
+      // Kept as it goes past: the daemon hands the reason over once, and the
+      // poll that sees it is not the one that gives up.
+      if (answer.error) lastError = answer.error
+      await new Promise((r) => setTimeout(r, 200))
+    }
+    return { ready: false, error: lastError }
   }
 
   /** Follows a Kick channel, or stops. The header reads the answer back. */
@@ -2507,6 +2712,15 @@ export class ChatStore {
           ignoredByAccount: {
             ...this.state.ignoredByAccount,
             [data.accountId as string]: (data.users as string[]) || []
+          }
+        })
+        break
+
+      case 'matrixWidgets':
+        this.set({
+          matrixWidgets: {
+            ...this.state.matrixWidgets,
+            [data.bufferId as string]: (data.widgets as unknown[]) || []
           }
         })
         break

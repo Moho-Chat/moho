@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
 import { AddToConversation } from './AddToConversation'
 import { DiscordInvite } from './DiscordInvite'
+import { RoomSettings } from './RoomSettings'
 import { HeaderPopover } from './HeaderPopover'
 import { useChat, useStore } from '../state/hooks'
 import { bufferDisplayName, classes, formatFullTime } from '../lib/util'
@@ -16,6 +17,13 @@ interface DiscordThread {
   name: string
   archived?: boolean
   messageCount?: number
+}
+
+/** Today, as a `date` field spells it - local, not UTC. */
+function today(): string {
+  const d = new Date()
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 /** What Discord's own search hands back. */
@@ -351,6 +359,100 @@ function DiscordThreads({ buffer }: { buffer: BufferEntry }): JSX.Element {
  * business and the thing everyone is meant to have read, and any of those can
  * be long. The count on the button is what makes it worth opening.
  */
+/** One of the things a room keeps pinned to its wall. */
+interface RoomWidget {
+  id: string
+  kind: string
+  name: string
+  url: string
+  creator: string
+  openable: boolean
+}
+
+/**
+ * What a room has hung on its wall: a jitsi, an etherpad, a whiteboard, a
+ * dashboard somebody wrote.
+ *
+ * Listed, not drawn. A widget is somebody else's web page, and this client's
+ * whole posture is that content from a room never reaches a renderer that can
+ * navigate - so it opens in a browser, where somebody else's page belongs.
+ * A room that keeps one used to show nothing of it at all, which made the room
+ * look emptier here than it is.
+ */
+function RoomWidgets({ buffer }: { buffer: BufferEntry }): JSX.Element | null {
+  const store = useStore()
+  const known = useChat((s) => s.matrixWidgets)[buffer.id]
+  const [open, setOpen] = useState(false)
+  const [rows, setRows] = useState<RoomWidget[] | null>(null)
+  const button = useRef<HTMLSpanElement>(null)
+
+  const show = (): void => {
+    if (open) {
+      setOpen(false)
+      return
+    }
+    setOpen(true)
+    setRows(null)
+    void window.moho
+      .rpc<RoomWidget[]>('listMatrixWidgets', { bufferId: buffer.id })
+      .then(setRows)
+      .catch((e: Error) => {
+        store.toast('error', e.message)
+        setRows([])
+      })
+  }
+
+  // A room with nothing on its wall gets no button. Unlike pins, the answer is
+  // always known - widgets are room state and arrive with the room - so there
+  // is no "ask and find out" case to leave the button open for.
+  const count = known?.length ?? 0
+  if (count === 0) return null
+
+  return (
+    <>
+      <span ref={button} className="header-anchor">
+        <IconButton
+          name="widgets"
+          title={`${count} ${count === 1 ? 'widget' : 'widgets'} in this room`}
+          className={open ? 'active' : undefined}
+          onClick={show}
+        />
+      </span>
+      {open && (
+        <HeaderPopover anchor={button.current} width={360} onClose={() => setOpen(false)}>
+          <div className="small muted">On this room&apos;s wall</div>
+          {rows === null && <div className="small muted">Looking…</div>}
+          {rows?.length === 0 && <div className="small muted">Nothing here.</div>}
+          {rows?.map((widget) => (
+            <div key={widget.id} className="pinned-row">
+              <div className="setting-text">
+                <div className="ellipsis">{widget.name}</div>
+                <div className="small muted ellipsis">
+                  {widget.creator ? `${widget.kind} — added by ${widget.creator}` : widget.kind}
+                </div>
+              </div>
+              {/* Not openable means the url still carries a variable only an
+                  integration manager can fill, and this client has none.
+                  Saying so beats offering a link that 404s. */}
+              {widget.openable ? (
+                <IconButton
+                  name="open_in_new"
+                  title="Open in your browser"
+                  onClick={() => void window.moho.openExternal(widget.url)}
+                />
+              ) : (
+                <span className="small muted" title={widget.url}>
+                  needs an integration manager
+                </span>
+              )}
+            </div>
+          ))}
+        </HeaderPopover>
+      )}
+    </>
+  )
+}
+
 function PinnedMessages({ buffer }: { buffer: BufferEntry }): JSX.Element | null {
   const store = useStore()
   const known = useChat((s) => s.pinnedMessages)[buffer.id]
@@ -491,6 +593,9 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   const [jumping, setJumping] = useState(false)
   const [calling, setCalling] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  /** The day somebody asked to read back to, as the date field spells it. */
+  const [date, setDate] = useState('')
+  const [jumpingToDate, setJumpingToDate] = useState(false)
   /** This room, or every room this account is in. */
   const [scope, setScope] = useState<'room' | 'account'>('room')
   const [roomNames, setRoomNames] = useState<Record<string, string>>({})
@@ -673,6 +778,47 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
     setSearchOpen(false)
   }
 
+  /**
+   * Reads back to a particular day.
+   *
+   * The server is asked where that day is; everything after that is the path
+   * a search result already takes. Forwards from midnight, because a date
+   * means "that day" rather than "whatever came before it" - asking backwards
+   * lands on the last message of the day before.
+   *
+   * A day after everything in the room finds nothing forwards, which is the
+   * one case worth a second question: asking backwards from it lands on the
+   * last thing anybody said, which is the honest answer to "take me to
+   * Tuesday" in a room that went quiet in March.
+   */
+  const jumpToDate = async (day: string): Promise<void> => {
+    // Local midnight rather than UTC: somebody picking the 3rd means the 3rd
+    // where they are, and a UTC midnight is the 2nd for most of the Americas.
+    const midnight = new Date(`${day}T00:00:00`)
+    if (Number.isNaN(midnight.getTime())) return
+    const ts = Math.floor(midnight.getTime() / 1000)
+
+    setJumpingToDate(true)
+    try {
+      let found = await window.moho
+        .rpc<{ eventId: string }>('matrixEventAtDate', { bufferId: buffer.id, ts, forwards: true })
+        .catch(() => null)
+      if (!found) {
+        found = await window.moho
+          .rpc<{ eventId: string }>('matrixEventAtDate', { bufferId: buffer.id, ts, forwards: false })
+          .catch(() => null)
+      }
+      if (!found) {
+        store.toast('info', 'Nothing was said in this room around then')
+        return
+      }
+      await jumpTo(found.eventId)
+      setDate('')
+    } finally {
+      setJumpingToDate(false)
+    }
+  }
+
   const call = (): void => {
     if (inCall) {
       void store.leaveVoice(buffer.accountId)
@@ -826,6 +972,15 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
       {isDiscord && buffer.kind === 'channel' && <DiscordThreads buffer={buffer} />}
       {(isMatrix || isDiscord) && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
 
+      {/* Beside the pins, because it is the same kind of fact about a room:
+          something the room keeps, rather than something said in it. */}
+      {isMatrix && buffer.kind !== 'server' && <RoomWidgets buffer={buffer} />}
+
+      {/* And the room's own settings, next to them for the same reason.
+          Only on a room: a direct message has no history for anybody to
+          join and read. */}
+      {isMatrix && buffer.kind === 'channel' && <RoomSettings buffer={buffer} />}
+
       {/* What this channel has asked before now. Two buttons rather than one
           list, because a poll and a prediction are different questions -
           which one is worth going back to is not a filter you want to apply
@@ -936,6 +1091,37 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
               >
                 Everywhere
               </button>
+            </div>
+          )}
+
+          {/* Reading back to a particular day, which until now meant
+              scrolling to it. Beside the search because it answers the same
+              question - "where was that" - and because an encrypted room
+              cannot be searched at all, which leaves the date as the only
+              way back into it.
+
+              Matrix only: it is the one protocol here whose server will say
+              where in a room a given day is. */}
+          {isMatrix && (
+            <div className="search-date">
+              <label className="small muted" htmlFor="jump-date">
+                Or jump to a date
+              </label>
+              <div className="popover-field">
+                <Icon name="calendar_month" size={16} />
+                <input
+                  id="jump-date"
+                  type="date"
+                  value={date}
+                  // Nothing was said in this room tomorrow.
+                  max={today()}
+                  disabled={jumpingToDate}
+                  onChange={(e) => {
+                    setDate(e.target.value)
+                    if (e.target.value) void jumpToDate(e.target.value)
+                  }}
+                />
+              </div>
             </div>
           )}
 

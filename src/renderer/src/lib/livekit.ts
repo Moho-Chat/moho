@@ -213,6 +213,27 @@ export class SfuCall {
     return on
   }
 
+  /**
+   * Turns the camera on, or off. Returns whether it is on.
+   *
+   * A call could be *joined* with video and never changed after - the camera
+   * was a decision made once, before anybody was on screen, which is the
+   * moment nobody knows yet whether they want to be seen.
+   */
+  async toggleCamera(): Promise<boolean> {
+    const on = this.room.localParticipant.isCameraEnabled
+    await this.room.localParticipant.setCameraEnabled(!on)
+    // The local tile shows what this end is sending, so it has to be rebuilt
+    // when that changes - the same reason toggleScreen does it.
+    this.local = this.ownStream()
+    return !on
+  }
+
+  /** Whether this end is sending a picture at all. */
+  get cameraOn(): boolean {
+    return this.room.localParticipant.isCameraEnabled
+  }
+
   /** Shares a screen, or stops. Returns whether one is being shared. */
   async toggleScreen(): Promise<boolean> {
     const on = this.room.localParticipant.isScreenShareEnabled

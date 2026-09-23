@@ -169,7 +169,9 @@ called `subscribe` for that buffer.
   polls, stickers, knocking, reporting, room moderation, ignore lists, and a room directory
   search that asks every homeserver this account knows at once. Calls both ways: one-to-one
   signalling, and the group calls Element holds on a LiveKit media server, with the media keys
-  the room passes round.
+  the room passes round. Camera and screen share in all three shapes of call - a single
+  connection, a mesh, or a media server - and either can be turned on part-way through, which
+  is a renegotiation rather than a new call.
 - **Kick** - the streaming site's chat, over its Pusher socket. Joins by streamer handle, imports
   the account's follows, and carries the three emote tiers with subscriber gating, redemptions,
   subscriptions, gifted subs and raids, moderation, and polls and predictions that can be

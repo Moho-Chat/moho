@@ -2979,9 +2979,12 @@ img.smilie {
   background: none;
 }
 
-/* A recent that resolves to no picture is a shortcode belonging to a service
-   that isn't open, so its text is all there is to show. Kept inside its cell -
-   at full size a row of them overlapped into an unreadable smear. */
+/* A cell that resolves to no picture - a recent whose service isn't open, or
+   an emote whose source sent no image - has its name to show and nothing
+   else. Kept inside its cell: at full size a row of them overlapped into an
+   unreadable smear, which is exactly what the Sneedchat table looked like
+   while this class was being put on a span inside the cell instead of on the
+   cell. Both classes, one element. */
 .emoji-cell.emoji-token {
   overflow: hidden;
   padding: 0 2px;
@@ -5877,6 +5880,40 @@ video.lightbox-media {
   font: inherit;
 }
 
+/* --- Notices ---------------------------------------------------------- */
+
+/* Matrix's m.notice: an announcement rather than a sentence. What bots and
+   bridges send, and what a homeserver's own notices arrive as.
+
+   Held back rather than hidden. The body takes the muted ink and the name
+   keeps its colour, so a bridge relaying a hundred build results reads as a
+   hundred announcements while the people talking still stand out - which is
+   the whole reason the msgtype exists. The rule sits on the body alone so a
+   notice that mentions you can still be highlighted over the top of it. */
+.message-row.notice .message-body {
+  color: var(--text-muted);
+}
+
+/* The rail rather than a tag on the byline, because a run of notices is
+   grouped and only the first of a run has a byline to hang anything on -
+   which is exactly the case a bridge produces. */
+.message-row.notice {
+  box-shadow: inset 2px 0 0 var(--border);
+}
+
+.notice-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: var(--spacing-xs);
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-style: normal;
+  text-transform: lowercase;
+}
+
 /* --- Whispers --------------------------------------------------------- */
 
 /* Said privately rather than to the room. Highlighted like a mention, because
@@ -6640,4 +6677,167 @@ video.lightbox-media {
 
 .follow-button.following {
   color: var(--error);
+}
+
+/* --- Looking into a room ---------------------------------------------- */
+
+/* What is in a room, read from outside it. Sits under the list rather than
+   over it, so the row it came from stays visible - the point of looking is to
+   decide about that room, and a panel covering it takes away what the decision
+   is about. */
+.room-peek {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin: var(--spacing-s) 0;
+  padding: var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-lowest);
+}
+
+.room-peek-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  font-weight: 500;
+}
+
+.room-peek-head .ellipsis {
+  flex: 1;
+  min-width: 0;
+}
+
+.room-peek-topic {
+  color: var(--surface-variant-text);
+  /* A topic can be a paragraph. Three lines is enough to judge a room by and
+     short enough that the conversation under it stays on screen. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.room-peek-log {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.room-peek-line {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: baseline;
+}
+
+.room-peek-from {
+  flex: none;
+  max-width: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--surface-variant-text);
+  font-size: 0.82rem;
+}
+
+.room-peek-body {
+  min-width: 0;
+  font-size: 0.85rem;
+  /* Somebody else's text, from a room nobody here has joined: it wraps and
+     it never stretches the dialog. */
+  overflow-wrap: anywhere;
+}
+
+/* --- Link previews ---------------------------------------------------- */
+
+/* The picture a homeserver found behind a link. Capped rather than sized to
+   the card: a preview image is often a 1200px banner, and a card as wide as
+   the conversation would turn every posted link into the loudest thing in the
+   room. */
+.rich-embed-image {
+  max-width: 100%;
+  max-height: 220px;
+  margin-top: var(--spacing-xs);
+  border-radius: var(--corner-radius-small);
+  object-fit: cover;
+  cursor: pointer;
+}
+
+/* --- Jump to a date --------------------------------------------------- */
+
+/* Under the search box, because it answers the same question by a different
+   route - and in an encrypted room, which the server cannot search, it is the
+   only route. */
+.search-date {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.search-date input[type='date'] {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--surface-text);
+  font: inherit;
+}
+
+/* The picker's own button, which renders as a dark glyph on a dark field
+   without this. */
+.search-date input[type='date']::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+  cursor: pointer;
+}
+
+/* --- Message source --------------------------------------------------- */
+
+/* The event behind a message, for when what is on screen is wrong. Built like
+   the prompts beside it and capped well short of the window: an event from a
+   bridge runs to hundreds of lines, and a dialog as tall as the conversation
+   behind it has its close button off screen. */
+.event-source {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  width: min(680px, 90vw);
+  max-height: calc(100vh - 96px);
+  margin: auto;
+  padding: var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  overflow-y: auto;
+}
+
+.event-source-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.event-source-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.event-source-json {
+  margin: 0;
+  max-height: 40vh;
+  padding: var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-lowest);
+  color: var(--surface-variant-text);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  /* Both axes in its own box: JSON has long lines, and wrapping them would
+     destroy the indentation that makes it readable at all. */
+  overflow: auto;
+  white-space: pre;
 }

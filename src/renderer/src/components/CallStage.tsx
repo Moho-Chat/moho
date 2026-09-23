@@ -214,6 +214,16 @@ export function CallStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' }): JSX
             className={call.muted ? 'calling' : undefined}
             onClick={() => store.toggleCallMute()}
           />
+          {/* Between the microphone and the screen, which is the order every
+              client puts them in - and the order of how often they are
+              pressed. On every call now, whatever shape it is: a media
+              server, a mesh, or the one connection between two people. */}
+          <IconButton
+            name={call.cameraOn ? 'videocam' : 'videocam_off'}
+            title={call.cameraOn ? 'Turn the camera off' : 'Turn the camera on'}
+            className={call.cameraOn ? 'active' : undefined}
+            onClick={() => void store.toggleCamera()}
+          />
           <IconButton
             name={call.sharingScreen ? 'stop_screen_share' : 'screen_share'}
             title={call.sharingScreen ? 'Stop sharing' : 'Share a screen or window'}

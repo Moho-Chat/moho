@@ -32,6 +32,12 @@ export interface BufferMenuInput {
   spaces?: BufferGroup[]
   onTogglePin: () => void
   onToggleMute: () => void
+  /**
+   * Filing the conversation on the account rather than in this window -
+   * Matrix's room tags. Absent for every service that has no such idea, which
+   * is how the entries stay off menus where they would do nothing.
+   */
+  onTag?: (tag: 'favourite' | 'lowPriority', on: boolean) => void
   onToggleAutojoin?: () => void
   onSpace?: (spaceId: string, child: boolean) => void
   onWatch?: () => void
@@ -78,6 +84,7 @@ export function bufferMenuEntries({
   spaces,
   onTogglePin,
   onToggleMute,
+  onTag,
   onToggleAutojoin,
   onSpace,
   onWatch,
@@ -169,6 +176,28 @@ export function bufferMenuEntries({
       ? ([{ label: 'Mark as unread', icon: 'mark_chat_unread', onClick: onMarkUnread }] as MenuEntry[])
       : []),
     { label: pinned ? 'Unpin' : 'Pin', icon: 'push_pin', onClick: onTogglePin },
+    // Beneath the pin, and deliberately beside it: they are the same intent
+    // said in two places. A pin is this window's, a favourite is the
+    // account's - it was quite possibly set in another client, and it is what
+    // somebody who organised their rooms there expects to find here.
+    //
+    // The two are exclusive, because being at the top and at the bottom is
+    // not a state, and because Element treats them that way - so starring a
+    // room that was low priority takes the low priority off.
+    ...(onTag
+      ? ([
+          {
+            label: buffer.favourite ? 'Remove from favourites' : 'Favourite',
+            icon: 'star',
+            onClick: () => onTag('favourite', !buffer.favourite)
+          },
+          {
+            label: buffer.lowPriority ? 'Restore priority' : 'Low priority',
+            icon: 'low_priority',
+            onClick: () => onTag('lowPriority', !buffer.lowPriority)
+          }
+        ] as MenuEntry[])
+      : []),
     // A mute made on the account itself is not this window's to undo, and an
     // "Unmute" that quietly did nothing would be worse than no entry at all -
     // so it says where the mute is, and where to go and take it off.
@@ -199,13 +228,26 @@ export function bufferMenuEntries({
     { label: 'Hide', icon: 'visibility_off', onClick: onHide },
     ...(buffer.kind === 'server'
       ? []
-      : ([
-          {
-            label: leaveLabel(buffer, account?.service),
-            icon: 'close',
-            danger: true,
-            onClick: onClose
-          }
-        ] as MenuEntry[]))
+      : buffer.serviceRoom
+        ? // The server's own room, which the server will not let anybody
+          // leave. Said rather than hidden: an entry that is simply absent
+          // reads as a client that forgot, where this reads as the fact it
+          // is - and hiding it would leave somebody hunting for the gesture.
+          ([
+            {
+              label: 'Your server keeps this room open',
+              icon: 'lock',
+              disabled: true,
+              onClick: () => {}
+            }
+          ] as MenuEntry[])
+        : ([
+            {
+              label: leaveLabel(buffer, account?.service),
+              icon: 'close',
+              danger: true,
+              onClick: onClose
+            }
+          ] as MenuEntry[]))
   ]
 }

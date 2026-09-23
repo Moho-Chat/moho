@@ -114,6 +114,29 @@ export interface Buffer {
    */
   serverMuted?: boolean
   /**
+   * Starred on the account itself - Matrix's `m.favourite` tag today.
+   *
+   * Separate from this window's pin because it was very likely set in another
+   * client, and finding it honoured here is the whole point of a tag that
+   * travels. Both lift a conversation to the top of the list.
+   */
+  favourite?: boolean
+  /**
+   * The other end of the same idea: `m.lowpriority`, a room the account has
+   * pushed to the bottom. Not muted - it still says when somebody speaks, it
+   * just stops competing for the top of the rail.
+   */
+  lowPriority?: boolean
+  /**
+   * This conversation is the service itself talking to the account.
+   *
+   * Matrix's server notices room - a terms-of-service change, a quota, an
+   * account restriction. Marked because it otherwise looks exactly like an
+   * ordinary room from a stranger, and because it cannot be left: the server
+   * refuses, so offering to leave it is offering something that fails.
+   */
+  serviceRoom?: boolean
+  /**
    * Set while the buffer exists but the service has not yet said what is in
    * it - a Matrix room between joining it and its first sync. The list draws
    * a spinner against it and the empty room says so rather than looking like
@@ -377,6 +400,16 @@ export interface Embed {
   color?: number
   timestamp?: string
   url?: string
+  /**
+   * The picture on the card, as a local path.
+   *
+   * A link preview is mostly its picture. Matrix's homeserver-side unfurling
+   * answers with an mxc URI needing a token no window holds, so the daemon
+   * fetches it and what arrives here is the file. Discord's own embeds carry
+   * none of these - their thumbnails come through the message's media
+   * sniffing and are paired with the card separately.
+   */
+  imageUrl?: string
 }
 
 /**

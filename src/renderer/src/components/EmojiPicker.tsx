@@ -100,6 +100,19 @@ function readRecent(accountId?: string): string[] {
   }
 }
 
+/**
+ * Whether this account keeps its recent picks on the account rather than in
+ * this window.
+ *
+ * Matrix does, in account data, so the list follows the person to their
+ * phone and back. Nothing else here has anywhere to put it - and on the
+ * services whose emoji are guild- or channel-bound, a list that travelled
+ * would travel to places the emoji in it cannot be sent.
+ */
+function travels(accountId?: string): boolean {
+  return !!accountId?.startsWith('matrix:')
+}
+
 /** One image out of a Matrix sticker pack, as the daemon offers it. */
 export interface StickerEntry {
   name: string
@@ -195,6 +208,19 @@ export function EmojiPicker({
   // point the list on screen belongs to somebody else.
   useEffect(() => {
     setRecent(readRecent(accountId))
+    // Where the account keeps the list itself, that copy wins: it is the one
+    // that has seen every client, and the local one is only ever this
+    // machine's view of it. Asked each time the picker changes account
+    // rather than held, because the answer changes elsewhere.
+    if (!travels(accountId)) return
+    void window.moho
+      .rpc<string[]>('matrixRecentEmoji', { accountId })
+      // An older daemon does not answer this, and an account that has never
+      // picked one has nothing to say. Both leave the local list alone.
+      .then((list) => {
+        if (list.length > 0) setRecent(list)
+      })
+      .catch(() => {})
   }, [accountId])
 
   // Anchored above and right-aligned to the button that opened it, and kept
@@ -317,14 +343,24 @@ export function EmojiPicker({
   const jumpTo = (id: string): void => {
     sectionRefs.current[id]?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }
+  // The same table twice is the failure this half guards against: once the
+  // daemon lists Sneedchat among the sources it answers `listAllEmoji` with,
+  // the section below is a second copy of it under a second heading. The
+  // sources win, because they are the ones the jump strip points at.
+  const sneedchatSourced = useMemo(
+    () => sources.some((src) => src.service === 'sneedchat' && src.usableHere),
+    [sources]
+  )
   const smilieList = useMemo(
     () =>
-      q
-        ? smilies.filter(
-            (s) => s.label.toLowerCase().includes(q) || s.aliases.some((a) => a.toLowerCase().includes(q))
-          )
-        : smilies,
-    [q, smilies]
+      sneedchatSourced
+        ? []
+        : q
+          ? smilies.filter(
+              (s) => s.label.toLowerCase().includes(q) || s.aliases.some((a) => a.toLowerCase().includes(q))
+            )
+          : smilies,
+    [q, smilies, sneedchatSourced]
   )
 
   // Grouped by the pack they came from, which is how somebody remembers where
@@ -354,6 +390,13 @@ export function EmojiPicker({
       localStorage.setItem(recentKey(accountId), JSON.stringify(next))
     } catch {
       /* a full or disabled store just means recents don't persist */
+    }
+    // And on the account, where it has somewhere to go. Fire and forget: the
+    // list on screen is already right, and a failed write means one pick is
+    // not carried to another client - not something to interrupt somebody
+    // mid-sentence about.
+    if (travels(accountId)) {
+      void window.moho.rpc('matrixEmojiUsed', { accountId, emoji: text }).catch(() => {})
     }
     onSelect(text)
   }
@@ -447,22 +490,33 @@ export function EmojiPicker({
               // at all was dropped above, so a cell that cannot be pressed is
               // one this account has not paid for - in a room it is reading.
               const why = e.locked ? `${e.name} — subscriber only` : ''
+              // Where the picture comes from, by service. Discord's is built
+              // from the id it is named by. Sneedchat's ships with the client
+              // rather than being fetched, so the daemon deliberately sends
+              // no URL for it - see listSneedchatSmilies - and the smilie
+              // table is what turns a shortcode back into a file. Without
+              // that last step every one of the 175 entries fell through to
+              // its own label and the section drew as a smear of overlapping
+              // words instead of a table of faces.
+              const art = e.url
+                ? resolveMediaUrl(drawableEmoteUrl(e.url))
+                : src.service === 'discord'
+                  ? discordEmojiUrl(e.id, 48)
+                  : emojiPreview(e.id, smilies)?.src
               return (
                 <button
                   key={`${src.id}:${e.id}`}
                   type="button"
-                  className={why ? 'emoji-cell locked' : 'emoji-cell'}
+                  // A cell with no picture shows its name, and the styling
+                  // that keeps a name inside its square is `.emoji-cell.
+                  // emoji-token` - one element, both classes. Putting the
+                  // token class on a span inside the cell matched nothing.
+                  className={`emoji-cell${why ? ' locked' : ''}${art ? '' : ' emoji-token'}`}
                   disabled={!!why}
                   title={why || e.name}
                   onClick={() => pick(e.id)}
                 >
-                  {e.url ? (
-                    <img src={resolveMediaUrl(drawableEmoteUrl(e.url))} alt={e.name} loading="lazy" />
-                  ) : src.service === 'discord' ? (
-                    <img src={discordEmojiUrl(e.id, 48)} alt={e.name} loading="lazy" />
-                  ) : (
-                    <span className="emoji-token">{e.name}</span>
-                  )}
+                  {art ? <img src={art} alt={e.name} loading="lazy" /> : e.name}
                 </button>
               )
             })}
@@ -558,9 +612,14 @@ export function EmojiPicker({
           </Section>
         )}
 
-        {unicode.length === 0 && custom.length === 0 && smilieList.length === 0 && (
-          <div className="small muted emoji-empty">No matches.</div>
-        )}
+        {unicode.length === 0 &&
+          custom.length === 0 &&
+          smilieList.length === 0 &&
+          // Counted too, or a search that matches only a source's emoji
+          // reports "No matches" above the matches it found.
+          sourceSections.length === 0 && (
+            <div className="small muted emoji-empty">No matches.</div>
+          )}
         </PickerScroll.Provider>
       </div>
     </div>,

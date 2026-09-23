@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
+import { MatrixAddresses } from './MatrixAddresses'
+import { MatrixDeactivate } from './MatrixDeactivate'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { resolveMediaUrl } from '../lib/util'
 import type { Account, MatrixDevice } from '../../../shared/wire'
@@ -554,6 +556,11 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
         </div>
       ))}
 
+      {/* How this account is reached and recovered. Above the sessions and
+          keys because it is the plainer fact about an account, and because
+          an account with no address on it is one nobody can get back into. */}
+      <MatrixAddresses account={account} />
+
       {/* The emoji comparison is drawn over the whole window now rather
           than in here: a verification can arrive from another session, or
           from another person through a room you share, and this panel is
@@ -632,6 +639,18 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
           Restore
         </button>
       </div>
+
+      {/* Last, and separated from everything above it by being last: nothing
+          else on this panel is irreversible. */}
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Closing this account</div>
+          <div className="small muted">
+            Removing the account from moho leaves it on the homeserver. This does not.
+          </div>
+        </div>
+      </div>
+      <MatrixDeactivate account={account} />
     </div>
   )
 }

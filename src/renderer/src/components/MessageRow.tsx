@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
 import { Avatar } from './Avatar'
 import { ReasonPrompt } from './ReasonPrompt'
+import { EventSource } from './EventSource'
 import { ForwardPicker } from './ForwardPicker'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { MediaEmbed } from './MediaEmbed'
@@ -42,6 +43,7 @@ import {
   formatTime,
   hasDirectMessages,
   isChatKind,
+  isNotice,
   isReward,
   isWhisper,
   nickColor,
@@ -317,6 +319,7 @@ function MessageRowBody({
   const [pickerOpen, setPickerOpen] = useState(false)
   /** Writing the reason for a report, before it is sent. */
   const [reporting, setReporting] = useState(false)
+  const [sourceOpen, setSourceOpen] = useState(false)
   /** Choosing where to send this message on to. */
   const [forwarding, setForwarding] = useState(false)
   const reactButtonRef = useRef<HTMLButtonElement>(null)
@@ -343,6 +346,11 @@ function MessageRowBody({
   // Said to you rather than to the room. Drawn differently on purpose: the
   // whole risk with a private message is reading it as a public one.
   const whispered = isWhisper(message.kind)
+  // An announcement rather than a sentence. Kept in the conversation and
+  // drawn a shade back from it - the point of m.notice is that a bridge
+  // relaying a hundred build results should not read like a hundred people
+  // talking.
+  const notice = isNotice(message.kind)
   const reward = isReward(message.kind)
   // Both of the modes that draw an avatar column. Bubbles is otherwise
   // nothing like comfy, but it wants the same picture beside the same first
@@ -558,6 +566,29 @@ function MessageRowBody({
           }
         ] as MenuEntry[])
       : []),
+    // The two things somebody reaches for when a message is wrong: an
+    // address to quote it by, and what it actually says. A permalink is how
+    // a message is shown to somebody outside the room, and the source is how
+    // a malformed event is described to whoever can fix it - without either,
+    // a bug in a room can only be described in prose.
+    ...(service === 'matrix' && !isSystem && message.id
+      ? ([
+          {
+            label: 'Copy link to this message',
+            icon: 'link',
+            onClick: () => {
+              void window.moho
+                .rpc<{ url: string }>('matrixMessageLink', { bufferId, messageId: message.id })
+                .then(({ url }) => {
+                  void window.moho.copyText(url)
+                  store.toast('info', 'Link copied')
+                })
+                .catch((e: Error) => store.toast('error', e.message))
+            }
+          },
+          { label: 'View source', icon: 'data_object', onClick: () => setSourceOpen(true) }
+        ] as MenuEntry[])
+      : []),
     ...(message.failed
       ? ([{ label: 'Retry', icon: 'refresh', onClick: () => store.retrySend(message.id) }] as MenuEntry[])
       : [])
@@ -609,6 +640,7 @@ function MessageRowBody({
           'message-row',
           message.isHighlight && 'highlight',
           whispered && 'whisper',
+          notice && 'notice',
           message.pending && 'pending',
           message.failed && 'failed',
           isSystem && 'system',
@@ -692,6 +724,18 @@ function MessageRowBody({
                   {badgeLabel(badge)}
                 </span>
               ))}
+            </span>
+          )}
+
+          {/* Named as well as toned down. The muted body says "less
+              important", which a long or unlucky message can say by accident;
+              the word says what it actually is. Only where there is a byline
+              to put it on - a run of notices is grouped, and the rail down
+              the edge is what carries it there. */}
+          {notice && !grouped && (
+            <span className="notice-tag small">
+              <Icon name="smart_toy" size={11} />
+              <span>notice</span>
             </span>
           )}
 
@@ -833,8 +877,20 @@ function MessageRowBody({
                   />
                 </div>
               )}
-              {/* The thing the embed is about, inside the card describing it
-                  rather than repeated below it. */}
+              {/* The picture the card is about, where the card brought one
+                  of its own. A Matrix link preview is unfurled by the
+                  homeserver and arrives as a file the daemon has already
+                  fetched - so there is nothing to sniff and nothing to pair
+                  it with, unlike Discord's below. */}
+              {embed.imageUrl && !embedMedia.claimed.has(i) && (
+                <img
+                  className="rich-embed-image"
+                  src={resolveMediaUrl(embed.imageUrl)}
+                  alt=""
+                  loading="lazy"
+                  onClick={() => embed.url && void window.moho.openExternal(embed.url)}
+                />
+              )}
               {embedMedia.claimed.has(i) && (
                 <div className="rich-embed-media">
                   <MediaEmbed
@@ -1021,6 +1077,9 @@ function MessageRowBody({
           messageId={message.id}
           onClose={() => setForwarding(false)}
         />
+      )}
+      {sourceOpen && (
+        <EventSource bufferId={bufferId} messageId={message.id} onClose={() => setSourceOpen(false)} />
       )}
       {reporting && (
         <ReasonPrompt

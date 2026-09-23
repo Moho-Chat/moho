@@ -69,6 +69,15 @@ export class Call {
   private answered = false
   /** The screen track while one is being shared, so it can be stopped. */
   private screen: MediaStreamTrack | null = null
+  /**
+   * The camera track this leg is sending, while it is sending one.
+   *
+   * Held separately from `local` because a leg can be sending a camera, a
+   * screen, both or neither, and "the video track" is ambiguous the moment
+   * there are two of them - the screen-share code below would otherwise
+   * switch off somebody's face when they stopped sharing.
+   */
+  private camera: MediaStreamTrack | null = null
   /** Media opened by somebody else and lent to this leg - see the
    *  constructor. Never stopped here, because it is not this leg's to stop. */
   private shared: MediaStream | null = null
@@ -114,7 +123,25 @@ export class Call {
 
     this.pc.ontrack = (e) => {
       for (const track of e.streams[0]?.getTracks() ?? [e.track]) {
-        if (!this.remote.getTracks().some((t) => t.id === track.id)) this.remote.addTrack(track)
+        if (this.remote.getTracks().some((t) => t.id === track.id)) continue
+        this.remote.addTrack(track)
+        // A track the other end takes away - a camera switched off, a screen
+        // share stopped - has to leave this stream, or the tile keeps drawing
+        // the last frame it received for ever. Chromium reports it as a mute
+        // before it reports it as an end, and on a removed track the mute is
+        // often all there is.
+        const drop = (): void => {
+          this.remote.removeTrack(track)
+          this.handlers.onRemoteStream(this.remote)
+        }
+        track.onended = drop
+        track.onmute = drop
+        // And back again when they turn it on: the same transceiver is
+        // reused, so the track unmutes rather than a new one arriving.
+        track.onunmute = () => {
+          if (!this.remote.getTracks().some((t) => t.id === track.id)) this.remote.addTrack(track)
+          this.handlers.onRemoteStream(this.remote)
+        }
       }
       this.handlers.onRemoteStream(this.remote)
     }
@@ -163,6 +190,10 @@ export class Call {
     return !!this.screen
   }
 
+  get cameraOn(): boolean {
+    return !!this.camera && this.camera.readyState === 'live'
+  }
+
   private setPhase(phase: CallPhase): void {
     if (this.phase === phase || this.phase === 'ended') return
     this.phase = phase
@@ -181,6 +212,7 @@ export class Call {
     // Already open, and open for several legs at once: take it as it is.
     if (this.shared) {
       this.local = this.shared
+      this.camera = this.shared.getVideoTracks()[0] ?? null
       for (const track of this.shared.getTracks()) this.pc.addTrack(track, this.shared)
       return
     }
@@ -194,6 +226,7 @@ export class Call {
       this.handlers.onError('No camera here - calling with audio only')
       this.local = await navigator.mediaDevices.getUserMedia({ audio, video: false })
     }
+    this.camera = this.local.getVideoTracks()[0] ?? null
     for (const track of this.local.getTracks()) this.pc.addTrack(track, this.local)
   }
 
@@ -268,12 +301,62 @@ export class Call {
     return !track.enabled
   }
 
-  /** Turns the camera off or on. Returns whether it is now on. */
-  toggleCamera(): boolean {
-    const track = this.local?.getVideoTracks()[0]
+  /**
+   * Turns the camera on or off. Returns whether it is now on.
+   *
+   * Added and removed rather than enabled and disabled. A disabled track
+   * keeps sending - a black rectangle at whatever frame rate the encoder
+   * feels like - so the other end sees a dark square where a face was and
+   * cannot tell that from a camera that has frozen. Removing the track ends
+   * it properly: every other client then draws the person's name or avatar,
+   * which is what "camera off" is supposed to look like.
+   *
+   * The cost is a renegotiation each way, which is the same cost sharing a
+   * screen already pays and is unnoticeable beside the second the camera
+   * takes to open.
+   *
+   * `source` is a capture somebody else opened - the group call opens one
+   * camera and lends it to every leg, because asking the machine five times
+   * for the same camera gets one capture and four refusals. A track lent
+   * this way is never stopped here.
+   */
+  async setCamera(on: boolean, source?: MediaStream | null): Promise<boolean> {
+    if (on === this.cameraOn) return this.cameraOn
+
+    if (!on) {
+      const track = this.camera
+      this.camera = null
+      if (!track) return false
+      const sender = this.pc.getSenders().find((s) => s.track === track)
+      if (sender) this.pc.removeTrack(sender)
+      // Not a lent one: the other legs of this call are still sending it.
+      if (!this.shared) {
+        track.stop()
+        this.local?.removeTrack(track)
+      }
+      await this.renegotiate()
+      return false
+    }
+
+    let stream = source ?? null
+    if (!stream) {
+      // Its own request rather than reopening the microphone with it: the
+      // microphone is already open and already being listened to, and asking
+      // for both again would interrupt the audio to add a picture.
+      stream = await navigator.mediaDevices.getUserMedia({ video: true })
+    }
+    const track = stream.getVideoTracks()[0]
     if (!track) return false
-    track.enabled = !track.enabled
-    return track.enabled
+    this.camera = track
+    // The browser's own "stop" - a camera unplugged, a privacy shutter, the
+    // device taken by something else - has to reach the call, or the far end
+    // keeps a frozen last frame for ever.
+    track.onended = () => void this.setCamera(false)
+    if (!this.local) this.local = new MediaStream()
+    if (!this.shared && !this.local.getTracks().includes(track)) this.local.addTrack(track)
+    this.pc.addTrack(track, this.local)
+    await this.renegotiate()
+    return true
   }
 
   /**
@@ -304,19 +387,46 @@ export class Call {
     return true
   }
 
-  private async renegotiate(): Promise<void> {
-    const offer = await this.pc.createOffer()
-    await this.pc.setLocalDescription(offer)
-    this.handlers.send({ kind: 'negotiate', content: { description: { type: 'offer', sdp: offer.sdp } } })
+  /**
+   * One renegotiation at a time.
+   *
+   * Turning a camera on and sharing a screen a second later are two changes
+   * to the same connection, and starting the second offer while the first is
+   * still unanswered puts the peer connection in a state neither end can
+   * recover from - the browser throws and the call is left half-described.
+   * Chained rather than dropped, because both changes were asked for and both
+   * have to happen.
+   */
+  private pendingNegotiation: Promise<void> = Promise.resolve()
+
+  private renegotiate(): Promise<void> {
+    this.pendingNegotiation = this.pendingNegotiation.then(async () => {
+      if (this.phase === 'ended') return
+      const offer = await this.pc.createOffer()
+      await this.pc.setLocalDescription(offer)
+      this.handlers.send({ kind: 'negotiate', content: { description: { type: 'offer', sdp: offer.sdp } } })
+    })
+    return this.pendingNegotiation
   }
 
-  /** A renegotiation from the other end - somebody starting to share. */
-  async takeNegotiation(description: RTCSessionDescriptionInit): Promise<void> {
-    await this.pc.setRemoteDescription(description)
-    if (description.type !== 'offer') return
-    const answer = await this.pc.createAnswer()
-    await this.pc.setLocalDescription(answer)
-    this.handlers.send({ kind: 'negotiate', content: { description: { type: 'answer', sdp: answer.sdp } } })
+  /**
+   * A renegotiation from the other end - somebody turning a camera on, or
+   * starting to share.
+   *
+   * Queued behind this end's own, for the reason above: two descriptions
+   * being applied to one connection at once is how a call ends up describing
+   * something neither end is sending.
+   */
+  takeNegotiation(description: RTCSessionDescriptionInit): Promise<void> {
+    this.pendingNegotiation = this.pendingNegotiation.then(async () => {
+      if (this.phase === 'ended') return
+      await this.pc.setRemoteDescription(description)
+      if (description.type !== 'offer') return
+      const answer = await this.pc.createAnswer()
+      await this.pc.setLocalDescription(answer)
+      this.handlers.send({ kind: 'negotiate', content: { description: { type: 'answer', sdp: answer.sdp } } })
+    })
+    return this.pendingNegotiation
   }
 
   /** Ends the call, telling the other end unless it was them who ended it. */
@@ -330,6 +440,10 @@ export class Call {
     }
     this.screen?.stop()
     this.screen = null
+    // Not the lent one, for the same reason the shared capture above is
+    // spared: it belongs to the call, not to this leg of it.
+    if (!this.shared) this.camera?.stop()
+    this.camera = null
     this.pc.close()
     this.setPhase('ended')
   }

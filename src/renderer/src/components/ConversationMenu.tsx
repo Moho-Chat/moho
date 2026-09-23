@@ -93,6 +93,10 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
       onPopOut: () => store.popOut(buffer.id),
       onDock: () => store.dock(buffer.id),
       onMarkUnread: account?.service === 'matrix' ? () => void store.markUnread(buffer.id) : undefined,
+      onTag:
+        account?.service === 'matrix'
+          ? (tag, on) => void store.setRoomTag(buffer.id, tag, on)
+          : undefined,
       markedUnread: buffer.markedUnread
     }),
     { separator: true },

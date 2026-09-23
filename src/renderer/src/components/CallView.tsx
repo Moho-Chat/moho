@@ -33,6 +33,7 @@ export function CallView({ bufferId }: { bufferId: string }): JSX.Element | null
   const [members, setMembers] = useState<VoiceMember[]>([])
   const [speaking, setSpeaking] = useState<Record<string, number>>({})
   const [folded, setFolded] = useState(false)
+  const sharing = useChat((st) => st.discordSharing)
 
   /**
    * The call this conversation should be showing.
@@ -124,6 +125,16 @@ export function CallView({ bufferId }: { bufferId: string }): JSX.Element | null
           title={folded ? 'Show who is in the call' : 'Hide the faces'}
           onClick={() => setFolded(!folded)}
         />
+        {/* The same button the Matrix call carries, in the same place and
+            doing the same thing. A call is a call whichever service it is
+            on, and the arrangement is settled by the one that has the most
+            of it - see the controls row in CallStage. */}
+        <IconButton
+          name={sharing ? 'stop_screen_share' : 'screen_share'}
+          title={sharing ? 'Stop sharing' : 'Share a screen or window'}
+          className={sharing ? 'active' : undefined}
+          onClick={() => void store.toggleScreenShare()}
+        />
         <IconButton
           name="call_end"
           title="Hang up"
@@ -180,10 +191,16 @@ export function CallView({ bufferId }: { bufferId: string }): JSX.Element | null
                 <button
                   type="button"
                   className="call-watch small"
-                  // Honest about what it can do. The daemon can see the
-                  // stream exists but cannot carry video, so offering "Watch"
-                  // would open something permanently black.
-                  title="Watching a shared screen is not supported yet - moho's voice connection carries audio only"
+                  // Still honest about what it can do. Sharing works now;
+                  // watching somebody else's needs the far end's video
+                  // decoded, which is the other half of #14 and is not
+                  // written - so this says what it is rather than opening
+                  // something permanently black.
+                  title={
+                    m.isSelf
+                      ? 'You are sharing a screen'
+                      : 'Watching somebody else’s screen is not supported yet'
+                  }
                   disabled
                 >
                   Live

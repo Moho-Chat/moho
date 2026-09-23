@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ReasonPrompt } from './ReasonPrompt'
 import { createPortal } from 'react-dom'
 import { Avatar } from './Avatar'
+import { RoomPeek } from './RoomPeek'
 import { Icon, IconButton } from './Icon'
 import { useStore } from '../state/hooks'
 import { classes } from '../lib/util'
@@ -89,6 +90,8 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
   /** The room being knocked on, while the reason is being written. */
   const [knocking, setKnocking] = useState<PublicRoom | null>(null)
   const [joining, setJoining] = useState<Record<string, boolean>>({})
+  /** Which room somebody has asked to look into without joining it. */
+  const [peeking, setPeeking] = useState<PublicRoom | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
   // Which search the answer in flight belongs to. A slow server answering a
@@ -315,6 +318,21 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
                   {room.topic ? ` · ${room.topic}` : ''}
                 </div>
               </div>
+              {/* Looking, offered beside joining rather than instead of it.
+                  A join is a membership event everybody in the room sees,
+                  and leaving again leaves both behind - so the two decisions
+                  have to be separable, and on a room already joined there is
+                  nothing to separate. */}
+              {!room.joined && (
+                <button
+                  type="button"
+                  className="button subtle"
+                  title="See what is in it without joining"
+                  onClick={() => setPeeking(peeking?.roomId === room.roomId ? null : room)}
+                >
+                  <Icon name="visibility" size={15} /> Look
+                </button>
+              )}
               <button
                 type="button"
                 className="button"
@@ -331,6 +349,15 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
               </button>
             </div>
           ))}
+
+          {peeking && (
+            <RoomPeek
+              account={account}
+              room={peeking.roomId}
+              via={peeking.via}
+              onClose={() => setPeeking(null)}
+            />
+          )}
 
           {knocking && (
             <ReasonPrompt
