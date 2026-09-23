@@ -3922,18 +3922,30 @@ export class ChatStore {
    * records the second's subject; the tile that draws it opens the decoder,
    * because the decoder needs a canvas and this has none.
    */
-  async watchDiscordStream(accountId: string, userId: string, nick: string): Promise<void> {
+  async watchDiscordStream(
+    accountId: string,
+    userId: string,
+    nick: string,
+    where: { channelId: string; guildId?: string }
+  ): Promise<void> {
+    // Usually nothing: Discord announces a stream to its owner and tells
+    // everybody else only that a voice state has `self_stream` set. So the
+    // key is named from where the stream is and whose it is, which the roster
+    // knows, and the daemon builds it - one definition of the shape rather
+    // than a second one here.
     const streamKey = this.state.discordStreams[userId]
-    if (!streamKey) {
-      this.toast('info', 'That stream has not started yet')
-      return
-    }
     // One at a time. Two decoders and two connections would both work, and
     // the window has one place to draw a picture.
     if (this.state.discordWatching) await this.stopWatchingDiscordStream()
     try {
-      await window.moho.rpc('watchDiscordStream', { accountId, streamKey })
-      this.set({ discordWatching: { accountId, streamKey, userId, nick } })
+      const answer = await window.moho.rpc<{ streamKey: string }>('watchDiscordStream', {
+        accountId,
+        streamKey,
+        userId,
+        channelId: where.channelId,
+        guildId: where.guildId
+      })
+      this.set({ discordWatching: { accountId, streamKey: answer.streamKey, userId, nick } })
     } catch (e) {
       this.toast('error', `Couldn't watch that stream: ${(e as Error).message}`)
     }

@@ -195,14 +195,16 @@ export function CallView({ bufferId }: { bufferId: string }): JSX.Element | null
                 <button
                   type="button"
                   className={watching?.userId === m.userId ? 'call-watch small active' : 'call-watch small'}
-                  // Your own is the one case with nothing to open: the
-                  // picture is already on this machine, and a second decoder
-                  // pointed at a stream this window is sending would be a
-                  // round trip to draw what it started with. See #233 for the
-                  // preview that belongs here instead.
+                  // "You" means this account, which is not the same as this
+                  // person: the same Discord login can be signed in here and
+                  // in the official client at once, and then the stream is
+                  // this account's and there is nothing here to open. Said
+                  // plainly, because "You are sharing a screen" beside
+                  // somebody else's live stream reads as moho having lost
+                  // track of who is who.
                   title={
                     m.isSelf
-                      ? 'You are sharing a screen'
+                      ? 'This account is the one sharing - open the conversation under the account you want to watch from'
                       : watching?.userId === m.userId
                         ? `Stop watching ${m.nick}`
                         : `Watch ${m.nick}’s screen`
@@ -210,7 +212,12 @@ export function CallView({ bufferId }: { bufferId: string }): JSX.Element | null
                   disabled={m.isSelf}
                   onClick={() => {
                     if (watching?.userId === m.userId) void store.stopWatchingDiscordStream()
-                    else if (accountId) void store.watchDiscordStream(accountId, m.userId, m.nick)
+                    else if (accountId && channelId) {
+                      void store.watchDiscordStream(accountId, m.userId, m.nick, {
+                        channelId,
+                        guildId: session?.guildId
+                      })
+                    }
                   }}
                 >
                   Live
