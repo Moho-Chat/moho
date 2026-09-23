@@ -756,14 +756,22 @@ function wireIpc(): void {
     }
   })
 
-  ipcMain.handle(IPC.readClipboardImage, () => {
-    const img = clipboard.readImage()
-    if (img.isEmpty()) return null
-    const dir = path.join(os.tmpdir(), 'moho-paste')
-    fs.mkdirSync(dir, { recursive: true })
-    const file = path.join(dir, `paste-${Date.now()}.png`)
-    fs.writeFileSync(file, img.toPNG())
-    return file
+  ipcMain.handle(IPC.readClipboardImage, async () => {
+    // Electron 44 replaced the synchronous clipboard with the W3C shape:
+    // asynchronous, and addressed by MIME type rather than by readImage().
+    const items = await clipboard.read()
+    for (const item of items) {
+      const type = item.types.find((t) => t.startsWith('image/'))
+      if (!type) continue
+      const blob = (await item.getType(type)) as Blob
+      const dir = path.join(os.tmpdir(), 'moho-paste')
+      fs.mkdirSync(dir, { recursive: true })
+      const ext = type.slice('image/'.length).split(/[;+]/)[0] || 'png'
+      const file = path.join(dir, `paste-${Date.now()}.${ext}`)
+      fs.writeFileSync(file, Buffer.from(await blob.arrayBuffer()))
+      return file
+    }
+    return null
   })
 
   // Putting something on the clipboard from here rather than through the
