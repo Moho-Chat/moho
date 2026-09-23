@@ -2979,9 +2979,12 @@ img.smilie {
   background: none;
 }
 
-/* A recent that resolves to no picture is a shortcode belonging to a service
-   that isn't open, so its text is all there is to show. Kept inside its cell -
-   at full size a row of them overlapped into an unreadable smear. */
+/* A cell that resolves to no picture - a recent whose service isn't open, or
+   an emote whose source sent no image - has its name to show and nothing
+   else. Kept inside its cell: at full size a row of them overlapped into an
+   unreadable smear, which is exactly what the Sneedchat table looked like
+   while this class was being put on a span inside the cell instead of on the
+   cell. Both classes, one element. */
 .emoji-cell.emoji-token {
   overflow: hidden;
   padding: 0 2px;

@@ -343,14 +343,24 @@ export function EmojiPicker({
   const jumpTo = (id: string): void => {
     sectionRefs.current[id]?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }
+  // The same table twice is the failure this half guards against: once the
+  // daemon lists Sneedchat among the sources it answers `listAllEmoji` with,
+  // the section below is a second copy of it under a second heading. The
+  // sources win, because they are the ones the jump strip points at.
+  const sneedchatSourced = useMemo(
+    () => sources.some((src) => src.service === 'sneedchat' && src.usableHere),
+    [sources]
+  )
   const smilieList = useMemo(
     () =>
-      q
-        ? smilies.filter(
-            (s) => s.label.toLowerCase().includes(q) || s.aliases.some((a) => a.toLowerCase().includes(q))
-          )
-        : smilies,
-    [q, smilies]
+      sneedchatSourced
+        ? []
+        : q
+          ? smilies.filter(
+              (s) => s.label.toLowerCase().includes(q) || s.aliases.some((a) => a.toLowerCase().includes(q))
+            )
+          : smilies,
+    [q, smilies, sneedchatSourced]
   )
 
   // Grouped by the pack they came from, which is how somebody remembers where
@@ -480,22 +490,33 @@ export function EmojiPicker({
               // at all was dropped above, so a cell that cannot be pressed is
               // one this account has not paid for - in a room it is reading.
               const why = e.locked ? `${e.name} — subscriber only` : ''
+              // Where the picture comes from, by service. Discord's is built
+              // from the id it is named by. Sneedchat's ships with the client
+              // rather than being fetched, so the daemon deliberately sends
+              // no URL for it - see listSneedchatSmilies - and the smilie
+              // table is what turns a shortcode back into a file. Without
+              // that last step every one of the 175 entries fell through to
+              // its own label and the section drew as a smear of overlapping
+              // words instead of a table of faces.
+              const art = e.url
+                ? resolveMediaUrl(drawableEmoteUrl(e.url))
+                : src.service === 'discord'
+                  ? discordEmojiUrl(e.id, 48)
+                  : emojiPreview(e.id, smilies)?.src
               return (
                 <button
                   key={`${src.id}:${e.id}`}
                   type="button"
-                  className={why ? 'emoji-cell locked' : 'emoji-cell'}
+                  // A cell with no picture shows its name, and the styling
+                  // that keeps a name inside its square is `.emoji-cell.
+                  // emoji-token` - one element, both classes. Putting the
+                  // token class on a span inside the cell matched nothing.
+                  className={`emoji-cell${why ? ' locked' : ''}${art ? '' : ' emoji-token'}`}
                   disabled={!!why}
                   title={why || e.name}
                   onClick={() => pick(e.id)}
                 >
-                  {e.url ? (
-                    <img src={resolveMediaUrl(drawableEmoteUrl(e.url))} alt={e.name} loading="lazy" />
-                  ) : src.service === 'discord' ? (
-                    <img src={discordEmojiUrl(e.id, 48)} alt={e.name} loading="lazy" />
-                  ) : (
-                    <span className="emoji-token">{e.name}</span>
-                  )}
+                  {art ? <img src={art} alt={e.name} loading="lazy" /> : e.name}
                 </button>
               )
             })}
@@ -591,9 +612,14 @@ export function EmojiPicker({
           </Section>
         )}
 
-        {unicode.length === 0 && custom.length === 0 && smilieList.length === 0 && (
-          <div className="small muted emoji-empty">No matches.</div>
-        )}
+        {unicode.length === 0 &&
+          custom.length === 0 &&
+          smilieList.length === 0 &&
+          // Counted too, or a search that matches only a source's emoji
+          // reports "No matches" above the matches it found.
+          sourceSections.length === 0 && (
+            <div className="small muted emoji-empty">No matches.</div>
+          )}
         </PickerScroll.Provider>
       </div>
     </div>,
