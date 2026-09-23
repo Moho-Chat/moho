@@ -4,14 +4,24 @@
   "description": "Unified desktop chat client for IRC, Discord, Sneedchat and Matrix",
   "author": "Salastil",
   "license": "GPL-3.0-or-later",
-  "homepage": "https://git.salastil.com/Salastil/moho",
+  "homepage": "https://github.com/Moho-Chat/moho",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Moho-Chat/moho.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Moho-Chat/moho/issues"
+  },
   "main": "./out/main/index.js",
+  "desktopName": "moho.desktop",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "pack": "npm run daemon && npm run build && MOHO_BUILD=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty) electron-builder --linux AppImage",
+    "pack:deb": "npm run daemon && npm run build && MOHO_BUILD=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty) electron-builder --linux deb",
+    "pack:linux": "npm run daemon && npm run build && MOHO_BUILD=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty) electron-builder --linux AppImage deb",
     "pack:dir": "npm run daemon && npm run build && MOHO_BUILD=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty) electron-builder --linux dir",
     "daemon": "./scripts/build-daemon.sh",
     "deploy": "npm run pack && ./scripts/install-desktop.sh",
@@ -28,7 +38,7 @@
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^33.2.1",
-    "electron-builder": "^25.1.8",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^2.3.0",
     "hls.js": "^1.7.2",
     "livekit-client": "^2.22.2",
@@ -55,14 +65,20 @@
     ],
     "linux": {
       "target": [
-        "AppImage"
+        "AppImage",
+        "deb"
       ],
+      "maintainer": "Salastil <salastil@users.noreply.github.com>",
       "category": "Network",
+      "synopsis": "Unified desktop chat client",
       "icon": "resources/icons/moho.png",
       "desktop": {
-        "Name": "moho",
-        "Comment": "Unified chat client for IRC, Discord, Sneedchat and Matrix"
+        "entry": {
+          "Name": "moho",
+          "Comment": "Unified chat client for IRC, Discord, Sneedchat and Matrix"
+        }
       },
+      "syncDesktopName": true,
       "extraResources": [
         {
           "from": "nobilis/target/release/nobilis",
@@ -92,7 +108,10 @@
       "allowToChangeInstallationDirectory": true,
       "perMachine": false
     },
-    "artifactName": "${productName}-${env.MOHO_BUILD}.${ext}"
+    "artifactName": "${productName}-${env.MOHO_BUILD}.${ext}",
+    "toolsets": {
+      "appimage": "1.0.3"
+    }
   },
   "allowScripts": {
     "electron@33.4.11": true,

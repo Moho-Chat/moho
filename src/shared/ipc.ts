@@ -21,6 +21,8 @@ export const IPC = {
   restartDaemon: 'moho:restartDaemon',
   daemonStatus: 'moho:daemonStatus',
   smiliesDir: 'moho:smiliesDir',
+  /** Whether this process got Chromium's sandbox, or is running without it. */
+  sandboxState: 'moho:sandboxState',
   /** The screens and windows that could be shared into a call. */
   screenSources: 'moho:screenSources',
   markBufferRead: 'moho:markBufferRead',

@@ -1024,6 +1024,27 @@ export class ChatStore {
 
     this.sweepTimer = setInterval(() => this.sweepPendingSends(), 2000)
 
+    // Said in the window as well as the log, because the log is not where
+    // anybody is looking. Once per launch and only in the window that owns
+    // the app - a popout would repeat it - and as a toast rather than
+    // anything that has to be dismissed: the condition is the host's, not
+    // something a click here can fix. See sandboxed() in main.
+    if (!this.state.pinnedBufferId) {
+      void window.moho
+        .sandboxed()
+        .then((on) => {
+          if (on) return
+          this.toast(
+            'info',
+            'Running without the Chromium sandbox - this system restricts user namespaces. ' +
+              'The .deb package restores it.'
+          )
+        })
+        .catch(() => {
+          /* an older main process has no answer; silence beats a false alarm */
+        })
+    }
+
     // The link may already be up before this renderer finished loading (main
     // connects at startup), in which case no 'link' event is coming.
     const status = await window.moho.daemonStatus()

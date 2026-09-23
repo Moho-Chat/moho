@@ -56,6 +56,23 @@ if (!isPrimaryInstance) {
 }
 
 /**
+ * Whether this process got Chromium's sandbox.
+ *
+ * Read off the command line, because that is the only place the answer lives:
+ * `--no-sandbox` is what turns the OS sandbox off, and whoever passed it -
+ * usually the AppImage's own launcher, having found unprivileged user
+ * namespaces restricted - is the one that decided.
+ *
+ * Not `process.sandboxed`, which is a different question wearing the same
+ * word. It describes a renderer's own context - no Node, its own V8 - and
+ * answers true under `--no-sandbox` just the same, so it would report a
+ * sandbox that is not there.
+ */
+function sandboxed(): boolean {
+  return !app.commandLine.hasSwitch('no-sandbox')
+}
+
+/**
  * An `irc://` link that arrived before there was a window to give it to.
  *
  * Clicking one in a browser while moho is closed launches it with the link as
@@ -227,7 +244,15 @@ function createWindow(): void {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      // The OS sandbox, not just the absence of Node. `sandbox: false` opts a
+      // renderer out of Chromium's own process isolation entirely, which is a
+      // strange thing for the process that draws untrusted text, images and
+      // attachments from four networks to be doing. The preload survives it:
+      // it imports nothing but `electron`, which is what a sandboxed preload
+      // is allowed, and reads its popout flag from process.argv, which stays
+      // readable. See the note in whenReady for the hosts that cannot honour
+      // this.
+      sandbox: true
     }
   })
 
@@ -372,7 +397,8 @@ function openPopout(bufferId: string, title?: string): void {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      // As the main window - a popout draws the same conversations.
+      sandbox: true,
       additionalArguments: [`${POPOUT_FLAG}${bufferId}`]
     }
   })
@@ -792,6 +818,8 @@ function wireIpc(): void {
   })
 
   ipcMain.handle(IPC.smiliesDir, () => smiliesPath())
+
+  ipcMain.handle(IPC.sandboxState, () => sandboxed())
 }
 
 app.whenReady().then(() => {
@@ -804,6 +832,28 @@ app.whenReady().then(() => {
   // without this there is no record of a backend failing, anywhere, ever.
   log.toDirectory(path.join(cacheRoot(), 'moho'))
   log.info('moho starting, logging to', log.file() ?? '(nowhere)')
+
+  // Said once, in the log and in the window, and never in the way.
+  //
+  // Chromium's sandbox needs unprivileged user namespaces, and an AppImage
+  // has no other way to get them: its mount is nosuid, so the setuid helper
+  // is unreachable, and an AppArmor profile needs an install step an AppImage
+  // by definition does not have. On a host that restricts them - Ubuntu 24.04
+  // and after - the AppImage's own launcher starts this process with
+  // --no-sandbox, and the only choice left is to run without one or not to
+  // run at all.
+  //
+  // Running is the answer. Refusing would leave somebody with a chat client
+  // that will not open and a dialog pointing at a different download; saying
+  // so leaves them with the client and the knowledge. The deb carries an
+  // AppArmor profile and an install step to put it in place, which is why it
+  // is what the notice names.
+  if (!sandboxed()) {
+    log.info(
+      'starting without Chromium\'s sandbox - this host restricts unprivileged',
+      'user namespaces; the .deb package ships an AppArmor profile that restores it'
+    )
+  }
 
   electronApp.setAppUserModelId('com.salastil.moho')
   app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))

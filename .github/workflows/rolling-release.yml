@@ -65,7 +65,7 @@ env:
 
 jobs:
   # --------------------------------------------------------------------
-  # Linux: the AppImage, and the job carrying the test gate.
+  # Linux: the AppImage and the deb, and the job carrying the test gate.
   #
   # cargo test lives here rather than in a job of its own on purpose. A
   # standalone gate would compile all 812 crates a third time, in the dev
@@ -219,21 +219,24 @@ jobs:
       # --publish never because there is no publish configuration and no token
       # in this job - saying so means a later package.json change cannot
       # quietly turn a build job into a publishing one.
-      - name: pack the AppImage
-        run: npm run pack -- --publish never
+      - name: pack the AppImage and the deb
+        run: npm run pack:linux -- --publish never
 
       # Here to be read on the first few runs: it says how much headroom there
       # actually was, rather than how much was estimated.
       - run: df -h /
         if: always()
 
-      # Only the AppImage. electron-builder also emits a .blockmap and a
-      # latest-linux.yml for its own updater, and the release is meant to hold
-      # exactly two files.
+      # The two packages only. electron-builder also emits a .blockmap, a
+      # latest-linux.yml for its own updater and a builder-debug.yml, none of
+      # which belong on the release - so this names what to take rather than
+      # sweeping dist/.
       - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: dist/*.AppImage
+          path: |
+            dist/*.AppImage
+            dist/*.deb
           if-no-files-found: error
           retention-days: 7
 
@@ -424,10 +427,11 @@ jobs:
       - name: what was built
         run: |
           ls -l artifacts
-          # Two files, no more and no fewer. If electron-builder ever starts
-          # emitting something else into the glob, this says so here rather
-          # than by surprise on the release page.
-          test "$(find artifacts -maxdepth 1 -type f | wc -l)" -eq 2
+          # Three files, no more and no fewer: AppImage, deb, Windows
+          # installer. If electron-builder ever starts emitting something else
+          # into those globs, this says so here rather than by surprise on the
+          # release page.
+          test "$(find artifacts -maxdepth 1 -type f | wc -l)" -eq 3
 
       # A release is tied to a tag, so a rolling release means a moving tag.
       # The refs API rather than `git push -f` because it needs no checkout
@@ -476,6 +480,7 @@ jobs:
             echo "| file | platform |"
             echo "| --- | --- |"
             echo "| \`moho-$BUILD.AppImage\` | Linux x86_64 - mark it executable and run it |"
+            echo "| \`moho-$BUILD.deb\` | Debian / Ubuntu x86_64 - installs the sandbox profile with it |"
             echo "| \`moho-$BUILD.exe\` | Windows x64 - a per-user NSIS installer, no administrator needed |"
             echo
             echo "Each carries the \`nobilis\` daemon built alongside it, so the app and"
