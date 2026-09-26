@@ -6,6 +6,7 @@ import { LeaveConfirm } from './LeaveConfirm'
 import { ircNetworkFor } from '../lib/networks'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, classes, nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
+import { SpaceRooms } from './SpaceRooms'
 import {
   isFixedEntry,
   inviteGroup,
@@ -64,6 +65,8 @@ interface TileProps {
   onToggleMute: () => void
   /** Absent where there is nothing to leave - an account's own entry. */
   onLeave?: () => void
+  /** Only a Matrix space has rooms to look through. */
+  onBrowse?: () => void
   onSelect: () => void
   onDragStart: () => void
   onDragOver: (merge: boolean) => void
@@ -240,6 +243,17 @@ function RailTile(props: TileProps): JSX.Element {
               icon: muted ? 'notifications_active' : 'notifications_off',
               onClick: props.onToggleMute
             },
+            // A space holds rooms this account has not joined, and sync
+            // cannot see them - so this is the only way to find them.
+            ...(props.onBrowse
+              ? [
+                  {
+                    label: 'Browse rooms',
+                    icon: 'workspaces',
+                    onClick: props.onBrowse
+                  } as const
+                ]
+              : []),
             // Only where there is something to leave. An account's own entry
             // stands for the connection itself, which is disconnected from
             // the accounts pane rather than left.
@@ -350,6 +364,8 @@ export function ServerRail(): JSX.Element | null {
   const [merging, setMerging] = useState('')
   /** The rail entry a leave has been asked about, pending confirmation. */
   const [leaving, setLeaving] = useState<RailGroup | null>(null)
+  /** The space whose contents are being looked through, if any. */
+  const [browsing, setBrowsing] = useState<RailGroup | null>(null)
   /** Hovering the space below the column, which means "put it last". */
   const [tailTarget, setTailTarget] = useState(false)
 
@@ -497,6 +513,7 @@ export function ServerRail(): JSX.Element | null {
         onLeave={
           g.kind === 'guild' || g.kind === 'space' ? () => setLeaving(g) : undefined
         }
+        onBrowse={g.kind === 'space' ? () => setBrowsing(g) : undefined}
         unread={t?.unread ?? 0}
         highlight={t?.highlight ?? false}
         // Direct messages and pinned lead the rail by definition, so
@@ -663,6 +680,14 @@ export function ServerRail(): JSX.Element | null {
         />
       )}
 
+      {browsing && (
+        <SpaceRooms
+          accountId={browsing.accountId}
+          groupId={browsing.id}
+          title={browsing.name}
+          onClose={() => setBrowsing(null)}
+        />
+      )}
       {leaving && (
         <LeaveConfirm
           name={leaving.name}

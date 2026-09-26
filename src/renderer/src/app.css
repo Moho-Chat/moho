@@ -6928,3 +6928,64 @@ video.lightbox-media {
   overflow: auto;
   white-space: pre;
 }
+
+/* A space's own contents, joined or not. Sized to hold a screenful and scroll
+   the rest: a space can list hundreds of rooms, and a dialog that grows with
+   them would run off the window. */
+.space-rooms {
+  width: min(560px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}
+
+.space-room-list {
+  display: flex;
+  flex-direction: column;
+  max-height: min(58vh, 460px);
+  overflow-y: auto;
+  gap: 1px;
+}
+
+.space-room {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-xxs);
+  border-bottom: 1px solid var(--outline-faint, var(--outline-medium));
+}
+
+.space-room:last-child {
+  border-bottom: 0;
+}
+
+.space-room-face {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--corner-radius-small);
+  background: var(--primary-hover-light);
+  color: var(--surface-variant-text);
+}
+
+/* Three lines of decreasing weight in one column, each clipped on its own:
+   a long topic must not push the member count out of the row. */
+.space-room-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.space-room-meta {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Where the Join button would be, so a row that is already joined keeps the
+   same shape as the rows around it. */
+.space-room-in {
+  padding: 0 var(--spacing-xs);
+}
