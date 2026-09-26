@@ -7016,3 +7016,38 @@ video.lightbox-media {
   user-select: all;
   word-break: break-all;
 }
+
+/* Starting a poll. Narrow on purpose: a question and a short list of answers
+   is the whole of it, and a wide box invites essays into a ballot. */
+.poll-composer {
+  width: min(430px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}
+
+.poll-answers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+/* The remove control sits in the row rather than after it, so adding and
+   removing answers never changes the width of the box. */
+.poll-answer {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.poll-answer input {
+  flex: 1;
+  min-width: 0;
+}
+
+.poll-disclosed {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  color: var(--surface-variant-text);
+}
