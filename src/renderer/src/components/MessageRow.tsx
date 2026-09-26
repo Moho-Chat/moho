@@ -8,6 +8,7 @@ import { ForwardPicker } from './ForwardPicker'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { MediaEmbed } from './MediaEmbed'
 import { EmojiPicker } from './EmojiPicker'
+import { UploadMeter } from './UploadMeter'
 import { RichText } from '../lib/richtext'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { useSniffedTypes, sniffUrl } from '../lib/sniff'
@@ -980,6 +981,18 @@ function MessageRowBody({
                 </button>
               )}
             </div>
+          )}
+
+          {/* While the file is going. Never at the same time as the failure
+              below: an upload that ended cleared this, and one that failed
+              cleared it on the way to setting that. */}
+          {message.upload && (
+            <UploadMeter
+              phase={message.upload.phase}
+              bytes={message.upload.bytes}
+              host={message.upload.host}
+              since={message.upload.since}
+            />
           )}
 
           {message.failed && (
