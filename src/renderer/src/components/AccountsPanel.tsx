@@ -1358,6 +1358,10 @@ function MatrixForm(): JSX.Element {
   // guessing wrong in that direction merely fails at the end, while guessing
   // wrong the other way hides the only door there is.
   const [flows, setFlows] = useState<string[] | null>(null)
+  /** Whether this homeserver's accounts live with an OAuth provider. */
+  const [delegated, setDelegated] = useState(false)
+  /** The code to type, while a code sign-in is waiting to be approved. */
+  const [deviceCode, setDeviceCode] = useState<{ userCode: string; uri: string } | null>(null)
   const [asking, setAsking] = useState(false)
 
   // Asked a moment after typing stops rather than on every keystroke: a
@@ -1379,9 +1383,30 @@ function MatrixForm(): JSX.Element {
         // buttons stay offered so somebody can try anyway.
         .catch(() => setFlows(null))
         .finally(() => setAsking(false))
+      // Asked separately because it is a different question: the login flows
+      // say what the homeserver itself accepts, and this says whether it has
+      // handed its accounts to somebody else entirely.
+      void window.moho
+        .rpc<{ delegated: boolean }>('matrixAuthMetadata', { homeserverUrl: url })
+        .then((a) => setDelegated(!!a.delegated))
+        .catch(() => setDelegated(false))
     }, 600)
     return () => clearTimeout(timer)
   }, [homeserverUrl])
+
+  // The code the daemon got, while one is outstanding. Cleared when the
+  // sign-in ends either way, so a stale code cannot sit on screen looking
+  // like it is still worth typing.
+  useEffect(() => {
+    const off = window.moho.onEvent((e) => {
+      if (e.event === 'matrixDeviceCode') {
+        const d = e.data as { userCode?: string; verificationUri?: string }
+        if (d.userCode) setDeviceCode({ userCode: d.userCode, uri: d.verificationUri || '' })
+      }
+      if (e.event === 'matrixLoginResult') setDeviceCode(null)
+    })
+    return off
+  }, [])
 
   const takesPassword = !flows || flows.includes('m.login.password')
   const takesSso = !flows || flows.some((f) => f === 'm.login.sso' || f === 'm.login.cas')
@@ -1442,6 +1467,32 @@ function MatrixForm(): JSX.Element {
           here.
         </p>
       )}
+      {/* While a code sign-in is waiting. The code is the whole of what
+          somebody needs, so it is the largest thing here and selectable -
+          reading six characters off a screen and typing them into a phone is
+          the actual task, and a code that cannot be copied makes it worse. */}
+      {deviceCode && (
+        <div className="device-code">
+          <p className="small">
+            Open <span className="device-code-uri">{deviceCode.uri}</span> and enter this code.
+            Nothing is signed in until you approve it there.
+          </p>
+          <code className="device-code-code">{deviceCode.userCode}</code>
+          <button
+            type="button"
+            className="button subtle small"
+            onClick={() => {
+              void navigator.clipboard
+                ?.writeText(deviceCode.userCode)
+                .then(() => store.toast('info', 'Code copied'))
+                .catch(() => store.toast('info', deviceCode.userCode))
+            }}
+          >
+            Copy the code
+          </button>
+        </div>
+      )}
+
       <div className="field-row">
         <button
           type="button"
@@ -1467,6 +1518,27 @@ function MatrixForm(): JSX.Element {
             server's own web login in a browser, coming back with a one-time
             token. Needs no username or password here because the point is
             that somebody else asks for them. */}
+        {/* A homeserver that keeps its accounts with an OAuth provider can
+            sign somebody in without a password ever being typed here: this
+            asks for a short code, and the approval happens on a page they are
+            already signed in to. Offered only where the provider actually
+            advertises the device grant - saying it and then failing would be
+            worse than not offering it. */}
+        <button
+          type="button"
+          className="button subtle"
+          hidden={!delegated}
+          disabled={!homeserverUrl || asking || !!deviceCode}
+          title="Approve this sign-in from a browser instead of typing a password"
+          onClick={() =>
+            void window.moho
+              .rpc('addMatrixAccountDeviceCode', { homeserverUrl })
+              .then(() => store.setMatrixLoginStatus('Asking for a code…'))
+              .catch((e: Error) => store.toast('error', e.message))
+          }
+        >
+          Sign in with a code
+        </button>
         <button
           type="button"
           className="button subtle"

@@ -6989,3 +6989,30 @@ video.lightbox-media {
 .space-room-in {
   padding: 0 var(--spacing-xs);
 }
+
+/* A sign-in waiting to be approved somewhere else. The code is the task, so
+   it is the biggest thing in the block and spaced to be read aloud. */
+.device-code {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  background: var(--primary-hover-light);
+}
+
+.device-code-code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 26px;
+  letter-spacing: 0.22em;
+  /* The trailing letter-space would otherwise push it off centre. */
+  padding-left: 0.11em;
+  user-select: all;
+}
+
+.device-code-uri {
+  user-select: all;
+  word-break: break-all;
+}
