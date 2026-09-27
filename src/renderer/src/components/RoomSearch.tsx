@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { Avatar } from './Avatar'
 import { RoomPeek } from './RoomPeek'
 import { Icon, IconButton } from './Icon'
-import { useStore } from '../state/hooks'
+import { usePref, useStore } from '../state/hooks'
 import { classes } from '../lib/util'
 import type { Account } from '../../../shared/wire'
 
@@ -78,7 +78,19 @@ function refusalLabel(error: string): string {
 export function RoomSearch({ account, onClose }: { account: Account; onClose: () => void }): JSX.Element {
   const store = useStore()
   const [query, setQuery] = useState('')
-  const [extraServer, setExtraServer] = useState('')
+  /**
+   * Homeservers added by hand, and kept.
+   *
+   * This was the text in the box, which meant the box *was* the list: clearing
+   * it to type another name silently stopped searching the first, and closing
+   * the dialog forgot every server somebody had found. Adding a homeserver is
+   * not a search term - it is a place somebody decided is worth asking, which
+   * is a decision worth keeping - so Enter files it and it stays, here and
+   * across restarts, until it is taken off the line.
+   */
+  const [extraServers, setExtraServers] = usePref<string[]>('roomSearchServers', [])
+  /** What is in the box, which is not yet a server until Enter says so. */
+  const [pendingServer, setPendingServer] = useState('')
   const [answer, setAnswer] = useState<Answer | null>(null)
   const [busy, setBusy] = useState(false)
   /**
@@ -107,10 +119,46 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const servers = useMemo(
-    () => (extraServer.trim() ? [extraServer.trim()] : []),
-    [extraServer]
-  )
+  const servers = extraServers
+
+  /**
+   * Files what is in the box.
+   *
+   * A directory is asked for by server *name*, so a pasted URL is reduced to
+   * one rather than refused - somebody who copies an address out of their
+   * browser has named the right server and typed it the wrong way, and that is
+   * not worth an error.
+   */
+  const addServer = (): void => {
+    const name = pendingServer
+      .trim()
+      .replace(/^[a-z]+:\/\//i, '')
+      .replace(/\/.*$/, '')
+      .toLowerCase()
+    if (!name) return
+    // Cleared either way: a name already on the line was still added by this
+    // gesture as far as anybody typing it is concerned, and leaving it in the
+    // box would look like it had been refused.
+    setPendingServer('')
+    if (!extraServers.includes(name)) setExtraServers([...extraServers, name])
+  }
+
+  /**
+   * Every server worth a chip: the ones that answered, and the ones added by
+   * hand that have not yet.
+   *
+   * Both, because a server is added before it is asked and asking takes a
+   * moment - and a server that answers with nothing at all still has to be on
+   * the line, or there would be no way to take it off again.
+   */
+  const chips = useMemo(() => {
+    const answered = answer?.servers ?? []
+    const named = new Set(answered.map((s) => s.server))
+    return [
+      ...answered,
+      ...extraServers.filter((name) => !named.has(name)).map((server) => ({ server, rooms: 0 }))
+    ] as SearchedServer[]
+  }, [answer, extraServers])
 
   const search = (since?: Record<string, string>): void => {
     const mine = ++generation.current
@@ -170,7 +218,9 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
     const t = setTimeout(() => search(), TYPING_SETTLE_MS)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, extraServer, account.id])
+    // Joined rather than passed as the array: the list is a preference, and a
+    // re-render that hands back an equal array must not search again.
+  }, [query, extraServers.join(' '), account.id])
 
   /**
    * Asking to be let in, for a room that is asked rather than entered.
@@ -250,8 +300,16 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
           <input
             className="text-field room-search-server"
             placeholder="add a homeserver"
-            value={extraServer}
-            onChange={(e) => setExtraServer(e.target.value)}
+            title="A homeserver to search as well as your own. Enter adds it, and it stays."
+            value={pendingServer}
+            onChange={(e) => setPendingServer(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return
+              // Kept off the search box's Enter, which starts a search: this
+              // one is finishing a different sentence.
+              e.preventDefault()
+              addServer()
+            }}
           />
           <IconButton name="close" title="Close" onClick={onClose} />
         </div>
@@ -265,33 +323,56 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
             again: the results are in hand, and a round trip to hide rows
             somebody is looking at would make an instant thing slow. */}
         <div className="room-search-servers small muted">
-          {!answer && <span className="muted">Asking every homeserver…</span>}
-          {answer?.servers.map((s) => {
+          {!answer && chips.length === 0 && <span className="muted">Asking every homeserver…</span>}
+          {chips.map((s) => {
             const off = disabled.has(s.server)
+            // Only a server somebody put there can be taken away. The rest
+            // are on the line because this account has rooms on them, and
+            // "forgetting" one would mean nothing to come back to.
+            const added = extraServers.includes(s.server)
             return (
-              <button
+              <span
                 key={s.server}
-                type="button"
-                aria-pressed={!off}
                 className={classes('server-chip', s.error && 'failed', off && 'off')}
-                title={
-                  s.error
-                    ? `${s.server}: ${s.error}`
-                    : `${s.server} — ${s.rooms} rooms. Click to ${off ? 'include' : 'hide'}.`
-                }
-                onClick={() =>
-                  setDisabled((current) => {
-                    const next = new Set(current)
-                    if (!next.delete(s.server)) next.add(s.server)
-                    return next
-                  })
-                }
               >
-                {s.server}
-                <span className="server-chip-count">
-                  {s.error ? refusalLabel(s.error) : s.rooms}
-                </span>
-              </button>
+                <button
+                  type="button"
+                  className="server-chip-name"
+                  aria-pressed={!off}
+                  title={
+                    s.error
+                      ? `${s.server}: ${s.error}`
+                      : `${s.server} — ${s.rooms} rooms. Click to ${off ? 'include' : 'hide'}.`
+                  }
+                  onClick={() =>
+                    setDisabled((current) => {
+                      const next = new Set(current)
+                      if (!next.delete(s.server)) next.add(s.server)
+                      return next
+                    })
+                  }
+                >
+                  {s.server}
+                  <span className="server-chip-count">
+                    {s.error ? refusalLabel(s.error) : s.rooms}
+                  </span>
+                </button>
+                {/* Separate from the switch beside it, and deliberately: one
+                    hides a server from what is on screen and the other
+                    forgets it was ever asked for. Merging them would make an
+                    undo out of a decision. */}
+                {added && (
+                  <button
+                    type="button"
+                    className="server-chip-drop"
+                    title={`Stop searching ${s.server}`}
+                    aria-label={`Stop searching ${s.server}`}
+                    onClick={() => setExtraServers(extraServers.filter((name) => name !== s.server))}
+                  >
+                    <Icon name="close" size={12} />
+                  </button>
+                )}
+              </span>
             )
           })}
         </div>

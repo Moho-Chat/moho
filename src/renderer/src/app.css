@@ -6323,7 +6323,32 @@ video.lightbox-media {
   background: none;
   color: var(--surface-variant-text);
   font: inherit;
+}
+
+/* The chip is a container now rather than one button, because a server added
+   by hand carries two different actions: hide what it found, and stop asking
+   it at all. The name keeps the whole chip's look so the split is invisible
+   until there is something to drop. */
+.server-chip-name,
+.server-chip-drop {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
   cursor: pointer;
+}
+
+.server-chip-drop {
+  opacity: 0.55;
+}
+
+.server-chip-drop:hover {
+  opacity: 1;
+  color: var(--error);
 }
 
 .server-chip:hover {
