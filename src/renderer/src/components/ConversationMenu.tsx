@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { ExportDialog } from './ExportDialog'
+import { ReasonPrompt } from './ReasonPrompt'
 import { Avatar } from './Avatar'
 import { bufferMenuEntries } from '../lib/buffermenu'
 import { dmStatus } from './BufferList'
@@ -37,6 +38,7 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
   const buffers = useChat((s) => s.buffers)
   const watched = useChat((s) => s.watching?.bufferId === buffer.id)
 
+  const [reporting, setReporting] = useState(false)
   const [, togglePin, isPinned] = useIdSetPref('pinnedBuffers')
   const [, toggleMute, isMuted] = useIdSetPref('mutedBuffers')
   const [hidden, setHidden] = usePref<string[]>('hiddenBuffers', [])
@@ -118,7 +120,22 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
           .catch(() => setHeld({}))
           .finally(() => setExporting(true))
       }
-    }
+    },
+    // Matrix only, and about the room rather than anything in it. Reporting a
+    // message says "this line was wrong"; there was no way to say "this place
+    // is", which is the report a room made for something awful actually
+    // needs. Offered to everybody, like the message report: it goes to the
+    // homeserver's moderators and needs no power here.
+    ...(account?.service === 'matrix'
+      ? ([
+          {
+            label: 'Report this room…',
+            icon: 'flag',
+            danger: true,
+            onClick: () => setReporting(true)
+          }
+        ] as MenuEntry[])
+      : [])
   ]
 
   return (
@@ -142,6 +159,24 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
       </button>
 
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={entries} onClose={close} />}
+
+      {reporting && (
+        <ReasonPrompt
+          title={`Report ${name}`}
+          detail="This goes to the people who run your homeserver, with the room. They see your reason and nothing else you have not said. Reporting a room does not leave it."
+          placeholder="What is wrong with this room"
+          confirmLabel="Report"
+          danger
+          onCancel={() => setReporting(false)}
+          onConfirm={(reason) => {
+            setReporting(false)
+            void window.moho
+              .rpc('reportMatrixRoom', { bufferId: buffer.id, reason })
+              .then(() => store.toast('info', 'Reported to your homeserver'))
+              .catch((e: Error) => store.toast('error', e.message))
+          }}
+        />
+      )}
 
       {exporting && (
         <ExportDialog
