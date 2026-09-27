@@ -347,11 +347,16 @@ function MessageRowBody({
   // Said to you rather than to the room. Drawn differently on purpose: the
   // whole risk with a private message is reading it as a public one.
   const whispered = isWhisper(message.kind)
-  // An announcement rather than a sentence. Kept in the conversation and
-  // drawn a shade back from it - the point of m.notice is that a bridge
-  // relaying a hundred build results should not read like a hundred people
-  // talking.
+  // An announcement rather than a sentence. Coloured rather than dimmed - the
+  // point of m.notice is that a bridge relaying a hundred build results
+  // should not read like a hundred people talking, and a failed build is not
+  // less important than a sentence, only differently sourced.
   const notice = isNotice(message.kind)
+  // The colour is a choice; the tag is not. Somebody watching a busy bridge
+  // may want the run to stop shouting and still needs to know which lines
+  // came from a machine, so this switches off the turquoise and leaves the
+  // label on.
+  const [highlightNotices] = usePref<boolean>('matrix.highlightNotices', true)
   const reward = isReward(message.kind)
   // Both of the modes that draw an avatar column. Bubbles is otherwise
   // nothing like comfy, but it wants the same picture beside the same first
@@ -641,7 +646,7 @@ function MessageRowBody({
           'message-row',
           message.isHighlight && 'highlight',
           whispered && 'whisper',
-          notice && 'notice',
+          notice && highlightNotices && 'notice',
           message.pending && 'pending',
           message.failed && 'failed',
           isSystem && 'system',

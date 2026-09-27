@@ -804,6 +804,17 @@ function MatrixSettings(): JSX.Element {
           description="Adds a per-account switch for a much faster sync. Worth it in hundreds of rooms. Costs presence — nobody shows as online. Still new."
         />
       </SettingsSection>
+      <SettingsSection
+        title="Notices"
+        description="m.notice is what bots, bridges and your homeserver's own announcements arrive as. It is the same kind of line as anything else in the room - it has a sender, and it can be replied to - but nobody typed it."
+      >
+        <ToggleSetting
+          settingKey="matrix.highlightNotices"
+          label="Highlight notices"
+          description="Turquoise text and a rail down the left. Off leaves them looking like any other message, with the small “notice” label still there to tell them apart."
+          defaultValue={true}
+        />
+      </SettingsSection>
       <MembershipAnnouncements />
     </>
   )
