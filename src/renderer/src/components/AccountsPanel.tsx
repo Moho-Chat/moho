@@ -1360,6 +1360,17 @@ function MatrixForm(): JSX.Element {
   const [flows, setFlows] = useState<string[] | null>(null)
   /** Whether this homeserver's accounts live with an OAuth provider. */
   const [delegated, setDelegated] = useState(false)
+  // What it takes to make an account here, which is a different question
+  // again: a homeserver can be perfectly happy to sign people in and take no
+  // new accounts at all, and a private one takes them only from somebody
+  // holding an invitation token.
+  const [registration, setRegistration] = useState<{
+    open: boolean
+    needsToken: boolean
+    wants: string[]
+  } | null>(null)
+  /** The invitation token, where the homeserver asks for one. */
+  const [registrationToken, setRegistrationToken] = useState('')
   /** The code to type, while a code sign-in is waiting to be approved. */
   const [deviceCode, setDeviceCode] = useState<{ userCode: string; uri: string } | null>(null)
   const [asking, setAsking] = useState(false)
@@ -1390,6 +1401,14 @@ function MatrixForm(): JSX.Element {
         .rpc<{ delegated: boolean }>('matrixAuthMetadata', { homeserverUrl: url })
         .then((a) => setDelegated(!!a.delegated))
         .catch(() => setDelegated(false))
+      void window.moho
+        .rpc<{ open: boolean; needsToken: boolean; wants: string[] }>('matrixRegistrationFlows', {
+          homeserverUrl: url
+        })
+        .then((a) => setRegistration(a))
+        // Same reasoning as the flows above: nothing known is not the same as
+        // nothing offered, so the button stays live and fails honestly.
+        .catch(() => setRegistration(null))
     }, 600)
     return () => clearTimeout(timer)
   }, [homeserverUrl])
@@ -1466,6 +1485,25 @@ function MatrixForm(): JSX.Element {
           This homeserver signs people in through its own page rather than with a password
           here.
         </p>
+      )}
+      {/* Only where the homeserver's own registration flow asks for one. A
+          private server hands these out instead of opening the door to
+          everybody, and without this field the only way in was the server's
+          own sign-up page - which a private server often does not publish
+          either. Not a password field: it is typed off a note somebody was
+          given, usually badly, and hiding it hides the typo. */}
+      {registration?.needsToken && (
+        <label className="field">
+          <span className="small muted">Invitation token (to make a new account)</span>
+          <input
+            className="text-field"
+            value={registrationToken}
+            onChange={(e) => setRegistrationToken(e.target.value)}
+          />
+        </label>
+      )}
+      {registration?.open === false && (
+        <p className="small muted">This homeserver is not accepting new accounts.</p>
       )}
       {/* While a code sign-in is waiting. The code is the whole of what
           somebody needs, so it is the largest thing here and selectable -
@@ -1562,14 +1600,27 @@ function MatrixForm(): JSX.Element {
         <button
           type="button"
           className="button subtle"
-          disabled={!homeserverUrl || !userId || !password}
-          title="Make a new account on this homeserver"
+          disabled={
+            !homeserverUrl ||
+            !userId ||
+            !password ||
+            registration?.open === false ||
+            (!!registration?.needsToken && !registrationToken.trim())
+          }
+          title={
+            registration?.open === false
+              ? 'This homeserver is not accepting new accounts'
+              : registration?.needsToken
+                ? 'This homeserver needs an invitation token'
+                : 'Make a new account on this homeserver'
+          }
           onClick={() =>
             void window.moho
               .rpc('registerMatrixAccount', {
                 homeserverUrl,
                 username: userId.replace(/^@/, '').split(':')[0],
-                password
+                password,
+                registrationToken: registrationToken.trim()
               })
               .then(() => store.setMatrixLoginStatus('Making the account…'))
               .catch((e: Error) => store.toast('error', e.message))
