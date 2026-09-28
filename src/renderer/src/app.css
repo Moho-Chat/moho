@@ -1357,6 +1357,58 @@ button.video-tile {
   color: var(--error);
 }
 
+/* An attachment on its way to a third-party host.
+   Sits where the failure button sits, because they are the two answers to the
+   same question and only ever one of them is true at a time. */
+.upload-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  color: var(--surface-variant-text);
+}
+
+.upload-ring-track {
+  stroke: var(--outline-medium);
+  stroke-width: 2;
+}
+
+/* A quarter of the circle, turning. Indeterminate on purpose - the bytes are
+   handed over in one piece, so a percentage here would be invented. */
+.upload-ring-arc {
+  stroke: var(--primary);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 9 28;
+  transform-origin: 50% 50%;
+  animation: upload-spin 1.1s linear infinite;
+}
+
+@keyframes upload-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Still says which wait this is and how long it has been, which is the part
+   that carries the information. */
+@media (prefers-reduced-motion: reduce) {
+  .upload-ring-arc {
+    animation: none;
+  }
+}
+
+.upload-elapsed {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+/* A row that is uploading is not a row that failed, so it keeps the ordinary
+   pending dimming rather than picking up the error colour. */
+.message-row.pending .upload-meter {
+  opacity: 1;
+}
+
 .message-row.system .message-body {
   color: var(--surface-variant-text);
   font-style: italic;
@@ -2075,6 +2127,41 @@ img.composer-emoji {
 .call-watch[disabled] {
   opacity: 0.75;
   cursor: not-allowed;
+}
+
+/* The one being watched, so a row of Live badges says which one is open. */
+.call-watch.active {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* Somebody else's shared screen, above the row of faces rather than among
+   them: it is the thing being looked at, and a picture sized like an avatar
+   is not worth having. */
+.discord-stream-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  margin-bottom: var(--spacing-xs);
+}
+
+.discord-stream-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+}
+
+/* Height-capped rather than free: the canvas takes its pixel size from the
+   stream, and a 1080p share would otherwise push the roster off the panel.
+   `contain` because the sender chooses the shape and letterboxing a picture
+   is better than stretching somebody's desktop. */
+.discord-stream-canvas {
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: var(--corner-radius-small);
+  background: #000;
 }
 
 /* The bar that appears while picking people for a group message. */
@@ -5885,22 +5972,31 @@ video.lightbox-media {
 /* Matrix's m.notice: an announcement rather than a sentence. What bots and
    bridges send, and what a homeserver's own notices arrive as.
 
-   Held back rather than hidden. The body takes the muted ink and the name
-   keeps its colour, so a bridge relaying a hundred build results reads as a
-   hundred announcements while the people talking still stand out - which is
-   the whole reason the msgtype exists. The rule sits on the body alone so a
-   notice that mentions you can still be highlighted over the top of it. */
+   Marked rather than dimmed. This was muted ink, on the reasoning that an
+   announcement should sit behind what people say - but muted is also what
+   moho does to text that does not matter, and a build that failed matters.
+   Turquoise says "not a person" without saying "ignore me", and it is a
+   colour nothing else here uses: a mention is the highlight, a whisper is
+   purple, an error is red.
+
+   The rule sits on the body alone so a notice that mentions you can still be
+   highlighted over the top of it. */
 .message-row.notice .message-body {
-  color: var(--text-muted);
+  color: var(--notice);
 }
 
 /* The rail rather than a tag on the byline, because a run of notices is
    grouped and only the first of a run has a byline to hang anything on -
-   which is exactly the case a bridge produces. */
+   which is exactly the case a bridge produces. The tint is what makes the run
+   read as one block rather than as a stack of separate alarms. */
 .message-row.notice {
-  box-shadow: inset 2px 0 0 var(--border);
+  background: var(--notice-tint);
+  box-shadow: inset 2px 0 0 var(--notice);
 }
 
+/* Kept even when the highlighting above is switched off: knowing a line came
+   from a machine is not the same as wanting it coloured, and somebody who
+   turned the colour off still has to be able to tell. */
 .notice-tag {
   display: inline-flex;
   align-items: center;
@@ -5908,8 +6004,8 @@ video.lightbox-media {
   margin-left: var(--spacing-xs);
   padding: 0 6px;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
+  border: 1px solid var(--outline-medium);
+  color: var(--surface-variant-text);
   font-style: normal;
   text-transform: lowercase;
 }
@@ -6236,7 +6332,32 @@ video.lightbox-media {
   background: none;
   color: var(--surface-variant-text);
   font: inherit;
+}
+
+/* The chip is a container now rather than one button, because a server added
+   by hand carries two different actions: hide what it found, and stop asking
+   it at all. The name keeps the whole chip's look so the split is invisible
+   until there is something to drop. */
+.server-chip-name,
+.server-chip-drop {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
   cursor: pointer;
+}
+
+.server-chip-drop {
+  opacity: 0.55;
+}
+
+.server-chip-drop:hover {
+  opacity: 1;
+  color: var(--error);
 }
 
 .server-chip:hover {
@@ -6840,4 +6961,127 @@ video.lightbox-media {
      destroy the indentation that makes it readable at all. */
   overflow: auto;
   white-space: pre;
+}
+
+/* A space's own contents, joined or not. Sized to hold a screenful and scroll
+   the rest: a space can list hundreds of rooms, and a dialog that grows with
+   them would run off the window. */
+.space-rooms {
+  width: min(560px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}
+
+.space-room-list {
+  display: flex;
+  flex-direction: column;
+  max-height: min(58vh, 460px);
+  overflow-y: auto;
+  gap: 1px;
+}
+
+.space-room {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-xxs);
+  border-bottom: 1px solid var(--outline-faint, var(--outline-medium));
+}
+
+.space-room:last-child {
+  border-bottom: 0;
+}
+
+.space-room-face {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--corner-radius-small);
+  background: var(--primary-hover-light);
+  color: var(--surface-variant-text);
+}
+
+/* Three lines of decreasing weight in one column, each clipped on its own:
+   a long topic must not push the member count out of the row. */
+.space-room-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.space-room-meta {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Where the Join button would be, so a row that is already joined keeps the
+   same shape as the rows around it. */
+.space-room-in {
+  padding: 0 var(--spacing-xs);
+}
+
+/* A sign-in waiting to be approved somewhere else. The code is the task, so
+   it is the biggest thing in the block and spaced to be read aloud. */
+.device-code {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  background: var(--primary-hover-light);
+}
+
+.device-code-code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 26px;
+  letter-spacing: 0.22em;
+  /* The trailing letter-space would otherwise push it off centre. */
+  padding-left: 0.11em;
+  user-select: all;
+}
+
+.device-code-uri {
+  user-select: all;
+  word-break: break-all;
+}
+
+/* Starting a poll. Narrow on purpose: a question and a short list of answers
+   is the whole of it, and a wide box invites essays into a ballot. */
+.poll-composer {
+  width: min(430px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}
+
+.poll-answers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+/* The remove control sits in the row rather than after it, so adding and
+   removing answers never changes the width of the box. */
+.poll-answer {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.poll-answer input {
+  flex: 1;
+  min-width: 0;
+}
+
+.poll-disclosed {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  color: var(--surface-variant-text);
 }

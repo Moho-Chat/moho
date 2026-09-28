@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
+import { PollComposer } from './PollComposer'
 import { Avatar } from './Avatar'
 import { EmojiPicker, type StickerEntry } from './EmojiPicker'
 import { PlaceField } from './PlaceField'
@@ -98,6 +99,8 @@ export function Composer(): JSX.Element | null {
   const accounts = useChat((s) => s.accounts)
   const [text, setText] = useState('')
   const [staged, setStaged] = useState<StagedAttachment[]>([])
+  /** Whether the poll dialog is up. */
+  const [polling, setPolling] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   /** The account's sticker packs, fetched when the picker is first opened. */
   const [stickers, setStickers] = useState<StickerEntry[]>([])
@@ -829,6 +832,13 @@ export function Composer(): JSX.Element | null {
             recording, so this is the same button either way. */}
         {(service === 'discord' || service === 'matrix') && <VoiceRecorder bufferId={buffer.id} />}
 
+        {/* Only Matrix, and only because it is the only service whose polls
+            this client can start: Kick's are the streamer's to make and
+            Discord's are read here. */}
+        {service === 'matrix' && (
+          <IconButton name="ballot" title="Start a poll" onClick={() => setPolling(true)} />
+        )}
+
         <IconButton
           name="add"
           title={
@@ -852,6 +862,8 @@ export function Composer(): JSX.Element | null {
           }}
         />
       )}
+
+      {polling && <PollComposer bufferId={buffer.id} onClose={() => setPolling(false)} />}
 
       {stickerPicker && (
         <EmojiPicker

@@ -37,6 +37,13 @@
      tell them apart is one where a private message reads as a public one. */
   --whisper: #b388ff;
   --whisper-tint: rgba(179, 136, 255, 0.14);
+
+  /* Notices, in turquoise. Far enough from the mention's colour and the
+     whisper's purple that a bridge relaying build results is never mistaken
+     for somebody addressing you, and cool enough to read as machinery rather
+     than as an alarm - which a warm colour here would. */
+  --notice: #40e0d0;
+  --notice-tint: rgba(64, 224, 208, 0.1);
   --surface-hover: rgba(66, 71, 78, 0.08);
   --surface-pressed: rgba(66, 71, 78, 0.12);
   --surface-selected: rgba(66, 71, 78, 0.15);

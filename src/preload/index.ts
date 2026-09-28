@@ -158,6 +158,14 @@ const api = {
   daemonStatus: (): Promise<{ binaryPath: string; available: boolean; linkUp: boolean }> =>
     ipcRenderer.invoke(IPC.daemonStatus),
   smiliesDir: (): Promise<string> => ipcRenderer.invoke(IPC.smiliesDir),
+  /**
+   * False when this process is running without Chromium's sandbox.
+   *
+   * Asked of main rather than read here: `process.sandboxed` describes
+   * this preload's own context and answers true even under --no-sandbox,
+   * so it says nothing about whether the OS sandbox is actually on.
+   */
+  sandboxed: (): Promise<boolean> => ipcRenderer.invoke(IPC.sandboxState),
   markBufferRead: (bufferId: string): Promise<void> =>
     ipcRenderer.invoke(IPC.markBufferRead, bufferId),
 

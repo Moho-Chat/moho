@@ -4,6 +4,7 @@ import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { useActiveBuffer, useChat, useIdSetPref, useStore } from '../state/hooks'
 import { classes, hasDirectMessages, nickColor } from '../lib/util'
 import { KickPoints } from './KickPoints'
+import { ReasonPrompt } from './ReasonPrompt'
 import type { Member } from '../../../shared/wire'
 
 /**
@@ -295,6 +296,20 @@ export function NickList(): JSX.Element {
                     })
                     .catch((e: Error) => store.toast('error', e.message))
                 }}
+                onReport={
+                  account?.service === 'matrix' && member.userId
+                    ? (reason) => {
+                        void window.moho
+                          .rpc('reportMatrixUser', {
+                            accountId: account.id,
+                            userId: member.userId,
+                            reason
+                          })
+                          .then(() => store.toast('info', 'Reported to your homeserver'))
+                          .catch((e: Error) => store.toast('error', e.message))
+                      }
+                    : undefined
+                }
                 onToggleBlock={toggleBlocked}
                 onIgnore={(ignored) => {
                   if (!account) return
@@ -464,6 +479,8 @@ interface MemberRowProps {
   canCall: boolean
   /** Ask the service who this is. Every service answers something. */
   onProfile?: () => void
+  /** Matrix only: tell the homeserver's moderators about this person. */
+  onReport?: (reason: string) => void
   onCall: () => void
 }
 
@@ -488,9 +505,11 @@ function MemberRow({
   canCall,
   onCall,
   onProfile,
+  onReport,
   onRemoveFromGroup
 }: MemberRowProps): JSX.Element {
   const { menu, open, close } = useContextMenu()
+  const [reporting, setReporting] = useState(false)
 
   // Moderation is only *offered* where the cached permissions say it would
   // work; the server is still the actual authority and re-checks regardless.
@@ -596,6 +615,21 @@ function MemberRow({
           { label: member.prefix?.includes('@') ? 'Take operator' : 'Give operator', icon: 'shield', onClick: () => onModerate(member.prefix?.includes('@') ? 'deop' : 'op') },
           { label: member.prefix?.includes('+') ? 'Take voice' : 'Give voice', icon: 'campaign', onClick: () => onModerate(member.prefix?.includes('+') ? 'mute' : 'voice') }
         ] as MenuEntry[])
+      : []),
+    // Last, and about the person rather than this room. Ignoring them is what
+    // somebody does for themselves; kicking and banning need power here and
+    // reach only this room. This is the one that reaches whoever can act
+    // across all of them, and anybody may send it.
+    ...(onReport
+      ? ([
+          { separator: true },
+          {
+            label: `Report ${member.nick}…`,
+            icon: 'flag',
+            danger: true,
+            onClick: () => setReporting(true)
+          }
+        ] as MenuEntry[])
       : [])
   ]
 
@@ -635,6 +669,20 @@ function MemberRow({
         {blocked && <Icon name="block" size={12} />}
       </button>
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={entries} onClose={close} />}
+      {reporting && onReport && (
+        <ReasonPrompt
+          title={`Report ${member.nick}`}
+          detail="This goes to the people who run your homeserver, with this person's Matrix id. It is about them rather than about this room, and it does not ignore them - do that as well if you want to stop seeing them."
+          placeholder="What has this person done"
+          confirmLabel="Report"
+          danger
+          onCancel={() => setReporting(false)}
+          onConfirm={(reason) => {
+            setReporting(false)
+            onReport(reason)
+          }}
+        />
+      )}
     </>
   )
 }

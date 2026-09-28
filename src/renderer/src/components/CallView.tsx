@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Icon, IconButton } from './Icon'
 import { Avatar } from './Avatar'
 import { useChat, useStore } from '../state/hooks'
+import { DiscordStreamTile } from './DiscordStreamTile'
 import type { VoiceMember } from '../../../shared/wire'
 
 /** How often to ask who is talking. */
@@ -34,6 +35,7 @@ export function CallView({ bufferId }: { bufferId: string }): JSX.Element | null
   const [speaking, setSpeaking] = useState<Record<string, number>>({})
   const [folded, setFolded] = useState(false)
   const sharing = useChat((st) => st.discordSharing)
+  const watching = useChat((st) => st.discordWatching)
 
   /**
    * The call this conversation should be showing.
@@ -143,6 +145,8 @@ export function CallView({ bufferId }: { bufferId: string }): JSX.Element | null
         />
       </div>
 
+      {!folded && <DiscordStreamTile />}
+
       {!folded && (
         <div className="call-tiles">
           {/* Nobody at all means the roster has not arrived yet, not that the
@@ -190,18 +194,31 @@ export function CallView({ bufferId }: { bufferId: string }): JSX.Element | null
               {m.streaming && (
                 <button
                   type="button"
-                  className="call-watch small"
-                  // Still honest about what it can do. Sharing works now;
-                  // watching somebody else's needs the far end's video
-                  // decoded, which is the other half of #14 and is not
-                  // written - so this says what it is rather than opening
-                  // something permanently black.
+                  className={watching?.userId === m.userId ? 'call-watch small active' : 'call-watch small'}
+                  // "You" means this account, which is not the same as this
+                  // person: the same Discord login can be signed in here and
+                  // in the official client at once, and then the stream is
+                  // this account's and there is nothing here to open. Said
+                  // plainly, because "You are sharing a screen" beside
+                  // somebody else's live stream reads as moho having lost
+                  // track of who is who.
                   title={
                     m.isSelf
-                      ? 'You are sharing a screen'
-                      : 'Watching somebody else’s screen is not supported yet'
+                      ? 'This account is the one sharing - open the conversation under the account you want to watch from'
+                      : watching?.userId === m.userId
+                        ? `Stop watching ${m.nick}`
+                        : `Watch ${m.nick}’s screen`
                   }
-                  disabled
+                  disabled={m.isSelf}
+                  onClick={() => {
+                    if (watching?.userId === m.userId) void store.stopWatchingDiscordStream()
+                    else if (accountId && channelId) {
+                      void store.watchDiscordStream(accountId, m.userId, m.nick, {
+                        channelId,
+                        guildId: session?.guildId
+                      })
+                    }
+                  }}
                 >
                   Live
                 </button>

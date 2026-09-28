@@ -196,7 +196,7 @@ export function ChoiceSetting({
   label: string
   description?: string
   value: string
-  options: { label: string; value: string }[]
+  options: { label: string; value: string; disabled?: boolean }[]
   onChange: (value: string) => void
   disabled?: boolean
 }): JSX.Element {
@@ -213,7 +213,10 @@ export function ChoiceSetting({
         onChange={(e) => onChange(e.target.value)}
       >
         {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
+          // Offered greyed rather than dropped: "this room is too old for
+          // that" is a fact worth having, and a menu with three entries on
+          // one room and five on another is one nobody can learn.
+          <option key={opt.value} value={opt.value} disabled={opt.disabled}>
             {opt.label}
           </option>
         ))}

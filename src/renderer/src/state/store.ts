@@ -83,6 +83,14 @@ export interface ChatMessage extends Message {
   pendingReplyTo?: string
   /** The staged file, kept for the same reason as the body. */
   pendingAttachment?: string
+  /**
+   * Where the attachment's upload has got to, while one is running.
+   *
+   * Absent on a message with no file, and cleared the moment the upload
+   * ends either way - so its presence is exactly "there is an upload
+   * happening for this row", which is what the spinner is drawn from.
+   */
+  upload?: { phase: 'preparing' | 'sending' | 'waiting'; bytes: number; host: string; since: number }
 }
 
 /**
@@ -509,6 +517,17 @@ export interface ChatState {
   screenSources: { id: string; name: string; thumbnail: string }[] | null
   /** Whether this window is sharing a screen into a Discord call. */
   discordSharing: boolean
+  /**
+   * Who is streaming right now, by Discord user id, and the key their stream
+   * is named by.
+   *
+   * Kept here rather than derived from the voice roster because the roster
+   * says *that* somebody is streaming and this says *which* stream - and the
+   * key is what watching one is asked for by.
+   */
+  discordStreams: Record<string, string>
+  /** The stream being watched, if any. One at a time, deliberately. */
+  discordWatching: { accountId: string; streamKey: string; userId: string; nick: string } | null
   activeCall: {
     accountId: string
     bufferId: string
@@ -618,6 +637,8 @@ const INITIAL: ChatState = {
   discordModal: null,
   activeCall: null,
   discordSharing: false,
+  discordStreams: {},
+  discordWatching: null,
   ignoredByAccount: {},
   matrixWidgets: {},
   matrixInvites: {},
@@ -836,7 +857,26 @@ export class ChatStore {
   private listeners = new Set<() => void>()
   private sendSeq = 0
   /** clientId -> the optimistic message awaiting its real echo. */
-  private pendingSends = new Map<string, { bufferId: string; ts: number }>()
+  private pendingSends = new Map<
+    string,
+    {
+      bufferId: string
+      ts: number
+      /**
+       * Whether the send RPC is still running.
+       *
+       * The difference between "we are waiting" and "we gave up", and the
+       * whole of what went wrong before: an upload to somebody else's host
+       * routinely takes longer than the send timeout, so the row went red
+       * with a retry button while the upload was still going - and pressing
+       * retry started a second upload and a second message, both of which
+       * arrived. A request that has not come back has not timed out.
+       */
+      inFlight: boolean
+      /** Named so the daemon's upload progress can be matched to this row. */
+      uploadId?: string
+    }
+  >()
   private toastSeq = 0
   /** Who is talking in a call this window is holding. */
   private levels = new Levels()
@@ -1023,6 +1063,27 @@ export class ChatStore {
     }
 
     this.sweepTimer = setInterval(() => this.sweepPendingSends(), 2000)
+
+    // Said in the window as well as the log, because the log is not where
+    // anybody is looking. Once per launch and only in the window that owns
+    // the app - a popout would repeat it - and as a toast rather than
+    // anything that has to be dismissed: the condition is the host's, not
+    // something a click here can fix. See sandboxed() in main.
+    if (!this.state.pinnedBufferId) {
+      void window.moho
+        .sandboxed()
+        .then((on) => {
+          if (on) return
+          this.toast(
+            'info',
+            'Running without the Chromium sandbox - this system restricts user namespaces. ' +
+              'The .deb package restores it.'
+          )
+        })
+        .catch(() => {
+          /* an older main process has no answer; silence beats a false alarm */
+        })
+    }
 
     // The link may already be up before this renderer finished loading (main
     // connects at startup), in which case no 'link' event is coming.
@@ -2638,6 +2699,58 @@ export class ChatStore {
         void this.refreshVoiceSessions()
         break
 
+      // Somebody's Go Live stream came up, changed or went away. The
+      // daemon reports every one of them, this account's included; what is
+      // kept is the key, because that is what asking to watch needs.
+      case 'discordStream': {
+        const d = data as { streamKey?: string; userId?: string; gone?: boolean }
+        if (!d.streamKey || !d.userId) break
+        const streams = { ...this.state.discordStreams }
+        if (d.gone) delete streams[d.userId]
+        else streams[d.userId] = d.streamKey
+        this.set({ discordStreams: streams })
+        // A stream that ends while being watched leaves a decoder pointed at
+        // nothing and a frozen last frame on screen, which reads as a stalled
+        // connection rather than as somebody having stopped.
+        if (d.gone && this.state.discordWatching?.streamKey === d.streamKey) {
+          this.stopWatchingDiscordStream()
+        }
+        break
+      }
+
+      // How far an attachment's upload has got. Matched to the row by the
+      // id the send named, so a second message sent while the first is
+      // still uploading updates its own row rather than the newest one.
+      case 'uploadProgress': {
+        const d = data as { uploadId?: string; phase?: string; bytes?: number; host?: string }
+        if (!d.uploadId) break
+        for (const [clientId, info] of this.pendingSends) {
+          if (info.uploadId !== d.uploadId) continue
+          // A progress event that arrives after the send has come back would
+          // otherwise put the spinner back on a finished row and leave it
+          // there, since nothing is coming to clear it a second time.
+          if (!info.inFlight) break
+          if (d.phase === 'done') {
+            this.clearUploadState(clientId)
+          } else {
+            this.mapMessage(info.bufferId, clientId, (m) => ({
+              ...m,
+              upload: {
+                phase: (d.phase as 'preparing' | 'sending' | 'waiting') ?? 'sending',
+                bytes: d.bytes ?? 0,
+                host: d.host ?? '',
+                // The first phase sets the clock; later ones keep it, so the
+                // elapsed time on screen is the upload's age rather than the
+                // current phase's.
+                since: m.upload?.since ?? Date.now()
+              }
+            }))
+          }
+          break
+        }
+        break
+      }
+
       // A conversation started or stopped ringing.
       case 'incomingCall':
         this.setRinging(data as IncomingCall)
@@ -3635,12 +3748,22 @@ export class ChatStore {
     if (warning) this.appendMessage(bufferId, warning)
 
     this.appendMessage(bufferId, echo)
-    this.pendingSends.set(clientId, { bufferId, ts: Date.now() })
+    // The upload is named before the send goes out, so the progress events
+    // have somewhere to land even if the first arrives immediately.
+    const uploadId = attachmentPath ? `up-${clientId}` : undefined
+    this.pendingSends.set(clientId, { bufferId, ts: Date.now(), inFlight: true, uploadId })
+    if (attachmentPath) {
+      this.mapMessage(bufferId, clientId, (m) => ({
+        ...m,
+        upload: { phase: 'preparing', bytes: 0, host: '', since: Date.now() }
+      }))
+    }
 
     try {
       await window.moho.rpc('sendMessage', {
         bufferId,
         body,
+        ...(uploadId ? { uploadId } : {}),
         // Where a file goes on a service that cannot carry one. Read at send
         // time rather than held in state: it is a preference somebody may
         // change between one message and the next, and the daemon falls back
@@ -3654,10 +3777,26 @@ export class ChatStore {
         ...(reply?.thread ? { thread: true } : {})
       })
       // Success alone doesn't resolve the echo - only the real message event
-      // does, since that's what carries nobilis's own id and timestamp.
+      // does, since that's what carries nobilis's own id and timestamp. What
+      // it does settle is that nothing is in flight any more, which is when
+      // the timeout below becomes meaningful: it is waiting for an echo, not
+      // for an upload.
+      const still = this.pendingSends.get(clientId)
+      if (still) this.pendingSends.set(clientId, { ...still, inFlight: false, ts: Date.now() })
+      this.clearUploadState(clientId)
     } catch (e) {
+      const still = this.pendingSends.get(clientId)
+      if (still) this.pendingSends.set(clientId, { ...still, inFlight: false })
+      this.clearUploadState(clientId)
       this.markSendFailed(clientId, (e as Error).message)
     }
+  }
+
+  /** Takes the spinner off a row, whichever way its upload ended. */
+  private clearUploadState(clientId: string): void {
+    const info = this.pendingSends.get(clientId)
+    if (!info) return
+    this.mapMessage(info.bufferId, clientId, (m) => (m.upload ? { ...m, upload: undefined } : m))
   }
 
   /**
@@ -3728,6 +3867,13 @@ export class ChatStore {
   private sweepPendingSends(): void {
     const now = Date.now()
     for (const [clientId, info] of this.pendingSends) {
+      // A request that has not come back has not timed out. This timeout is
+      // for the gap between the daemon accepting a message and the service
+      // echoing it back; while the send itself is still running - an upload
+      // to somebody else's host can take minutes - there is nothing to
+      // declare failed, and declaring it anyway is what put a retry button
+      // under a message that was still on its way.
+      if (info.inFlight) continue
       if (now - info.ts < SEND_TIMEOUT_MS) continue
       const list = this.state.messagesByBuffer[info.bufferId] || []
       const echo = list.find((m) => m.id === clientId)
@@ -3738,6 +3884,16 @@ export class ChatStore {
   retrySend(clientId: string): void {
     const info = this.pendingSends.get(clientId)
     if (!info) return
+    // The duplicate guard. Retrying a send that is still running sends the
+    // message twice - and on a service with an upload in front of it,
+    // uploads the file twice as well - because the first attempt is not
+    // cancelled by pressing a button in front of it. Nothing here can stop a
+    // request already with the daemon, so the only safe answer is not to
+    // start a second one.
+    if (info.inFlight) {
+      this.toast('info', 'Still sending - give it a moment')
+      return
+    }
     const list = this.state.messagesByBuffer[info.bufferId] || []
     const echo = list.find((m) => m.id === clientId)
     if (!echo) return
@@ -3858,6 +4014,55 @@ export class ChatStore {
     } catch (e) {
       this.toast('error', (e as Error).message)
     }
+  }
+
+  /**
+   * Starts watching somebody else's screen.
+   *
+   * Two separate things have to happen and only one of them is here: the
+   * daemon is asked to join the stream and begin receiving, and the window
+   * puts a decoder on the frames when they arrive. This does the first and
+   * records the second's subject; the tile that draws it opens the decoder,
+   * because the decoder needs a canvas and this has none.
+   */
+  async watchDiscordStream(
+    accountId: string,
+    userId: string,
+    nick: string,
+    where: { channelId: string; guildId?: string }
+  ): Promise<void> {
+    // Usually nothing: Discord announces a stream to its owner and tells
+    // everybody else only that a voice state has `self_stream` set. So the
+    // key is named from where the stream is and whose it is, which the roster
+    // knows, and the daemon builds it - one definition of the shape rather
+    // than a second one here.
+    const streamKey = this.state.discordStreams[userId]
+    // One at a time. Two decoders and two connections would both work, and
+    // the window has one place to draw a picture.
+    if (this.state.discordWatching) await this.stopWatchingDiscordStream()
+    try {
+      const answer = await window.moho.rpc<{ streamKey: string }>('watchDiscordStream', {
+        accountId,
+        streamKey,
+        userId,
+        channelId: where.channelId,
+        guildId: where.guildId
+      })
+      this.set({ discordWatching: { accountId, streamKey: answer.streamKey, userId, nick } })
+    } catch (e) {
+      this.toast('error', `Couldn't watch that stream: ${(e as Error).message}`)
+    }
+  }
+
+  async stopWatchingDiscordStream(): Promise<void> {
+    const watching = this.state.discordWatching
+    this.set({ discordWatching: null })
+    if (!watching) return
+    await window.moho
+      .rpc('stopWatchingDiscordStream', { accountId: watching.accountId, streamKey: watching.streamKey })
+      .catch(() => {
+        /* the connection is going away regardless; nothing here can fix it */
+      })
   }
 
   toast(kind: 'info' | 'error', text: string): void {

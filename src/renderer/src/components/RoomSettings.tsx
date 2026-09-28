@@ -1,14 +1,23 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
 import { HeaderPopover } from './HeaderPopover'
 import { ChoiceSetting } from './settings/controls'
-import { useStore } from '../state/hooks'
+import { useChat, useStore } from '../state/hooks'
 import type { BufferEntry } from '../state/store'
 
 /** What the daemon says about one of a room's settings. */
 interface Choice {
   value: string
   choices: string[]
+  canChange: boolean
+}
+
+/** Who may come in, and what this room is old enough to offer. */
+interface JoinRule {
+  value: string
+  allow: string[]
+  choices: { value: string; allows: boolean; supported: boolean; since: number }[]
+  version: string
   canChange: boolean
 }
 
@@ -54,6 +63,21 @@ export function RoomSettings({ buffer }: { buffer: BufferEntry }): JSX.Element {
   const button = useRef<HTMLSpanElement>(null)
   const [open, setOpen] = useState(false)
   const [history, setHistory] = useState<Choice | null>(null)
+  const [join, setJoin] = useState<JoinRule | null>(null)
+  // The spaces this account is in, which are the only things a restricted
+  // room can be restricted to. Read from the rail rather than asked for: it
+  // is the same list, already here.
+  //
+  // The whole list is selected and filtered afterwards, deliberately. A
+  // selector that filters returns a fresh array every time it runs, which the
+  // store reads as a changed snapshot, which renders again - React stops that
+  // with "maximum update depth exceeded" and the window goes to the error
+  // boundary.
+  const groups = useChat((s) => s.groups)
+  const spaces = useMemo(
+    () => groups.filter((g) => g.kind === 'space' && g.accountId === buffer.accountId),
+    [groups, buffer.accountId]
+  )
   const [version, setVersion] = useState<Version | null>(null)
   const [upgrading, setUpgrading] = useState(false)
   const [confirmUpgrade, setConfirmUpgrade] = useState(false)
@@ -72,6 +96,7 @@ export function RoomSettings({ buffer }: { buffer: BufferEntry }): JSX.Element {
 
   const load = (): void => {
     setHistory(null)
+    setJoin(null)
     setVersion(null)
     setConfirmUpgrade(false)
     setPolicy(null)
@@ -79,6 +104,10 @@ export function RoomSettings({ buffer }: { buffer: BufferEntry }): JSX.Element {
     void window.moho
       .rpc<Choice>('matrixHistoryVisibility', { bufferId: buffer.id })
       .then(setHistory)
+      .catch((e: Error) => store.toast('error', e.message))
+    void window.moho
+      .rpc<JoinRule>('matrixJoinRule', { bufferId: buffer.id })
+      .then(setJoin)
       .catch((e: Error) => store.toast('error', e.message))
     void window.moho
       .rpc<Version>('matrixRoomVersion', { bufferId: buffer.id })
@@ -107,6 +136,31 @@ export function RoomSettings({ buffer }: { buffer: BufferEntry }): JSX.Element {
       .then(() => store.toast('info', `New members can now read ${readableAs(value)}`))
       .catch((e: Error) => {
         setHistory(before)
+        store.toast('error', `Couldn't change that: ${e.message}`)
+      })
+      .finally(() => setSaving(false))
+  }
+
+  /**
+   * Who may come in.
+   *
+   * The two restricted rules need a space, and sending one without is an
+   * error rather than a setting - so the space already named is reused where
+   * there is one, and otherwise the first the account is in. A room with no
+   * space to point at cannot pick those rules at all, and the option says so.
+   */
+  const setJoinRule = (value: string, allow?: string[]): void => {
+    if (!join) return
+    const rule = join.choices.find((c) => c.value === value)
+    const spaceIds = allow ?? (join.allow.length ? join.allow : spaces.slice(0, 1).map((s) => s.id))
+    const before = join
+    setJoin({ ...join, value, allow: rule?.allows ? spaceIds : [] })
+    setSaving(true)
+    void window.moho
+      .rpc('setMatrixJoinRule', { bufferId: buffer.id, value, ...(rule?.allows ? { allow: spaceIds } : {}) })
+      .then(() => store.toast('info', `This room is now ${joinToast(value)}`))
+      .catch((e: Error) => {
+        setJoin(before)
         store.toast('error', `Couldn't change that: ${e.message}`)
       })
       .finally(() => setSaving(false))
@@ -144,7 +198,50 @@ export function RoomSettings({ buffer }: { buffer: BufferEntry }): JSX.Element {
       {open && (
         <HeaderPopover anchor={button.current} width={400} onClose={() => setOpen(false)}>
           <div className="small muted">This room&apos;s settings</div>
-          {history === null && <div className="small muted">Looking…</div>}
+          {history === null && join === null && <div className="small muted">Looking…</div>}
+          {/* First, because it is the more fundamental of the two: who is in
+              the room at all comes before how much of it they can read. */}
+          {join && (
+            <>
+              <ChoiceSetting
+                label="Who can join"
+                description={
+                  join.canChange
+                    ? 'Changes who can come in from now on. Nobody already here is removed.'
+                    : 'Only somebody who can change this room’s settings can change this.'
+                }
+                value={join.value}
+                options={join.choices.map((choice) => ({
+                  value: choice.value,
+                  label: joinLabel(choice.value, choice.supported, choice.since),
+                  // A rule needing a space, on an account that is in none, is
+                  // a rule that cannot be completed - so it is offered the
+                  // same way an unsupported one is, and for the same reason.
+                  disabled: !choice.supported || (choice.allows && spaces.length === 0)
+                }))}
+                disabled={!join.canChange || saving}
+                onChange={(value) => setJoinRule(value)}
+              />
+              {/* Which space, once one of the restricted rules is chosen.
+                  Only then: a picker beside "invite only" is a control with
+                  nothing to do. */}
+              {join.choices.find((c) => c.value === join.value)?.allows && spaces.length > 0 && (
+                <ChoiceSetting
+                  label="Whose members may join"
+                  description="Anyone in this space can come in without being invited."
+                  value={join.allow[0] ?? spaces[0].id}
+                  options={spaces.map((space) => ({ label: space.name, value: space.id }))}
+                  disabled={!join.canChange || saving}
+                  onChange={(id) => setJoinRule(join.value, [id])}
+                />
+              )}
+              {join.value === 'public' && (
+                <div className="small muted">
+                  Anyone who finds this room can join it without being asked.
+                </div>
+              )}
+            </>
+          )}
           {history && (
             <>
               <ChoiceSetting
@@ -344,6 +441,51 @@ export function RoomSettings({ buffer }: { buffer: BufferEntry }): JSX.Element {
  * rules, not descriptions of them - and this is a setting somebody gets wrong
  * once and cannot take back, because it only ever applies from now on.
  */
+/**
+ * A join rule in words, with the reason it cannot be picked where that is so.
+ *
+ * The reason goes in the label rather than in a note below, because a select
+ * shows one option at a time and a note about an option nobody can see is a
+ * note about nothing.
+ */
+function joinLabel(value: string, supported: boolean, since: number): string {
+  const name = (() => {
+    switch (value) {
+      case 'public':
+        return 'Anyone'
+      case 'invite':
+        return 'Only people who are invited'
+      case 'knock':
+        return 'Anyone who asks, once let in'
+      case 'restricted':
+        return 'Anyone in a space'
+      case 'knock_restricted':
+        return 'Anyone in a space, or who asks'
+      default:
+        return value
+    }
+  })()
+  return supported ? name : `${name} (needs room version ${since})`
+}
+
+/** The same said as the end of a sentence, for the toast. */
+function joinToast(value: string): string {
+  switch (value) {
+    case 'public':
+      return 'open to anyone'
+    case 'invite':
+      return 'invitation only'
+    case 'knock':
+      return 'open to anyone who asks'
+    case 'restricted':
+      return 'open to a space'
+    case 'knock_restricted':
+      return 'open to a space, and to anyone who asks'
+    default:
+      return value
+  }
+}
+
 function historyLabel(value: string): string {
   switch (value) {
     case 'world_readable':
