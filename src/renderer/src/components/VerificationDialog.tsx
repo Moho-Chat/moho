@@ -110,7 +110,7 @@ function VerificationBody(): JSX.Element | null {
             {active.state === 'requested'
               ? 'Waiting for you to accept.'
               : active.state === 'scanned'
-                ? 'Your other device says it scanned this code. Does it show a tick?'
+                ? 'Scanned — finishing up.'
                 : active.state === 'showing'
                   ? 'Scan this from your other device.'
                   : active.state === 'confirmed'
@@ -118,24 +118,6 @@ function VerificationBody(): JSX.Element | null {
                     : `Verification ${active.state || 'starting'}…`}
           </div>
 
-          {/* The answer to a scan. Same question as the emoji one - did the
-              other device agree? - so it gets the same pair of buttons, and
-              "no" cancels rather than quietly leaving the other side waiting,
-              because a scan that did not happen is the case this asks about. */}
-          {active.state === 'scanned' && (
-            <div className="button-row">
-              <button type="button" className="button" onClick={() => rpc('confirmMatrixVerification', { matches: true })}>
-                It scanned
-              </button>
-              <button
-                type="button"
-                className="button danger"
-                onClick={() => rpc('confirmMatrixVerification', { matches: false })}
-              >
-                It didn&apos;t
-              </button>
-            </div>
-          )}
 
           {/* Scanning is the way most people verify, and until now moho had
               nothing to be scanned - Element would offer its camera and this
