@@ -34,7 +34,11 @@ function VerificationBody(): JSX.Element | null {
   // other side can already check, so without cross-signing there is nothing
   // to encode and emoji stay the way through.
   useEffect(() => {
-    if (!active || active.emoji) return
+    // Once, per the daemon's own note on this: asking for the code a second
+    // time used to re-transition the flow and throw away a scan that had
+    // already happened. The daemon caches it now; not asking again is the
+    // other half of the same fix.
+    if (!active || active.emoji || qr) return
     let dropped = false
     void window.moho
       .rpc<{ svg: string | null }>('matrixVerificationQrCode', {
@@ -105,14 +109,39 @@ function VerificationBody(): JSX.Element | null {
           <div className="small muted">
             {active.state === 'requested'
               ? 'Waiting for you to accept.'
-              : `Verification ${active.state || 'starting'}…`}
+              : active.state === 'scanned'
+                ? 'Your other device says it scanned this code. Does it show a tick?'
+                : active.state === 'showing'
+                  ? 'Scan this from your other device.'
+                  : active.state === 'confirmed'
+                    ? 'Confirmed — waiting for your other device to finish.'
+                    : `Verification ${active.state || 'starting'}…`}
           </div>
+
+          {/* The answer to a scan. Same question as the emoji one - did the
+              other device agree? - so it gets the same pair of buttons, and
+              "no" cancels rather than quietly leaving the other side waiting,
+              because a scan that did not happen is the case this asks about. */}
+          {active.state === 'scanned' && (
+            <div className="button-row">
+              <button type="button" className="button" onClick={() => rpc('confirmMatrixVerification', { matches: true })}>
+                It scanned
+              </button>
+              <button
+                type="button"
+                className="button danger"
+                onClick={() => rpc('confirmMatrixVerification', { matches: false })}
+              >
+                It didn&apos;t
+              </button>
+            </div>
+          )}
 
           {/* Scanning is the way most people verify, and until now moho had
               nothing to be scanned - Element would offer its camera and this
               side could only answer with emoji. Shown rather than scanned:
               on a desktop the device holding the camera is the other one. */}
-          {qr && (
+          {qr && active.state !== 'scanned' && active.state !== 'confirmed' && (
             <div className="verification-qr">
               <div className="small muted">Or scan this from your other device.</div>
               {/* As an image rather than injected markup. The SVG is the
