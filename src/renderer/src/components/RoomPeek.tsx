@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { formatTime } from '../lib/util'
 import type { Account } from '../../../shared/wire'
@@ -53,6 +53,11 @@ export function RoomPeek({
   const [lines, setLines] = useState<PeekLine[] | null>(null)
   const [failed, setFailed] = useState('')
   const [refused, setRefused] = useState('')
+  const box = useRef<HTMLDivElement>(null)
+
+  // Brought into view: a panel that opens below the fold is indistinguishable
+  // from a button that does nothing.
+  useEffect(() => box.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), [])
 
   useEffect(() => {
     void window.moho
@@ -76,7 +81,7 @@ export function RoomPeek({
   }, [account.id, room])
 
   return (
-    <div className="room-peek">
+    <div className="room-peek" ref={box}>
       <div className="room-peek-head">
         <Icon name="visibility" size={16} />
         <span className="ellipsis">{summary?.name || summary?.alias || room}</span>
@@ -113,6 +118,9 @@ export function RoomPeek({
             </div>
           )}
           {refused && <div className="small muted">{refused}</div>}
+          {summary.worldReadable && !lines && !refused && (
+            <div className="small muted">Reading the latest messages…</div>
+          )}
 
           {lines?.length === 0 && <div className="small muted">Nothing has been said here.</div>}
           {lines && lines.length > 0 && (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { ReasonPrompt } from './ReasonPrompt'
 import { createPortal } from 'react-dom'
 import { Avatar } from './Avatar'
@@ -23,6 +23,8 @@ interface PublicRoom {
    * One button for all three is a button that fails for two of them.
    */
   joinRule?: string
+  /** Whether the room itself allows being read without joining it. */
+  worldReadable?: boolean
 }
 
 /** One homeserver that was asked, and what came of asking it. */
@@ -436,7 +438,8 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
 
         <div className="room-search-results" ref={resultsRef} onScroll={onScroll}>
           {rooms.map((room) => (
-            <div key={room.roomId} className="room-search-row">
+            <Fragment key={room.roomId}>
+            <div className="room-search-row">
               <Avatar name={room.name || room.alias || room.roomId} url={room.avatarUrl} size={32} />
               <div className="room-search-text">
                 <div className="room-search-title">
@@ -461,10 +464,11 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
                   and leaving again leaves both behind - so the two decisions
                   have to be separable, and on a room already joined there is
                   nothing to separate. */}
-              {!room.joined && (
+              {!room.joined && room.worldReadable && (
                 <button
                   type="button"
                   className="button subtle"
+                  aria-pressed={peeking?.roomId === room.roomId}
                   title="See what is in it without joining"
                   onClick={() => setPeeking(peeking?.roomId === room.roomId ? null : room)}
                 >
@@ -486,16 +490,19 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
                       : 'Join'}
               </button>
             </div>
+            {/* Under the room it is about. It used to open after the last row of
+                results, which for anything but the bottom room was off-screen -
+                so pressing Look appeared to do nothing at all. */}
+            {peeking?.roomId === room.roomId && (
+              <RoomPeek
+                account={account}
+                room={peeking.roomId}
+                via={peeking.via}
+                onClose={() => setPeeking(null)}
+              />
+            )}
+            </Fragment>
           ))}
-
-          {peeking && (
-            <RoomPeek
-              account={account}
-              room={peeking.roomId}
-              via={peeking.via}
-              onClose={() => setPeeking(null)}
-            />
-          )}
 
           {knocking && (
             <ReasonPrompt
