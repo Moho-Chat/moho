@@ -316,6 +316,19 @@ export interface DiscordModal {
 
 export type ActivePanel = '' | 'accounts' | 'settings' | 'join' | 'downloads'
 
+/** A room being looked into without having been joined. */
+export interface PeekTarget {
+  accountId: string
+  roomId: string
+  alias: string
+  name: string
+  /** The homeserver that listed it, which is where to ask about it. */
+  via: string
+  joinRule?: string
+  /** Set once Join has been pressed, until the room arrives or the join fails. */
+  joining?: boolean
+}
+
 export interface ChatState {
   /** Who is composing, per buffer, with when to stop believing it. */
   typingByBuffer: Record<string, { nicks: string[]; until: number }>
@@ -431,6 +444,11 @@ export interface ChatState {
   /** Set in a popped-out window, naming the one conversation it may show. */
   pinnedBufferId: string
   activePanel: ActivePanel
+  /**
+   * The room being looked at, if any. Shown in the conversation's own pane in
+   * place of a conversation, and gone the moment one is selected.
+   */
+  peek: PeekTarget | null
   joinPanelAccountId: string
   messagesByBuffer: Record<string, ChatMessage[]>
   presenceByBuffer: Record<string, Member[]>
@@ -610,6 +628,7 @@ const INITIAL: ChatState = {
   popouts: { open: [], watched: [] },
   pinnedBufferId: '',
   activePanel: '',
+  peek: null,
   joinPanelAccountId: '',
   messagesByBuffer: {},
   presenceByBuffer: {},
@@ -1768,7 +1787,7 @@ export class ChatStore {
 
   selectGroup(groupId: string): void {
     if (groupId === this.state.activeGroupId) return
-    this.set({ activeGroupId: groupId })
+    this.set({ activeGroupId: groupId, peek: null })
     if (!this.state.pinnedBufferId) void window.moho.prefs.set('ui.activeGroupId', groupId)
   }
 
@@ -3120,9 +3139,11 @@ export class ChatStore {
       // bumped). Merge the fresh server fields, keeping local-only unread and
       // highlight rather than resetting them.
       this.set({ buffers: buffers.map((b) => (b.id === data.id ? { ...b, ...data } : b)) })
+      this.followPeekJoin(data)
       return
     }
     this.set({ buffers: [...buffers, { unread: 0, highlight: false, ...data }] })
+    this.followPeekJoin(data)
     bestEffort(window.moho.rpc('subscribe', { bufferId: data.id }), `subscribe ${data.id}`)
     // A channel this client had not heard of may already hold mentions in the
     // stored history, so the inbox has to ask again now that the daemon can
@@ -3301,6 +3322,7 @@ export class ChatStore {
     const patch: Partial<ChatState> = {
       activeBufferId: bufferId,
       activePanel: '',
+      peek: null,
       replyingTo: null,
       buffers: this.state.buffers.map((b) =>
         b.id === bufferId ? { ...b, unread: 0, highlight: false } : b
@@ -3960,7 +3982,58 @@ export class ChatStore {
   }
 
   setActivePanel(panel: ActivePanel, joinPanelAccountId = ''): void {
-    this.set({ activePanel: panel, joinPanelAccountId })
+    // A panel is somewhere else to be, and coming back should not find a room
+    // still being looked at that nobody asked to keep.
+    this.set({ activePanel: panel, joinPanelAccountId, ...(panel === '' ? {} : { peek: null }) })
+  }
+
+  /** Look into a room in the conversation pane, without joining it. */
+  startPeek(target: PeekTarget): void {
+    this.set({ peek: target, activePanel: '' })
+  }
+
+  stopPeek(): void {
+    this.set({ peek: null })
+  }
+
+  /**
+   * Join the room being looked at.
+   *
+   * The banner gives way to the box the moment this starts, but the box
+   * belongs to a conversation and the room is not one yet - so the pane holds
+   * the log it was showing until the room arrives from the daemon, and
+   * [`followPeekJoin`] then opens it properly. A join that fails puts the
+   * banner back, because the room is still only being looked at.
+   */
+  async joinPeeked(): Promise<void> {
+    const peek = this.state.peek
+    if (!peek || peek.joining) return
+    this.set({ peek: { ...peek, joining: true } })
+    // Not for ever: a join the server accepted and then never delivered would
+    // otherwise leave a box that can never be typed into.
+    setTimeout(() => {
+      const now = this.state.peek
+      if (now?.joining && now.roomId === peek.roomId) this.set({ peek: null })
+    }, JOIN_GIVE_UP_MS + 1000)
+    try {
+      await this.joinMatrixRoom(
+        peek.accountId,
+        peek.alias || peek.roomId,
+        peek.name || peek.alias || peek.roomId,
+        peek.alias ? [] : [peek.via]
+      )
+    } catch (e) {
+      const now = this.state.peek
+      if (now?.roomId === peek.roomId) this.set({ peek: { ...now, joining: false } })
+      throw e
+    }
+  }
+
+  /** The room that was being joined has turned up: open it for real. */
+  private followPeekJoin(data: { id: string; remoteId?: string }): void {
+    const peek = this.state.peek
+    if (!peek?.joining || !data.remoteId) return
+    if (data.remoteId === peek.roomId || data.remoteId === peek.alias) void this.selectBuffer(data.id)
   }
 
   startReply(id: string, from: string, body: string): void {

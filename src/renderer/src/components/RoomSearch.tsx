@@ -1,8 +1,7 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ReasonPrompt } from './ReasonPrompt'
 import { createPortal } from 'react-dom'
 import { Avatar } from './Avatar'
-import { RoomPeek } from './RoomPeek'
 import { Icon, IconButton } from './Icon'
 import { usePref, useStore } from '../state/hooks'
 import { classes } from '../lib/util'
@@ -117,8 +116,6 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
   /** The room being knocked on, while the reason is being written. */
   const [knocking, setKnocking] = useState<PublicRoom | null>(null)
   const [joining, setJoining] = useState<Record<string, boolean>>({})
-  /** Which room somebody has asked to look into without joining it. */
-  const [peeking, setPeeking] = useState<PublicRoom | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
   // Which search the answer in flight belongs to. A slow server answering a
@@ -438,8 +435,7 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
 
         <div className="room-search-results" ref={resultsRef} onScroll={onScroll}>
           {rooms.map((room) => (
-            <Fragment key={room.roomId}>
-            <div className="room-search-row">
+            <div key={room.roomId} className="room-search-row">
               <Avatar name={room.name || room.alias || room.roomId} url={room.avatarUrl} size={32} />
               <div className="room-search-text">
                 <div className="room-search-title">
@@ -468,9 +464,20 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
                 <button
                   type="button"
                   className="button subtle"
-                  aria-pressed={peeking?.roomId === room.roomId}
                   title="See what is in it without joining"
-                  onClick={() => setPeeking(peeking?.roomId === room.roomId ? null : room)}
+                  // In the conversation pane, where a room is read, and the
+                  // dialog goes: it was for choosing, and this is chosen.
+                  onClick={() => {
+                    store.startPeek({
+                      accountId: account.id,
+                      roomId: room.roomId,
+                      alias: room.alias,
+                      name: room.name,
+                      via: room.via,
+                      joinRule: room.joinRule
+                    })
+                    onClose()
+                  }}
                 >
                   <Icon name="visibility" size={15} /> Look
                 </button>
@@ -490,18 +497,6 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
                       : 'Join'}
               </button>
             </div>
-            {/* Under the room it is about. It used to open after the last row of
-                results, which for anything but the bottom room was off-screen -
-                so pressing Look appeared to do nothing at all. */}
-            {peeking?.roomId === room.roomId && (
-              <RoomPeek
-                account={account}
-                room={peeking.roomId}
-                via={peeking.via}
-                onClose={() => setPeeking(null)}
-              />
-            )}
-            </Fragment>
           ))}
 
           {knocking && (

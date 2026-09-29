@@ -18,6 +18,7 @@ import { AccountsPanel } from './components/AccountsPanel'
 import { SettingsPanel } from './components/settings/SettingsPanel'
 import { DownloadsPanel } from './components/DownloadsPanel'
 import { JoinPanel } from './components/JoinPanel'
+import { PeekBar, PeekView } from './components/PeekView'
 import { Toasts } from './components/Toasts'
 import { IncomingCallPanel } from './components/IncomingCallPanel'
 import { CallStage, IncomingMatrixCall, ScreenPicker } from './components/CallStage'
@@ -82,6 +83,10 @@ export default function App(): JSX.Element {
    * composer all belong to a buffer that is not on screen.
    */
   const onMentionsPage = activePanel === '' && activeGroupId === MENTIONS_GROUP_ID
+  // A room being looked into stands where the conversation would. It has no
+  // buffer, so everything below that acts on the open conversation is off.
+  const peek = useChat((s) => s.peek)
+  const peeking = !!peek && activePanel === ''
 
   // Which Kick channels are actually being watched, told to the daemon as it
   // changes. Kick counts watch time from an authenticated subscription and
@@ -99,7 +104,7 @@ export default function App(): JSX.Element {
       accounts.find((a) => a.id === allBuffers.find((b) => b.id === id)?.accountId)?.service
     const now = watchedKickBuffers(
       allBuffers,
-      activePanel === '' && !onMentionsPage ? activeBufferId : '',
+      activePanel === '' && !onMentionsPage && !peeking ? activeBufferId : '',
       watching?.bufferId,
       serviceOf
     )
@@ -113,17 +118,19 @@ export default function App(): JSX.Element {
       // daemon answers rather than treats as a failure.
       void window.moho.rpc('setKickWatching', { bufferId, watching: true }).catch(() => {})
     }
-  }, [booted, allBuffers, accounts, activeBufferId, activePanel, onMentionsPage, watching])
+  }, [booted, allBuffers, accounts, activeBufferId, activePanel, onMentionsPage, peeking, watching])
 
   const openThread = useChat((s) => s.openThread)
 
   // A stale restored id is harmless: it simply resolves to no buffer and the
   // empty state shows, exactly as it would for "".
   const showNickList =
-    !userListFolded && activePanel === '' && !onMentionsPage && buffer?.kind === 'channel'
+    !userListFolded && activePanel === '' && !onMentionsPage && !peeking && buffer?.kind === 'channel'
 
   const headerTitle =
-    activePanel === 'accounts'
+    peeking
+      ? `Looking · ${peek?.name || peek?.alias || ''}`
+      : activePanel === 'accounts'
       ? 'Accounts'
       : activePanel === 'settings'
         ? 'Settings'
@@ -169,7 +176,7 @@ export default function App(): JSX.Element {
                 somewhere you go to find a conversation; this is where you
                 already are when you want to do something to the one you are
                 reading. */}
-            {activePanel === '' && !onMentionsPage && buffer ? (
+            {activePanel === '' && !onMentionsPage && !peeking && buffer ? (
               <ConversationMenu buffer={buffer} />
             ) : (
               <span className="main-header-title ellipsis">{headerTitle}</span>
@@ -179,7 +186,7 @@ export default function App(): JSX.Element {
                 conversation, which the mentions page is not showing - leaving
                 them there would offer to search a channel that isn't on
                 screen. */}
-            {activePanel === '' && !onMentionsPage && buffer && (
+            {activePanel === '' && !onMentionsPage && !peeking && buffer && (
               <ConversationTools buffer={buffer} />
             )}
 
@@ -191,7 +198,7 @@ export default function App(): JSX.Element {
                 direct message. */}
             {activePanel === '' && <MentionsInbox />}
 
-            {activePanel === '' && !onMentionsPage && buffer?.kind === 'channel' && (
+            {activePanel === '' && !onMentionsPage && !peeking && buffer?.kind === 'channel' && (
               <IconButton
                 name={userListFolded ? 'group' : 'group_off'}
                 title={userListFolded ? 'Show members' : 'Hide members'}
@@ -203,12 +210,12 @@ export default function App(): JSX.Element {
                 conversation's own tools: both of these are about how this
                 conversation is being shown, not about the conversation. Last,
                 because it is the one that opens something. */}
-            {activePanel === '' && !onMentionsPage && buffer && <PopOutButton buffer={buffer} />}
-            {activePanel !== '' && (
+            {activePanel === '' && !onMentionsPage && !peeking && buffer && <PopOutButton buffer={buffer} />}
+            {(activePanel !== '' || peeking) && (
               <IconButton
                 name="close"
-                title="Back to chat"
-                onClick={() => store.setActivePanel('')}
+                title={peeking ? 'Stop looking' : 'Back to chat'}
+                onClick={() => (peeking ? store.stopPeek() : store.setActivePanel(''))}
               />
             )}
           </div>
@@ -219,10 +226,15 @@ export default function App(): JSX.Element {
               hasAccounts={accounts.length > 0}
               hasBuffer={!!activeBufferId}
               activeGroupId={activeGroupId}
+              peeking={peeking}
             />
           </div>
 
-          {activePanel === '' && activeBufferId !== '' && activeGroupId !== MENTIONS_GROUP_ID && (
+          {/* Where the box would be: what this pane is, and the way in. */}
+          {peeking && <PeekBar />}
+
+          {/* No box while looking: there is nobody here to say it as. */}
+          {activePanel === '' && !peeking && activeBufferId !== '' && activeGroupId !== MENTIONS_GROUP_ID && (
             <>
               {/* Above the box, saying why it will not work here yet. */}
               {buffer && <MembershipGate buffer={buffer} />}
@@ -311,12 +323,14 @@ function Body({
   activePanel,
   hasAccounts,
   hasBuffer,
-  activeGroupId
+  activeGroupId,
+  peeking
 }: {
   activePanel: string
   hasAccounts: boolean
   hasBuffer: boolean
   activeGroupId: string
+  peeking: boolean
 }): JSX.Element {
   if (activePanel === 'settings') return <SettingsPanel />
   // Above the no-accounts case below: a finished download is still worth
@@ -326,6 +340,8 @@ function Body({
   // show - there is nothing to chat in yet.
   if (activePanel === 'accounts' || !hasAccounts) return <AccountsPanel />
   if (activePanel === 'join') return <JoinPanel />
+  // A room being looked into: the pane's own view, with nothing to type into.
+  if (peeking) return <PeekView />
   // The mentions page replaces the log rather than sitting beside it: it is a
   // list of places to go, and every row leads into a conversation.
   if (activeGroupId === MENTIONS_GROUP_ID) return <MentionsPage />
