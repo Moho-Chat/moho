@@ -89,6 +89,19 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
    * across restarts, until it is taken off the line.
    */
   const [extraServers, setExtraServers] = usePref<string[]>('roomSearchServers', [])
+  /**
+   * Directories the daemon suggests, for somebody who has not yet heard of
+   * any of them. Asked of the daemon because the list is knowledge about
+   * Matrix rather than about this window, and the next client will want it too.
+   */
+  const [suggested, setSuggested] = useState<{ server: string; about: string }[]>([])
+  const [showSuggested, setShowSuggested] = useState(false)
+  useEffect(() => {
+    void window.moho
+      .rpc<{ server: string; about: string }[]>('suggestedMatrixDirectories', {})
+      .then((list) => setSuggested(Array.isArray(list) ? list : []))
+      .catch(() => setSuggested([]))
+  }, [])
   /** What is in the box, which is not yet a server until Enter says so. */
   const [pendingServer, setPendingServer] = useState('')
   const [answer, setAnswer] = useState<Answer | null>(null)
@@ -142,6 +155,9 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
     setPendingServer('')
     if (!extraServers.includes(name)) setExtraServers([...extraServers, name])
   }
+
+  /** Suggestions not yet on the line - the ones still worth offering. */
+  const unadded = suggested.filter((d) => !extraServers.includes(d.server))
 
   /**
    * Every server worth a chip: the ones that answered, and the ones added by
@@ -376,6 +392,47 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
             )
           })}
         </div>
+
+        {/* Where to look beyond your own server. Closed until asked for, and
+            nothing in it is searched until it is added: each one is a request
+            to somebody else's server. */}
+        {unadded.length > 0 && (
+          <div className="room-search-suggested small">
+            <button
+              type="button"
+              className="room-search-suggested-toggle"
+              aria-expanded={showSuggested}
+              onClick={() => setShowSuggested((v) => !v)}
+            >
+              {showSuggested ? 'Hide' : 'Find rooms beyond your server'} · {unadded.length} suggested
+            </button>
+            {showSuggested && (
+              <>
+                <div className="room-search-suggested-list">
+                  {unadded.map((d) => (
+                    <button
+                      key={d.server}
+                      type="button"
+                      className="room-search-suggestion"
+                      title={d.about}
+                      onClick={() => setExtraServers([...extraServers, d.server])}
+                    >
+                      <span className="room-search-suggestion-name">{d.server}</span>
+                      <span className="muted">{d.about}</span>
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="room-search-suggested-all"
+                  onClick={() => setExtraServers([...extraServers, ...unadded.map((d) => d.server)])}
+                >
+                  Add all {unadded.length}
+                </button>
+              </>
+            )}
+          </div>
+        )}
 
         <div className="room-search-results" ref={resultsRef} onScroll={onScroll}>
           {rooms.map((room) => (
