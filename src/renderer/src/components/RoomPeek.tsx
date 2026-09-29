@@ -57,7 +57,12 @@ export function RoomPeek({
 
   // Brought into view: a panel that opens below the fold is indistinguishable
   // from a button that does nothing.
-  useEffect(() => box.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), [])
+  // A block body, and no return: an effect's return value is its cleanup, so
+  // an expression body here handed React whatever scrollIntoView answered and
+  // it tried to call that when the panel closed.
+  useEffect(() => {
+    box.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [])
 
   useEffect(() => {
     void window.moho
