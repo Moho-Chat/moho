@@ -177,6 +177,7 @@ export class Call {
         // reused, so the track unmutes rather than a new one arriving.
         track.onunmute = () => {
           callLog(this.id, 'remote-track-live', { kind: track.kind })
+          if (track.kind === 'video') this.sampleSoon('remote video live')
           if (!this.remote.getTracks().some((t) => t.id === track.id)) this.remote.addTrack(track)
           this.handlers.onRemoteStream(this.remote)
         }
@@ -257,6 +258,61 @@ export class Call {
         .then((reading) => callLog(this.id, 'stats', reading))
         .catch(() => {})
     }, 5000)
+  }
+
+  /**
+   * A reading shortly after something changed.
+   *
+   * The regular one is every five seconds, and a screen share the other end
+   * starts and stops inside that window is invisible to it - which is exactly
+   * how the first phone share was lost to the log: it lasted two seconds. So a
+   * track arriving, a change being answered, a capture opening each ask for
+   * their own readings a moment later, when there is something to read.
+   */
+  private sampleSoon(reason: string): void {
+    for (const after of [1500, 4000]) {
+      setTimeout(() => {
+        if (this.phase === 'ended') return
+        void sampleStats(this.id, this.pc)
+          .then((reading) => callLog(this.id, 'stats', { after: reason, ...reading }))
+          .catch(() => {})
+      }, after)
+    }
+  }
+
+  /**
+   * Whether something captured here is producing a picture at all.
+   *
+   * A camera or a screen can open, report itself live, be negotiated and be
+   * accepted by the other end, and still deliver no frames - a portal that is
+   * waiting for a choice nobody sees, a device another program holds. From
+   * outside that is a call in which the picture simply never appears, with
+   * every indicator green. Counting frames for a few seconds is the only way
+   * to tell it from one that works, and it turns silence into a sentence.
+   */
+  private watchCapture(source: 'camera' | 'screen', track: MediaStreamTrack): void {
+    const probe = document.createElement('video')
+    probe.muted = true
+    probe.srcObject = new MediaStream([track])
+    let frames = 0
+    const tick = (): void => {
+      frames++
+      probe.requestVideoFrameCallback?.(tick)
+    }
+    probe.requestVideoFrameCallback?.(tick)
+    void probe.play().catch(() => {})
+    setTimeout(() => {
+      const width = probe.videoWidth
+      probe.srcObject = null
+      callLog(this.id, 'capture', { source, frames, width, state: track.readyState })
+      if (frames === 0 && track.readyState === 'live') {
+        this.handlers.onError(
+          source === 'screen'
+            ? 'Screen capture started but is producing no picture - the other end will see nothing'
+            : 'The camera opened but is producing no picture'
+        )
+      }
+    }, 4000)
   }
 
   private setPhase(phase: CallPhase): void {
@@ -427,6 +483,7 @@ export class Call {
     const track = stream.getVideoTracks()[0]
     if (!track) return false
     callLog(this.id, 'camera-opened', describeStream(stream))
+    this.watchCapture('camera', track)
     this.camera = track
     // The browser's own "stop" - a camera unplugged, a privacy shutter, the
     // device taken by something else - has to reach the call, or the far end
@@ -467,6 +524,7 @@ export class Call {
     const track = stream.getVideoTracks()[0]
     if (!track) return false
     callLog(this.id, 'screen-opened', describeStream(stream))
+    this.watchCapture('screen', track)
     this.screen = track
     // Stopping from the browser's own "stop sharing" control has to reach the
     // call too, or the other end keeps a frozen last frame.
@@ -585,6 +643,7 @@ export class Call {
         await this.pc.setLocalDescription(answer)
         callLog(this.id, 'negotiate-answer-made', describeSdp(answer.sdp))
         this.handlers.send({ kind: 'negotiate', content: { description: { type: 'answer', sdp: answer.sdp } } })
+        this.sampleSoon('their change answered')
         if (this.owesOffer) {
           this.owesOffer = false
           void this.renegotiate()
@@ -607,6 +666,7 @@ export class Call {
         return
       }
       await this.pc.setRemoteDescription(description)
+      this.sampleSoon('our change answered')
     } catch (e) {
       callLog(this.id, 'negotiate-failed', { direction: 'answer', name: (e as Error).name, message: (e as Error).message, signalling: this.pc.signalingState })
       this.handlers.onError(`The other end's answer failed: ${(e as Error).message}`)
