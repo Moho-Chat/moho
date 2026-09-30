@@ -31,6 +31,7 @@ import { MatrixCalls, type CallMember, type MatrixCallEvent, type RingingCall } 
 import type { CallPhase } from '../lib/webrtc'
 import { Levels } from '../lib/levels'
 import { firstFrame, SCREEN_CHOICE_MS } from '../lib/capture'
+import { cameraKey, closeFeeds, feedFrame, streamKey as feedStreamKey } from '../lib/framefeed'
 import type { PopoutState } from '../../../shared/ipc'
 
 /**
@@ -507,6 +508,8 @@ export interface ChatState {
   ringingCall: RingingCall | null
   /** The call put away without being hung up. */
   callMinimized: boolean
+  /** The call is drawn in a window of its own rather than over the conversation. */
+  callPoppedOut: boolean
   /**
    * Who is in each room's call, by buffer.
    *
@@ -656,6 +659,7 @@ const INITIAL: ChatState = {
   discordFriends: {},
   ringingCall: null,
   callMinimized: false,
+  callPoppedOut: false,
   callMembers: {},
   watching: null,
   watchMinimized: false,
@@ -2111,6 +2115,11 @@ export class ChatStore {
   }
 
   /** Puts the call away, or brings it back. It keeps running either way. */
+  /** Moves the call into a window of its own, or back over the conversation. */
+  setCallPoppedOut(poppedOut: boolean): void {
+    this.set({ callPoppedOut: poppedOut })
+  }
+
   setCallMinimized(minimized: boolean): void {
     this.set({ callMinimized: minimized })
   }
@@ -2787,6 +2796,8 @@ export class ChatStore {
       case 'discordCameraFrame': {
         const d = data as { accountId?: string; userId?: string; ended?: boolean }
         if (!d.accountId || !d.userId) break
+        // Decoded here, from the first frame, for whichever tiles show it.
+        feedFrame(cameraKey(d.accountId, d.userId), data as never)
         const key = `${d.accountId}|${d.userId}`
         const on = !!this.state.discordCameras[key]
         if (d.ended && on) {
@@ -2796,6 +2807,13 @@ export class ChatStore {
         } else if (!d.ended && !on) {
           this.set({ discordCameras: { ...this.state.discordCameras, [key]: true } })
         }
+        break
+      }
+
+      // A Go Live stream being watched: decoded here for the tile to draw.
+      case 'discordStreamFrame': {
+        const d = data as { accountId?: string; streamKey?: string }
+        if (d.accountId && d.streamKey) feedFrame(feedStreamKey(d.accountId, d.streamKey), data as never)
         break
       }
 
@@ -4193,6 +4211,7 @@ export class ChatStore {
     const watching = this.state.discordWatching
     this.set({ discordWatching: null })
     if (!watching) return
+    closeFeeds(feedStreamKey(watching.accountId, watching.streamKey))
     await window.moho
       .rpc('stopWatchingDiscordStream', { accountId: watching.accountId, streamKey: watching.streamKey })
       .catch(() => {

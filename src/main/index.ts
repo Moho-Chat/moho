@@ -273,7 +273,23 @@ function createWindow(): void {
     mainWindow = null
   })
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  mainWindow.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    // The one window the page may open itself: a call popped out of the
+    // conversation. The page draws into it directly - see StageWindow - so it
+    // is blank, frameless like this one, and black before anything arrives.
+    if (frameName === 'moho-call' && (url === '' || url === 'about:blank')) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          title: 'moho — call',
+          frame: false,
+          backgroundColor: '#000000',
+          minWidth: 360,
+          minHeight: 240,
+          autoHideMenuBar: true
+        }
+      }
+    }
     shell.openExternal(url)
     return { action: 'deny' }
   })

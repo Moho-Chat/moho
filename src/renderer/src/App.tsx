@@ -21,7 +21,8 @@ import { JoinPanel } from './components/JoinPanel'
 import { PeekBar, PeekView } from './components/PeekView'
 import { Toasts } from './components/Toasts'
 import { IncomingCallPanel } from './components/IncomingCallPanel'
-import { CallStage, IncomingMatrixCall, ScreenPicker } from './components/CallStage'
+import { CallAudio, CallStage, IncomingMatrixCall, ScreenPicker } from './components/CallStage'
+import { CallWindowHost } from './components/stage/CallWindowHost'
 import { StreamStage } from './components/StreamStage'
 import { DiscordModal } from './components/DiscordModal'
 import { FileDrop } from './components/FileDrop'
@@ -286,6 +287,10 @@ export default function App(): JSX.Element {
           it belongs to it sits above the log instead - see MessageList - so
           the two are never both on screen. */}
       {callElsewhere && <CallStage mode="pip" />}
+      {/* The call's sound, played from here whatever is drawing its pictures,
+          and the window a call can be popped out into. */}
+      <CallAudio />
+      <CallWindowHost />
       {/* A stream keeps playing when you go and read something else, and goes
           to the same corner - it is the same surface, differently fed. */}
       {streamElsewhere && <StreamStage mode="pip" />}
