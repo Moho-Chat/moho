@@ -166,14 +166,26 @@ jobs:
       # hit on every push after that, so the only thing recompiled per push is
       # nobilis itself, which is the few minutes that genuinely cannot be
       # avoided.
+      #
+      # ImageOS is in the key because the runner image is part of what built
+      # these artifacts, and pinning this job to 22.04 changed it without
+      # changing anything the key looked at. The next run restored a tree
+      # compiled on 24.04 under an exact-match key, cargo believed the crates
+      # it named were already built, and the build died on "can't find crate
+      # for tor_bytes" - a dependency whose rlib the restored tree did not
+      # have. The Windows job, still on ubuntu-latest, restored its own
+      # matching cache and passed, which is how the image turned out to be
+      # the variable.
       - name: cache the cargo target directory
         uses: actions/cache@v4
         with:
           path: nobilis/target
-          key: cargo-target-linux-${{ hashFiles('nobilis/Cargo.lock') }}-${{ env.RUSTC_VERSION }}
+          key: cargo-target-linux-${{ env.ImageOS }}-${{ hashFiles('nobilis/Cargo.lock') }}-${{ env.RUSTC_VERSION }}
           # A lockfile bump should start from the previous tree and rebuild
-          # what actually changed, rather than starting from nothing.
-          restore-keys: cargo-target-linux-
+          # what actually changed, rather than starting from nothing. Scoped
+          # to the image for the reason above: falling back across images is
+          # the same trap one step further down.
+          restore-keys: cargo-target-linux-${{ env.ImageOS }}-
 
       # The Electron binary, and the appimagetool and nsis bundles
       # electron-builder fetches at pack time. Small, and it removes a real
@@ -378,8 +390,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: nobilis/target
-          key: cargo-target-windows-gnu-${{ hashFiles('nobilis/Cargo.lock') }}-${{ env.RUSTC_VERSION }}
-          restore-keys: cargo-target-windows-gnu-
+          # Scoped to the image for the same reason as the Linux job's: this
+          # directory also holds host-built artifacts - build scripts and
+          # proc macros - even though the binary itself is cross-compiled.
+          key: cargo-target-windows-gnu-${{ env.ImageOS }}-${{ hashFiles('nobilis/Cargo.lock') }}-${{ env.RUSTC_VERSION }}
+          restore-keys: cargo-target-windows-gnu-${{ env.ImageOS }}-
 
       - name: cache electron downloads
         uses: actions/cache@v4

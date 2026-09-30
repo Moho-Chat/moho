@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ReasonPrompt } from './ReasonPrompt'
 import { createPortal } from 'react-dom'
 import { Avatar } from './Avatar'
-import { RoomPeek } from './RoomPeek'
 import { Icon, IconButton } from './Icon'
 import { usePref, useStore } from '../state/hooks'
 import { classes } from '../lib/util'
@@ -23,6 +22,8 @@ interface PublicRoom {
    * One button for all three is a button that fails for two of them.
    */
   joinRule?: string
+  /** Whether the room itself allows being read without joining it. */
+  worldReadable?: boolean
 }
 
 /** One homeserver that was asked, and what came of asking it. */
@@ -89,6 +90,19 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
    * across restarts, until it is taken off the line.
    */
   const [extraServers, setExtraServers] = usePref<string[]>('roomSearchServers', [])
+  /**
+   * Directories the daemon suggests, for somebody who has not yet heard of
+   * any of them. Asked of the daemon because the list is knowledge about
+   * Matrix rather than about this window, and the next client will want it too.
+   */
+  const [suggested, setSuggested] = useState<{ server: string; about: string }[]>([])
+  const [showSuggested, setShowSuggested] = useState(false)
+  useEffect(() => {
+    void window.moho
+      .rpc<{ server: string; about: string }[]>('suggestedMatrixDirectories', {})
+      .then((list) => setSuggested(Array.isArray(list) ? list : []))
+      .catch(() => setSuggested([]))
+  }, [])
   /** What is in the box, which is not yet a server until Enter says so. */
   const [pendingServer, setPendingServer] = useState('')
   const [answer, setAnswer] = useState<Answer | null>(null)
@@ -102,8 +116,6 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
   /** The room being knocked on, while the reason is being written. */
   const [knocking, setKnocking] = useState<PublicRoom | null>(null)
   const [joining, setJoining] = useState<Record<string, boolean>>({})
-  /** Which room somebody has asked to look into without joining it. */
-  const [peeking, setPeeking] = useState<PublicRoom | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
   // Which search the answer in flight belongs to. A slow server answering a
@@ -142,6 +154,9 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
     setPendingServer('')
     if (!extraServers.includes(name)) setExtraServers([...extraServers, name])
   }
+
+  /** Suggestions not yet on the line - the ones still worth offering. */
+  const unadded = suggested.filter((d) => !extraServers.includes(d.server))
 
   /**
    * Every server worth a chip: the ones that answered, and the ones added by
@@ -377,6 +392,47 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
           })}
         </div>
 
+        {/* Where to look beyond your own server. Closed until asked for, and
+            nothing in it is searched until it is added: each one is a request
+            to somebody else's server. */}
+        {unadded.length > 0 && (
+          <div className="room-search-suggested small">
+            <button
+              type="button"
+              className="room-search-suggested-toggle"
+              aria-expanded={showSuggested}
+              onClick={() => setShowSuggested((v) => !v)}
+            >
+              {showSuggested ? 'Hide' : 'Find rooms beyond your server'} · {unadded.length} suggested
+            </button>
+            {showSuggested && (
+              <>
+                <div className="room-search-suggested-list">
+                  {unadded.map((d) => (
+                    <button
+                      key={d.server}
+                      type="button"
+                      className="room-search-suggestion"
+                      title={d.about}
+                      onClick={() => setExtraServers([...extraServers, d.server])}
+                    >
+                      <span className="room-search-suggestion-name">{d.server}</span>
+                      <span className="muted">{d.about}</span>
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="room-search-suggested-all"
+                  onClick={() => setExtraServers([...extraServers, ...unadded.map((d) => d.server)])}
+                >
+                  Add all {unadded.length}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
         <div className="room-search-results" ref={resultsRef} onScroll={onScroll}>
           {rooms.map((room) => (
             <div key={room.roomId} className="room-search-row">
@@ -404,12 +460,24 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
                   and leaving again leaves both behind - so the two decisions
                   have to be separable, and on a room already joined there is
                   nothing to separate. */}
-              {!room.joined && (
+              {!room.joined && room.worldReadable && (
                 <button
                   type="button"
                   className="button subtle"
                   title="See what is in it without joining"
-                  onClick={() => setPeeking(peeking?.roomId === room.roomId ? null : room)}
+                  // In the conversation pane, where a room is read, and the
+                  // dialog goes: it was for choosing, and this is chosen.
+                  onClick={() => {
+                    store.startPeek({
+                      accountId: account.id,
+                      roomId: room.roomId,
+                      alias: room.alias,
+                      name: room.name,
+                      via: room.via,
+                      joinRule: room.joinRule
+                    })
+                    onClose()
+                  }}
                 >
                   <Icon name="visibility" size={15} /> Look
                 </button>
@@ -430,15 +498,6 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
               </button>
             </div>
           ))}
-
-          {peeking && (
-            <RoomPeek
-              account={account}
-              room={peeking.roomId}
-              via={peeking.via}
-              onClose={() => setPeeking(null)}
-            />
-          )}
 
           {knocking && (
             <ReasonPrompt

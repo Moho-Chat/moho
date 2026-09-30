@@ -234,12 +234,33 @@ export class SfuCall {
     return this.room.localParticipant.isCameraEnabled
   }
 
-  /** Shares a screen, or stops. Returns whether one is being shared. */
-  async toggleScreen(): Promise<boolean> {
-    const on = this.room.localParticipant.isScreenShareEnabled
-    await this.room.localParticipant.setScreenShareEnabled(!on)
+  /** Whether this end is sharing a screen. */
+  get sharingScreen(): boolean {
+    return this.room.localParticipant.isScreenShareEnabled
+  }
+
+  /**
+   * Shares a screen that has already been opened, or stops with null.
+   * Returns whether one is being shared.
+   *
+   * Opened by the caller rather than by LiveKit, so that a share here is
+   * chosen and checked exactly as it is in a call between two people or on
+   * Discord - one picker, and nothing published until a picture exists.
+   */
+  async setScreen(stream: MediaStream | null): Promise<boolean> {
+    const participant = this.room.localParticipant
+    if (!stream) {
+      for (const publication of [...participant.trackPublications.values()]) {
+        if (publication.source === Track.Source.ScreenShare && publication.track) {
+          await participant.unpublishTrack(publication.track, true)
+        }
+      }
+    } else {
+      const track = stream.getVideoTracks()[0]
+      if (track) await participant.publishTrack(track, { source: Track.Source.ScreenShare, name: 'screen' })
+    }
     this.local = this.ownStream()
-    return !on
+    return participant.isScreenShareEnabled
   }
 
   /**

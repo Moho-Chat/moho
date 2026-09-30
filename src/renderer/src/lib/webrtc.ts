@@ -19,6 +19,8 @@
  * needs from whatever is carrying it.
  */
 
+import { callLog, callLogEnd, describeIce, describeSdp, forgetStats, sampleStats } from './calllog'
+
 /** What a call is doing, in the words a person would use. */
 export type CallPhase = 'ringing' | 'connecting' | 'connected' | 'ended'
 
@@ -37,6 +39,15 @@ export interface CallHandlers {
   /** Something went wrong that the person should hear about. */
   onError: (message: string) => void
 }
+
+/**
+ * How long a change to a call in progress waits for its answer.
+ *
+ * Short beside the ring timeout: the other end is already connected and
+ * answering is a matter of milliseconds, so ten seconds of nothing means it
+ * is not going to.
+ */
+const NEGOTIATE_TIMEOUT_MS = 10_000
 
 /** How long to wait for an answer before giving up on an unanswered call. */
 const RING_TIMEOUT_MS = 60_000
@@ -81,6 +92,8 @@ export class Call {
   /** Media opened by somebody else and lent to this leg - see the
    *  constructor. Never stopped here, because it is not this leg's to stop. */
   private shared: MediaStream | null = null
+  /** Reads what is crossing the connection, for the log. */
+  private statsTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(opts: {
     id: string
@@ -104,13 +117,29 @@ export class Call {
     this.partyId = `moho-${Math.random().toString(36).slice(2, 10)}`
     this.shared = opts.local ?? null
     this.pc = new RTCPeerConnection({ iceServers: opts.iceServers })
+    callLog(this.id, 'created', {
+      outgoing: this.outgoing,
+      party: this.partyId,
+      ice: describeIce(opts.iceServers),
+      lentMedia: !!opts.local
+    })
+    this.watchConnection()
 
     // Candidates are found for as long as a call lasts, not only at the
     // start: a network changing under a call is exactly when the later ones
     // matter, and a client that stopped listening after connecting would drop
     // the call rather than move it.
     this.pc.onicecandidate = (e) => {
-      if (!e.candidate) return
+      if (!e.candidate) {
+        callLog(this.id, 'ice-gathered')
+        return
+      }
+      // Only what kind of route it is - the address is not the log's to keep.
+      callLog(this.id, 'ice-candidate', {
+        type: e.candidate.type,
+        protocol: e.candidate.protocol,
+        ...(e.candidate.type === 'relay' ? { relay: true } : {})
+      })
       const candidate = {
         candidate: e.candidate.candidate,
         sdpMid: e.candidate.sdpMid,
@@ -122,6 +151,13 @@ export class Call {
     }
 
     this.pc.ontrack = (e) => {
+      callLog(this.id, 'remote-track', {
+        kind: e.track.kind,
+        mid: e.transceiver.mid,
+        muted: e.track.muted,
+        streams: e.streams.length,
+        direction: e.transceiver.currentDirection
+      })
       for (const track of e.streams[0]?.getTracks() ?? [e.track]) {
         if (this.remote.getTracks().some((t) => t.id === track.id)) continue
         this.remote.addTrack(track)
@@ -131,6 +167,7 @@ export class Call {
         // before it reports it as an end, and on a removed track the mute is
         // often all there is.
         const drop = (): void => {
+          callLog(this.id, 'remote-track-gone', { kind: track.kind, state: track.readyState, muted: track.muted })
           this.remote.removeTrack(track)
           this.handlers.onRemoteStream(this.remote)
         }
@@ -139,6 +176,8 @@ export class Call {
         // And back again when they turn it on: the same transceiver is
         // reused, so the track unmutes rather than a new one arriving.
         track.onunmute = () => {
+          callLog(this.id, 'remote-track-live', { kind: track.kind })
+          if (track.kind === 'video') this.sampleSoon('remote video live')
           if (!this.remote.getTracks().some((t) => t.id === track.id)) this.remote.addTrack(track)
           this.handlers.onRemoteStream(this.remote)
         }
@@ -148,6 +187,7 @@ export class Call {
 
     this.pc.onconnectionstatechange = () => {
       const state = this.pc.connectionState
+      callLog(this.id, 'connection', { state })
       if (state === 'connected') this.setPhase('connected')
       // "failed" is over; "disconnected" is not, and often comes back on its
       // own when a network hiccups. Treating the second as the first is how
@@ -194,9 +234,92 @@ export class Call {
     return !!this.camera && this.camera.readyState === 'live'
   }
 
+  /**
+   * Everything the connection says about itself, and a reading of the media
+   * every few seconds.
+   *
+   * The readings are the point. A call whose picture never arrives has a
+   * connection that says "connected" all the way through; only counting what
+   * crossed it says whether the fault is a route, a sender or a decoder.
+   */
+  private watchConnection(): void {
+    this.pc.oniceconnectionstatechange = () => callLog(this.id, 'ice', { state: this.pc.iceConnectionState })
+    this.pc.onsignalingstatechange = () => callLog(this.id, 'signalling', { state: this.pc.signalingState })
+    this.pc.onicegatheringstatechange = () => callLog(this.id, 'gathering', { state: this.pc.iceGatheringState })
+    this.pc.onicecandidateerror = (e) => {
+      const err = e as RTCPeerConnectionIceErrorEvent
+      // Silent unless something went wrong: this is the one that says a relay
+      // refused the credentials or could not be reached at all.
+      callLog(this.id, 'ice-error', { url: err.url, code: err.errorCode, text: err.errorText })
+    }
+    this.statsTimer = setInterval(() => {
+      if (this.phase === 'ended') return
+      void sampleStats(this.id, this.pc)
+        .then((reading) => callLog(this.id, 'stats', reading))
+        .catch(() => {})
+    }, 5000)
+  }
+
+  /**
+   * A reading shortly after something changed.
+   *
+   * The regular one is every five seconds, and a screen share the other end
+   * starts and stops inside that window is invisible to it - which is exactly
+   * how the first phone share was lost to the log: it lasted two seconds. So a
+   * track arriving, a change being answered, a capture opening each ask for
+   * their own readings a moment later, when there is something to read.
+   */
+  private sampleSoon(reason: string): void {
+    for (const after of [1500, 4000]) {
+      setTimeout(() => {
+        if (this.phase === 'ended') return
+        void sampleStats(this.id, this.pc)
+          .then((reading) => callLog(this.id, 'stats', { after: reason, ...reading }))
+          .catch(() => {})
+      }, after)
+    }
+  }
+
+  /**
+   * Whether something captured here is producing a picture at all.
+   *
+   * A camera or a screen can open, report itself live, be negotiated and be
+   * accepted by the other end, and still deliver no frames - a portal that is
+   * waiting for a choice nobody sees, a device another program holds. From
+   * outside that is a call in which the picture simply never appears, with
+   * every indicator green. Counting frames for a few seconds is the only way
+   * to tell it from one that works, and it turns silence into a sentence.
+   */
+  private watchCapture(source: 'camera' | 'screen', track: MediaStreamTrack): void {
+    const probe = document.createElement('video')
+    probe.muted = true
+    probe.srcObject = new MediaStream([track])
+    let frames = 0
+    const tick = (): void => {
+      frames++
+      probe.requestVideoFrameCallback?.(tick)
+    }
+    probe.requestVideoFrameCallback?.(tick)
+    void probe.play().catch(() => {})
+    setTimeout(() => {
+      const width = probe.videoWidth
+      probe.srcObject = null
+      callLog(this.id, 'capture', { source, frames, width, state: track.readyState })
+      if (frames === 0 && track.readyState === 'live') {
+        this.handlers.onError(
+          source === 'screen'
+            ? 'The shared screen has stopped producing a picture - the other end will see nothing'
+            : 'The camera opened but is producing no picture'
+        )
+      }
+    }, 4000)
+  }
+
   private setPhase(phase: CallPhase): void {
     if (this.phase === phase || this.phase === 'ended') return
     this.phase = phase
+    callLog(this.id, 'phase', { phase })
+    if (phase === 'ended' && this.statsTimer) clearInterval(this.statsTimer)
     this.handlers.onPhase(phase)
   }
 
@@ -219,8 +342,10 @@ export class Call {
     const audio = { echoCancellation: true, noiseSuppression: true }
     try {
       this.local = await navigator.mediaDevices.getUserMedia({ audio, video })
+      callLog(this.id, 'local-media', { wantedVideo: video, ...describeStream(this.local) })
     } catch (e) {
       const name = (e as Error).name
+      callLog(this.id, 'local-media-failed', { wantedVideo: video, name, message: (e as Error).message })
       const noCamera = name === 'NotFoundError' || name === 'NotAllowedError' || name === 'OverconstrainedError'
       if (!video || !noCamera) throw e
       this.handlers.onError('No camera here - calling with audio only')
@@ -235,6 +360,7 @@ export class Call {
     await this.openLocal(video)
     const offer = await this.pc.createOffer()
     await this.pc.setLocalDescription(offer)
+    callLog(this.id, 'offer-made', describeSdp(offer.sdp))
     this.setPhase('ringing')
     this.handlers.send({
       kind: 'invite',
@@ -254,10 +380,12 @@ export class Call {
   /** Answers a call that is ringing here. */
   async accept(offerSdp: string, video: boolean): Promise<void> {
     this.setPhase('connecting')
+    callLog(this.id, 'offer-received', { answeringWithVideo: video, ...describeSdp(offerSdp) })
     await this.pc.setRemoteDescription({ type: 'offer', sdp: offerSdp })
     await this.openLocal(video)
     const answer = await this.pc.createAnswer()
     await this.pc.setLocalDescription(answer)
+    callLog(this.id, 'answer-made', describeSdp(answer.sdp))
     this.answered = true
     this.handlers.send({ kind: 'answer', content: { answer: { type: 'answer', sdp: answer.sdp } } })
     this.flushCandidates()
@@ -269,6 +397,7 @@ export class Call {
     this.answered = true
     if (this.ringTimer) clearTimeout(this.ringTimer)
     this.setPhase('connecting')
+    callLog(this.id, 'answer-received', describeSdp(answerSdp))
     await this.pc.setRemoteDescription({ type: 'answer', sdp: answerSdp })
     this.flushCandidates()
   }
@@ -322,6 +451,7 @@ export class Call {
    */
   async setCamera(on: boolean, source?: MediaStream | null): Promise<boolean> {
     if (on === this.cameraOn) return this.cameraOn
+    callLog(this.id, 'camera', { turning: on ? 'on' : 'off' })
 
     if (!on) {
       const track = this.camera
@@ -343,10 +473,17 @@ export class Call {
       // Its own request rather than reopening the microphone with it: the
       // microphone is already open and already being listened to, and asking
       // for both again would interrupt the audio to add a picture.
-      stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      } catch (e) {
+        callLog(this.id, 'camera-failed', { name: (e as Error).name, message: (e as Error).message })
+        throw e
+      }
     }
     const track = stream.getVideoTracks()[0]
     if (!track) return false
+    callLog(this.id, 'camera-opened', describeStream(stream))
+    this.watchCapture('camera', track)
     this.camera = track
     // The browser's own "stop" - a camera unplugged, a privacy shutter, the
     // device taken by something else - has to reach the call, or the far end
@@ -368,6 +505,7 @@ export class Call {
    */
   async shareScreen(source?: MediaStream): Promise<boolean> {
     if (this.screen) {
+      callLog(this.id, 'screen', { turning: 'off' })
       this.screen.stop()
       const sender = this.pc.getSenders().find((s) => s.track === this.screen)
       if (sender) this.pc.removeTrack(sender)
@@ -375,9 +513,18 @@ export class Call {
       await this.renegotiate()
       return false
     }
-    const stream = source ?? (await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }))
+    callLog(this.id, 'screen', { turning: 'on' })
+    let stream: MediaStream
+    try {
+      stream = source ?? (await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }))
+    } catch (e) {
+      callLog(this.id, 'screen-failed', { name: (e as Error).name, message: (e as Error).message })
+      throw e
+    }
     const track = stream.getVideoTracks()[0]
     if (!track) return false
+    callLog(this.id, 'screen-opened', describeStream(stream))
+    this.watchCapture('screen', track)
     this.screen = track
     // Stopping from the browser's own "stop sharing" control has to reach the
     // call too, or the other end keeps a frozen last frame.
@@ -398,14 +545,63 @@ export class Call {
    * have to happen.
    */
   private pendingNegotiation: Promise<void> = Promise.resolve()
+  /** Offers from the other end, one at a time, and not behind our own. */
+  private incomingOffers: Promise<void> = Promise.resolve()
+  /** Set while one of our offers is out and its answer is awaited. */
+  private answerWaiter: (() => void) | null = null
+  /** An offer of ours was given up for theirs, and still has to be made. */
+  private owesOffer = false
+
+  /**
+   * Waits for the answer to the offer just sent.
+   *
+   * This is what "one at a time" has to mean. The chain used to move on the
+   * moment an offer was *sent*, so turning a camera on and starting a share a
+   * moment later put two offers in flight; the far end answered both, and the
+   * second answer arrived in a connection that had already settled and was
+   * refused. Waiting for the answer is the only way there is ever one.
+   *
+   * With a limit, because some clients never answer a change at all - and
+   * "the other end ignored it" is exactly the thing worth being able to see,
+   * so it is logged rather than waited on for ever.
+   */
+  private waitForAnswer(): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.answerWaiter = null
+        callLog(this.id, 'negotiate-unanswered', { afterMs: NEGOTIATE_TIMEOUT_MS, signalling: this.pc.signalingState })
+        this.handlers.onError("The other end didn't answer the change to the call")
+        // Our offer is still standing; leaving it there would refuse every
+        // change that came after.
+        this.pc.setLocalDescription({ type: 'rollback' }).catch(() => {}).finally(resolve)
+      }, NEGOTIATE_TIMEOUT_MS)
+      this.answerWaiter = () => {
+        clearTimeout(timer)
+        this.answerWaiter = null
+        resolve()
+      }
+    })
+  }
 
   private renegotiate(): Promise<void> {
-    this.pendingNegotiation = this.pendingNegotiation.then(async () => {
-      if (this.phase === 'ended') return
-      const offer = await this.pc.createOffer()
-      await this.pc.setLocalDescription(offer)
-      this.handlers.send({ kind: 'negotiate', content: { description: { type: 'offer', sdp: offer.sdp } } })
-    })
+    this.pendingNegotiation = this.pendingNegotiation
+      .then(async () => {
+        if (this.phase === 'ended') return
+        const offer = await this.pc.createOffer()
+        await this.pc.setLocalDescription(offer)
+        callLog(this.id, 'negotiate-offer-made', describeSdp(offer.sdp))
+        this.handlers.send({ kind: 'negotiate', content: { description: { type: 'offer', sdp: offer.sdp } } })
+        await this.waitForAnswer()
+      })
+      // Caught here, and not passed on. A rejected promise left in this chain
+      // is a rejected promise every later step is chained onto, and a `then`
+      // on one never runs - so a single failed renegotiation used to switch
+      // off camera and screen sharing for the rest of the call, without a
+      // word about why. The failure is logged and the chain carries on.
+      .catch((e: Error) => {
+        callLog(this.id, 'negotiate-failed', { direction: 'ours', name: e.name, message: e.message, signalling: this.pc.signalingState })
+        this.handlers.onError(`Couldn't change the call: ${e.message}`)
+      })
     return this.pendingNegotiation
   }
 
@@ -413,24 +609,76 @@ export class Call {
    * A renegotiation from the other end - somebody turning a camera on, or
    * starting to share.
    *
-   * Queued behind this end's own, for the reason above: two descriptions
-   * being applied to one connection at once is how a call ends up describing
-   * something neither end is sending.
+   * An answer goes straight to the offer waiting for it; only offers queue.
+   * They cannot queue behind our own change, which is itself waiting for the
+   * answer these are holding up.
+   *
+   * Two ends offering at once - a camera pressed on both sides in the same
+   * second - is settled the way every other client settles it: the end that
+   * made the call ignores the other's offer, and the end that answered it
+   * gives its own up, takes theirs, and offers again afterwards. Which is the
+   * one that yields is a property of the call, not of who was quicker, so both
+   * ends reach the same answer without talking.
    */
   takeNegotiation(description: RTCSessionDescriptionInit): Promise<void> {
-    this.pendingNegotiation = this.pendingNegotiation.then(async () => {
-      if (this.phase === 'ended') return
+    if (description.type === 'answer') return this.takeNegotiatedAnswer(description)
+
+    this.incomingOffers = this.incomingOffers
+      .then(async () => {
+        if (this.phase === 'ended') return
+        const collision = this.pc.signalingState !== 'stable'
+        callLog(this.id, 'negotiate-received', {
+          type: description.type,
+          signalling: this.pc.signalingState,
+          ...(collision ? { glare: this.outgoing ? 'ignored (we made the call)' : 'yielding (we answered the call)' } : {}),
+          ...describeSdp(description.sdp)
+        })
+        if (collision && this.outgoing) return
+        if (collision) {
+          this.owesOffer = true
+          this.answerWaiter?.()
+        }
+        await this.pc.setRemoteDescription(description)
+        const answer = await this.pc.createAnswer()
+        await this.pc.setLocalDescription(answer)
+        callLog(this.id, 'negotiate-answer-made', describeSdp(answer.sdp))
+        this.handlers.send({ kind: 'negotiate', content: { description: { type: 'answer', sdp: answer.sdp } } })
+        this.sampleSoon('their change answered')
+        if (this.owesOffer) {
+          this.owesOffer = false
+          void this.renegotiate()
+        }
+      })
+      .catch((e: Error) => {
+        callLog(this.id, 'negotiate-failed', { direction: 'theirs', name: e.name, message: e.message, signalling: this.pc.signalingState })
+        this.handlers.onError(`The other end's change to the call failed: ${e.message}`)
+      })
+    return this.incomingOffers
+  }
+
+  private async takeNegotiatedAnswer(description: RTCSessionDescriptionInit): Promise<void> {
+    callLog(this.id, 'negotiate-answer-received', { signalling: this.pc.signalingState, ...describeSdp(description.sdp) })
+    try {
+      // An answer to an offer that is no longer standing - ours was given up
+      // in a collision, or timed out - has nothing to answer.
+      if (this.pc.signalingState !== 'have-local-offer') {
+        callLog(this.id, 'negotiate-answer-stale', { signalling: this.pc.signalingState })
+        return
+      }
       await this.pc.setRemoteDescription(description)
-      if (description.type !== 'offer') return
-      const answer = await this.pc.createAnswer()
-      await this.pc.setLocalDescription(answer)
-      this.handlers.send({ kind: 'negotiate', content: { description: { type: 'answer', sdp: answer.sdp } } })
-    })
-    return this.pendingNegotiation
+      this.sampleSoon('our change answered')
+    } catch (e) {
+      callLog(this.id, 'negotiate-failed', { direction: 'answer', name: (e as Error).name, message: (e as Error).message, signalling: this.pc.signalingState })
+      this.handlers.onError(`The other end's answer failed: ${(e as Error).message}`)
+    } finally {
+      this.answerWaiter?.()
+    }
   }
 
   /** Ends the call, telling the other end unless it was them who ended it. */
   async hangUp(reason?: string, tell = true): Promise<void> {
+    callLog(this.id, 'hangup', { reason: reason ?? null, toldThem: tell, phase: this.phase })
+    if (this.statsTimer) clearInterval(this.statsTimer)
     if (this.ringTimer) clearTimeout(this.ringTimer)
     if (tell) this.handlers.send({ kind: 'hangup', content: reason ? { reason } : {} })
     // Not the shared capture: other legs of the same call are still using it,
@@ -446,5 +694,19 @@ export class Call {
     this.camera = null
     this.pc.close()
     this.setPhase('ended')
+    forgetStats(this.id)
+    callLogEnd(this.id)
+  }
+}
+
+/** What a capture is, in a line: the tracks it holds and what they are. */
+function describeStream(stream: MediaStream): Record<string, unknown> {
+  return {
+    tracks: stream.getTracks().map((t) => {
+      const settings = t.getSettings()
+      return t.kind === 'video'
+        ? `video ${settings.width ?? '?'}x${settings.height ?? '?'}@${Math.round(settings.frameRate ?? 0)} ${t.readyState}${t.label ? ` "${t.label.slice(0, 40)}"` : ''}`
+        : `audio ${t.readyState}`
+    })
   }
 }

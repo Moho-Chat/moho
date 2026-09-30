@@ -6,7 +6,6 @@ import {
   app,
   BrowserWindow,
   clipboard,
-  desktopCapturer,
   dialog,
   globalShortcut,
   ipcMain,
@@ -30,6 +29,7 @@ import { clearnetLinks } from '../shared/clearnet'
 import { readCapped, pictureNamedIn } from './imagepage'
 import { DEEP_LINK_SCHEMES, isDeepLink } from '../shared/deeplink'
 import { allowPickedFile, allowRoot, installMediaHandler, registerMediaScheme } from './media-protocol'
+import { installScreenShare } from './screenshare'
 import { defaultDownloadDir, saveMedia } from './downloads'
 import type { Buffer as ChatBuffer } from '../shared/wire'
 import { log } from './log'
@@ -273,7 +273,23 @@ function createWindow(): void {
     mainWindow = null
   })
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  mainWindow.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    // The one window the page may open itself: a call popped out of the
+    // conversation. The page draws into it directly - see StageWindow - so it
+    // is blank, frameless like this one, and black before anything arrives.
+    if (frameName === 'moho-call' && (url === '' || url === 'about:blank')) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          title: 'moho — call',
+          frame: false,
+          backgroundColor: '#000000',
+          minWidth: 360,
+          minHeight: 240,
+          autoHideMenuBar: true
+        }
+      }
+    }
     shell.openExternal(url)
     return { action: 'deny' }
   })
@@ -648,20 +664,6 @@ function wireIpc(): void {
   // far. Separate from pickFile because the two dialogs ask opposite
   // questions, and a save dialog that cannot name a default file is a save
   // dialog people cancel.
-  // What could be shared into a call. Thumbnails at a size worth looking at
-  // but not worth waiting for - this is a picker, not a preview.
-  ipcMain.handle(IPC.screenSources, async () => {
-    const sources = await desktopCapturer.getSources({
-      types: ['screen', 'window'],
-      thumbnailSize: { width: 320, height: 180 }
-    })
-    return sources.map((s) => ({
-      id: s.id,
-      name: s.name,
-      thumbnail: s.thumbnail.toDataURL()
-    }))
-  })
-
   ipcMain.handle(IPC.pickSavePath, async (e, suggested?: string) => {
     const parent = callerWindow(e) ?? mainWindow
     if (!parent) return null
@@ -841,6 +843,18 @@ app.whenReady().then(() => {
   log.toDirectory(path.join(cacheRoot(), 'moho'))
   log.info('moho starting, logging to', log.file() ?? '(nowhere)')
 
+  // What a call did, from the window that held it. The renderer writes one
+  // `[call] {...}` line per event to its console - see lib/calllog.ts - and
+  // this is the only place they are kept: a console dies with its window, and
+  // the record of why a call had no picture is wanted after the call is over.
+  // Only that prefix, so nothing else a page prints ends up in the file.
+  app.on('web-contents-created', (_e, contents) => {
+    contents.on('console-message', (event) => {
+      const message = (event as unknown as { message?: string }).message
+      if (typeof message === 'string' && message.startsWith('[call] ')) log.info(message)
+    })
+  })
+
   // Said once, in the log and in the window, and never in the way.
   //
   // Chromium's sandbox needs unprivileged user namespaces, and an AppImage
@@ -878,6 +892,9 @@ app.whenReady().then(() => {
     callback(allowed.has(permission))
   })
   session.defaultSession.setPermissionCheckHandler((_contents, permission) => allowed.has(permission))
+
+  // Every screen share in the app, on every desktop - see screenshare.ts.
+  installScreenShare(session.defaultSession, () => mainWindow?.webContents)
 
   // Someone tried to launch a second copy: treat it as "show me moho", which
   // is almost always what they meant - especially when the window is hidden

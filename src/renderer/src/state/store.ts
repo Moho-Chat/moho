@@ -30,6 +30,8 @@ import { parseDeepLink, type IrcLink } from '../../../shared/deeplink'
 import { MatrixCalls, type CallMember, type MatrixCallEvent, type RingingCall } from '../lib/matrixcall'
 import type { CallPhase } from '../lib/webrtc'
 import { Levels } from '../lib/levels'
+import { firstFrame, SCREEN_CHOICE_MS } from '../lib/capture'
+import { cameraKey, closeFeeds, feedFrame, streamKey as feedStreamKey } from '../lib/framefeed'
 import type { PopoutState } from '../../../shared/ipc'
 
 /**
@@ -316,6 +318,19 @@ export interface DiscordModal {
 
 export type ActivePanel = '' | 'accounts' | 'settings' | 'join' | 'downloads'
 
+/** A room being looked into without having been joined. */
+export interface PeekTarget {
+  accountId: string
+  roomId: string
+  alias: string
+  name: string
+  /** The homeserver that listed it, which is where to ask about it. */
+  via: string
+  joinRule?: string
+  /** Set once Join has been pressed, until the room arrives or the join fails. */
+  joining?: boolean
+}
+
 export interface ChatState {
   /** Who is composing, per buffer, with when to stop believing it. */
   typingByBuffer: Record<string, { nicks: string[]; until: number }>
@@ -431,6 +446,11 @@ export interface ChatState {
   /** Set in a popped-out window, naming the one conversation it may show. */
   pinnedBufferId: string
   activePanel: ActivePanel
+  /**
+   * The room being looked at, if any. Shown in the conversation's own pane in
+   * place of a conversation, and gone the moment one is selected.
+   */
+  peek: PeekTarget | null
   joinPanelAccountId: string
   messagesByBuffer: Record<string, ChatMessage[]>
   presenceByBuffer: Record<string, Member[]>
@@ -488,6 +508,8 @@ export interface ChatState {
   ringingCall: RingingCall | null
   /** The call put away without being hung up. */
   callMinimized: boolean
+  /** The call is drawn in a window of its own rather than over the conversation. */
+  callPoppedOut: boolean
   /**
    * Who is in each room's call, by buffer.
    *
@@ -526,6 +548,12 @@ export interface ChatState {
    * key is what watching one is asked for by.
    */
   discordStreams: Record<string, string>
+  /**
+   * Whose camera is on in a Discord call, as `accountId|userId`. Set by the
+   * first frame and cleared by the `ended` one - not touched in between, so
+   * thirty frames a second do not redraw the window.
+   */
+  discordCameras: Record<string, true>
   /** The stream being watched, if any. One at a time, deliberately. */
   discordWatching: { accountId: string; streamKey: string; userId: string; nick: string } | null
   activeCall: {
@@ -610,6 +638,7 @@ const INITIAL: ChatState = {
   popouts: { open: [], watched: [] },
   pinnedBufferId: '',
   activePanel: '',
+  peek: null,
   joinPanelAccountId: '',
   messagesByBuffer: {},
   presenceByBuffer: {},
@@ -630,6 +659,7 @@ const INITIAL: ChatState = {
   discordFriends: {},
   ringingCall: null,
   callMinimized: false,
+  callPoppedOut: false,
   callMembers: {},
   watching: null,
   watchMinimized: false,
@@ -638,6 +668,7 @@ const INITIAL: ChatState = {
   activeCall: null,
   discordSharing: false,
   discordStreams: {},
+  discordCameras: {},
   discordWatching: null,
   ignoredByAccount: {},
   matrixWidgets: {},
@@ -903,15 +934,28 @@ export class ChatStore {
     },
     iceServers: async (accountId) => {
       try {
-        const answer = await window.moho.rpc<{ uris?: string[]; username?: string; password?: string }>(
-          'matrixTurnServers',
-          { accountId }
-        )
+        const answer = await window.moho.rpc<{
+          uris?: string[]
+          username?: string
+          password?: string
+          fallback?: string[]
+        }>('matrixTurnServers', { accountId })
+        const servers: RTCIceServer[] = []
         const uris = answer.uris ?? []
-        if (uris.length === 0) return []
         // One entry carrying every uri, which is how a browser wants them:
         // the credentials are the same for all of a homeserver's relays.
-        return [{ urls: uris, username: answer.username, credential: answer.password }]
+        if (uris.length > 0) servers.push({ urls: uris, username: answer.username, credential: answer.password })
+        // A public STUN server as well, unless it has been switched off. It is
+        // listed apart from the relay and never given its credentials: it is a
+        // mirror that says what this address looks like from outside, and it
+        // is what gets a call across two networks when the homeserver's own
+        // relay is missing - or is advertised and answers nobody, which looks
+        // the same from here.
+        const prefs = await window.moho.prefs.getAll()
+        if (prefs['matrix.fallbackStun'] !== false && (answer.fallback?.length ?? 0) > 0) {
+          servers.push({ urls: answer.fallback! })
+        }
+        return servers
       } catch {
         // No relay is a working configuration for two people on the same
         // network, and a call worth trying is better than a refusal.
@@ -1048,6 +1092,10 @@ export class ChatStore {
 
     const stored = await window.moho.prefs.getAll()
     this.set({ lastReadTs: (stored.lastReadTs as Record<string, number>) ?? {} })
+    // The picker is drawn here but asked for by the main process, halfway
+    // through a capture request - see main/screenshare.ts. Every window
+    // registers, because the question goes to whichever one asked to share.
+    window.moho.onScreenPick(async (sources) => (await this.askForScreenSource(sources))?.id ?? null)
 
     window.moho.onLinkChange((up) => {
       this.set({ linkUp: up })
@@ -1768,7 +1816,7 @@ export class ChatStore {
 
   selectGroup(groupId: string): void {
     if (groupId === this.state.activeGroupId) return
-    this.set({ activeGroupId: groupId })
+    this.set({ activeGroupId: groupId, peek: null })
     if (!this.state.pinnedBufferId) void window.moho.prefs.set('ui.activeGroupId', groupId)
   }
 
@@ -2067,6 +2115,11 @@ export class ChatStore {
   }
 
   /** Puts the call away, or brings it back. It keeps running either way. */
+  /** Moves the call into a window of its own, or back over the conversation. */
+  setCallPoppedOut(poppedOut: boolean): void {
+    this.set({ callPoppedOut: poppedOut })
+  }
+
   setCallMinimized(minimized: boolean): void {
     this.set({ callMinimized: minimized })
   }
@@ -2206,10 +2259,44 @@ export class ChatStore {
   private askForScreenSource(
     sources: { id: string; name: string; thumbnail: string }[]
   ): Promise<{ id: string; name: string } | null> {
+    // A picker still open from an earlier request is answered "nothing"
+    // rather than left waiting for ever behind this one.
+    this.screenChoice?.(null)
     return new Promise((resolve) => {
       this.screenChoice = resolve
       this.set({ screenSources: sources })
     })
+  }
+
+  /**
+   * Opens a screen to share, or returns null if the person backed out.
+   *
+   * The same everywhere: Matrix, Matrix on a media server, and Discord all
+   * come through here, on every desktop. Who chooses the screen - moho's own
+   * picker or the desktop's - is the main process's business, answered inside
+   * this one request (see main/screenshare.ts), so nothing here knows or asks
+   * which desktop it is on.
+   *
+   * A stream coming back is not a screen being shared. Through the Wayland
+   * portal it comes back live before the portal's window has been answered,
+   * and stays live and empty for ever if that window is closed. So this waits
+   * for a first frame, and only then is the share real; a choice never made
+   * ends as a quiet "no" rather than as a share announced to a room and
+   * showing nothing.
+   */
+  private async openScreen(): Promise<MediaStream | null> {
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+    } catch (e) {
+      // Backing out of a picker is an answer, not a fault.
+      if ((e as Error).name === 'NotAllowedError' || (e as Error).name === 'AbortError') return null
+      throw e
+    }
+    if (await firstFrame(stream, SCREEN_CHOICE_MS)) return stream
+    for (const track of stream.getTracks()) track.stop()
+    this.toast('info', 'No screen was shared')
+    return null
   }
 
   /** The picker answering, with a source or with nothing. */
@@ -2375,9 +2462,8 @@ export class ChatStore {
   /**
    * Shares a screen or a window into the call.
    *
-   * The picker is the desktop's rather than the browser's: Electron will not
-   * answer getDisplayMedia without being told which source, and a list of the
-   * windows somebody actually has open is the only way to choose one.
+   * Opened by `openScreen`, which is where every share on every desktop
+   * starts.
    */
   async toggleScreenShare(): Promise<void> {
     // A Discord call is not a Matrix one and has no activeCall behind it -
@@ -2395,15 +2481,24 @@ export class ChatStore {
       return
     }
     if (!this.state.activeCall) return
-    // On a media server the picker is LiveKit's own job, and Electron's
-    // source list is what answers it - see the permission handler in main.
+    // On a media server the screen is opened here, exactly as for the other
+    // two, and handed to LiveKit to publish.
     const group = this.matrixCalls.currentGroup
     if (group?.sfu) {
-      const sharing = await group.sfu.toggleScreen().catch((e: Error) => {
-        this.toast('error', e.message)
-        return false
-      })
-      this.set({ activeCall: { ...this.state.activeCall, sharingScreen: sharing } })
+      const sfu = group.sfu
+      try {
+        let sharing: boolean
+        if (sfu.sharingScreen) {
+          sharing = await sfu.setScreen(null)
+        } else {
+          const stream = await this.openScreen()
+          if (!stream) return
+          sharing = await sfu.setScreen(stream)
+        }
+        if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, sharingScreen: sharing } })
+      } catch (e) {
+        this.toast('error', `Couldn't share the screen: ${(e as Error).message}`)
+      }
       return
     }
     const call = this.matrixCalls.current
@@ -2414,23 +2509,8 @@ export class ChatStore {
         this.set({ activeCall: { ...this.state.activeCall, sharingScreen: false } })
         return
       }
-      const sources = await window.moho.screenSources()
-      if (sources.length === 0) {
-        this.toast('info', 'Nothing to share')
-        return
-      }
-      // Chosen in the window rather than here: the picker is a component, and
-      // this waits for it to answer.
-      const source = await this.askForScreenSource(sources)
-      if (!source) return
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          // Chromium's own desktop-capture constraint, which is how an
-          // Electron window turns a source id into a stream.
-          mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: source.id }
-        }
-      } as unknown as MediaStreamConstraints)
+      const stream = await this.openScreen()
+      if (!stream) return
       await call.call.shareScreen(stream)
       this.set({ activeCall: { ...this.state.activeCall, sharingScreen: true } })
     } catch (e) {
@@ -2458,15 +2538,12 @@ export class ChatStore {
     }
 
     try {
-      const sources = await window.moho.screenSources()
-      if (sources.length === 0) {
-        this.toast('info', 'Nothing to share')
-        return
-      }
-      // The same picker the Matrix path uses, for the same reason: Electron
-      // will not answer getDisplayMedia without being told which source.
-      const source = await this.askForScreenSource(sources)
-      if (!source) return
+      // The screen first, then Discord. The person chooses while the click
+      // that asked is still fresh - a browser will not open a capture for a
+      // gesture spent on a twenty-second wait for a server - and a share
+      // they back out of never costs a stream connection.
+      const stream = await this.openScreen()
+      if (!stream) return
 
       await window.moho.rpc('startDiscordScreenShare', { bufferId })
       this.toast('info', 'Setting up the stream…')
@@ -2482,15 +2559,11 @@ export class ChatStore {
         // or a server it could not find is a sentence somebody can act on.
         this.toast('error', ready.error ? `Couldn’t open the stream: ${ready.error}` : 'Discord never opened the stream')
         await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
+        // A capture already open has nobody to send it to.
+        for (const track of stream.getTracks()) track.stop()
         return
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: source.id }
-        }
-      } as unknown as MediaStreamConstraints)
       const { shareScreen } = await import('../lib/discordscreen')
       this.discordShare = await shareScreen(accountId, stream, (message) => {
         this.toast('error', message)
@@ -2715,6 +2788,32 @@ export class ChatStore {
         if (d.gone && this.state.discordWatching?.streamKey === d.streamKey) {
           this.stopWatchingDiscordStream()
         }
+        break
+      }
+
+      // Somebody's camera in a Discord call. The frames themselves are the
+      // tile's business (see watchCamera); here only whether there is one.
+      case 'discordCameraFrame': {
+        const d = data as { accountId?: string; userId?: string; ended?: boolean }
+        if (!d.accountId || !d.userId) break
+        // Decoded here, from the first frame, for whichever tiles show it.
+        feedFrame(cameraKey(d.accountId, d.userId), data as never)
+        const key = `${d.accountId}|${d.userId}`
+        const on = !!this.state.discordCameras[key]
+        if (d.ended && on) {
+          const cameras = { ...this.state.discordCameras }
+          delete cameras[key]
+          this.set({ discordCameras: cameras })
+        } else if (!d.ended && !on) {
+          this.set({ discordCameras: { ...this.state.discordCameras, [key]: true } })
+        }
+        break
+      }
+
+      // A Go Live stream being watched: decoded here for the tile to draw.
+      case 'discordStreamFrame': {
+        const d = data as { accountId?: string; streamKey?: string }
+        if (d.accountId && d.streamKey) feedFrame(feedStreamKey(d.accountId, d.streamKey), data as never)
         break
       }
 
@@ -3120,9 +3219,11 @@ export class ChatStore {
       // bumped). Merge the fresh server fields, keeping local-only unread and
       // highlight rather than resetting them.
       this.set({ buffers: buffers.map((b) => (b.id === data.id ? { ...b, ...data } : b)) })
+      this.followPeekJoin(data)
       return
     }
     this.set({ buffers: [...buffers, { unread: 0, highlight: false, ...data }] })
+    this.followPeekJoin(data)
     bestEffort(window.moho.rpc('subscribe', { bufferId: data.id }), `subscribe ${data.id}`)
     // A channel this client had not heard of may already hold mentions in the
     // stored history, so the inbox has to ask again now that the daemon can
@@ -3301,6 +3402,7 @@ export class ChatStore {
     const patch: Partial<ChatState> = {
       activeBufferId: bufferId,
       activePanel: '',
+      peek: null,
       replyingTo: null,
       buffers: this.state.buffers.map((b) =>
         b.id === bufferId ? { ...b, unread: 0, highlight: false } : b
@@ -3960,7 +4062,58 @@ export class ChatStore {
   }
 
   setActivePanel(panel: ActivePanel, joinPanelAccountId = ''): void {
-    this.set({ activePanel: panel, joinPanelAccountId })
+    // A panel is somewhere else to be, and coming back should not find a room
+    // still being looked at that nobody asked to keep.
+    this.set({ activePanel: panel, joinPanelAccountId, ...(panel === '' ? {} : { peek: null }) })
+  }
+
+  /** Look into a room in the conversation pane, without joining it. */
+  startPeek(target: PeekTarget): void {
+    this.set({ peek: target, activePanel: '' })
+  }
+
+  stopPeek(): void {
+    this.set({ peek: null })
+  }
+
+  /**
+   * Join the room being looked at.
+   *
+   * The banner gives way to the box the moment this starts, but the box
+   * belongs to a conversation and the room is not one yet - so the pane holds
+   * the log it was showing until the room arrives from the daemon, and
+   * [`followPeekJoin`] then opens it properly. A join that fails puts the
+   * banner back, because the room is still only being looked at.
+   */
+  async joinPeeked(): Promise<void> {
+    const peek = this.state.peek
+    if (!peek || peek.joining) return
+    this.set({ peek: { ...peek, joining: true } })
+    // Not for ever: a join the server accepted and then never delivered would
+    // otherwise leave a box that can never be typed into.
+    setTimeout(() => {
+      const now = this.state.peek
+      if (now?.joining && now.roomId === peek.roomId) this.set({ peek: null })
+    }, JOIN_GIVE_UP_MS + 1000)
+    try {
+      await this.joinMatrixRoom(
+        peek.accountId,
+        peek.alias || peek.roomId,
+        peek.name || peek.alias || peek.roomId,
+        peek.alias ? [] : [peek.via]
+      )
+    } catch (e) {
+      const now = this.state.peek
+      if (now?.roomId === peek.roomId) this.set({ peek: { ...now, joining: false } })
+      throw e
+    }
+  }
+
+  /** The room that was being joined has turned up: open it for real. */
+  private followPeekJoin(data: { id: string; remoteId?: string }): void {
+    const peek = this.state.peek
+    if (!peek?.joining || !data.remoteId) return
+    if (data.remoteId === peek.roomId || data.remoteId === peek.alias) void this.selectBuffer(data.id)
   }
 
   startReply(id: string, from: string, body: string): void {
@@ -4058,6 +4211,7 @@ export class ChatStore {
     const watching = this.state.discordWatching
     this.set({ discordWatching: null })
     if (!watching) return
+    closeFeeds(feedStreamKey(watching.accountId, watching.streamKey))
     await window.moho
       .rpc('stopWatchingDiscordStream', { accountId: watching.accountId, streamKey: watching.streamKey })
       .catch(() => {

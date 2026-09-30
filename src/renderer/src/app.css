@@ -2034,136 +2034,6 @@ img.composer-emoji {
   gap: var(--spacing-s);
 }
 
-/* --- the call, while it is happening ------------------------------------ */
-
-.call-view {
-  flex: none;
-  border-bottom: 1px solid var(--outline-medium);
-  background: var(--surface-container-low);
-}
-
-.call-view-head {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-s);
-  padding: var(--spacing-xs) var(--spacing-m);
-}
-
-/* The title takes the slack so the buttons stay at the right edge. */
-.call-view-head > .ellipsis {
-  flex: 1;
-  min-width: 0;
-  font-weight: 500;
-}
-
-.call-view-head .calling {
-  color: var(--error);
-}
-
-.call-tiles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-m);
-  padding: var(--spacing-s) var(--spacing-m) var(--spacing-m);
-}
-
-.call-tile {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--spacing-xs);
-  width: 88px;
-  text-align: center;
-}
-
-/* The ring, drawn on the picture rather than the tile so it reads as being
-   around the person and not around a box. Outline rather than border: a
-   border would resize the avatar every time somebody started talking, and
-   the whole row would twitch. */
-.call-tile img,
-.call-tile .avatar-fallback {
-  outline: 3px solid transparent;
-  outline-offset: 2px;
-  transition: outline-color 0.12s ease;
-}
-
-.call-tile.talking img,
-.call-tile.talking .avatar-fallback {
-  outline-color: var(--success);
-}
-
-/* Holds the badges against the picture. */
-.call-face {
-  position: relative;
-  display: inline-flex;
-}
-
-.call-badges {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  display: flex;
-  gap: 1px;
-  padding: 2px;
-  border-radius: 999px;
-  /* Its own plate, because these sit over an avatar that could be any
-     colour and a bare glyph would vanish against half of them. */
-  background: var(--surface-container-highest);
-  color: var(--surface-text);
-}
-
-/* Says a stream exists; deliberately not a button that opens one. */
-.call-watch {
-  padding: 0 var(--spacing-xs);
-  border: 1px solid var(--outline-medium);
-  border-radius: 999px;
-  background: none;
-  color: var(--surface-variant-text);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.call-watch[disabled] {
-  opacity: 0.75;
-  cursor: not-allowed;
-}
-
-/* The one being watched, so a row of Live badges says which one is open. */
-.call-watch.active {
-  border-color: var(--primary);
-  color: var(--primary);
-}
-
-/* Somebody else's shared screen, above the row of faces rather than among
-   them: it is the thing being looked at, and a picture sized like an avatar
-   is not worth having. */
-.discord-stream-tile {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xxs);
-  margin-bottom: var(--spacing-xs);
-}
-
-.discord-stream-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-xs);
-}
-
-/* Height-capped rather than free: the canvas takes its pixel size from the
-   stream, and a 1080p share would otherwise push the roster off the panel.
-   `contain` because the sender chooses the shape and letterboxing a picture
-   is better than stretching somebody's desktop. */
-.discord-stream-canvas {
-  width: 100%;
-  max-height: 320px;
-  object-fit: contain;
-  border-radius: var(--corner-radius-small);
-  background: #000;
-}
-
 /* The bar that appears while picking people for a group message. */
 .group-dm-bar {
   display: flex;
@@ -6800,77 +6670,6 @@ video.lightbox-media {
   color: var(--error);
 }
 
-/* --- Looking into a room ---------------------------------------------- */
-
-/* What is in a room, read from outside it. Sits under the list rather than
-   over it, so the row it came from stays visible - the point of looking is to
-   decide about that room, and a panel covering it takes away what the decision
-   is about. */
-.room-peek {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xs);
-  margin: var(--spacing-s) 0;
-  padding: var(--spacing-s);
-  border: 1px solid var(--outline-medium);
-  border-radius: var(--corner-radius-small);
-  background: var(--surface-container-lowest);
-}
-
-.room-peek-head {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-s);
-  font-weight: 500;
-}
-
-.room-peek-head .ellipsis {
-  flex: 1;
-  min-width: 0;
-}
-
-.room-peek-topic {
-  color: var(--surface-variant-text);
-  /* A topic can be a paragraph. Three lines is enough to judge a room by and
-     short enough that the conversation under it stays on screen. */
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.room-peek-log {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-height: 240px;
-  overflow-y: auto;
-}
-
-.room-peek-line {
-  display: flex;
-  gap: var(--spacing-s);
-  align-items: baseline;
-}
-
-.room-peek-from {
-  flex: none;
-  max-width: 12ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--surface-variant-text);
-  font-size: 0.82rem;
-}
-
-.room-peek-body {
-  min-width: 0;
-  font-size: 0.85rem;
-  /* Somebody else's text, from a room nobody here has joined: it wraps and
-     it never stretches the dialog. */
-  overflow-wrap: anywhere;
-}
-
 /* --- Link previews ---------------------------------------------------- */
 
 /* The picture a homeserver found behind a link. Capped rather than sized to
@@ -7084,4 +6883,371 @@ video.lightbox-media {
   align-items: center;
   gap: var(--spacing-xs);
   color: var(--surface-variant-text);
+}
+
+.room-search-suggested { padding: var(--spacing-xs) var(--spacing-m) var(--spacing-s); display: flex; flex-direction: column; gap: var(--spacing-xs); }
+.room-search-suggested-toggle,
+.room-search-suggested-all { align-self: flex-start; background: none; border: 0; padding: 0; color: var(--primary); cursor: pointer; font: inherit; }
+.room-search-suggested-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--spacing-xxs) var(--spacing-m); max-height: 180px; overflow-y: auto; }
+.room-search-suggestion { display: flex; flex-direction: column; align-items: flex-start; text-align: left; background: none; border: 0; padding: var(--spacing-xxs) 0; color: inherit; cursor: pointer; font: inherit; }
+.room-search-suggestion:hover .room-search-suggestion-name { text-decoration: underline; }
+.room-search-suggestion-name { font-weight: 600; }
+
+/* A room being looked into, in the pane a conversation would fill. */
+.peek-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.peek-facts { padding: var(--spacing-xs) var(--spacing-m); border-bottom: 1px solid var(--outline-light); }
+.peek-bar { flex: none; background: var(--surface-container-high); }
+.peek-bar-row { display: flex; align-items: center; gap: var(--spacing-s); padding: var(--spacing-s) var(--spacing-m); }
+.peek-bar-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.peek-topic { padding: var(--spacing-xs) var(--spacing-m); color: var(--surface-variant-text); border-bottom: 1px solid var(--outline-light); }
+.peek-log { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: var(--spacing-s) 0 var(--spacing-m); }
+
+/* --- The call stage ---------------------------------------------------- */
+
+/* A call, drawn the way Discord's client draws one: a black stage above the
+   conversation that looks like a video before there is any video in it.
+   Deliberately the same in both themes - it is a picture, and pictures are
+   shown on black. */
+.stage {
+  position: relative;
+  flex: none;
+  background: #000;
+  color: #f2f3f5;
+  overflow: hidden;
+  user-select: none;
+}
+
+.stage.in-window,
+.stage.fullscreen {
+  position: fixed;
+  inset: 0;
+  height: auto;
+}
+
+.stage-window-root {
+  position: fixed;
+  inset: 0;
+  background: #000;
+}
+
+.stage.collapsed {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-s);
+}
+
+.stage.collapsed .stage-head {
+  position: static;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: none;
+}
+
+.stage-head {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  height: 44px;
+  padding: 0 var(--spacing-s) 0 var(--spacing-m);
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), transparent);
+}
+
+/* A popped-out stage is its window's title bar too: frameless, so the head
+   is what the window is moved by. Buttons stay pressable. */
+.stage-head.window-drag {
+  -webkit-app-region: drag;
+}
+
+.stage-head.window-drag button {
+  -webkit-app-region: no-drag;
+}
+
+.stage-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-weight: 600;
+}
+
+.stage-subtitle {
+  font-weight: 400;
+  font-size: 12px;
+  color: #b5bac1;
+  margin-left: var(--spacing-xs);
+}
+
+.stage-head-buttons {
+  display: flex;
+  gap: 2px;
+}
+
+.stage-head-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #dbdee1;
+  cursor: pointer;
+}
+
+.stage-head-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.stage-area {
+  position: absolute;
+  left: var(--spacing-m);
+  right: var(--spacing-m);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stage-empty {
+  color: #949ba4;
+}
+
+.stage-grid {
+  display: grid;
+  gap: 8px;
+  justify-content: center;
+  align-content: center;
+}
+
+.stage-focus {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  justify-content: center;
+}
+
+.stage-strip {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.stage-tile {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  max-width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  outline: none;
+  transition: box-shadow 0.12s ease;
+}
+
+.stage-tile.strip {
+  flex: none;
+}
+
+.stage-tile:focus-visible {
+  box-shadow: inset 0 0 0 2px #00a8fc;
+}
+
+/* Who is talking: the green ring Discord draws. */
+.stage-tile.speaking {
+  box-shadow: inset 0 0 0 3px #23a55a;
+}
+
+.stage-tile-face .avatar-fallback,
+.stage-tile-face img {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.stage-picture {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.stage-tile-name {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 16px);
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.stage-tile.strip .stage-tile-name {
+  left: 4px;
+  bottom: 4px;
+  font-size: 11px;
+  padding: 1px 6px;
+}
+
+.stage-tile-state {
+  color: #f23f43;
+}
+
+.stage-tile-live {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #da373c;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.stage-tile-action {
+  position: absolute;
+  z-index: 1;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.stage-tile-action:hover {
+  background: #5865f2;
+}
+
+.stage-tile-dismiss {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  cursor: pointer;
+}
+
+.stage-tile:hover .stage-tile-dismiss {
+  display: inline-flex;
+}
+
+/* The buttons, along the bottom middle. */
+.stage-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 14px;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.stage-controls.compact {
+  position: static;
+  gap: 4px;
+}
+
+.stage-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border: 0;
+  border-radius: 50%;
+  background: #2b2d31;
+  color: #f2f3f5;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.stage-button.compact {
+  width: 32px;
+  height: 32px;
+}
+
+.stage-button:hover {
+  background: #3a3c42;
+}
+
+/* Something switched on that is doing something: a screen being shared. */
+.stage-button.active {
+  background: #f2f3f5;
+  color: #111214;
+}
+
+/* Something switched off that normally is on: a muted microphone. */
+.stage-button.off {
+  background: #f2f3f5;
+  color: #da373c;
+}
+
+.stage-button.danger {
+  background: #da373c;
+  color: #fff;
+}
+
+.stage-button.danger:hover {
+  background: #a12828;
+}
+
+.stage-resize {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.stage-resize:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* The line left above the conversation while the call is in its own window. */
+.stage-away {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-m);
+  background: var(--surface-container-high);
+  border-bottom: 1px solid var(--outline-light);
 }

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { IPC, POPOUT_FLAG, type PopoutState } from '../shared/ipc'
+import { IPC, POPOUT_FLAG, type PopoutState, type ScreenSource } from '../shared/ipc'
 import type { NobilisEvent } from '../shared/wire'
 
 /**
@@ -136,15 +136,21 @@ const api = {
 
   pickFile: (): Promise<string | null> => ipcRenderer.invoke(IPC.pickFile),
   /**
-   * What could be shared into a call: every screen and window, each with a
-   * still of what is on it.
+   * Answers the main process when it needs a screen or window chosen.
    *
-   * Asked of the desktop rather than of the browser. Electron refuses
-   * getDisplayMedia's own picker, and a person choosing what to show a room
-   * needs to see which window they are choosing.
+   * Asked in the middle of a `getDisplayMedia`, on the desktops where moho
+   * draws its own picker - see main/screenshare.ts. The handler resolves with
+   * the chosen source's id, or null for nothing.
    */
-  screenSources: (): Promise<{ id: string; name: string; thumbnail: string }[]> =>
-    ipcRenderer.invoke(IPC.screenSources),
+  onScreenPick(cb: (sources: ScreenSource[]) => Promise<string | null>): () => void {
+    const handler = (_e: unknown, question: number, sources: ScreenSource[]): void => {
+      void cb(sources)
+        .catch(() => null)
+        .then((id) => ipcRenderer.send(IPC.screenPicked, question, id))
+    }
+    ipcRenderer.on(IPC.screenPick, handler)
+    return () => ipcRenderer.off(IPC.screenPick, handler)
+  },
   pickSavePath: (suggested?: string): Promise<string | null> =>
     ipcRenderer.invoke(IPC.pickSavePath, suggested),
   pickDirectory: (): Promise<string | null> => ipcRenderer.invoke(IPC.pickDirectory),

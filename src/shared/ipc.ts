@@ -24,7 +24,10 @@ export const IPC = {
   /** Whether this process got Chromium's sandbox, or is running without it. */
   sandboxState: 'moho:sandboxState',
   /** The screens and windows that could be shared into a call. */
-  screenSources: 'moho:screenSources',
+  /** main -> window: show the screen picker (question id, sources). */
+  screenPick: 'moho:screenPick',
+  /** window -> main: the picker's answer (question id, source id or null). */
+  screenPicked: 'moho:screenPicked',
   markBufferRead: 'moho:markBufferRead',
   browserLogin: 'moho:browserLogin',
   solveCaptcha: 'moho:solveCaptcha',
@@ -64,4 +67,12 @@ export interface PopoutState {
    * behaving like any other conversation.
    */
   watched: string[]
+}
+
+/** Something that can be shared into a call, as the picker draws it. */
+export interface ScreenSource {
+  id: string
+  name: string
+  /** A data: URL of what is on it. */
+  thumbnail: string
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
 import { VideoStage } from './VideoStage'
+import { Stage, fitTiles, type StageButton, type StageTile } from './stage/Stage'
 import { Avatar } from './Avatar'
 import { useChat, useStore } from '../state/hooks'
 import type { CallTile } from '../state/store'
@@ -22,141 +23,159 @@ import { bufferDisplayName, classes } from '../lib/util'
  * which is what a call is on any service - the screen-share button here is the
  * same button Discord's will be, and the tiles are the same tiles.
  */
-/** Sixteen by nine, which is what cameras and screens both are. */
-const TILE_RATIO = 16 / 9
-/** No tile gets bigger than this, however much room there is. */
-const TILE_MAX = 420
+export { fitTiles } from './stage/Stage'
+
+/** The gap between tiles in the corner player. */
 const TILE_GAP = 6
 
-/**
- * How to lay out a call of this size in the space there is.
- *
- * Every column count is tried and the one that makes the tiles biggest wins,
- * subject to them all fitting - which is what a grid of faces should do and
- * what a fixed table of counts cannot: three people in a wide short box want
- * one row, and the same three in a tall narrow one want three.
- *
- * Capped, because a call between two people on a large screen should not be
- * two enormous windows - past a certain size a face stops being easier to
- * read and the conversation underneath just disappears.
- */
-export function fitTiles(
-  count: number,
-  width: number,
-  height: number,
-  max: number = TILE_MAX
-): { columns: number; tileWidth: number } {
-  if (count < 1 || width < 1) return { columns: 1, tileWidth: 0 }
-  let best = { columns: 1, tileWidth: 0 }
-  for (let columns = 1; columns <= count; columns++) {
-    const rows = Math.ceil(count / columns)
-    // What the width allows, and what the height allows; the smaller governs.
-    const byWidth = (width - TILE_GAP * (columns - 1)) / columns
-    const byHeight = ((height - TILE_GAP * (rows - 1)) / rows) * TILE_RATIO
-    const tileWidth = Math.min(byWidth, byHeight, max)
-    if (tileWidth > best.tileWidth) best = { columns, tileWidth }
-  }
-  return best
-}
-
-export function CallStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' }): JSX.Element | null {
+export function CallStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'window' }): JSX.Element | null {
   const store = useStore()
   const call = useChat((s) => s.activeCall)
   const minimized = useChat((s) => s.callMinimized)
+  const poppedOut = useChat((s) => s.callPoppedOut)
   const buffers = useChat((s) => s.buffers)
   const videos = useRef(new Map<string, HTMLVideoElement>())
   const grid = useRef<HTMLDivElement>(null)
   const [tiles, setTiles] = useState<CallTile[]>([])
-  /** How wide the grid is, which decides how the tiles are laid out. */
-  const [room, setRoom] = useState({ width: 640, height: 260 })
-  /**
-   * Whose picture is being looked at, if anybody.
-   *
-   * Null is the grid, where nobody is more important than anybody else. Naming
-   * one person is a decision the person watching made, so it is undone the
-   * same way it was made rather than by anything the call does.
-   */
+  /** How wide the corner player's grid is, which decides its layout. */
+  const [room, setRoom] = useState({ width: 320, height: 180 })
+  /** Whose picture the corner player is showing large, if anybody. */
   const [focused, setFocused] = useState<string | null>(null)
 
-  // Measured rather than assumed: the same call is a different shape in a
-  // narrow window, in a full-screen one, and in the corner it retreats to.
   useEffect(() => {
     const el = grid.current
-    if (!el) return
-    const measure = (): void =>
-      setRoom({
-        width: el.clientWidth,
-        // As much height as a call may take before it is taking over the
-        // conversation rather than sitting above it.
-        height: Math.min(window.innerHeight * (mode === 'pip' ? 0.3 : 0.45), mode === 'pip' ? 260 : 460)
-      })
+    if (!el || mode !== 'pip') return
+    const measure = (): void => setRoom({ width: el.clientWidth, height: Math.min(window.innerHeight * 0.3, 260) })
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(el)
-    window.addEventListener('resize', measure)
-    return () => {
-      observer.disconnect()
-      window.removeEventListener('resize', measure)
-    }
+    return () => observer.disconnect()
   }, [mode, minimized])
 
   // The streams are not state: they are live objects whose tracks change under
   // a call - somebody turning a camera on, somebody starting to share - so the
-  // elements are pointed at them rather than re-rendered from them.
+  // elements are pointed at them rather than re-rendered from them. Every
+  // element showing a person is kept pointed at their stream, however many
+  // places they are drawn at once.
   useEffect(() => {
     if (!call) return
     const attach = (): void => {
       const current = store.callTiles()
       setTiles((was) =>
-        was.length === current.length && was.every((t, i) => t.id === current[i].id && t.hasVideo === current[i].hasVideo)
+        was.length === current.length &&
+        was.every(
+          (t, i) =>
+            t.id === current[i].id &&
+            t.hasVideo === current[i].hasVideo &&
+            t.speaking === current[i].speaking &&
+            t.muted === current[i].muted
+        )
           ? was
           : current
       )
-      // Both slots: in the focused layout the same person is on the stage and
-      // in the strip underneath, which is two elements showing one stream.
       for (const tile of current) {
-        for (const slot of ['stage', 'strip']) {
-          const el = videos.current.get(`${tile.id}#${slot}`)
-          if (el && tile.stream && el.srcObject !== tile.stream) el.srcObject = tile.stream
+        for (const [key, el] of videos.current) {
+          if (key.startsWith(`${tile.id}#`) && tile.stream && el.srcObject !== tile.stream) el.srcObject = tile.stream
         }
       }
     }
     attach()
-    const timer = setInterval(attach, 700)
+    const timer = setInterval(attach, 300)
     return () => clearInterval(timer)
   }, [call, store])
 
   if (!call) return null
 
+  // In a window of its own: the conversation keeps a line saying so, and the
+  // corner keeps nothing.
+  if (mode !== 'window' && poppedOut) {
+    if (mode === 'pip') return null
+    return (
+      <div className="stage-away">
+        <Icon name="open_in_new" size={16} />
+        <span className="small">The call is in its own window.</span>
+        <button type="button" className="button subtle" onClick={() => store.setCallPoppedOut(false)}>
+          Bring it back
+        </button>
+      </div>
+    )
+  }
+
   const where = buffers.find((b) => b.id === call.bufferId)?.name ?? ''
-  // Somebody who has left the call cannot go on being the one looked at.
-  const stage = tiles.find((t) => t.id === focused) ?? null
-  const layout = fitTiles(Math.max(tiles.length, 1), room.width, room.height)
-  /** The row of everybody else under the stage, and how tall it is. */
-  const stripHeight = mode === 'pip' ? 42 : 74
-  const stageFit = fitTiles(
-    1,
-    room.width,
-    room.height - (tiles.length > 1 ? stripHeight + TILE_GAP : 0),
-    // Uncapped: the whole point of picking somebody out is to see them larger
-    // than the grid would ever draw them.
-    Infinity
-  )
   const phase =
     call.phase === 'ringing' ? 'Ringing…' : call.phase === 'connecting' ? 'Connecting…' : 'Connected'
 
-  // Who is in it, named. Only in the corner: in the conversation the tiles are
-  // large enough to read the names off, and a second list of them would be the
-  // same information twice.
+  /**
+   * A video element for one person in one place. Always muted: the call's
+   * sound is played once, by CallAudio, not by every picture of every person
+   * - two pictures of one person would otherwise be two voices.
+   */
+  const video = (tile: CallTile, slot: string, className: string): JSX.Element => (
+    <video
+      ref={(el) => {
+        const key = `${tile.id}#${slot}`
+        if (el) {
+          videos.current.set(key, el)
+          if (tile.stream && el.srcObject !== tile.stream) el.srcObject = tile.stream
+        } else videos.current.delete(key)
+      }}
+      className={className}
+      autoPlay
+      playsInline
+      muted
+    />
+  )
+
+  const buttons: StageButton[] = [
+    {
+      icon: call.muted ? 'mic_off' : 'mic',
+      label: call.muted ? 'Unmute' : 'Mute',
+      off: call.muted,
+      onClick: () => store.toggleCallMute()
+    },
+    {
+      icon: call.cameraOn ? 'videocam' : 'videocam_off',
+      label: call.cameraOn ? 'Turn the camera off' : 'Turn the camera on',
+      off: !call.cameraOn,
+      onClick: () => void store.toggleCamera()
+    },
+    {
+      icon: call.sharingScreen ? 'stop_screen_share' : 'screen_share',
+      label: call.sharingScreen ? 'Stop sharing' : 'Share your screen',
+      active: call.sharingScreen,
+      onClick: () => void store.toggleScreenShare()
+    },
+    { icon: 'call_end', label: 'Hang up', danger: true, onClick: () => store.hangUpMatrixCall() }
+  ]
+
+  if (mode !== 'pip') {
+    const stageTiles: StageTile[] = tiles.map((tile) => ({
+      id: tile.id,
+      name: tile.label,
+      speaking: tile.speaking,
+      muted: tile.muted,
+      picture: tile.hasVideo ? (slot) => video(tile, slot, 'stage-picture') : undefined
+    }))
+    return (
+      <Stage
+        title={bufferDisplayName(where) || 'Call'}
+        subtitle={phase}
+        tiles={stageTiles}
+        buttons={buttons}
+        where={mode}
+        onPopOut={() => store.setCallPoppedOut(true)}
+        onBringBack={() => store.setCallPoppedOut(false)}
+      />
+    )
+  }
+
+  // The corner player, for a call you have walked away from.
+  const stage = tiles.find((t) => t.id === focused) ?? null
+  const layout = fitTiles(Math.max(tiles.length, 1), room.width, room.height)
+  const stripHeight = 42
+  const stageFit = fitTiles(1, room.width, room.height - (tiles.length > 1 ? stripHeight + TILE_GAP : 0), Infinity)
   const everybody = tiles.map((t) => t.label).join(', ')
 
-  /**
-   * One person's tile, wherever it is being drawn.
-   *
-   * A button rather than a div with a click on it: it is a control now, so it
-   * is reached by keyboard and says what it does to anything reading the
-   * window out loud.
-   */
   const drawTile = (
     tile: CallTile,
     slot: 'stage' | 'strip',
@@ -170,21 +189,10 @@ export function CallStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' }): JSX
       title={stage?.id === tile.id ? 'Back to everybody' : `Look at ${tile.label}`}
       onClick={opts.onClick}
     >
-      <video
-        ref={(el) => {
-          if (el) videos.current.set(`${tile.id}#${slot}`, el)
-          else videos.current.delete(`${tile.id}#${slot}`)
-        }}
-        className={classes('video-tile-picture', !tile.hasVideo && 'audio-only')}
-        autoPlay
-        playsInline
-        // Our own microphone coming back would be the oldest mistake in video
-        // calling.
-        muted={tile.self}
-      />
+      {video(tile, `pip-${slot}`, classes('video-tile-picture', !tile.hasVideo && 'audio-only'))}
       {!tile.hasVideo && (
         <div className="video-tile-face">
-          <Avatar name={tile.label} size={slot === 'strip' ? 24 : mode === 'pip' ? 32 : 44} />
+          <Avatar name={tile.label} size={slot === 'strip' ? 24 : 32} />
         </div>
       )}
       {slot !== 'strip' && (
@@ -198,7 +206,7 @@ export function CallStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' }): JSX
 
   return (
     <VideoStage
-      mode={mode}
+      mode="pip"
       title={everybody}
       subtitle={`${phase}${where ? ` · ${bufferDisplayName(where)}` : ''}`}
       minimized={minimized}
@@ -208,57 +216,28 @@ export function CallStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' }): JSX
       endLabel="Hang up"
       controls={
         <>
-          <IconButton
-            name={call.muted ? 'mic_off' : 'mic'}
-            title={call.muted ? 'Unmute' : 'Mute'}
-            className={call.muted ? 'calling' : undefined}
-            onClick={() => store.toggleCallMute()}
-          />
-          {/* Between the microphone and the screen, which is the order every
-              client puts them in - and the order of how often they are
-              pressed. On every call now, whatever shape it is: a media
-              server, a mesh, or the one connection between two people. */}
-          <IconButton
-            name={call.cameraOn ? 'videocam' : 'videocam_off'}
-            title={call.cameraOn ? 'Turn the camera off' : 'Turn the camera on'}
-            className={call.cameraOn ? 'active' : undefined}
-            onClick={() => void store.toggleCamera()}
-          />
-          <IconButton
-            name={call.sharingScreen ? 'stop_screen_share' : 'screen_share'}
-            title={call.sharingScreen ? 'Stop sharing' : 'Share a screen or window'}
-            className={call.sharingScreen ? 'active' : undefined}
-            onClick={() => void store.toggleScreenShare()}
-          />
+          {buttons.slice(0, 3).map((b) => (
+            <IconButton
+              key={b.label}
+              name={b.icon}
+              title={b.label}
+              className={b.active ? 'active' : b.off ? 'calling' : undefined}
+              onClick={b.onClick}
+            />
+          ))}
+          <IconButton name="open_in_new" title="Pop out into its own window" onClick={() => store.setCallPoppedOut(true)} />
         </>
       }
     >
-      {/* Everybody in the call, one tile each, in as square a grid as the
-          number allows - which is what every client with more than two people
-          in a call has arrived at, because faces are roughly square and a row
-          of six is six unreadable slivers.
-
-          Not a big-one-and-a-strip layout by default: that decides for
-          somebody which person matters, and in a conversation between five
-          people it is wrong most of the time. Pressing a face is how that
-          decision gets made, and pressing it again is how it is unmade. */}
       {stage ? (
         <div className="video-stage" ref={grid}>
-          {drawTile(stage, 'stage', {
-            width: Math.floor(stageFit.tileWidth),
-            onClick: () => setFocused(null)
-          })}
+          {drawTile(stage, 'stage', { width: Math.floor(stageFit.tileWidth), onClick: () => setFocused(null) })}
           {tiles.length > 1 && (
-            /* Everybody else, still there and still watchable: a call does not
-               become a broadcast because one person is being looked at. */
             <div className="video-strip" style={{ height: `${stripHeight}px` }}>
               {tiles
                 .filter((t) => t.id !== stage.id)
                 .map((tile) =>
-                  drawTile(tile, 'strip', {
-                    width: Math.round((stripHeight * 16) / 9),
-                    onClick: () => setFocused(tile.id)
-                  })
+                  drawTile(tile, 'strip', { width: Math.round((stripHeight * 16) / 9), onClick: () => setFocused(tile.id) })
                 )}
             </div>
           )}
@@ -267,15 +246,59 @@ export function CallStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' }): JSX
         <div
           className="video-grid"
           ref={grid}
-          style={{
-            gridTemplateColumns: `repeat(${layout.columns}, ${Math.floor(layout.tileWidth)}px)`
-          }}
+          style={{ gridTemplateColumns: `repeat(${layout.columns}, ${Math.floor(layout.tileWidth)}px)` }}
         >
           {tiles.map((tile) => drawTile(tile, 'stage', { onClick: () => setFocused(tile.id) }))}
         </div>
       )}
-
     </VideoStage>
+  )
+}
+
+/**
+ * The call's sound: one hidden element per other person, in the main window.
+ *
+ * Kept apart from the pictures so that where the call is drawn - over the
+ * conversation, in the corner, in a window of its own - never decides whether
+ * it can be heard, and so that a person drawn twice is heard once.
+ */
+export function CallAudio(): JSX.Element | null {
+  const store = useStore()
+  const call = useChat((s) => s.activeCall)
+  const [people, setPeople] = useState<CallTile[]>([])
+  const sinks = useRef(new Map<string, HTMLAudioElement>())
+
+  useEffect(() => {
+    if (!call) return
+    const attach = (): void => {
+      const others = store.callTiles().filter((t) => !t.self)
+      setPeople((was) => (was.length === others.length && was.every((t, i) => t.id === others[i].id) ? was : others))
+      for (const tile of others) {
+        const el = sinks.current.get(tile.id)
+        if (el && tile.stream && el.srcObject !== tile.stream) el.srcObject = tile.stream
+      }
+    }
+    attach()
+    const timer = setInterval(attach, 500)
+    return () => clearInterval(timer)
+  }, [call, store])
+
+  if (!call) return null
+  return (
+    <>
+      {people.map((tile) => (
+        <audio
+          key={tile.id}
+          autoPlay
+          ref={(el) => {
+            if (el) {
+              sinks.current.set(tile.id, el)
+              if (tile.stream && el.srcObject !== tile.stream) el.srcObject = tile.stream
+            } else sinks.current.delete(tile.id)
+          }}
+        />
+      ))}
+    </>
   )
 }
 
