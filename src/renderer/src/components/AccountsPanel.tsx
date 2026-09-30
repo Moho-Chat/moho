@@ -449,7 +449,15 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
 
           {account.service === 'matrix' && <MatrixAccountTools account={account} />}
 
-          {account.service === 'sneedchat' && <SneedChatBrowserLogin accountId={account.id} />}
+          {account.service === 'sneedchat' && (
+            <>
+              <TorSwitch
+                on={account.useTor}
+                onChange={(useTor) => call('setSneedChatUseTor', { accountId: account.id, enabled: useTor })}
+              />
+              <SneedChatBrowserLogin accountId={account.id} useTor={account.useTor} />
+            </>
+          )}
 
           {account.service === 'kick' && <KickFollowSync account={account} />}
 
@@ -1216,6 +1224,39 @@ function KickForm({ onDone }: { onDone: () => void }): JSX.Element {
 }
 
 /**
+ * Whether a Sneedchat account reaches the forum through Tor.
+ *
+ * A switch rather than a checkbox because it is a choice between two ways of
+ * connecting, and it says which one is in force in words either way. Off is
+ * the open internet at kiwifarms.st, and then Tor is never started; on is the
+ * onion address, through moho's own Tor client or the proxy set in Settings.
+ */
+function TorSwitch({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }): JSX.Element {
+  return (
+    <div className="switch-row">
+      <div className="switch-text">
+        <span>Connect through Tor</span>
+        <span className="small muted">
+          {on
+            ? 'Reaches the forum at its onion address. Tor starts when this account connects, which can take up to a minute the first time.'
+            : 'Reaches kiwifarms.st directly over the open internet. Tor is not started.'}
+        </span>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-label="Connect through Tor"
+        className={on ? 'switch on' : 'switch'}
+        onClick={() => onChange(!on)}
+      >
+        <span className="switch-knob" />
+      </button>
+    </div>
+  )
+}
+
+/**
  * Signing in to the forum by hand, for when signing in by machine will not go.
  *
  * The CAPTCHA on the login form is answered by the daemon now, so this is no
@@ -1229,8 +1270,13 @@ function KickForm({ onDone }: { onDone: () => void }): JSX.Element {
  * moho's Tor client, since Chromium has no Tor of its own. The session it
  * returns belongs to the forum rather than to one of its addresses, so the
  * daemon goes on connecting however it was configured to.
+ *
+ * `useTor` is the account's choice - or, on the add form, the choice about
+ * to be made - and decides whether that difference needs a warning. It is
+ * sent along for a new account, so the account the window creates connects
+ * the way the form said.
  */
-function SneedChatBrowserLogin({ accountId }: { accountId?: string }): JSX.Element {
+function SneedChatBrowserLogin({ accountId, useTor }: { accountId?: string; useTor: boolean }): JSX.Element {
   const store = useStore()
   const [busy, setBusy] = useState(false)
 
@@ -1243,7 +1289,7 @@ function SneedChatBrowserLogin({ accountId }: { accountId?: string }): JSX.Eleme
         onClick={() => {
           setBusy(true)
           void window.moho
-            .browserLogin('sneedchat', accountId)
+            .browserLogin('sneedchat', accountId, accountId ? undefined : { useTor })
             .then((r) => {
               setBusy(false)
               if (r.ok) {
@@ -1272,16 +1318,20 @@ function SneedChatBrowserLogin({ accountId }: { accountId?: string }): JSX.Eleme
           because it is the one thing here that changes what a person is
           exposing: the chat connection is tunnelled through Tor and this one
           window is not, so somebody who chose Tor for a reason has to know
-          which half of this is which - before they use it rather than after. */}
-      <div className="warning-note">
-        <Icon name="warning" size={16} />
-        <span>
-          Your chat is tunnelled through Tor — this sign-in is not. The browser window has no Tor
-          of its own, so it reaches the site directly: your real IP address arrives at the site,
-          and your provider can see you visited it. Once you are signed in, moho goes back
-          through Tor for everything else.
-        </span>
-      </div>
+          which half of this is which - before they use it rather than after.
+          Only for Tor: on the open internet the window and the chat reach
+          the site the same way, and there is nothing to warn about. */}
+      {useTor && (
+        <div className="warning-note">
+          <Icon name="warning" size={16} />
+          <span>
+            Your chat is tunnelled through Tor — this sign-in is not. The browser window has no
+            Tor of its own, so it reaches the site directly: your real IP address arrives at the
+            site, and your provider can see you visited it. Once you are signed in, moho goes
+            back through Tor for everything else.
+          </span>
+        </div>
+      )}
     </>
   )
 }
@@ -1305,14 +1355,16 @@ function SneedChatBrowserLogin({ accountId }: { accountId?: string }): JSX.Eleme
  * nobilis/src/backend/sneedchat/captcha.rs), so the way in is a way in again
  * and this is back.
  *
- * It runs over the embedded Tor client and has two challenges to grind
- * through before the password is even offered - the site's gate, then the
- * form's - so it can take anywhere from a few seconds to over a minute, which
- * is why it reports progress rather than just sitting there.
+ * It connects over the open internet, or through Tor if the switch is on,
+ * and has two challenges to grind through before the password is even
+ * offered - the site's gate, then the form's - so it can take anywhere from a
+ * few seconds to over a minute, which is why it reports progress rather than
+ * just sitting there.
  */
 function SneedChatForm(): JSX.Element {
   const store = useStore()
   const status = useChat((s) => s.sneedChatLoginStatus)
+  const [useTor, setUseTor] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [totpSecret, setTotpSecret] = useState('')
@@ -1338,6 +1390,7 @@ function SneedChatForm(): JSX.Element {
         <span className="small muted">TOTP secret (optional, if 2FA is on)</span>
         <input className="text-field" value={totpSecret} onChange={(e) => setTotpSecret(e.target.value)} />
       </label>
+      <TorSwitch on={useTor} onChange={setUseTor} />
       <button
         type="button"
         className="button"
@@ -1347,9 +1400,10 @@ function SneedChatForm(): JSX.Element {
             .rpc('addSneedChatAccount', {
               username,
               password,
+              useTor,
               ...(totpSecret ? { totpSecret } : {})
             })
-            .then(() => store.setSneedChatLoginStatus('Bootstrapping Tor…'))
+            .then(() => store.setSneedChatLoginStatus(useTor ? 'Bootstrapping Tor…' : 'Connecting…'))
             .catch((e: Error) => store.toast('error', e.message))
         }
       >
@@ -1357,10 +1411,9 @@ function SneedChatForm(): JSX.Element {
       </button>
       {status && <p className="small muted">{status}</p>}
 
-      {/* Second because it is the fallback rather than the way in: everything
-          above happens over Tor, and this does not. */}
+      {/* Second because it is the fallback rather than the way in. */}
       <p className="small muted account-alternative">Or, if signing in here will not go through:</p>
-      <SneedChatBrowserLogin />
+      <SneedChatBrowserLogin useTor={useTor} />
     </div>
   )
 }

@@ -798,13 +798,17 @@ function wireIpc(): void {
    * whether it worked comes back. Nothing in this path is logged: an error
    * from the daemon is passed through, but the token never appears in one.
    */
-  ipcMain.handle(IPC.browserLogin, async (_e, service: string, accountId?: string) => {
+  ipcMain.handle(IPC.browserLogin, async (_e, service: string, accountId?: string, options?: { useTor?: boolean }) => {
     const flow = LOGIN_FLOWS[service]
     if (!flow) return { ok: false, error: `No browser sign-in is defined for ${service}` }
     const outcome = await browserLogin(service)
     if (!outcome.ok || !outcome.value) return { ok: false, error: outcome.error }
     try {
       await client.request(flow.finish.method, {
+        // How a new account should connect, chosen on the form that opened
+        // this window. Named rather than passed through whole, so nothing the
+        // renderer sends can stand in for the credential below.
+        ...(typeof options?.useTor === 'boolean' ? { useTor: options.useTor } : {}),
         [flow.finish.param]: outcome.value,
         ...(outcome.extra ? { [outcome.extra.param]: outcome.extra.value } : {}),
         ...(accountId ? { accountId } : {})

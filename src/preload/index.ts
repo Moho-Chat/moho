@@ -36,8 +36,12 @@ const api = {
    * straight from main to the daemon and is deliberately never returned here -
    * the renderer has no reason to hold a token, so it never does.
    */
-  browserLogin(service: string, accountId?: string): Promise<{ ok: boolean; error?: string }> {
-    return ipcRenderer.invoke(IPC.browserLogin, service, accountId)
+  browserLogin(
+    service: string,
+    accountId?: string,
+    options?: { useTor?: boolean }
+  ): Promise<{ ok: boolean; error?: string }> {
+    return ipcRenderer.invoke(IPC.browserLogin, service, accountId, options)
   },
 
   /**
