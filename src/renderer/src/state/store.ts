@@ -923,15 +923,28 @@ export class ChatStore {
     },
     iceServers: async (accountId) => {
       try {
-        const answer = await window.moho.rpc<{ uris?: string[]; username?: string; password?: string }>(
-          'matrixTurnServers',
-          { accountId }
-        )
+        const answer = await window.moho.rpc<{
+          uris?: string[]
+          username?: string
+          password?: string
+          fallback?: string[]
+        }>('matrixTurnServers', { accountId })
+        const servers: RTCIceServer[] = []
         const uris = answer.uris ?? []
-        if (uris.length === 0) return []
         // One entry carrying every uri, which is how a browser wants them:
         // the credentials are the same for all of a homeserver's relays.
-        return [{ urls: uris, username: answer.username, credential: answer.password }]
+        if (uris.length > 0) servers.push({ urls: uris, username: answer.username, credential: answer.password })
+        // A public STUN server as well, unless it has been switched off. It is
+        // listed apart from the relay and never given its credentials: it is a
+        // mirror that says what this address looks like from outside, and it
+        // is what gets a call across two networks when the homeserver's own
+        // relay is missing - or is advertised and answers nobody, which looks
+        // the same from here.
+        const prefs = await window.moho.prefs.getAll()
+        if (prefs['matrix.fallbackStun'] !== false && (answer.fallback?.length ?? 0) > 0) {
+          servers.push({ urls: answer.fallback! })
+        }
+        return servers
       } catch {
         // No relay is a working configuration for two people on the same
         // network, and a call worth trying is better than a refusal.

@@ -815,6 +815,17 @@ function MatrixSettings(): JSX.Element {
           defaultValue={true}
         />
       </SettingsSection>
+      <SettingsSection
+        title="Calls"
+        description="A call between two networks needs help finding its way through each one's router. Your homeserver's relay is meant to do that; when it is missing, or listed and not answering, there is nothing to fall back on."
+      >
+        <ToggleSetting
+          settingKey="matrix.fallbackStun"
+          label="Use matrix.org as a backup for calls"
+          description="Asks matrix.org's public STUN server what your address looks like from outside, alongside your homeserver's own relay. That tells matrix.org your IP address and nothing else: no audio or video passes through it, and there is no account or call detail in the request. It cannot rescue a call behind a strict router, where only a working relay helps. Off means a call connects only when both ends can already reach each other, or your homeserver's relay works."
+          defaultValue={true}
+        />
+      </SettingsSection>
       <MembershipAnnouncements />
     </>
   )
