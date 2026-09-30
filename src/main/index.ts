@@ -841,6 +841,18 @@ app.whenReady().then(() => {
   log.toDirectory(path.join(cacheRoot(), 'moho'))
   log.info('moho starting, logging to', log.file() ?? '(nowhere)')
 
+  // What a call did, from the window that held it. The renderer writes one
+  // `[call] {...}` line per event to its console - see lib/calllog.ts - and
+  // this is the only place they are kept: a console dies with its window, and
+  // the record of why a call had no picture is wanted after the call is over.
+  // Only that prefix, so nothing else a page prints ends up in the file.
+  app.on('web-contents-created', (_e, contents) => {
+    contents.on('console-message', (event) => {
+      const message = (event as unknown as { message?: string }).message
+      if (typeof message === 'string' && message.startsWith('[call] ')) log.info(message)
+    })
+  })
+
   // Said once, in the log and in the window, and never in the way.
   //
   // Chromium's sandbox needs unprivileged user namespaces, and an AppImage

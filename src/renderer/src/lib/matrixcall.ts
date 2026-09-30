@@ -13,6 +13,7 @@
  */
 
 import { Call, type CallPhase } from './webrtc'
+import { callLog, describeSdp } from './calllog'
 import { SfuCall, type SfuParticipant } from './livekit'
 
 /** What the daemon sends up when a call event arrives in a room. */
@@ -677,6 +678,7 @@ export class MatrixCalls {
       handlers: {
         send: (signal) => {
           const base = { call_id: callId, version: '1', party_id: call.partyId }
+          callLog(callId, 'signal-out', { kind: signal.kind, keys: Object.keys(signal.content) })
           // Each signal is its own event type; the shapes differ enough that
           // naming them here is clearer than a table.
           if (signal.kind === 'invite') {
@@ -722,6 +724,24 @@ export class MatrixCalls {
    */
   handle(event: MatrixCallEvent): void {
     const { kind, callId, content } = event
+    // Everything that arrives, including what is about to be ignored: the
+    // events a client does not answer are exactly the ones a fault hides in.
+    // `metadata` is the stream description Element sends to say which stream
+    // is a camera and which a screen; a peer that sends none is an older one.
+    callLog(callId, 'signal-in', {
+      kind,
+      own: event.own,
+      party: content.party_id ?? null,
+      version: content.version ?? null,
+      metadata: !!content.sdp_stream_metadata,
+      // Whether a renegotiation is an offer or the answer to one, and what it
+      // holds: the phone's changes to a call are only readable from this.
+      ...(content.description ? { description: content.description.type, ...describeSdp(content.description.sdp) } : {}),
+      ...(content.offer ? { offerSdp: describeSdp(content.offer.sdp) } : {}),
+      ...(content.answer ? { answerSdp: describeSdp(content.answer.sdp) } : {}),
+      keys: Object.keys(content).filter((k) => k !== 'offer' && k !== 'answer' && k !== 'description' && k !== 'candidates'),
+      active: this.active?.call.id === callId
+    })
 
     // A group call's own signalling, which is addressed rather than broadcast
     // even though every event in the room is seen by everybody.
@@ -794,6 +814,12 @@ export class MatrixCalls {
         this.surface.onRinging(null)
       }
       if (this.active?.call.id === callId) this.end(false)
+      return
     }
+
+    // Anything else in the call namespace is ours to say nothing about. Logged
+    // because `select_answer`, `reject` and a `negotiate` for a call this
+    // window does not hold are the ones whose silence looks like a fault.
+    callLog(callId, 'signal-unhandled', { kind, active: this.active?.call.id === callId })
   }
 }
