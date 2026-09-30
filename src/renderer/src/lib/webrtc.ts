@@ -308,7 +308,7 @@ export class Call {
       if (frames === 0 && track.readyState === 'live') {
         this.handlers.onError(
           source === 'screen'
-            ? 'Screen capture started but is producing no picture - the other end will see nothing'
+            ? 'Screen capture started but is producing no picture - the other end will see nothing. If a "Select what to share" window is open anywhere, answer it'
             : 'The camera opened but is producing no picture'
         )
       }

@@ -145,6 +145,17 @@ const api = {
    */
   screenSources: (): Promise<{ id: string; name: string; thumbnail: string }[]> =>
     ipcRenderer.invoke(IPC.screenSources),
+  /**
+   * Whether a screen is chosen in the desktop's own window rather than ours.
+   *
+   * True on Wayland, where the compositor's portal is the only way to capture
+   * a screen and it always shows its own dialog. Asking for a list of sources
+   * first shows that dialog once for the list, and opening the capture shows
+   * it again - two windows for one share, the second of which nothing warns
+   * you about. Where this is true the list is skipped and the portal is asked
+   * once.
+   */
+  screenCaptureViaPortal: (): Promise<boolean> => ipcRenderer.invoke(IPC.screenCaptureViaPortal),
   pickSavePath: (suggested?: string): Promise<string | null> =>
     ipcRenderer.invoke(IPC.pickSavePath, suggested),
   pickDirectory: (): Promise<string | null> => ipcRenderer.invoke(IPC.pickDirectory),

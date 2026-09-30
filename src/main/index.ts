@@ -196,6 +196,22 @@ function send(channel: string, ...args: unknown[]): void {
 }
 
 /** The window an IPC call came from, so a handler acts on its own caller. */
+/**
+ * Whether a screen is captured through the desktop portal, which is the case
+ * in any Wayland session: X11 offers a list of windows and screens to draw a
+ * picker from, and Wayland deliberately does not.
+ *
+ * `MOHO_SCREENSHARE=picker` forces the list-and-choose path and `portal`
+ * forces the other, for somebody whose session reports itself wrongly.
+ */
+function capturesThroughPortal(): boolean {
+  if (process.platform !== 'linux') return false
+  const forced = process.env.MOHO_SCREENSHARE
+  if (forced === 'picker') return false
+  if (forced === 'portal') return true
+  return process.env.XDG_SESSION_TYPE === 'wayland' || !!process.env.WAYLAND_DISPLAY
+}
+
 function callerWindow(event: Electron.IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender)
 }
@@ -662,6 +678,8 @@ function wireIpc(): void {
     }))
   })
 
+  ipcMain.handle(IPC.screenCaptureViaPortal, () => capturesThroughPortal())
+
   ipcMain.handle(IPC.pickSavePath, async (e, suggested?: string) => {
     const parent = callerWindow(e) ?? mainWindow
     if (!parent) return null
@@ -890,6 +908,20 @@ app.whenReady().then(() => {
     callback(allowed.has(permission))
   })
   session.defaultSession.setPermissionCheckHandler((_contents, permission) => allowed.has(permission))
+
+  // Screen capture on Wayland goes through the compositor's portal, which puts
+  // up its own "what to share" window whatever it is told. Answering
+  // getDisplayMedia with a bare screen id - and never asking for a list of
+  // sources first - makes that window appear once. Listing sources opens a
+  // portal session just to draw thumbnails, and opening the chosen one opens
+  // a second, so a share needed two windows answered and the picture only
+  // began after the second. Measured on Electron 43 and 44: one window, and
+  // the first frame arrives as soon as it is answered.
+  if (capturesThroughPortal()) {
+    session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+      callback({ video: { id: 'screen:0:0', name: 'Entire Screen' } })
+    })
+  }
 
   // Someone tried to launch a second copy: treat it as "show me moho", which
   // is almost always what they meant - especially when the window is hidden

@@ -30,6 +30,7 @@ import { parseDeepLink, type IrcLink } from '../../../shared/deeplink'
 import { MatrixCalls, type CallMember, type MatrixCallEvent, type RingingCall } from '../lib/matrixcall'
 import type { CallPhase } from '../lib/webrtc'
 import { Levels } from '../lib/levels'
+import { firstFrame, SCREEN_CHOICE_MS } from '../lib/capture'
 import type { PopoutState } from '../../../shared/ipc'
 
 /**
@@ -1067,6 +1068,10 @@ export class ChatStore {
 
     const stored = await window.moho.prefs.getAll()
     this.set({ lastReadTs: (stored.lastReadTs as Record<string, number>) ?? {} })
+    // Known before anybody presses share, so the capture can be asked for in
+    // the same breath as the click: a screen is a request that needs the
+    // gesture that made it, and a round trip first would spend it.
+    this.screenViaPortal = await window.moho.screenCaptureViaPortal().catch(() => false)
 
     window.moho.onLinkChange((up) => {
       this.set({ linkUp: up })
@@ -2231,6 +2236,64 @@ export class ChatStore {
     })
   }
 
+  /** Whether the desktop's portal picks the screen - see the preload. */
+  private screenViaPortal = false
+
+  /**
+   * Decides what is to be shared, or that nothing is.
+   *
+   * Two shapes, because two desktops. Where the portal chooses, there is
+   * nothing to ask here: the choice is made in its window when the capture is
+   * opened, and asking for a list first would put that window up twice. Where
+   * it does not, a list of windows is drawn as our own picker and one is
+   * picked.
+   */
+  private async chooseScreen(): Promise<{ portal: true } | { portal: false; id: string } | null> {
+    if (this.screenViaPortal) return { portal: true }
+    const sources = await window.moho.screenSources()
+    if (sources.length === 0) {
+      this.toast('info', 'Nothing to share')
+      return null
+    }
+    // Chosen in the window rather than here: the picker is a component, and
+    // this waits for it to answer.
+    const source = await this.askForScreenSource(sources)
+    return source ? { portal: false, id: source.id } : null
+  }
+
+  /**
+   * Opens what was chosen, or null if the person backed out of it.
+   *
+   * On the portal path the stream comes back at once and means nothing until
+   * a frame does - see `firstFrame` - so this waits for one, and a window that
+   * was closed, or never answered, ends here as a quiet "no" rather than as a
+   * share that was announced to the room and shows nothing.
+   */
+  private async openScreen(choice: { portal: true } | { portal: false; id: string }): Promise<MediaStream | null> {
+    if (!choice.portal) {
+      return await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          // Chromium's own desktop-capture constraint, which is how an
+          // Electron window turns a source id into a stream.
+          mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: choice.id }
+        }
+      } as unknown as MediaStreamConstraints)
+    }
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+    } catch (e) {
+      // Refusing is an answer, not a fault.
+      if ((e as Error).name === 'NotAllowedError' || (e as Error).name === 'AbortError') return null
+      throw e
+    }
+    if (await firstFrame(stream, SCREEN_CHOICE_MS)) return stream
+    for (const track of stream.getTracks()) track.stop()
+    this.toast('info', 'No screen was shared')
+    return null
+  }
+
   /** The picker answering, with a source or with nothing. */
   chooseScreenSource(source: { id: string; name: string } | null): void {
     const resolve = this.screenChoice
@@ -2433,23 +2496,10 @@ export class ChatStore {
         this.set({ activeCall: { ...this.state.activeCall, sharingScreen: false } })
         return
       }
-      const sources = await window.moho.screenSources()
-      if (sources.length === 0) {
-        this.toast('info', 'Nothing to share')
-        return
-      }
-      // Chosen in the window rather than here: the picker is a component, and
-      // this waits for it to answer.
-      const source = await this.askForScreenSource(sources)
-      if (!source) return
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          // Chromium's own desktop-capture constraint, which is how an
-          // Electron window turns a source id into a stream.
-          mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: source.id }
-        }
-      } as unknown as MediaStreamConstraints)
+      const choice = await this.chooseScreen()
+      if (!choice) return
+      const stream = await this.openScreen(choice)
+      if (!stream) return
       await call.call.shareScreen(stream)
       this.set({ activeCall: { ...this.state.activeCall, sharingScreen: true } })
     } catch (e) {
@@ -2477,15 +2527,19 @@ export class ChatStore {
     }
 
     try {
-      const sources = await window.moho.screenSources()
-      if (sources.length === 0) {
-        this.toast('info', 'Nothing to share')
-        return
+      // The same choice the Matrix path makes, for the same reason.
+      const choice = await this.chooseScreen()
+      if (!choice) return
+
+      // On the portal the person answers its window now, before Discord is
+      // asked for a stream: a stream opened for a share that is then
+      // cancelled is a connection made for nothing. Where the capture cannot
+      // be opened until the connection is up, it waits for it as before.
+      let stream: MediaStream | null = null
+      if (choice.portal) {
+        stream = await this.openScreen(choice)
+        if (!stream) return
       }
-      // The same picker the Matrix path uses, for the same reason: Electron
-      // will not answer getDisplayMedia without being told which source.
-      const source = await this.askForScreenSource(sources)
-      if (!source) return
 
       await window.moho.rpc('startDiscordScreenShare', { bufferId })
       this.toast('info', 'Setting up the stream…')
@@ -2501,15 +2555,16 @@ export class ChatStore {
         // or a server it could not find is a sentence somebody can act on.
         this.toast('error', ready.error ? `Couldn’t open the stream: ${ready.error}` : 'Discord never opened the stream')
         await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
+        // A capture already open has nobody to send it to.
+        for (const track of stream?.getTracks() ?? []) track.stop()
         return
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: source.id }
-        }
-      } as unknown as MediaStreamConstraints)
+      stream ??= await this.openScreen(choice)
+      if (!stream) {
+        await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
+        return
+      }
       const { shareScreen } = await import('../lib/discordscreen')
       this.discordShare = await shareScreen(accountId, stream, (message) => {
         this.toast('error', message)

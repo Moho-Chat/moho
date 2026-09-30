@@ -25,6 +25,7 @@ export const IPC = {
   sandboxState: 'moho:sandboxState',
   /** The screens and windows that could be shared into a call. */
   screenSources: 'moho:screenSources',
+  screenCaptureViaPortal: 'moho:screenCaptureViaPortal',
   markBufferRead: 'moho:markBufferRead',
   browserLogin: 'moho:browserLogin',
   solveCaptcha: 'moho:solveCaptcha',
