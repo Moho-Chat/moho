@@ -3,6 +3,7 @@ import { Icon, IconButton } from './Icon'
 import { Avatar } from './Avatar'
 import { useChat, useStore } from '../state/hooks'
 import { DiscordStreamTile } from './DiscordStreamTile'
+import { DiscordCameraTile } from './DiscordCameraTile'
 import type { VoiceMember } from '../../../shared/wire'
 
 /** How often to ask who is talking. */
@@ -36,6 +37,7 @@ export function CallView({ bufferId }: { bufferId: string }): JSX.Element | null
   const [folded, setFolded] = useState(false)
   const sharing = useChat((st) => st.discordSharing)
   const watching = useChat((st) => st.discordWatching)
+  const cameras = useChat((st) => st.discordCameras)
 
   /**
    * The call this conversation should be showing.
@@ -146,6 +148,18 @@ export function CallView({ bufferId }: { bufferId: string }): JSX.Element | null
       </div>
 
       {!folded && <DiscordStreamTile />}
+
+      {/* Cameras above the faces, larger than them: a camera is the one thing
+          in the call that is worth looking at rather than glancing at. */}
+      {!folded && accountId && members.some((m) => cameras[`${accountId}|${m.userId}`]) && (
+        <div className="discord-camera-row">
+          {members
+            .filter((m) => cameras[`${accountId}|${m.userId}`])
+            .map((m) => (
+              <DiscordCameraTile key={m.userId} accountId={accountId} userId={m.userId} name={m.nick} />
+            ))}
+        </div>
+      )}
 
       {!folded && (
         <div className="call-tiles">

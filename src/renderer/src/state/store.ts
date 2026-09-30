@@ -545,6 +545,12 @@ export interface ChatState {
    * key is what watching one is asked for by.
    */
   discordStreams: Record<string, string>
+  /**
+   * Whose camera is on in a Discord call, as `accountId|userId`. Set by the
+   * first frame and cleared by the `ended` one - not touched in between, so
+   * thirty frames a second do not redraw the window.
+   */
+  discordCameras: Record<string, true>
   /** The stream being watched, if any. One at a time, deliberately. */
   discordWatching: { accountId: string; streamKey: string; userId: string; nick: string } | null
   activeCall: {
@@ -658,6 +664,7 @@ const INITIAL: ChatState = {
   activeCall: null,
   discordSharing: false,
   discordStreams: {},
+  discordCameras: {},
   discordWatching: null,
   ignoredByAccount: {},
   matrixWidgets: {},
@@ -2771,6 +2778,23 @@ export class ChatStore {
         // connection rather than as somebody having stopped.
         if (d.gone && this.state.discordWatching?.streamKey === d.streamKey) {
           this.stopWatchingDiscordStream()
+        }
+        break
+      }
+
+      // Somebody's camera in a Discord call. The frames themselves are the
+      // tile's business (see watchCamera); here only whether there is one.
+      case 'discordCameraFrame': {
+        const d = data as { accountId?: string; userId?: string; ended?: boolean }
+        if (!d.accountId || !d.userId) break
+        const key = `${d.accountId}|${d.userId}`
+        const on = !!this.state.discordCameras[key]
+        if (d.ended && on) {
+          const cameras = { ...this.state.discordCameras }
+          delete cameras[key]
+          this.set({ discordCameras: cameras })
+        } else if (!d.ended && !on) {
+          this.set({ discordCameras: { ...this.state.discordCameras, [key]: true } })
         }
         break
       }

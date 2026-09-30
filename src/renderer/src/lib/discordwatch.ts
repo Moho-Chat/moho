@@ -35,6 +35,47 @@ export function watchStream(
   canvas: HTMLCanvasElement,
   onError: (message: string) => void
 ): StreamWatch {
+  return decodeInto(
+    canvas,
+    'discordStreamFrame',
+    (d) => d.accountId === accountId && d.streamKey === streamKey,
+    onError
+  )
+}
+
+/**
+ * Somebody's camera in a voice call, decoded and drawn.
+ *
+ * The same decoding as a Go Live stream: the voice connection hands over
+ * whole VP8 frames exactly as the stream connection does, keyed by the person
+ * rather than by a stream. The daemon only sends frames once a keyframe has
+ * arrived, and an `ended` frame when the camera goes off.
+ */
+export function watchCamera(
+  accountId: string,
+  userId: string,
+  canvas: HTMLCanvasElement,
+  onError: (message: string) => void
+): StreamWatch {
+  return decodeInto(canvas, 'discordCameraFrame', (d) => d.accountId === accountId && d.userId === userId, onError)
+}
+
+interface FrameEvent {
+  accountId?: string
+  streamKey?: string
+  userId?: string
+  frame?: string
+  keyframe?: boolean
+  timestampMicros?: number
+  ended?: boolean
+}
+
+function decodeInto(
+  canvas: HTMLCanvasElement,
+  eventName: string,
+  mine: (d: FrameEvent) => boolean,
+  onError: (message: string) => void
+): StreamWatch {
   const context = canvas.getContext('2d')
   let stopped = false
   /**
@@ -79,16 +120,9 @@ export function watchStream(
   decoder.configure({ codec: 'vp8', optimizeForLatency: true })
 
   const unsubscribe = window.moho.onEvent((event: NobilisEvent) => {
-    if (stopped || event.event !== 'discordStreamFrame') return
-    const d = event.data as {
-      accountId?: string
-      streamKey?: string
-      frame?: string
-      keyframe?: boolean
-      timestampMicros?: number
-      ended?: boolean
-    }
-    if (d.accountId !== accountId || d.streamKey !== streamKey) return
+    if (stopped || event.event !== eventName) return
+    const d = event.data as FrameEvent
+    if (!mine(d)) return
     if (d.ended) {
       stop()
       return

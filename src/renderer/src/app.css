@@ -7031,3 +7031,9 @@ video.lightbox-media {
 .peek-bar-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .peek-topic { padding: var(--spacing-xs) var(--spacing-m); color: var(--surface-variant-text); border-bottom: 1px solid var(--outline-light); }
 .peek-log { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: var(--spacing-s) 0 var(--spacing-m); }
+
+/* Discord cameras in a call: a row of pictures above the faces. */
+.discord-camera-row { display: flex; flex-wrap: wrap; gap: var(--spacing-s); padding: var(--spacing-s) 0; }
+.discord-camera-tile { position: relative; width: min(320px, 100%); aspect-ratio: 16 / 9; background: #000; border-radius: var(--corner-radius-small); overflow: hidden; }
+.discord-camera-canvas { width: 100%; height: 100%; object-fit: contain; display: block; }
+.discord-camera-name { position: absolute; left: var(--spacing-xs); bottom: var(--spacing-xs); padding: 1px var(--spacing-xs); border-radius: var(--corner-radius-small); background: rgba(0, 0, 0, 0.55); color: #fff; max-width: calc(100% - 2 * var(--spacing-xs)); }
