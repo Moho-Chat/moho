@@ -724,7 +724,7 @@ function TorSettings(): JSX.Element {
     <>
       <SettingsSection
         title="Tor"
-        description="Sneedchat is Tor-only. Embedded runs Tor in-process with no setup; an external proxy uses a Tor daemon or Tor Browser you already have running. This applies to every configured Sneedchat account."
+        description="Embedded runs Tor in-process with no setup; an external proxy uses a Tor daemon or Tor Browser you already have running. It is used by every account whose Connect through Tor switch is on."
       >
         <label className="setting-row">
           <div className="setting-text">Use an external SOCKS5 proxy instead of embedded Tor</div>
