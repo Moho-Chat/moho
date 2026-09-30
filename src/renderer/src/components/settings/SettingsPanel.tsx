@@ -164,10 +164,10 @@ function UploadHostSetting({
       .catch(() => setHosts([]))
   }, [])
 
-  // Only what will take this kind of file. Every host is available to every
-  // service - what differs is how the link is posted once it exists, which
-  // is the daemon's business rather than this menu's.
-  const usable = hosts.filter((h) => kind === 'images' || !h.imagesOnly)
+  // Only what will take this kind of file, and only what this service can
+  // use: the daemon says which hosts a service is kept from (imgur, whose
+  // links Sneedchat does not show as pictures).
+  const usable = hosts.filter((h) => (kind === 'images' || !h.imagesOnly) && !h.notFor?.includes(service))
 
   return (
     <ChoiceSetting
@@ -191,6 +191,8 @@ interface UploadHost {
   id: string
   label: string
   imagesOnly: boolean
+  /** Services this host is not offered to. */
+  notFor?: string[]
 }
 
 export function SettingsPanel(): JSX.Element {
