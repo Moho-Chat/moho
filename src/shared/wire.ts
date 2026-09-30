@@ -16,6 +16,11 @@ export interface Account {
   saslEnabled: boolean
   saslUsername: string
   allowPlaintextSasl: boolean
+  /**
+   * Whether to reconnect to log in when SASL comes back mid-connection and the
+   * server will not take a login on the live connection. IRC-only.
+   */
+  reconnectForSasl: boolean
   /** Which SASL mechanism this account is pinned to, or '' for the default. */
   saslMechanism: string
   /**

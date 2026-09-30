@@ -624,6 +624,28 @@ function IrcSasl({
               </span>
             </label>
           )}
+
+          {/* The live login is tried first and needs no setting: this is only
+              the last resort, for a server that refuses it, and it costs a
+              moment out of every channel - hence off unless asked for. */}
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={account.reconnectForSasl}
+              onChange={(e) =>
+                call('setIrcReconnectForSasl', { accountId: account.id, enabled: e.target.checked })
+              }
+            />
+            <span>
+              Reconnect to log in when services come back
+              <span className="small muted">
+                {' '}
+                — if the network's services were down when moho connected, it logs in as soon as
+                they return. A few servers only accept that login while connecting; this lets moho
+                reconnect for them, which briefly drops you from your channels.
+              </span>
+            </span>
+          </label>
         </>
       )}
     </div>
