@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
 import { ContextMenu } from './ContextMenu'
 import { RoomSearch } from './RoomSearch'
-import { KNOWN_SNEEDCHAT_ROOMS } from '../lib/sneedchat'
 import { useChat, useStore } from '../state/hooks'
 import { classes, resolveMediaUrl } from '../lib/util'
 import { CaptchaCancelled, rpcAnsweringCaptcha } from '../lib/captcha'
@@ -560,12 +559,12 @@ function SneedchatRooms({ account }: { account: Account }): JSX.Element {
    *
    * The daemon reads the room switcher off the chat page - the same list a
    * person sees down the side of the site - and answers with whatever it read
-   * last, then sends the fresh one as an event a few seconds later. The
-   * built-in list is the fallback rather than the source: the site is behind
-   * a proof-of-work gate over Tor and the read can fail, and rooms somebody
-   * can still tick beat an empty page.
+   * last, then sends the fresh one as an event a few seconds later. Nothing is
+   * built in: the site names its rooms, and a list kept here would drift from
+   * it. Until it answers, or if it cannot be read, the rooms this account
+   * already has open are still shown, so they can always be closed.
    */
-  const [rooms, setRooms] = useState(KNOWN_SNEEDCHAT_ROOMS)
+  const [catalogue, setCatalogue] = useState<{ id: number; name: string }[]>([])
   const [asking, setAsking] = useState(true)
   const [error, setError] = useState('')
 
@@ -574,14 +573,14 @@ function SneedchatRooms({ account }: { account: Account }): JSX.Element {
     setAsking(true)
     void window.moho
       .rpc<{ rooms: { id: number; name: string }[] }>('listSneedChatRooms', { accountId: account.id })
-      .then((r) => live && r.rooms?.length && setRooms(r.rooms))
+      .then((r) => live && r.rooms?.length && setCatalogue(r.rooms))
       .catch((e: Error) => live && setError(e.message))
 
     const stop = window.moho.onEvent((frame) => {
       if (frame.event !== 'sneedchatRooms') return
       const data = frame.data as { accountId: string; rooms: { id: number; name: string }[] }
       if (!live || data.accountId !== account.id || !data.rooms.length) return
-      setRooms(data.rooms)
+      setCatalogue(data.rooms)
       setAsking(false)
       setError('')
     })
@@ -591,14 +590,21 @@ function SneedchatRooms({ account }: { account: Account }): JSX.Element {
     }
   }, [account.id])
 
+  const rooms = [...catalogue, ...enabled.filter((open) => !catalogue.some((r) => r.id === open.id))]
+
   const toggle = (id: number, on: boolean): void => {
+    const room = rooms.find((r) => r.id === id)
+    if (on && !room) return
     const next = on
-      ? enabled.some((r) => r.id === id)
+      ? enabled.some((r) => r.id === id) || !room
         ? enabled
-        : [...enabled, rooms.find((r) => r.id === id)!]
+        : [...enabled, room]
       : enabled.filter((r) => r.id !== id)
     void window.moho
       .rpc('setSneedChatRooms', { accountId: account.id, rooms: next })
+      // The ticks are the account's room list, so they follow it once it has
+      // changed rather than guessing ahead of it.
+      .then(() => store.refreshAccounts())
       .catch((e: Error) => store.toast('error', e.message))
   }
 
@@ -618,20 +624,20 @@ function SneedchatRooms({ account }: { account: Account }): JSX.Element {
             <span>#{room.name}</span>
           </label>
         ))}
-        {/* Said rather than hidden: this list is the one this client shipped
-            with, and the site may well have rooms that are not in it. */}
         {error && (
           <span className="small muted">
-            Could not read the site&apos;s room list ({error}) — showing the rooms this client
-            knows.
+            Could not read the site&apos;s room list ({error}) — showing only the rooms this account
+            has open.
           </span>
         )}
-        {/* An account with none ticked still connects to #general - the daemon
-            falls back to it so a freshly added account is usable before
-            anybody has been here. Worth saying, or an empty list reads as
-            "connected to nothing". */}
+        {/* Closing every room is allowed: the account stays signed in, and
+            this is where one is opened again. Closing a room deletes its
+            history, which is why unticking is not undone by ticking. */}
         {enabled.length === 0 && (
-          <span className="small muted">None chosen - this account uses #general.</span>
+          <span className="small muted">No rooms open. Tick one to join it.</span>
+        )}
+        {enabled.length > 0 && (
+          <span className="small muted">Unticking a room closes it and deletes its history.</span>
         )}
       </div>
     </div>

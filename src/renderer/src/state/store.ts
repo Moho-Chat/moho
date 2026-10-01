@@ -4172,9 +4172,14 @@ export class ChatStore {
   }
 
   async closeBuffer(bufferId: string): Promise<void> {
+    // Asked before the buffer goes, since afterwards there is nothing to ask.
+    const sneedchat = this.accountFor(bufferId)?.service === 'sneedchat'
     try {
       await window.moho.rpc('partBuffer', { bufferId })
       if (this.state.activeBufferId === bufferId) this.set({ activeBufferId: '' })
+      // Closing a Sneedchat room changes the account's room list, which the
+      // Join page's ticks are drawn from.
+      if (sneedchat) await this.refreshAccounts()
     } catch (e) {
       this.toast('error', (e as Error).message)
     }
