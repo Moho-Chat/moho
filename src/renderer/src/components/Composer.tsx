@@ -168,6 +168,19 @@ export function Composer(): JSX.Element | null {
 
   const account = buffer && accounts.find((a) => a.id === buffer.accountId)
   const service = account?.service
+  const hasStickers = service === 'matrix' || service === 'discord'
+  /**
+   * The account's stickers, asked for when the picker opens - from either
+   * button, since either can be switched to the Stickers tab. Not kept in
+   * sync: a pack changes about as often as somebody adds one.
+   */
+  const loadStickers = (): void => {
+    if (!hasStickers || !buffer) return
+    void window.moho
+      .rpc<StickerEntry[]>(service === 'discord' ? 'listDiscordStickers' : 'listMatrixStickers', { bufferId: buffer.id })
+      .then(setStickers)
+      .catch(() => setStickers([]))
+  }
   // Discord, Sneedchat and Matrix each carry a file natively. IRC has no idea
   // of an attachment at all, so a file there is uploaded and the link sent -
   // which is what people do by hand on IRC anyway, and is why it is offered
@@ -771,6 +784,7 @@ export function Composer(): JSX.Element | null {
           title="Emoji"
           onClick={() => {
             setStickerPicker(false)
+            if (!pickerOpen) loadStickers()
             setPickerOpen(!pickerOpen)
           }}
         >
@@ -791,17 +805,7 @@ export function Composer(): JSX.Element | null {
               const opening = !stickerPicker
               setPickerOpen(false)
               setStickerPicker(opening)
-              // Asked for when the picker opens rather than kept in sync: a
-              // pack changes about as often as somebody adds one, and the
-              // images are cached by the time they are drawn twice.
-              if (opening) {
-                void window.moho
-                  .rpc<StickerEntry[]>(service === 'discord' ? 'listDiscordStickers' : 'listMatrixStickers', {
-                    bufferId: buffer.id
-                  })
-                  .then(setStickers)
-                  .catch(() => setStickers([]))
-              }
+              if (opening) loadStickers()
             }}
           >
             <Icon name="sticky_note_2" size={18} />
@@ -867,28 +871,29 @@ export function Composer(): JSX.Element | null {
 
       {polling && <PollComposer bufferId={buffer.id} onClose={() => setPolling(false)} />}
 
-      {stickerPicker && (
-        <EmojiPicker
-          anchor={stickerButtonRef.current}
-          stickersOnly
-          stickers={stickers}
-          accountId={account?.id}
-          onSticker={(sticker) => {
-            setStickerPicker(false)
-            const sent = sticker.id
-              ? window.moho.rpc('sendDiscordSticker', { bufferId: buffer.id, stickerId: sticker.id })
-              : window.moho.rpc('sendMatrixSticker', { bufferId: buffer.id, mxc: sticker.mxc, body: sticker.body })
-            void sent
-              .catch((e: Error) => store.toast('error', e.message))
-          }}
-          onSelect={() => setStickerPicker(false)}
-          onClose={() => setStickerPicker(false)}
-        />
-      )}
 
-      {pickerOpen && (
+      {(pickerOpen || stickerPicker) && (
         <EmojiPicker
-          anchor={emojiButtonRef.current}
+          // Remounted when the other button is pressed, so it opens on that
+          // button's tab beside that button.
+          key={stickerPicker ? 'stickers' : 'emoji'}
+          anchor={stickerPicker ? stickerButtonRef.current : emojiButtonRef.current}
+          initialTab={stickerPicker ? 'stickers' : 'emoji'}
+          // Only where the service has stickers, which is what decides
+          // whether there is a Stickers tab at all.
+          stickers={hasStickers ? stickers : undefined}
+          onSticker={
+            hasStickers
+              ? (sticker) => {
+                  setStickerPicker(false)
+                  setPickerOpen(false)
+                  const sent = sticker.id
+                    ? window.moho.rpc('sendDiscordSticker', { bufferId: buffer.id, stickerId: sticker.id })
+                    : window.moho.rpc('sendMatrixSticker', { bufferId: buffer.id, mxc: sticker.mxc, body: sticker.body })
+                  void sent.catch((e: Error) => store.toast('error', e.message))
+                }
+              : undefined
+          }
           // Which conversation this is for. The picker asks the daemon what
           // this account can send anywhere, and the answer says which of it
           // reaches here - see #205.
@@ -904,8 +909,12 @@ export function Composer(): JSX.Element | null {
           onSelect={(emoji) => {
             insertEmoji(emoji)
             setPickerOpen(false)
+            setStickerPicker(false)
           }}
-          onClose={() => setPickerOpen(false)}
+          onClose={() => {
+            setPickerOpen(false)
+            setStickerPicker(false)
+          }}
         />
       )}
     </div>

@@ -440,7 +440,8 @@ export interface Embed {
  * but not for Sneedchat or Matrix, which is what the local paths are for.
  */
 export interface Attachment {
-  kind: 'image' | 'video' | 'audio' | 'file'
+  /** `lottie` is a Discord sticker drawn as a vector animation. */
+  kind: 'image' | 'video' | 'audio' | 'file' | 'lottie'
   mimetype?: string
   filename?: string
   size?: number

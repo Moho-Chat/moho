@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
 import { Lightbox } from './Lightbox'
 import { VoiceMessage } from './VoiceMessage'
+import { LottieSticker, lottieStickerId } from './LottieSticker'
 import { fullImageFor, knownFullImage } from '../lib/fullimage'
 import { resolveMediaUrl } from '../lib/util'
 import type { MediaItem } from '../lib/format'
@@ -189,6 +190,23 @@ export function MediaEmbed({
       })
       .catch((e: Error) => setRefreshError(e.message))
       .finally(() => setRefreshing(false))
+  }
+
+  // A Discord Lottie sticker. Not a link that can lapse - a sticker id names
+  // one animation for good - so none of the re-signing below applies.
+  const lottieId = kind === 'lottie' ? lottieStickerId(attachment?.url) : null
+  if (lottieId && bufferId) {
+    return (
+      <div className="media-embed sticker">
+        <LottieSticker
+          accountId={bufferId.split('|')[0]}
+          stickerId={lottieId}
+          size={160}
+          play={autoplay ? 'always' : 'hover'}
+          label={attachment?.filename?.replace(/\.json$/, '') || 'sticker'}
+        />
+      </div>
+    )
   }
 
   if (failed || !fullSrc) {

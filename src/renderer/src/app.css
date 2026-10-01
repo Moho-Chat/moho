@@ -2860,12 +2860,15 @@ img.smilie {
 .emoji-picker {
   position: fixed;
   z-index: 1500;
-  width: 320px;
-  max-height: 360px;
+  width: min(420px, calc(100vw - 8px));
+  /* A fixed height, so the rail down the side always has the room the list
+     has, as Discord's does. */
+  height: min(440px, calc(100vh - 8px));
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
-  padding: var(--spacing-s);
+  padding: var(--spacing-s) 0 0;
+  overflow: hidden;
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
   border: 1px solid var(--outline-medium);
@@ -2893,7 +2896,8 @@ img.smilie {
 /* Stickers are bigger than emoji, so their columns are too. Chosen by what
    the grid holds rather than by a prop, so every caller gets it. */
 .emoji-grid:has(> .sticker-cell) {
-  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  justify-items: center;
 }
 
 /* Holds a section's full height while only the rows near the viewport are
@@ -3876,8 +3880,13 @@ img.smilie {
    one - an emoji cell is sized for a glyph and would draw these as thumbnails
    too small to tell apart. */
 .emoji-cell.sticker-cell {
-  width: 64px;
-  height: 64px;
+  width: 80px;
+  height: 80px;
+  padding: 4px;
+}
+
+.emoji-cell.sticker-cell:disabled {
+  opacity: 0.35;
 }
 
 .emoji-cell.sticker-cell img {
@@ -7443,4 +7452,155 @@ video.lightbox-media {
 
 .call-volume input {
   width: 160px;
+}
+
+/* A Discord Lottie sticker, played as SVG. */
+.lottie-sticker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.lottie-sticker-name {
+  text-align: center;
+  padding: 4px;
+}
+
+/* The picker, laid out as Discord's: tabs, search, then the category rail
+   beside the list, and what the pointer is over along the bottom. */
+.emoji-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 var(--spacing-s);
+}
+
+.emoji-tab {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--corner-radius-small);
+  background: transparent;
+  color: var(--on-surface-variant, inherit);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.emoji-tab:hover {
+  background: var(--surface-container-highest);
+}
+
+.emoji-tab.active {
+  background: var(--surface-container-highest);
+  color: var(--on-surface, inherit);
+}
+
+.emoji-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 var(--spacing-s);
+  padding: 6px 10px;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-lowest, rgba(0, 0, 0, 0.25));
+  color: var(--on-surface-variant, inherit);
+}
+
+.emoji-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--on-surface, inherit);
+  font: inherit;
+}
+
+.emoji-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  border-top: 1px solid var(--outline-variant);
+}
+
+.emoji-body .emoji-scroll {
+  flex: 1;
+  min-width: 0;
+  padding: 0 var(--spacing-s);
+}
+
+/* Scrolls on its own with the wheel when there are more sections than fit. */
+.emoji-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  width: 48px;
+  padding: 8px 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  background: var(--surface-container, rgba(0, 0, 0, 0.15));
+}
+
+.emoji-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.emoji-rail-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--on-surface-variant, inherit);
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-radius 0.12s;
+}
+
+.emoji-rail-item:hover,
+.emoji-rail-item.active {
+  border-radius: 10px;
+  background: var(--surface-container-highest);
+}
+
+.emoji-rail-item img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.emoji-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  min-height: 48px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--outline-variant);
+  background: var(--surface-container, rgba(0, 0, 0, 0.15));
+}
+
+.emoji-footer img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.emoji-footer-glyph {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.emoji-footer-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-weight: 600;
 }
