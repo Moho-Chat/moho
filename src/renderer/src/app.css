@@ -7392,3 +7392,56 @@ video.lightbox-media {
 .stage-picture.mirrored {
   transform: scaleX(-1);
 }
+
+/* A live stage's topic, under its name in the voice list. */
+.voice-stage-topic {
+  padding: 0 var(--spacing-s) 2px 30px;
+}
+
+/* One person's volume, on their tile. Shown on hover; the percentage stays
+   once it has been moved off 100, so nobody is left turned down unawares. */
+.stage-tile-volume {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 1;
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+
+.stage-tile-volume input {
+  width: 90px;
+  accent-color: #fff;
+}
+
+.stage-tile:hover .stage-tile-volume,
+.stage-tile-volume:focus-within {
+  display: inline-flex;
+}
+
+.stage-tile-volume.changed {
+  display: inline-flex;
+}
+
+.stage-tile:not(:hover) .stage-tile-volume.changed:not(:focus-within) input {
+  display: none;
+}
+
+.call-volume {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.call-volume input {
+  width: 160px;
+}

@@ -544,6 +544,8 @@ export interface ChatState {
    * accounts' calls, and only one of them is sharing.
    */
   discordSharing: string | null
+  /** What is being shared, so the person sharing can see it. */
+  discordShareStream: MediaStream | null
   /**
    * This end's camera in a Discord call, while it is on: the capture, so the
    * call can show you what everybody else sees.
@@ -677,6 +679,7 @@ const INITIAL: ChatState = {
   discordModal: null,
   activeCall: null,
   discordSharing: null,
+  discordShareStream: null,
   discordCamera: null,
   discordStreams: {},
   discordCameras: {},
@@ -1348,6 +1351,57 @@ export class ChatStore {
     }
   }
 
+  /** Volume changes not yet sent, by who they are for ('' is the whole call). */
+  private pendingVolumes = new Map<string, number>()
+  private volumeTimer: ReturnType<typeof setTimeout> | null = null
+
+  /**
+   * Sets how loud a call is - overall, or one person in it.
+   *
+   * Shown at once and sent a moment later: a slider being dragged reports
+   * every step, and each one sent would rewrite the preferences file.
+   */
+  setVoiceVolume(volume: number, userId?: string): void {
+    const prefs = this.state.voicePrefs
+    if (userId) {
+      this.set({ voicePrefs: { ...prefs, userVolumes: { ...(prefs.userVolumes ?? {}), [userId]: volume } } })
+    } else {
+      this.set({ voicePrefs: { ...prefs, outputVolume: volume } })
+    }
+    this.pendingVolumes.set(userId ?? '', volume)
+    if (this.volumeTimer) return
+    this.volumeTimer = setTimeout(() => {
+      this.volumeTimer = null
+      const changes = [...this.pendingVolumes.entries()]
+      this.pendingVolumes.clear()
+      for (const [user, value] of changes) {
+        void window.moho
+          .rpc<VoicePrefs>('setVoiceVolume', user ? { userId: user, volume: value } : { volume: value })
+          .catch((e: Error) => this.toast('error', `Couldn't change the volume: ${e.message}`))
+      }
+    }, 150)
+  }
+
+  /** On a stage: asks to speak, or takes the request back. */
+  async setStageHand(accountId: string, guildId: string, channelId: string, on: boolean): Promise<void> {
+    try {
+      await window.moho.rpc('setStageHand', { accountId, guildId, channelId, on })
+      await this.refreshVoiceChannels(accountId, guildId)
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
+  }
+
+  /** On a stage: steps up to the speakers, or back into the audience. */
+  async setStageSpeaker(accountId: string, guildId: string, channelId: string, on: boolean): Promise<void> {
+    try {
+      await window.moho.rpc('setStageSpeaker', { accountId, guildId, channelId, on })
+      await this.refreshVoiceChannels(accountId, guildId)
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
+  }
+
   /**
    * The voice channels of whichever guild is on screen.
    *
@@ -1785,7 +1839,7 @@ export class ChatStore {
     if (this.discordShare && this.state.discordSharing === accountId) {
       this.discordShare.stop()
       this.discordShare = null
-      this.set({ discordSharing: null })
+      this.set({ discordSharing: null, discordShareStream: null })
     }
     try {
       await window.moho.rpc('leaveVoiceChannel', { accountId })
@@ -2568,7 +2622,7 @@ export class ChatStore {
       const was = this.state.discordSharing
       this.discordShare.stop()
       this.discordShare = null
-      this.set({ discordSharing: null })
+      this.set({ discordSharing: null, discordShareStream: null })
       await window.moho.rpc('stopDiscordScreenShare', { bufferId: this.discordShareBuffer ?? bufferId }).catch(() => {})
       // One screen, one stream: pressing share in another account's call
       // moves it there rather than only stopping it.
@@ -2610,10 +2664,10 @@ export class ChatStore {
       this.discordShare = await shareScreen(accountId, stream, settings, (message) => {
         this.toast('error', message)
         this.discordShare = null
-        this.set({ discordSharing: null })
+        this.set({ discordSharing: null, discordShareStream: null })
         void window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
       })
-      this.set({ discordSharing: accountId })
+      this.set({ discordSharing: accountId, discordShareStream: stream })
     } catch (e) {
       this.toast('error', `Couldn't share the screen: ${(e as Error).message}`)
       await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})

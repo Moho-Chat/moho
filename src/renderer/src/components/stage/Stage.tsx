@@ -42,6 +42,11 @@ export interface StageTile {
   action?: { label: string; onClick: () => void }
   /** A small button in the corner of a tile with one: "Stop watching". */
   dismiss?: { label: string; onClick: () => void }
+  /**
+   * How loud this person is, 1 as they arrive, up to 2 - where the call can
+   * turn one person up or down. Absent for yourself.
+   */
+  volume?: { value: number; onChange: (value: number) => void }
 }
 
 export interface StageButton {
@@ -248,6 +253,29 @@ export function Stage({
           >
             <Icon name="close" size={16} />
           </button>
+        )}
+        {tile.volume && slot === 'main' && (
+          // A slider on the tile rather than in a menu: the person who is too
+          // loud is the one being looked at. Clicks stay here, or every drag
+          // would also focus the tile.
+          <label
+            className={classes('stage-tile-volume', Math.abs(tile.volume.value - 1) > 0.005 && 'changed')}
+            title={`${tile.name}'s volume`}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <Icon name={tile.volume.value === 0 ? 'volume_off' : tile.volume.value < 1 ? 'volume_down' : 'volume_up'} size={15} />
+            <input
+              type="range"
+              min={0}
+              max={200}
+              step={5}
+              value={Math.round(tile.volume.value * 100)}
+              aria-label={`${tile.name}'s volume`}
+              onChange={(e) => tile.volume?.onChange(Number(e.target.value) / 100)}
+            />
+            <span className="stage-tile-volume-value">{Math.round(tile.volume.value * 100)}%</span>
+          </label>
         )}
         <span className="stage-tile-name">
           {tile.deafened ? (

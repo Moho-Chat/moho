@@ -82,6 +82,7 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
   // Only this call's account: one window can be in two accounts' calls.
   const ownCamera = myCamera?.accountId === session.accountId ? myCamera.stream : null
   const [choosing, setChoosing] = useState(false)
+  const shareStream = useChat((s) => s.discordShareStream)
   const watching = useChat((s) => s.discordWatching)
   const voicePrefs = useChat((s) => s.voicePrefs)
   const [members, setMembers] = useState<VoiceMember[]>([])
@@ -135,8 +136,16 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
     }
   }, [accountId])
 
+  // A stage is listened to, mostly. Only the speakers get tiles - an
+  // audience can be hundreds, and a grid of them would bury the people
+  // talking - and the audience is counted instead.
+  const stage = !!session.stage
+  const me = members.find((m) => m.isSelf)
+  const onStage = stage ? members.filter((m) => !m.suppressed) : members
+  const audience = stage ? members.length - onStage.length : 0
+
   const tiles: StageTile[] = []
-  for (const m of members) {
+  for (const m of onStage) {
     const camera = cameras[`${accountId}|${m.userId}`]
     tiles.push({
       id: m.userId,
@@ -152,7 +161,15 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
           ? () => <LocalPicture stream={ownCamera} />
           : camera
             ? () => <FeedPicture feedKey={cameraKey(accountId, m.userId)} />
-            : undefined
+            : undefined,
+      // Everybody but you can be turned up or down, and it holds across
+      // calls, as Discord's own does.
+      volume: m.isSelf
+        ? undefined
+        : {
+            value: voicePrefs.userVolumes?.[m.userId] ?? 1,
+            onChange: (v) => store.setVoiceVolume(v, m.userId)
+          }
     })
     // A shared screen is a tile of its own, the way Discord shows it: dark
     // until somebody chooses to watch, because watching opens a connection.
@@ -163,7 +180,15 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
         name: m.isSelf ? 'Your screen' : `${m.nick}’s screen`,
         avatarUrl: m.avatarUrl,
         live: true,
-        picture: watched ? () => <FeedPicture feedKey={streamKey(accountId, watching.streamKey)} /> : undefined,
+        // Your own share drawn from the capture itself: the one way to see
+        // the right window was picked and that it is still moving, without
+        // asking somebody watching.
+        picture:
+          m.isSelf && sharing && shareStream
+            ? () => <LocalPicture stream={shareStream} mirrored={false} />
+            : watched
+              ? () => <FeedPicture feedKey={streamKey(accountId, watching.streamKey)} />
+              : undefined,
         // This account can be signed in here and in Discord's own client at
         // once, and then the stream is this account's and there is nothing
         // here to open.
@@ -223,6 +248,38 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
           />
         ) : null
     },
+    // A stage's own two controls. In the audience: put a hand up, and once
+    // it is up - yours, or a moderator inviting you - step onto the stage.
+    // On the stage: step back down. Discord refuses a step up nobody allowed,
+    // and says so.
+    ...(stage && me && session.guildId
+      ? me.suppressed
+        ? [
+            {
+              icon: 'front_hand',
+              label: me.handRaised ? 'Lower your hand' : 'Ask to speak',
+              active: !!me.handRaised,
+              onClick: () => void store.setStageHand(accountId, session.guildId!, channelId, !me.handRaised)
+            },
+            ...(me.handRaised
+              ? [
+                  {
+                    icon: 'podium',
+                    label: 'Step onto the stage',
+                    onClick: () => void store.setStageSpeaker(accountId, session.guildId!, channelId, true)
+                  }
+                ]
+              : [])
+          ]
+        : [
+            {
+              icon: 'podium',
+              label: 'Move to the audience',
+              active: true,
+              onClick: () => void store.setStageSpeaker(accountId, session.guildId!, channelId, false)
+            }
+          ]
+      : []),
     { icon: 'call_end', label: 'Disconnect', danger: true, onClick: () => void store.leaveVoice(accountId) }
   ]
 
@@ -231,7 +288,13 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
   return (
     <Stage
       title={title}
-      subtitle={members.length > 0 ? `${members.length} in the call` : 'Connecting…'}
+      subtitle={
+        members.length === 0
+          ? 'Connecting…'
+          : stage
+            ? `${onStage.length} on stage · ${audience} listening${me?.suppressed ? ' · you are in the audience' : ''}`
+            : `${members.length} in the call`
+      }
       tiles={tiles}
       buttons={buttons}
       where={where}
@@ -241,14 +304,17 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
   )
 }
 
-/** This end's own camera, from the capture. Mirrored, as a mirror is. */
-function LocalPicture({ stream }: { stream: MediaStream }): JSX.Element {
+/**
+ * Something this end is sending, from the capture: a camera mirrored, as a
+ * mirror is, and a screen as it is.
+ */
+function LocalPicture({ stream, mirrored = true }: { stream: MediaStream; mirrored?: boolean }): JSX.Element {
   return (
     <video
       ref={(el) => {
         if (el && el.srcObject !== stream) el.srcObject = stream
       }}
-      className="stage-picture mirrored"
+      className={mirrored ? 'stage-picture mirrored' : 'stage-picture'}
       autoPlay
       playsInline
       muted

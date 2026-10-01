@@ -301,6 +301,30 @@ function VoiceSettings(): JSX.Element {
         onChange={(id) => void store.setVoiceDevice('output', id)}
         disabled={none}
       />
+      {/* The whole call at once, for one that is simply too loud. One
+          person is turned up or down on their own tile in the call. */}
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Call volume</div>
+          <div className="small muted">
+            Everybody in a Discord call together. One person is set on their own tile, from the
+            slider that appears over it.
+          </div>
+        </div>
+        <span className="call-volume">
+          <input
+            type="range"
+            min={0}
+            max={200}
+            step={5}
+            value={Math.round((voice.outputVolume ?? 1) * 100)}
+            aria-label="Call volume"
+            onChange={(e) => store.setVoiceVolume(Number(e.target.value) / 100)}
+            disabled={none}
+          />
+          <span className="small muted">{Math.round((voice.outputVolume ?? 1) * 100)}%</span>
+        </span>
+      </div>
     </SettingsSection>
   )
 }
