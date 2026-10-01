@@ -713,7 +713,13 @@ function Section({
     const cellW = first.offsetWidth
     const rowH = first.offsetHeight
     if (!cellW || !rowH) return
-    const cols = Math.max(1, Math.round((grid.clientWidth + colGap) / (cellW + colGap)))
+    // The tracks the grid actually laid out, which the computed style lists
+    // one width each. Worked out from the cell's width instead, a cell
+    // narrower than its column - a sticker in a stretched track - counted
+    // columns that were not there, and the section kept room for too few
+    // rows.
+    const tracks = style.gridTemplateColumns.split(' ').filter((t) => t.endsWith('px')).length
+    const cols = Math.max(1, tracks || Math.round((grid.clientWidth + colGap) / (cellW + colGap)))
     setMetrics((was) =>
       was && was.cols === cols && was.rowH === rowH && was.pitch === rowH + rowGap
         ? was
