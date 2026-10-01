@@ -750,12 +750,19 @@ function tidyDetail(detail: string): string {
  * Cached because it is asked on every send with an attachment and cannot
  * change while the daemon is up - the list is compiled into it.
  */
-let hostListing: Promise<{ id: string; accepts: string[] | null }[]> | null = null
+interface ListedHost {
+  id: string
+  accepts: string[] | null
+  /** Services this host is kept from - imgur from Sneedchat, which does not embed it. */
+  notFor?: string[]
+}
 
-async function uploadHosts(): Promise<{ id: string; accepts: string[] | null }[]> {
+let hostListing: Promise<ListedHost[]> | null = null
+
+async function uploadHosts(): Promise<ListedHost[]> {
   if (!hostListing) {
     hostListing = window.moho
-      .rpc<{ id: string; accepts: string[] | null }[]>('listUploadHosts')
+      .rpc<ListedHost[]>('listUploadHosts')
       // An older daemon says nothing about what a host takes; assume it
       // takes whatever it is given, which is what happened before this.
       .catch(() => [])
@@ -763,9 +770,13 @@ async function uploadHosts(): Promise<{ id: string; accepts: string[] | null }[]
   return hostListing
 }
 
-/** Whether this host will take this file, by the daemon's own account. */
-async function hostAccepts(hostId: string, path: string): Promise<boolean> {
+/**
+ * Whether this host will take this file for this service, by the daemon's
+ * own account.
+ */
+async function hostAccepts(hostId: string, path: string, service: string): Promise<boolean> {
   const host = (await uploadHosts()).find((h) => h.id === hostId)
+  if (host?.notFor?.includes(service)) return false
   if (!host || !host.accepts) return true
   const ext = (path.split(/[\\/]/).pop() || '').split('.').pop()?.toLowerCase() ?? ''
   return host.accepts.includes(ext)
@@ -804,10 +815,10 @@ async function uploadHost(service: string | undefined, attachmentPath: string): 
       (legacyUsable ? legacy : undefined) ||
       fallback
 
-    if (await hostAccepts(chosen, attachmentPath)) return chosen
+    if (await hostAccepts(chosen, attachmentPath, perService)) return chosen
 
     const other = prefs[`uploads.${perService}.media`] as string | undefined
-    if (other && other !== chosen && (await hostAccepts(other, attachmentPath))) return other
+    if (other && other !== chosen && (await hostAccepts(other, attachmentPath, perService))) return other
     return 'catbox'
   } catch {
     return 'catbox'
@@ -4161,9 +4172,14 @@ export class ChatStore {
   }
 
   async closeBuffer(bufferId: string): Promise<void> {
+    // Asked before the buffer goes, since afterwards there is nothing to ask.
+    const sneedchat = this.accountFor(bufferId)?.service === 'sneedchat'
     try {
       await window.moho.rpc('partBuffer', { bufferId })
       if (this.state.activeBufferId === bufferId) this.set({ activeBufferId: '' })
+      // Closing a Sneedchat room changes the account's room list, which the
+      // Join page's ticks are drawn from.
+      if (sneedchat) await this.refreshAccounts()
     } catch (e) {
       this.toast('error', (e as Error).message)
     }

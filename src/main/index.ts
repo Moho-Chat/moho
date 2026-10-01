@@ -33,6 +33,7 @@ import { installScreenShare } from './screenshare'
 import { defaultDownloadDir, saveMedia } from './downloads'
 import type { Buffer as ChatBuffer } from '../shared/wire'
 import { log } from './log'
+import { applyPolicy, applyTunnel } from './tunnel'
 
 registerMediaScheme()
 
@@ -633,7 +634,9 @@ function wireIpc(): void {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 8000)
     try {
-      const res = await fetch(page, { signal: controller.signal, redirect: 'follow' })
+      // Electron's net, not Node's fetch: it goes where the session's proxy
+      // says, so a tunnelled window's previews are tunnelled too.
+      const res = await net.fetch(page.toString(), { signal: controller.signal, redirect: 'follow' })
       // Only a page has the tag, and only a page is small enough to read
       // without asking how big it is first. Anything else - a file, a stream,
       // a download - is refused before a byte of the body is touched.
@@ -798,13 +801,17 @@ function wireIpc(): void {
    * whether it worked comes back. Nothing in this path is logged: an error
    * from the daemon is passed through, but the token never appears in one.
    */
-  ipcMain.handle(IPC.browserLogin, async (_e, service: string, accountId?: string) => {
+  ipcMain.handle(IPC.browserLogin, async (_e, service: string, accountId?: string, options?: { useTor?: boolean }) => {
     const flow = LOGIN_FLOWS[service]
     if (!flow) return { ok: false, error: `No browser sign-in is defined for ${service}` }
     const outcome = await browserLogin(service)
     if (!outcome.ok || !outcome.value) return { ok: false, error: outcome.error }
     try {
       await client.request(flow.finish.method, {
+        // How a new account should connect, chosen on the form that opened
+        // this window. Named rather than passed through whole, so nothing the
+        // renderer sends can stand in for the credential below.
+        ...(typeof options?.useTor === 'boolean' ? { useTor: options.useTor } : {}),
         [flow.finish.param]: outcome.value,
         ...(outcome.extra ? { [outcome.extra.param]: outcome.extra.value } : {}),
         ...(accountId ? { accountId } : {})
@@ -849,6 +856,8 @@ app.whenReady().then(() => {
   // the record of why a call had no picture is wanted after the call is over.
   // Only that prefix, so nothing else a page prints ends up in the file.
   app.on('web-contents-created', (_e, contents) => {
+    // Every page, including ones opened later, under the same WebRTC rule.
+    applyPolicy(contents)
     contents.on('console-message', (event) => {
       const message = (event as unknown as { message?: string }).message
       if (typeof message === 'string' && message.startsWith('[call] ')) log.info(message)
@@ -978,6 +987,9 @@ app.whenReady().then(() => {
   client.on('link', (up) => {
     send(IPC.link, up)
     if (!up) return
+    // Before anything is fetched for the window: whether its own traffic goes
+    // through Tor or the proxy is the daemon's setting, asked of it here.
+    void applyTunnel((method, params) => client.request(method, params))
     // The daemon usually outlives this process, so its buffers were announced
     // long before this connection existed and no bufferListChange is coming
     // for them. Without asking outright, main knows of no conversations at
@@ -1001,6 +1013,8 @@ app.whenReady().then(() => {
       notifier.trackBuffer(frame.data as ChatBuffer, !!frame.data?.removed)
     } else if (frame.event === 'notification') {
       void notifier.handle(frame.data)
+    } else if (frame.event === 'netSettings') {
+      void applyTunnel((method, params) => client.request(method, params))
     }
     send(IPC.event, frame)
   })
