@@ -538,6 +538,15 @@ export interface ChatState {
    * second arriving while one is open is a bot talking over itself.
    */
   discordModal: DiscordModal | null
+  /**
+   * How many scheduled events each Discord guild has coming or on, by
+   * `accountId|guildId`. Absent or none means no events row in its list.
+   */
+  discordEventCounts: Record<string, number>
+  /** The events pane, while open: whose guild. */
+  eventsPane: { accountId: string; guildId: string } | null
+  /** The create-an-event panel, while open. */
+  eventCreate: { accountId: string; guildId: string } | null
   /** The screens and windows on offer, while somebody is choosing one. */
   screenSources: { id: string; name: string; thumbnail: string }[] | null
   /**
@@ -680,6 +689,9 @@ const INITIAL: ChatState = {
   watchMinimized: false,
   screenSources: null,
   discordModal: null,
+  discordEventCounts: {},
+  eventsPane: null,
+  eventCreate: null,
   activeCall: null,
   discordSharing: null,
   discordShareStream: null,
@@ -1383,6 +1395,33 @@ export class ChatStore {
           .catch((e: Error) => this.toast('error', `Couldn't change the volume: ${e.message}`))
       }
     }, 150)
+  }
+
+  /** Asks how many events a guild has, for the row at the top of its list. */
+  async refreshEventCount(accountId: string, guildId: string): Promise<void> {
+    try {
+      const { count } = await window.moho.rpc<{ count: number }>('discordEventCount', { accountId, guildId })
+      this.set({ discordEventCounts: { ...this.state.discordEventCounts, [`${accountId}|${guildId}`]: count } })
+    } catch {
+      /* an older daemon has no events; no row is the right answer */
+    }
+  }
+
+  openEvents(accountId: string, guildId: string): void {
+    this.set({ eventsPane: { accountId, guildId } })
+  }
+
+  closeEvents(): void {
+    this.set({ eventsPane: null })
+  }
+
+  /** The create panel, over the events pane if that is open. */
+  openEventCreate(accountId: string, guildId: string): void {
+    this.set({ eventCreate: { accountId, guildId } })
+  }
+
+  closeEventCreate(): void {
+    this.set({ eventCreate: null })
   }
 
   /** Echo cancellation and noise suppression on a Discord call's microphone. */
@@ -2879,6 +2918,13 @@ export class ChatStore {
       // Somebody joined or left a room's call. Both the offer of a call to
       // join and, while in one, the signal to meet whoever just arrived.
       // A bot answering a slash command with a form to fill in.
+      // A guild's calendar changed: the count for its events row.
+      case 'discordEvents': {
+        const d = data as unknown as { accountId: string; guildId: string; count: number }
+        this.set({ discordEventCounts: { ...this.state.discordEventCounts, [`${d.accountId}|${d.guildId}`]: d.count } })
+        break
+      }
+
       case 'discordModal': {
         this.set({ discordModal: data as unknown as DiscordModal })
         break

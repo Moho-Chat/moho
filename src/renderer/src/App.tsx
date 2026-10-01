@@ -24,6 +24,7 @@ import { IncomingCallPanel } from './components/IncomingCallPanel'
 import { CallAudio, CallStage, IncomingMatrixCall, ScreenPicker } from './components/CallStage'
 import { CallWindowHost } from './components/stage/CallWindowHost'
 import { StreamStage, StreamWindowHost } from './components/StreamStage'
+import { EventCreatePanel, EventsPane } from './components/DiscordEvents'
 import { DiscordModal } from './components/DiscordModal'
 import { FileDrop } from './components/FileDrop'
 import { TransferPanel } from './components/TransferPanel'
@@ -283,6 +284,10 @@ export default function App(): JSX.Element {
       {/* A form a Discord bot asked for. Over everything, because it is the
           answer to something just pressed and it expires. */}
       <DiscordModal />
+      {/* A guild's events, and making one: over everything, opened from
+          its channel list. */}
+      <EventsPane />
+      <EventCreatePanel />
       {/* Where a call goes when you walk away from it: a corner of its own,
           the way a phone keeps the picture in the corner. In the conversation
           it belongs to it sits above the log instead - see MessageList - so

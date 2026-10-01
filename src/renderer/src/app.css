@@ -7747,3 +7747,264 @@ video.lightbox-media {
 .call-stage-title.window-drag {
   -webkit-app-region: drag;
 }
+
+/* A Discord guild's events row, at the top of its channel list. */
+.bufferlist-events {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 2 * var(--spacing-xs));
+  margin: 2px var(--spacing-xs) 6px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--corner-radius-small);
+  background: transparent;
+  color: var(--surface-variant-text, inherit);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bufferlist-events:hover {
+  background: var(--surface-container-highest);
+  color: var(--on-surface, inherit);
+}
+
+/* The events pane and the create panel: Discord's dark rounded sheet. */
+.events-pane {
+  display: flex;
+  flex-direction: column;
+  width: min(600px, 94vw);
+  max-height: 80vh;
+  margin: auto;
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.events-pane-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 20px 14px;
+}
+
+.events-pane-count {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.events-pane-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--outline-medium);
+}
+
+.events-pane-spacer {
+  flex: 1;
+}
+
+.events-pane-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 160px;
+  padding: 4px 20px 20px;
+  overflow-y: auto;
+}
+
+.events-pane-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 0;
+  text-align: center;
+}
+
+.event-card {
+  border: 1px solid var(--outline-variant, var(--outline-medium));
+  border-radius: var(--corner-radius);
+  background: var(--surface-container);
+  overflow: hidden;
+}
+
+.event-card.live {
+  border-color: #3ba55d;
+}
+
+.event-card-image {
+  display: block;
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+}
+
+.event-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+}
+
+.event-card-when {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.event-card.live .event-card-when {
+  color: #3ba55d;
+}
+
+.event-card-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--surface-container-highest);
+  color: var(--on-surface, inherit);
+  font-variant-numeric: tabular-nums;
+}
+
+.event-card-name {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.event-card-desc {
+  white-space: pre-wrap;
+}
+
+.event-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--outline-variant, var(--outline-medium));
+}
+
+.event-card-where {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.event-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-highest);
+  color: var(--on-surface, inherit);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.event-button.icon-only {
+  padding: 6px 8px;
+}
+
+.event-button:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+
+.event-button.on {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+
+.event-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Creating one. */
+.event-create {
+  width: min(520px, 94vw);
+}
+
+.event-create-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 0 20px 16px;
+  overflow-y: auto;
+}
+
+.event-create-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.event-create-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.event-where {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container);
+  cursor: pointer;
+}
+
+.event-where.on {
+  outline: 1px solid var(--primary);
+  background: var(--surface-container-highest);
+}
+
+.event-where.disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.event-where > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.event-where-label {
+  font-weight: 600;
+}
+
+.event-field {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.event-field-row {
+  display: flex;
+  gap: 10px;
+}
+
+.event-field textarea {
+  resize: vertical;
+  font: inherit;
+}
+
+.event-create-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--outline-variant, var(--outline-medium));
+  background: var(--surface-container);
+}
