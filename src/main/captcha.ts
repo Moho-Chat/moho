@@ -1,3 +1,4 @@
+import { routeSession } from './tunnel'
 import { BrowserWindow, session } from 'electron'
 
 /**
@@ -87,6 +88,7 @@ export async function solveCaptcha(
   // a challenge answered is a challenge over.
   const partition = `moho-captcha-${Date.now()}`
   const ses = session.fromPartition(partition)
+  await routeSession(ses)
 
   const win = new BrowserWindow({
     width: 420,

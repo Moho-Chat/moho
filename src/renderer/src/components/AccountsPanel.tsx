@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
 import { IgnoreList } from './IgnoreList'
+import { TunnelAllSwitch } from './settings/Tunnel'
 import { useChat, useMapPref, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, classes, resolveMediaUrl, serviceIcon, serviceLabel } from '../lib/util'
 import { IRC_NETWORKS, ircNetworkFor } from '../lib/networks'
@@ -133,10 +134,17 @@ export function AccountsPanel(): JSX.Element {
 
       <div className="panel-section">
         {accounts.length === 0 && (
-          <p className="muted">
-            No accounts yet. Pick a service above to connect one — nobilis keeps the connection
-            alive in the background, so it survives closing this window.
-          </p>
+          <>
+            <p className="muted">
+              No accounts yet. Pick a service above to connect one — nobilis keeps the connection
+              alive in the background, so it survives closing this window.
+            </p>
+            {/* Before the first account rather than after: adding one is the
+                first thing that fetches anything, and somebody who needs all
+                of it through Tor needs that from the start. Settings → Tor
+                has the same switch for the rest of the time. */}
+            <TunnelAllSwitch />
+          </>
         )}
 
         {byService.map(({ service, accounts: mine }) => {
@@ -425,24 +433,15 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
                   call('setAccountNickservPassword', { accountId: account.id, password })
                 }
               />
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={account.useTor}
-                  onChange={(e) =>
-                    call('setAccountUseTor', {
-                      accountId: account.id,
-                      useTor: e.target.checked,
-                      proxy: account.torProxy || '127.0.0.1:9050'
-                    })
-                  }
-                />
-                <span>
-                  Route through a SOCKS5 proxy
-                  <span className="small muted"> — an external Tor daemon or Tor Browser</span>
-                </span>
-              </label>
             </>
+          )}
+
+          {account.service !== 'sneedchat' && (
+            <TorSwitch
+              service={account.service}
+              on={account.useTor}
+              onChange={(useTor) => call('setAccountRouted', { accountId: account.id, enabled: useTor })}
+            />
           )}
 
           {account.service === 'discord' && <DiscordReauth account={account} />}
@@ -452,8 +451,9 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
           {account.service === 'sneedchat' && (
             <>
               <TorSwitch
+                service="sneedchat"
                 on={account.useTor}
-                onChange={(useTor) => call('setSneedChatUseTor', { accountId: account.id, enabled: useTor })}
+                onChange={(useTor) => call('setAccountRouted', { accountId: account.id, enabled: useTor })}
               />
               <SneedChatBrowserLogin accountId={account.id} useTor={account.useTor} />
             </>
@@ -719,6 +719,7 @@ function IrcForm({ onDone }: { onDone: () => void }): JSX.Element {
   const [auth, setAuth] = useState<'none' | 'sasl' | 'nickserv'>('none')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
+  const [useTor, setUseTor] = useState(false)
   // Only a network nobody picked from the tiles needs its address typed, and
   // showing those fields for one that was picked invites editing a hostname
   // that is already right.
@@ -734,6 +735,7 @@ function IrcForm({ onDone }: { onDone: () => void }): JSX.Element {
         port: Number(port) || undefined,
         ssl,
         autojoin,
+        useTor,
         // SASL's own password field is the account password; NickServ's is
         // sent as a message after connecting, which is a different thing and
         // a different call.
@@ -878,6 +880,7 @@ function IrcForm({ onDone }: { onDone: () => void }): JSX.Element {
           <span>Use TLS</span>
         </label>
       )}
+      <TorSwitch service="irc" on={useTor} onChange={setUseTor} />
       <button type="button" className="button" disabled={busy || !nick || !host} onClick={() => void submit()}>
         Connect
       </button>
@@ -953,8 +956,10 @@ function DiscordForm({ accountId }: { accountId?: string }): JSX.Element {
   // Discord's own page in the sign-in window, so this process never holds one.
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
+  // Only for a new account: re-authenticating keeps the account's own setting.
+  const [useTor, setUseTor] = useState(false)
 
-  const target = accountId ? { accountId } : {}
+  const target = accountId ? { accountId } : { useTor }
   const fail = (e: Error): void => {
     store.toast('error', e.message)
     setBusy(false)
@@ -1021,6 +1026,7 @@ function DiscordForm({ accountId }: { accountId?: string }): JSX.Element {
 
   return (
     <div className="add-form">
+      {!accountId && <TorSwitch service="discord" on={useTor} onChange={setUseTor} />}
       <div className="setting-segmented">
         <button
           type="button"
@@ -1077,7 +1083,7 @@ function DiscordForm({ accountId }: { accountId?: string }): JSX.Element {
               setBusy(true)
               store.setDiscordLoginStatus('Waiting for the sign-in window…')
               void window.moho
-                .browserLogin('discord', accountId || undefined)
+                .browserLogin('discord', accountId || undefined, accountId ? undefined : { useTor })
                 .then((r) => {
                   setBusy(false)
                   // Closing the window is a decision, not a failure worth
@@ -1171,11 +1177,12 @@ function KickFollowSync({ account }: { account: Account }): JSX.Element {
 function KickForm({ onDone }: { onDone: () => void }): JSX.Element {
   const store = useStore()
   const [busy, setBusy] = useState(false)
+  const [useTor, setUseTor] = useState(false)
 
   const add = (token?: string): void => {
     setBusy(true)
     void window.moho
-      .rpc('addKickAccount', token ? { token } : {})
+      .rpc('addKickAccount', token ? { token, useTor } : { useTor })
       .then(() => onDone())
       .catch((e: Error) => store.toast('error', e.message))
       .finally(() => setBusy(false))
@@ -1187,6 +1194,7 @@ function KickForm({ onDone }: { onDone: () => void }): JSX.Element {
         Kick chat is public, so you can watch any streamer without an account. Signing in adds
         two things: talking, and the subscriber emotes of the channels you subscribe to.
       </p>
+      <TorSwitch service="kick" on={useTor} onChange={setUseTor} />
       <div className="field-row">
         <button
           type="button"
@@ -1195,7 +1203,7 @@ function KickForm({ onDone }: { onDone: () => void }): JSX.Element {
           onClick={() => {
             setBusy(true)
             void window.moho
-              .browserLogin('kick')
+              .browserLogin('kick', undefined, { useTor })
               .then((r) => {
                 setBusy(false)
                 // Closing the window is a decision, not a failure worth
@@ -1224,34 +1232,80 @@ function KickForm({ onDone }: { onDone: () => void }): JSX.Element {
 }
 
 /**
- * Whether a Sneedchat account reaches the forum through Tor.
+ * Whether an account's connections go through Tor or a SOCKS5 proxy.
  *
  * A switch rather than a checkbox because it is a choice between two ways of
- * connecting, and it says which one is in force in words either way. Off is
- * the open internet at kiwifarms.st, and then Tor is never started; on is the
- * onion address, through moho's own Tor client or the proxy set in Settings.
+ * connecting. Which of Tor and a proxy is used is the one network setting in
+ * Settings → Tor, shared by every account. Nothing is started for an account
+ * with this off.
+ *
+ * The warning is the point of the switch being here at all: what it costs
+ * differs by service, and somebody turning it on should know before the
+ * connection fails rather than after. Shown only when it is on.
  */
-function TorSwitch({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }): JSX.Element {
+function TorSwitch({
+  service,
+  on,
+  onChange
+}: {
+  service: Account['service']
+  on: boolean
+  onChange: (on: boolean) => void
+}): JSX.Element {
+  const sneedchat = service === 'sneedchat'
   return (
-    <div className="switch-row">
-      <div className="switch-text">
-        <span>Connect through Tor</span>
-        <span className="small muted">
-          {on
-            ? 'Reaches the forum at its onion address. Tor starts when this account connects, which can take up to a minute the first time.'
-            : 'Reaches kiwifarms.st directly over the open internet. Tor is not started.'}
-        </span>
+    <div className="tor-switch">
+      <div className="switch-row">
+        <div className="switch-text">
+          <span>{sneedchat ? 'Connect through Tor' : 'Connect through Tor or a SOCKS5 proxy'}</span>
+          <span className="small muted">
+            {sneedchat
+              ? on
+                ? 'Reaches the forum at its onion address. Tor starts when this account connects, which can take up to a minute the first time.'
+                : 'Reaches kiwifarms.st directly over the open internet. Tor is not started.'
+              : on
+                ? "Goes through moho's own Tor, or the SOCKS5 proxy set in Settings → Tor. Tor starts when this account connects."
+                : 'Connects directly. Tor is not started.'}
+          </span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={on}
+          aria-label={sneedchat ? 'Connect through Tor' : 'Connect through Tor or a SOCKS5 proxy'}
+          className={on ? 'switch on' : 'switch'}
+          onClick={() => onChange(!on)}
+        >
+          <span className="switch-knob" />
+        </button>
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={on}
-        aria-label="Connect through Tor"
-        className={on ? 'switch on' : 'switch'}
-        onClick={() => onChange(!on)}
-      >
-        <span className="switch-knob" />
-      </button>
+      {on && <TorWarning service={service} />}
+    </div>
+  )
+}
+
+/** What routing an account costs on its service, said before it is tried. */
+function TorWarning({ service }: { service: Account['service'] }): JSX.Element | null {
+  let text: string
+  if (service === 'discord') {
+    text =
+      "Discord blocks Tor's exit points, so a connection through moho's own Tor will most likely be refused. A SOCKS5 proxy you host yourself may work. Calls and screen sharing need UDP, which neither carries, so they are turned off for this account."
+  } else if (service === 'kick') {
+    text =
+      "Kick blocks Tor's exit points, so a connection through moho's own Tor will most likely be refused. A SOCKS5 proxy you host yourself may work."
+  } else if (service === 'irc' || service === 'matrix') {
+    text = `Each ${service === 'irc' ? 'network' : 'homeserver'} has its own policy on Tor, and many block its exit points. A SOCKS5 proxy you host yourself may be accepted where Tor is not.`
+  } else {
+    return null
+  }
+  return (
+    <div className="warning-note">
+      <Icon name="warning" size={16} />
+      <span>
+        {text}
+        {(service === 'discord' || service === 'kick') &&
+          ' The sign-in window is not routed unless everything is tunnelled in Settings → Tor.'}
+      </span>
     </div>
   )
 }
@@ -1390,7 +1444,7 @@ function SneedChatForm(): JSX.Element {
         <span className="small muted">TOTP secret (optional, if 2FA is on)</span>
         <input className="text-field" value={totpSecret} onChange={(e) => setTotpSecret(e.target.value)} />
       </label>
-      <TorSwitch on={useTor} onChange={setUseTor} />
+      <TorSwitch service="sneedchat" on={useTor} onChange={setUseTor} />
       <button
         type="button"
         className="button"
@@ -1422,6 +1476,10 @@ function MatrixForm(): JSX.Element {
   const store = useStore()
   const status = useChat((s) => s.matrixLoginStatus)
   const [homeserverUrl, setHomeserverUrl] = useState('https://matrix.org')
+  // Asked first, because the form talks to the homeserver while it is being
+  // filled in - its sign-in options, its registration rules - and all of that
+  // goes the way this says.
+  const [useTor, setUseTor] = useState(false)
   const [userId, setUserId] = useState('')
   const [password, setPassword] = useState('')
   // What this homeserver will actually accept, asked before anything is
@@ -1462,7 +1520,7 @@ function MatrixForm(): JSX.Element {
     setAsking(true)
     const timer = setTimeout(() => {
       void window.moho
-        .rpc<{ flows: string[] }>('matrixLoginFlows', { homeserverUrl: url })
+        .rpc<{ flows: string[] }>('matrixLoginFlows', { useTor, homeserverUrl: url })
         .then((a) => setFlows(a.flows))
         // A server that cannot be reached or will not say is not a server
         // with no ways in - it is one nothing is known about, and both
@@ -1473,11 +1531,11 @@ function MatrixForm(): JSX.Element {
       // say what the homeserver itself accepts, and this says whether it has
       // handed its accounts to somebody else entirely.
       void window.moho
-        .rpc<{ delegated: boolean }>('matrixAuthMetadata', { homeserverUrl: url })
+        .rpc<{ delegated: boolean }>('matrixAuthMetadata', { useTor, homeserverUrl: url })
         .then((a) => setDelegated(!!a.delegated))
         .catch(() => setDelegated(false))
       void window.moho
-        .rpc<{ open: boolean; needsToken: boolean; wants: string[] }>('matrixRegistrationFlows', {
+        .rpc<{ open: boolean; needsToken: boolean; wants: string[] }>('matrixRegistrationFlows', { useTor,
           homeserverUrl: url
         })
         .then((a) => setRegistration(a))
@@ -1486,7 +1544,7 @@ function MatrixForm(): JSX.Element {
         .catch(() => setRegistration(null))
     }, 600)
     return () => clearTimeout(timer)
-  }, [homeserverUrl])
+  }, [homeserverUrl, useTor])
 
   // The code the daemon got, while one is outstanding. Cleared when the
   // sign-in ends either way, so a stale code cannot sit on screen looking
@@ -1507,6 +1565,7 @@ function MatrixForm(): JSX.Element {
 
   return (
     <div className="add-form">
+      <TorSwitch service="matrix" on={useTor} onChange={setUseTor} />
       <label className="field">
         <span className="small muted">Homeserver</span>
         <input
@@ -1614,7 +1673,7 @@ function MatrixForm(): JSX.Element {
           disabled={!userId || !password || asking}
           onClick={() =>
             void window.moho
-              .rpc('addMatrixAccount', {
+              .rpc('addMatrixAccount', { useTor,
                 homeserverUrl,
                 // Tolerate a pasted full MXID as well as a bare username:
                 // strip the leading @ and anything from the first ':' onward.
@@ -1645,7 +1704,7 @@ function MatrixForm(): JSX.Element {
           title="Approve this sign-in from a browser instead of typing a password"
           onClick={() =>
             void window.moho
-              .rpc('addMatrixAccountDeviceCode', { homeserverUrl })
+              .rpc('addMatrixAccountDeviceCode', { useTor, homeserverUrl })
               .then(() => store.setMatrixLoginStatus('Asking for a code…'))
               .catch((e: Error) => store.toast('error', e.message))
           }
@@ -1659,7 +1718,7 @@ function MatrixForm(): JSX.Element {
           disabled={!homeserverUrl || asking}
           onClick={() =>
             void window.moho
-              .rpc('addMatrixAccountSso', { homeserverUrl })
+              .rpc('addMatrixAccountSso', { useTor, homeserverUrl })
               .then(() => store.setMatrixLoginStatus('Opening your browser…'))
               .catch((e: Error) => store.toast('error', e.message))
           }
@@ -1691,7 +1750,7 @@ function MatrixForm(): JSX.Element {
           }
           onClick={() =>
             void window.moho
-              .rpc('registerMatrixAccount', {
+              .rpc('registerMatrixAccount', { useTor,
                 homeserverUrl,
                 username: userId.replace(/^@/, '').split(':')[0],
                 password,

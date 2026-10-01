@@ -9,6 +9,7 @@ import {
 } from './controls'
 import { useChat, usePref, useStore } from '../../state/hooks'
 import { Icon } from '../Icon'
+import { TunnelAllSwitch, useNetSettings } from './Tunnel'
 import type { Account, DccPrefs } from '../../../../shared/wire'
 
 /**
@@ -613,9 +614,7 @@ function TransferSettings(): JSX.Element {
   )
 }
 
-function useSneedchatAccount(): Account | undefined {
-  return useChat((s) => s.accounts).find((a) => a.service === 'sneedchat')
-}
+
 
 /**
  * Sneedchat's own settings are per account and live on the account card.
@@ -706,15 +705,23 @@ function KickSettings(): JSX.Element {
  */
 function TorSettings(): JSX.Element {
   const store = useStore()
-  const account = useSneedchatAccount()
-  const [useProxy, setUseProxy] = useState(account?.torMode === 'proxy')
-  const [proxy, setProxy] = useState(account?.torProxy || '')
+  const [settings, reload] = useNetSettings()
+  const [useProxy, setUseProxy] = useState(false)
+  const [proxy, setProxy] = useState('')
+
+  // Filled from the daemon once it answers, and again whenever it does.
+  useEffect(() => {
+    if (!settings) return
+    setUseProxy(settings.torMode === 'proxy')
+    setProxy(settings.proxy ?? '')
+  }, [settings])
 
   const call = (method: string, params: Record<string, unknown>, note: string): void => {
     void window.moho
       .rpc(method, params)
       .then(() => {
         store.toast('info', note)
+        reload()
         void store.refreshAccounts()
       })
       .catch((e: Error) => store.toast('error', e.message))
@@ -724,7 +731,7 @@ function TorSettings(): JSX.Element {
     <>
       <SettingsSection
         title="Tor"
-        description="Embedded runs Tor in-process with no setup; an external proxy uses a Tor daemon or Tor Browser you already have running. It is used by every account whose Connect through Tor switch is on."
+        description="Used by every account whose Tor switch is on, and by everything when all traffic is sent through it. Embedded runs Tor inside moho with no setup; an external SOCKS5 proxy uses a Tor daemon, Tor Browser, or a proxy you host yourself."
       >
         <label className="setting-row">
           <div className="setting-text">Use an external SOCKS5 proxy instead of embedded Tor</div>
@@ -748,7 +755,7 @@ function TorSettings(): JSX.Element {
           className="button"
           onClick={() =>
             call(
-              'setTorConfig',
+              'setNetSettings',
               { torMode: useProxy ? 'proxy' : 'embedded', proxy: useProxy ? proxy : '' },
               'Connection settings saved - reconnecting…'
             )
@@ -758,9 +765,13 @@ function TorSettings(): JSX.Element {
         </button>
       </SettingsSection>
 
+      <SettingsSection title="All traffic">
+        <TunnelAllSwitch />
+      </SettingsSection>
+
       <SettingsSection
         title="Circuit"
-        description="Regenerate gets a fresh circuit from the cached consensus and guard data (fast). Restart from scratch also wipes that cache for a full cold bootstrap, which can take up to a minute. Both reconnect every Sneedchat account afterward."
+        description="Regenerate gets a fresh circuit from the cached consensus and guard data (fast). Restart from scratch also wipes that cache for a full cold bootstrap, which can take up to a minute. Both reconnect every account that goes through Tor afterward."
       >
         <div className="button-row">
           <button

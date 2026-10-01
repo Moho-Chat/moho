@@ -1,3 +1,4 @@
+import { routeSession } from './tunnel'
 import { BrowserWindow, session } from 'electron'
 import type { Session } from 'electron'
 
@@ -178,6 +179,8 @@ export async function browserLogin(service: string): Promise<LoginOutcome> {
   // neither does a completed one.
   const partition = `moho-login-${service}-${Date.now()}`
   const ses = session.fromPartition(partition)
+  // Through Tor or the proxy when everything is tunnelled, like the window.
+  await routeSession(ses)
 
   const win = new BrowserWindow({
     width: 520,

@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { Notification, nativeImage } from 'electron'
+import { Notification, nativeImage, net } from 'electron'
 import type { WebContents } from 'electron'
 import type { Prefs } from './prefs'
 import type { Buffer as ChatBuffer } from '../shared/wire'
@@ -255,7 +255,8 @@ export class Notifier {
     try {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 3000)
-      const res = await fetch(url, { signal: controller.signal })
+      // Electron's net, which follows the session's proxy - see tunnel.ts.
+      const res = await net.fetch(url, { signal: controller.signal })
       clearTimeout(timer)
       if (!res.ok) return null
       const ext = (url.split('?')[0].split('.').pop() || 'png').slice(0, 4)
