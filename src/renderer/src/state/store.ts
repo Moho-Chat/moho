@@ -637,8 +637,6 @@ export interface ChatState {
   // Login flows
   discordQrPath: string
   discordLoginStatus: string
-  /** Set when a Discord password login stops at the two-factor step. */
-  discordMfa: { loginId: string; totp: boolean; sms: boolean; backup: boolean } | null
   /** The account being re-authenticated, or '' for a brand-new one. */
   discordReauthAccountId: string
   sneedChatLoginStatus: string
@@ -727,7 +725,6 @@ const INITIAL: ChatState = {
   matrixVerification: null,
   discordQrPath: '',
   discordLoginStatus: '',
-  discordMfa: null,
   discordReauthAccountId: '',
   sneedChatLoginStatus: '',
   matrixLoginStatus: ''
@@ -3278,24 +3275,12 @@ export class ChatStore {
       case 'discordLoginScanned':
         this.set({ discordLoginStatus: 'Scanned - approve it on your phone' })
         break
-      case 'discordLoginMfa':
-        this.set({
-          discordMfa: {
-            loginId: data.loginId,
-            totp: !!data.totp,
-            sms: !!data.sms,
-            backup: !!data.backup
-          },
-          discordLoginStatus: ''
-        })
-        break
 
       case 'discordLoginResult':
         this.set({
           discordQrPath: '',
           discordLoginStatus: data.error || '',
           // A failure leaves the form open to try again; success clears it.
-          discordMfa: data.error ? this.state.discordMfa : null,
           discordReauthAccountId: data.error ? this.state.discordReauthAccountId : ''
         })
         if (!data.error) {
@@ -4538,14 +4523,10 @@ export class ChatStore {
     this.set({
       discordReauthAccountId: accountId,
       discordQrPath: '',
-      discordLoginStatus: '',
-      discordMfa: null
+      discordLoginStatus: ''
     })
   }
 
-  clearDiscordMfa(): void {
-    this.set({ discordMfa: null })
-  }
   setSneedChatLoginStatus(status: string): void {
     this.set({ sneedChatLoginStatus: status })
   }

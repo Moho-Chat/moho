@@ -950,11 +950,9 @@ function DiscordForm({ accountId }: { accountId?: string }): JSX.Element {
   const store = useStore()
   const qrPath = useChat((s) => s.discordQrPath)
   const status = useChat((s) => s.discordLoginStatus)
-  const mfa = useChat((s) => s.discordMfa)
   const [method, setMethod] = useState<'qr' | 'browser'>('qr')
   // No password state any more, deliberately: the password is typed into
   // Discord's own page in the sign-in window, so this process never holds one.
-  const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   // Only for a new account: re-authenticating keeps the account's own setting.
   const [useTor, setUseTor] = useState(false)
@@ -963,65 +961,6 @@ function DiscordForm({ accountId }: { accountId?: string }): JSX.Element {
   const fail = (e: Error): void => {
     store.toast('error', e.message)
     setBusy(false)
-  }
-
-  // The two-factor step replaces the form: the login is already in flight and
-  // only needs the code to finish.
-  if (mfa) {
-    return (
-      <div className="add-form">
-        <p className="small muted">
-          {mfa.totp
-            ? 'Enter the 6-digit code from your authenticator app.'
-            : 'Enter your verification code.'}
-          {mfa.backup && ' A backup code works here too.'}
-        </p>
-        <div className="field-row">
-          <input
-            className="text-field"
-            autoFocus
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            placeholder="123456"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && code.trim()) {
-                void window.moho
-                  .rpc('submitDiscordMfa', { loginId: mfa.loginId, code })
-                  .catch(fail)
-              }
-            }}
-          />
-          <button
-            type="button"
-            className="button"
-            disabled={!code.trim()}
-            onClick={() =>
-              void window.moho.rpc('submitDiscordMfa', { loginId: mfa.loginId, code }).catch(fail)
-            }
-          >
-            Verify
-          </button>
-        </div>
-        {/* When re-authenticating, the surrounding block already offers a
-            Cancel that backs out of the whole thing - two stacked Cancels
-            would just be a question of which one you meant. */}
-        {!accountId && (
-          <button
-            type="button"
-            className="button subtle"
-            onClick={() => {
-              store.clearDiscordMfa()
-              setCode('')
-            }}
-          >
-            Cancel
-          </button>
-        )}
-        {status && <p className="small muted">{status}</p>}
-      </div>
-    )
   }
 
   return (
@@ -1040,7 +979,7 @@ function DiscordForm({ accountId }: { accountId?: string }): JSX.Element {
           className={method === 'browser' ? 'active' : undefined}
           onClick={() => setMethod('browser')}
         >
-          Browser
+          Password
         </button>
       </div>
 
@@ -1069,11 +1008,15 @@ function DiscordForm({ accountId }: { accountId?: string }): JSX.Element {
         </>
       ) : (
         <>
+          {/* The password route, and the only one: a password typed into a
+              form of moho's own was tried and removed, because Discord
+              refuses it from a third-party client and counts each attempt
+              against the account. */}
           <p className="small muted">
-            Opens Discord&apos;s own sign-in page in a browser window. Your password goes into
-            their form and never passes through moho — and because it is their page, their
-            captcha, two-factor and device checks all work normally. The window is thrown away
-            afterwards, session and all.
+            Sign in with your email or phone and password on Discord&apos;s own page, in a window
+            moho opens. Your password goes into their form and never passes through moho — and
+            because it is their page, their captcha, two-factor and new-device checks all work as
+            they do anywhere. The window is thrown away afterwards, session and all.
           </p>
           <button
             type="button"
@@ -1095,7 +1038,7 @@ function DiscordForm({ accountId }: { accountId?: string }): JSX.Element {
                 .catch(fail)
             }}
           >
-            {busy ? 'Waiting…' : accountId ? 'Re-authenticate in a browser' : 'Sign in with a browser'}
+            {busy ? 'Waiting…' : accountId ? 'Re-authenticate on discord.com' : 'Sign in on discord.com'}
           </button>
         </>
       )}
