@@ -15,7 +15,24 @@ export interface MenuSeparator {
   separator: true
 }
 
-export type MenuEntry = MenuItem | MenuSeparator
+/**
+ * A value set by dragging, which stays open while it is dragged - the way
+ * Discord puts "User Volume" in the menu of the person it is for.
+ */
+export interface MenuSlider {
+  slider: true
+  separator?: false
+  label: string
+  value: number
+  min: number
+  max: number
+  step: number
+  /** How the value reads beside the label. */
+  format: (value: number) => string
+  onChange: (value: number) => void
+}
+
+export type MenuEntry = MenuItem | MenuSeparator | MenuSlider
 
 interface Props {
   x: number
@@ -78,6 +95,22 @@ export function ContextMenu({ x, y, entries, onClose }: Props): JSX.Element {
       {entries.map((entry, i) =>
         entry.separator ? (
           <div key={i} className="context-menu-separator" />
+        ) : 'slider' in entry ? (
+          <label key={i} className="context-menu-slider">
+            <span className="context-menu-slider-label">
+              <span>{entry.label}</span>
+              <span className="muted">{entry.format(entry.value)}</span>
+            </span>
+            <input
+              type="range"
+              min={entry.min}
+              max={entry.max}
+              step={entry.step}
+              value={entry.value}
+              aria-label={entry.label}
+              onChange={(e) => entry.onChange(Number(e.target.value))}
+            />
+          </label>
         ) : (
           <button
             key={i}

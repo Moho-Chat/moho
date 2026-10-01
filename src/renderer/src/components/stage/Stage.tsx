@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type R
 import { createPortal } from 'react-dom'
 import { Icon } from '../Icon'
 import { Avatar } from '../Avatar'
+import { ContextMenu, type MenuEntry } from '../ContextMenu'
 import { usePref } from '../../state/hooks'
 import { classes, nickColor } from '../../lib/util'
 
@@ -43,10 +44,15 @@ export interface StageTile {
   /** A small button in the corner of a tile with one: "Stop watching". */
   dismiss?: { label: string; onClick: () => void }
   /**
-   * How loud this person is, 1 as they arrive, up to 2 - where the call can
-   * turn one person up or down. Absent for yourself.
+   * What right-clicking the tile offers - a person's volume, as in Discord.
+   * Absent, the tile has no menu.
    */
-  volume?: { value: number; onChange: (value: number) => void }
+  menu?: MenuEntry[]
+  /**
+   * A volume somebody set away from 100%, shown on the tile so nobody is
+   * left turned down without noticing. Set in the menu, not here.
+   */
+  volumeBadge?: string
 }
 
 export interface StageButton {
@@ -129,6 +135,10 @@ export function Stage({
   const root = useRef<HTMLDivElement>(null)
   const area = useRef<HTMLDivElement>(null)
   const [focused, setFocused] = useState<string | null>(null)
+  /** A tile's right-click menu, while open. Looked up by id on every draw, so
+   * a slider in it shows the value it has just been dragged to. */
+  const [menu, setMenu] = useState<{ x: number; y: number; tileId: string } | null>(null)
+  const menuEntries = menu ? tiles.find((t) => t.id === menu.tileId)?.menu : undefined
   const [room, setRoom] = useState({ width: 640, height: 300 })
   const [collapsed, setCollapsed] = usePref<boolean>('ui.stageCollapsed', false)
   /**
@@ -213,6 +223,14 @@ export function Stage({
         }}
         title={stage?.id === tile.id ? 'Back to everybody' : `Focus on ${tile.name}`}
         onClick={() => setFocused(stage?.id === tile.id ? null : tile.id)}
+        onContextMenu={
+          tile.menu
+            ? (e) => {
+                e.preventDefault()
+                setMenu({ x: e.clientX, y: e.clientY, tileId: tile.id })
+              }
+            : undefined
+        }
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
@@ -254,29 +272,7 @@ export function Stage({
             <Icon name="close" size={16} />
           </button>
         )}
-        {tile.volume && slot === 'main' && (
-          // A slider on the tile rather than in a menu: the person who is too
-          // loud is the one being looked at. Clicks stay here, or every drag
-          // would also focus the tile.
-          <label
-            className={classes('stage-tile-volume', Math.abs(tile.volume.value - 1) > 0.005 && 'changed')}
-            title={`${tile.name}'s volume`}
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-          >
-            <Icon name={tile.volume.value === 0 ? 'volume_off' : tile.volume.value < 1 ? 'volume_down' : 'volume_up'} size={15} />
-            <input
-              type="range"
-              min={0}
-              max={200}
-              step={5}
-              value={Math.round(tile.volume.value * 100)}
-              aria-label={`${tile.name}'s volume`}
-              onChange={(e) => tile.volume?.onChange(Number(e.target.value) / 100)}
-            />
-            <span className="stage-tile-volume-value">{Math.round(tile.volume.value * 100)}%</span>
-          </label>
-        )}
+        {tile.volumeBadge && slot === 'main' && <span className="stage-tile-volume">{tile.volumeBadge}</span>}
         <span className="stage-tile-name">
           {tile.deafened ? (
             <Icon name="headset_off" size={14} className="stage-tile-state" />
@@ -368,6 +364,9 @@ export function Stage({
           <ControlButton key={b.label} button={b} />
         ))}
       </div>
+      {menu && menuEntries && (
+        <ContextMenu x={menu.x} y={menu.y} entries={menuEntries} onClose={() => setMenu(null)} />
+      )}
       {where === 'inline' && !fullscreen && (
         <div
           className="stage-resize"

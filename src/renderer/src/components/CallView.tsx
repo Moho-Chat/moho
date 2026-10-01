@@ -162,14 +162,29 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
           : camera
             ? () => <FeedPicture feedKey={cameraKey(accountId, m.userId)} />
             : undefined,
-      // Everybody but you can be turned up or down, and it holds across
-      // calls, as Discord's own does.
-      volume: m.isSelf
+      // Everybody but you can be turned up or down from their own
+      // right-click menu, as in Discord, and it holds across calls.
+      menu: m.isSelf
         ? undefined
-        : {
-            value: voicePrefs.userVolumes?.[m.userId] ?? 1,
-            onChange: (v) => store.setVoiceVolume(v, m.userId)
-          }
+        : [
+            {
+              slider: true,
+              label: 'User Volume',
+              value: Math.round((voicePrefs.userVolumes?.[m.userId] ?? 1) * 100),
+              min: 0,
+              max: 200,
+              step: 5,
+              format: (v) => `${v}%`,
+              onChange: (v) => store.setVoiceVolume(v / 100, m.userId)
+            },
+            { separator: true },
+            {
+              label: 'Copy User ID',
+              icon: 'badge',
+              onClick: () => void navigator.clipboard.writeText(m.userId).catch(() => {})
+            }
+          ],
+      volumeBadge: volumeBadge(voicePrefs.userVolumes?.[m.userId])
     })
     // A shared screen is a tile of its own, the way Discord shows it: dark
     // until somebody chooses to watch, because watching opens a connection.
@@ -421,4 +436,10 @@ function GoLiveChooser({
       </button>
     </div>
   )
+}
+
+/** A volume worth showing on a tile: anything but 100%. */
+function volumeBadge(volume: number | undefined): string | undefined {
+  if (volume === undefined || Math.abs(volume - 1) < 0.005) return undefined
+  return `${Math.round(volume * 100)}%`
 }

@@ -7398,41 +7398,40 @@ video.lightbox-media {
   padding: 0 var(--spacing-s) 2px 30px;
 }
 
-/* One person's volume, on their tile. Shown on hover; the percentage stays
-   once it has been moved off 100, so nobody is left turned down unawares. */
+/* A volume set away from 100%, on that person's tile. Read-only: it is
+   changed from the tile's right-click menu. */
 .stage-tile-volume {
   position: absolute;
   top: 6px;
   left: 6px;
   z-index: 1;
-  display: none;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 8px;
-  border-radius: 14px;
+  padding: 2px 7px;
+  border-radius: 10px;
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  cursor: default;
+  pointer-events: none;
 }
 
-.stage-tile-volume input {
-  width: 90px;
-  accent-color: #fff;
+/* A slider in a context menu: label and value above, the track below. */
+.context-menu-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  min-width: 200px;
 }
 
-.stage-tile:hover .stage-tile-volume,
-.stage-tile-volume:focus-within {
-  display: inline-flex;
+.context-menu-slider-label {
+  display: flex;
+  justify-content: space-between;
+  font-variant-numeric: tabular-nums;
 }
 
-.stage-tile-volume.changed {
-  display: inline-flex;
-}
-
-.stage-tile:not(:hover) .stage-tile-volume.changed:not(:focus-within) input {
-  display: none;
+.context-menu-slider input {
+  width: 100%;
+  accent-color: var(--primary);
 }
 
 .call-volume {
