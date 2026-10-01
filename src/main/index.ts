@@ -278,11 +278,12 @@ function createWindow(): void {
     // The one window the page may open itself: a call popped out of the
     // conversation. The page draws into it directly - see StageWindow - so it
     // is blank, frameless like this one, and black before anything arrives.
-    if (frameName === 'moho-call' && (url === '' || url === 'about:blank')) {
+    // A Kick stream popped out of moho is the same kind of window.
+    if ((frameName === 'moho-call' || frameName === 'moho-stream') && (url === '' || url === 'about:blank')) {
       return {
         action: 'allow',
         overrideBrowserWindowOptions: {
-          title: 'moho — call',
+          title: frameName === 'moho-stream' ? 'moho — stream' : 'moho — call',
           frame: false,
           backgroundColor: '#000000',
           minWidth: 360,

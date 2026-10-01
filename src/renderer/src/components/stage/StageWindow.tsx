@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
-/** The name the main process recognises and lets open - see main/index.ts. */
+/** The names the main process recognises and lets open - see main/index.ts. */
 export const STAGE_WINDOW_NAME = 'moho-call'
+export const STREAM_WINDOW_NAME = 'moho-stream'
 
 /**
  * A call in a window of its own.
@@ -19,17 +20,30 @@ export const STAGE_WINDOW_NAME = 'moho-call'
  * and told where relative URLs are - the icon font is one - before anything
  * is drawn into it.
  */
-export function StageWindow({ children, onClosed }: { children: ReactNode; onClosed: () => void }): JSX.Element | null {
+export function StageWindow({
+  children,
+  onClosed,
+  name = STAGE_WINDOW_NAME,
+  title = 'moho — call',
+  size = 'width=1024,height=640'
+}: {
+  children: ReactNode
+  onClosed: () => void
+  /** Which window: a call's, or a stream's. Each is allowed by name. */
+  name?: string
+  title?: string
+  size?: string
+}): JSX.Element | null {
   const [mount, setMount] = useState<HTMLElement | null>(null)
 
   useEffect(() => {
-    const child = window.open('', STAGE_WINDOW_NAME, 'width=1024,height=640')
+    const child = window.open('', name, size)
     if (!child) {
       onClosed()
       return
     }
     const doc = child.document
-    doc.title = 'moho — call'
+    doc.title = title
     const base = doc.createElement('base')
     base.href = document.baseURI
     doc.head.appendChild(base)

@@ -23,7 +23,7 @@ import { Toasts } from './components/Toasts'
 import { IncomingCallPanel } from './components/IncomingCallPanel'
 import { CallAudio, CallStage, IncomingMatrixCall, ScreenPicker } from './components/CallStage'
 import { CallWindowHost } from './components/stage/CallWindowHost'
-import { StreamStage } from './components/StreamStage'
+import { StreamStage, StreamWindowHost } from './components/StreamStage'
 import { DiscordModal } from './components/DiscordModal'
 import { FileDrop } from './components/FileDrop'
 import { TransferPanel } from './components/TransferPanel'
@@ -57,6 +57,7 @@ export default function App(): JSX.Element {
   // one being read - and not while a panel is covering the log either, since
   // that is walking away from it too.
   const callElsewhere = !!activeCall && (activeCall.bufferId !== activeBufferId || activePanel !== '')
+  const streamPoppedOut = useChat((s) => s.streamPoppedOut)
   const streamElsewhere = !!watching && (watching.bufferId !== activeBufferId || activePanel !== '')
 
   const [sidebarFolded, setSidebarFolded] = usePref<boolean>('ui.sidebarFolded', false)
@@ -293,7 +294,9 @@ export default function App(): JSX.Element {
       <CallWindowHost />
       {/* A stream keeps playing when you go and read something else, and goes
           to the same corner - it is the same surface, differently fed. */}
-      {streamElsewhere && <StreamStage mode="pip" />}
+      {streamElsewhere && !streamPoppedOut && <StreamStage mode="pip" />}
+      {/* Or out of moho altogether, in a window of its own. */}
+      <StreamWindowHost />
       {/* Over everything for the same reason: a file is offered while you are
           reading something else, and often in a conversation you are not. */}
       <TransferPanel />

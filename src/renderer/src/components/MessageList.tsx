@@ -167,6 +167,7 @@ export function MessageList(): JSX.Element {
   const messagesByBuffer = useChat((s) => s.messagesByBuffer)
   const activeCall = useChat((s) => s.activeCall)
   const watching = useChat((s) => s.watching)
+  const streamPoppedOut = useChat((s) => s.streamPoppedOut)
   const loadingMore = useChat((s) => s.loadingMore)
   const loadingNewer = useChat((s) => s.loadingNewer)
   const historyGapAfter = useChat((s) => s.historyGapAfter)
@@ -657,7 +658,8 @@ export function MessageList(): JSX.Element {
       {/* And a Kick stream in the same place, for the same reason: the picture
           and the chat about it are one conversation. Never both at once - the
           store refuses to start a stream during a call. */}
-      {watching?.bufferId === bufferId && <StreamStage mode="inline" />}
+      {/* Not while it is in a window of its own: one picture, in one place. */}
+      {watching?.bufferId === bufferId && !streamPoppedOut && <StreamStage mode="inline" />}
       {/* Over the log rather than in it: a poll is one question being
           answered while the chat keeps moving underneath, and a line in the
           log would scroll away mid-vote. */}

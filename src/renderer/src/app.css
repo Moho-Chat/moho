@@ -7687,3 +7687,63 @@ video.lightbox-media {
   font-size: 16px;
   line-height: 1;
 }
+
+/* The corner panel's resize grip, in its inside (top-left) corner. */
+.call-stage.pip .call-stage-resize {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.call-stage.pip .call-stage-resize::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 7px;
+  height: 7px;
+  border-top: 2px solid var(--outline-strong, var(--outline-medium));
+  border-left: 2px solid var(--outline-strong, var(--outline-medium));
+  border-top-left-radius: 3px;
+  opacity: 0.8;
+}
+
+/* A stream in a window of its own: the whole window, picture first. */
+.call-stage.in-window {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: #000;
+}
+
+.call-stage.in-window .call-stage-title {
+  padding: 6px 8px;
+  background: var(--surface-container);
+}
+
+.call-stage.in-window .call-stage-title button {
+  -webkit-app-region: no-drag;
+}
+
+.video-stage.in-window {
+  flex: 1;
+  min-height: 0;
+  justify-content: center;
+}
+
+.call-stage.in-window .call-stage-controls {
+  padding: 4px 8px;
+  background: var(--surface-container);
+}
+
+/* The stream window has no frame of its own: its title bar moves it. */
+.call-stage-title.window-drag {
+  -webkit-app-region: drag;
+}
