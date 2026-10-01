@@ -640,7 +640,10 @@ export function EmojiPicker({
           </Section>
         )}
 
-        {sourceSections.map((src) => (
+        {/* Guarded by the tab rather than by never having loaded: switched
+            to Stickers after Emoji, these are already here. */}
+        {!stickersOnly &&
+          sourceSections.map((src) => (
           <Section
             key={src.id}
             title={src.name}
