@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Icon } from '../Icon'
 import { Avatar } from '../Avatar'
 import { usePref } from '../../state/hooks'
@@ -52,6 +53,12 @@ export interface StageButton {
   off?: boolean
   danger?: boolean
   onClick: () => void
+  /**
+   * Something to ask before the button does its thing, drawn above it while
+   * present - next to the gesture that asked, rather than in a dialog
+   * somewhere else on the screen.
+   */
+  popover?: JSX.Element | null
 }
 
 /** Sixteen by nine, which is what cameras and screens both are. */
@@ -356,8 +363,45 @@ function HeadButton({ icon, label, onClick }: { icon: string; label: string; onC
 }
 
 function ControlButton({ button, compact }: { button: StageButton; compact?: boolean }): JSX.Element {
+  const ref = useRef<HTMLButtonElement>(null)
+  const [at, setAt] = useState<{ left: number; bottom: number } | null>(null)
+  // Placed against the button on screen, in a portal: the stage clips what
+  // overflows it, and a collapsed stage is a bar with no room above it.
+  useLayoutEffect(() => {
+    if (!button.popover || !ref.current) {
+      setAt(null)
+      return
+    }
+    const rect = ref.current.getBoundingClientRect()
+    setAt({ left: rect.left + rect.width / 2, bottom: window.innerHeight - rect.top + 8 })
+  }, [button.popover])
+  return (
+    <>
+      {button.popover &&
+        at &&
+        createPortal(
+          <div className="stage-popover" style={{ left: `${at.left}px`, bottom: `${at.bottom}px` }}>
+            {button.popover}
+          </div>,
+          document.body
+        )}
+      <ControlButtonFace button={button} compact={compact} buttonRef={ref} />
+    </>
+  )
+}
+
+function ControlButtonFace({
+  button,
+  compact,
+  buttonRef
+}: {
+  button: StageButton
+  compact?: boolean
+  buttonRef: React.Ref<HTMLButtonElement>
+}): JSX.Element {
   return (
     <button
+      ref={buttonRef}
       type="button"
       className={classes(
         'stage-button',

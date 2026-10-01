@@ -113,14 +113,23 @@ function travels(accountId?: string): boolean {
   return !!accountId?.startsWith('matrix:')
 }
 
-/** One image out of a Matrix sticker pack, as the daemon offers it. */
+/**
+ * One sticker, as the daemon offers it: out of a Matrix pack, or one of a
+ * Discord guild's.
+ */
 export interface StickerEntry {
   name: string
+  /** The pack, or on Discord the guild it belongs to. */
   pack: string
-  mxc: string
+  /** Matrix: the upload it is. */
+  mxc?: string
+  /** Discord: the sticker's id. */
+  id?: string
   body: string
-  /** A local path the daemon already fetched, absent while it is fetching. */
+  /** A picture of it, absent while fetching or where it cannot be drawn. */
   url?: string | null
+  /** Discord: belongs to a guild this conversation is not in, without Nitro. */
+  locked?: boolean
 }
 
 /** One place emoji come from, as `listAllEmoji` answers. */
@@ -527,10 +536,15 @@ export function EmojiPicker({
           <Section key={pack} title={pack}>
             {entries.map((sticker) => (
               <button
-                key={sticker.mxc}
+                key={sticker.mxc ?? sticker.id}
                 type="button"
                 className="emoji-cell sticker-cell"
-                title={`${sticker.name} · ${pack}`}
+                disabled={sticker.locked}
+                title={
+                  sticker.locked
+                    ? `${sticker.name} · only in ${pack} without Nitro`
+                    : `${sticker.name} · ${pack}`
+                }
                 onClick={() => onSticker?.(sticker)}
               >
                 {sticker.url ? (
@@ -545,8 +559,9 @@ export function EmojiPicker({
 
         {stickersOnly && packs.length === 0 && (
           <p className="small muted emoji-empty">
-            No sticker packs on this account. Packs added in another client - your own, or
-            one a room shares - turn up here.
+            {accountId?.startsWith('discord:')
+              ? 'None of your servers has stickers of its own.'
+              : 'No sticker packs on this account. Packs added in another client - your own, or one a room shares - turn up here.'}
           </p>
         )}
 

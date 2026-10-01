@@ -32,6 +32,7 @@ import type { CallPhase } from '../lib/webrtc'
 import { Levels } from '../lib/levels'
 import { firstFrame, SCREEN_CHOICE_MS } from '../lib/capture'
 import { cameraKey, closeFeeds, feedFrame, streamKey as feedStreamKey } from '../lib/framefeed'
+import { DEFAULT_QUALITY, encodeSettings, sendCamera, shareScreen, type VideoQuality } from '../lib/discordscreen'
 import type { PopoutState } from '../../../shared/ipc'
 
 /**
@@ -540,6 +541,11 @@ export interface ChatState {
   /** Whether this window is sharing a screen into a Discord call. */
   discordSharing: boolean
   /**
+   * This end's camera in a Discord call, while it is on: the capture, so the
+   * call can show you what everybody else sees.
+   */
+  discordCamera: MediaStream | null
+  /**
    * Who is streaming right now, by Discord user id, and the key their stream
    * is named by.
    *
@@ -667,6 +673,7 @@ const INITIAL: ChatState = {
   discordModal: null,
   activeCall: null,
   discordSharing: false,
+  discordCamera: null,
   discordStreams: {},
   discordCameras: {},
   discordWatching: null,
@@ -930,6 +937,8 @@ export class ChatStore {
    * `discordSharing` beside it.
    */
   private discordShare: { stop: () => void; stream: MediaStream } | null = null
+  /** The Discord camera's encoder, held for the same reason. */
+  private discordCameraSend: { stop: () => void; stream: MediaStream } | null = null
   /**
    * The Matrix call engine, one per window.
    *
@@ -1763,6 +1772,15 @@ export class ChatStore {
   }
 
   async leaveVoice(accountId: string): Promise<void> {
+    // What this end was sending goes with it. Left running, the camera light
+    // would stay on and the encoder would go on handing frames to a call
+    // that has ended.
+    this.stopDiscordCamera()
+    if (this.discordShare) {
+      this.discordShare.stop()
+      this.discordShare = null
+      this.set({ discordSharing: false })
+    }
     try {
       await window.moho.rpc('leaveVoiceChannel', { accountId })
       await this.refreshVoiceSessions()
@@ -2476,7 +2494,7 @@ export class ChatStore {
    * Opened by `openScreen`, which is where every share on every desktop
    * starts.
    */
-  async toggleScreenShare(): Promise<void> {
+  async toggleScreenShare(quality?: VideoQuality): Promise<void> {
     // A Discord call is not a Matrix one and has no activeCall behind it -
     // its audio lives in the daemon - so it is answered first and on its own
     // terms. The gesture and the button are the same either way, which is
@@ -2488,7 +2506,7 @@ export class ChatStore {
       (s) => s.accountId.startsWith('discord:') && !!s.bufferId
     )
     if (discord?.bufferId && !this.state.activeCall) {
-      await this.toggleDiscordScreenShare(discord.accountId, discord.bufferId)
+      await this.toggleDiscordScreenShare(discord.accountId, discord.bufferId, quality)
       return
     }
     if (!this.state.activeCall) return
@@ -2539,7 +2557,7 @@ export class ChatStore {
    * draw from the other side, where the browser holds the whole call because
    * WebRTC is the browser's.
    */
-  async toggleDiscordScreenShare(accountId: string, bufferId: string): Promise<void> {
+  async toggleDiscordScreenShare(accountId: string, bufferId: string, quality: VideoQuality = DEFAULT_QUALITY): Promise<void> {
     if (this.discordShare) {
       this.discordShare.stop()
       this.discordShare = null
@@ -2556,7 +2574,11 @@ export class ChatStore {
       const stream = await this.openScreen()
       if (!stream) return
 
-      await window.moho.rpc('startDiscordScreenShare', { bufferId })
+      // Worked out from the capture, now that there is one: the width
+      // follows the screen's own shape, and the daemon tells viewers exactly
+      // what the encoder below will send.
+      const settings = encodeSettings(stream.getVideoTracks()[0]?.getSettings() ?? {}, quality)
+      await window.moho.rpc('startDiscordScreenShare', { bufferId, ...settings })
       this.toast('info', 'Setting up the stream…')
 
       // The connection is opened by the daemon when Discord answers, which
@@ -2575,8 +2597,7 @@ export class ChatStore {
         return
       }
 
-      const { shareScreen } = await import('../lib/discordscreen')
-      this.discordShare = await shareScreen(accountId, stream, (message) => {
+      this.discordShare = await shareScreen(accountId, stream, settings, (message) => {
         this.toast('error', message)
         this.discordShare = null
         this.set({ discordSharing: false })
@@ -2587,6 +2608,73 @@ export class ChatStore {
       this.toast('error', `Couldn't share the screen: ${(e as Error).message}`)
       await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
     }
+  }
+
+  /**
+   * Turns this end's camera on or off in a Discord call.
+   *
+   * The camera is opened first, so a machine without one is told so before
+   * anybody in the call sees a tile appear. Then the daemon tells Discord a
+   * picture is coming, and only once the call's encryption group can be
+   * encrypted for does the encoder start - a frame before that is one nobody
+   * can read.
+   */
+  async toggleDiscordCamera(accountId: string): Promise<void> {
+    if (this.state.discordCamera) {
+      this.stopDiscordCamera(accountId)
+      return
+    }
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+        audio: false
+      })
+    } catch (e) {
+      this.toast('error', `Couldn't turn the camera on: ${(e as Error).message}`)
+      return
+    }
+    // Discord's own client sends a camera at 720p30 whatever the account.
+    const settings = encodeSettings(stream.getVideoTracks()[0]?.getSettings() ?? {}, DEFAULT_QUALITY)
+    const giveUp = (message: string): void => {
+      for (const track of stream.getTracks()) track.stop()
+      this.toast('error', message)
+      void window.moho.rpc('setDiscordCamera', { accountId, on: false }).catch(() => {})
+    }
+    try {
+      await window.moho.rpc('setDiscordCamera', { accountId, on: true, ...settings })
+      let ready = false
+      for (let i = 0; i < 50 && !ready; i++) {
+        ready = await window.moho
+          .rpc<{ ready: boolean }>('discordCameraReady', { accountId })
+          .then((r) => r.ready)
+          .catch(() => false)
+        if (!ready) await new Promise((r) => setTimeout(r, 200))
+      }
+      if (!ready) {
+        giveUp("Couldn't turn the camera on: the call's encryption never got ready")
+        return
+      }
+      this.discordCameraSend = await sendCamera(accountId, stream, settings, (message) => {
+        this.discordCameraSend = null
+        this.set({ discordCamera: null })
+        giveUp(message)
+      })
+      this.set({ discordCamera: stream })
+    } catch (e) {
+      giveUp(`Couldn't turn the camera on: ${(e as Error).message}`)
+    }
+  }
+
+  /** Turns the Discord camera off, if it is on. */
+  private stopDiscordCamera(accountId?: string): void {
+    const sending = this.discordCameraSend
+    this.discordCameraSend = null
+    sending?.stop()
+    const stream = this.state.discordCamera
+    if (stream) for (const track of stream.getTracks()) track.stop()
+    if (stream || sending) this.set({ discordCamera: null })
+    if (accountId) void window.moho.rpc('setDiscordCamera', { accountId, on: false }).catch(() => {})
   }
 
   /** Waits for the daemon to say the stream connection is up. */

@@ -7314,3 +7314,66 @@ video.lightbox-media {
   background: var(--surface-container-high);
   border-bottom: 1px solid var(--outline-light);
 }
+
+/* Something a call button asks before it acts, above the button. */
+.stage-popover {
+  position: fixed;
+  z-index: 1000;
+  transform: translateX(-50%);
+}
+
+/* Discord's Go Live question: how good a stream. */
+.go-live {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  width: max-content;
+  max-width: 92vw;
+  padding: var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.go-live-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.go-live-note {
+  margin: 0;
+}
+
+.segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  overflow: hidden;
+}
+
+.segmented button {
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.segmented button + button {
+  border-left: 1px solid var(--outline-medium);
+}
+
+.segmented button.active {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+
+/* Your own camera, as you would see yourself in a mirror. */
+.stage-picture.mirrored {
+  transform: scaleX(-1);
+}

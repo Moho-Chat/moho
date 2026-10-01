@@ -779,9 +779,9 @@ export function Composer(): JSX.Element | null {
 
         {/* Its own button beside the emoji one, because it is its own
             gesture: an emoji goes into the line being written and a sticker
-            is the message. Only where the service has them - which today is
-            Matrix, and where a pack is what supplies them. */}
-        {service === 'matrix' && (
+            is the message. Only where the service has them: Matrix, where a
+            pack supplies them, and Discord, where each guild has its own. */}
+        {(service === 'matrix' || service === 'discord') && (
           <button
             ref={stickerButtonRef}
             type="button"
@@ -796,7 +796,9 @@ export function Composer(): JSX.Element | null {
               // images are cached by the time they are drawn twice.
               if (opening) {
                 void window.moho
-                  .rpc<StickerEntry[]>('listMatrixStickers', { bufferId: buffer.id })
+                  .rpc<StickerEntry[]>(service === 'discord' ? 'listDiscordStickers' : 'listMatrixStickers', {
+                    bufferId: buffer.id
+                  })
                   .then(setStickers)
                   .catch(() => setStickers([]))
               }
@@ -873,8 +875,10 @@ export function Composer(): JSX.Element | null {
           accountId={account?.id}
           onSticker={(sticker) => {
             setStickerPicker(false)
-            void window.moho
-              .rpc('sendMatrixSticker', { bufferId: buffer.id, mxc: sticker.mxc, body: sticker.body })
+            const sent = sticker.id
+              ? window.moho.rpc('sendDiscordSticker', { bufferId: buffer.id, stickerId: sticker.id })
+              : window.moho.rpc('sendMatrixSticker', { bufferId: buffer.id, mxc: sticker.mxc, body: sticker.body })
+            void sent
               .catch((e: Error) => store.toast('error', e.message))
           }}
           onSelect={() => setStickerPicker(false)}
