@@ -440,10 +440,10 @@ function MessageRowBody({
         ] as MenuEntry[])
       : []),
     { label: 'Reply', icon: 'reply', onClick: () => reply() },
-    // Sending somebody else's message on. Native where the service has one -
-    // Discord's forward carries the original itself, pictures and all - and a
-    // quoted copy where it does not.
-    ...(!isSystem && message.id
+    // Sending somebody else's message on. Only where the service has a forward
+    // of its own: Discord's carries the original itself, pictures and all.
+    // Anywhere else it would be a copy posted as you, which is not a forward.
+    ...(service === 'discord' && !isSystem && message.id
       ? ([{ label: 'Forward…', icon: 'forward', onClick: () => setForwarding(true) }] as MenuEntry[])
       : []),
     // Never hearing from them again. What that costs differs by service and
