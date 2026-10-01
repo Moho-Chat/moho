@@ -2890,6 +2890,12 @@ img.smilie {
   gap: 2px;
 }
 
+/* Stickers are bigger than emoji, so their columns are too. Chosen by what
+   the grid holds rather than by a prop, so every caller gets it. */
+.emoji-grid:has(> .sticker-cell) {
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+}
+
 /* Holds a section's full height while only the rows near the viewport are
    built inside it, so the sections below keep their place and the scrollbar
    does not twitch as rows come and go. The grid it wraps is shifted down to
@@ -3877,6 +3883,9 @@ img.smilie {
 .emoji-cell.sticker-cell img {
   width: 100%;
   height: 100%;
+  /* An emoji's cap would draw a sticker at emoji size in a sticker's cell. */
+  max-width: none;
+  max-height: none;
   object-fit: contain;
 }
 
@@ -7346,8 +7355,14 @@ video.lightbox-media {
   margin: 0;
 }
 
+.go-live > .button.primary {
+  justify-content: center;
+  text-align: center;
+}
+
 .segmented {
   display: inline-flex;
+  align-self: flex-start;
   flex-wrap: wrap;
   border: 1px solid var(--outline-medium);
   border-radius: var(--corner-radius-small);

@@ -538,13 +538,17 @@ export interface ChatState {
   discordModal: DiscordModal | null
   /** The screens and windows on offer, while somebody is choosing one. */
   screenSources: { id: string; name: string; thumbnail: string }[] | null
-  /** Whether this window is sharing a screen into a Discord call. */
-  discordSharing: boolean
+  /**
+   * Which account this window is sharing a screen from into a Discord call,
+   * if any. An account rather than a flag: one window can be in two
+   * accounts' calls, and only one of them is sharing.
+   */
+  discordSharing: string | null
   /**
    * This end's camera in a Discord call, while it is on: the capture, so the
    * call can show you what everybody else sees.
    */
-  discordCamera: MediaStream | null
+  discordCamera: { accountId: string; stream: MediaStream } | null
   /**
    * Who is streaming right now, by Discord user id, and the key their stream
    * is named by.
@@ -672,7 +676,7 @@ const INITIAL: ChatState = {
   screenSources: null,
   discordModal: null,
   activeCall: null,
-  discordSharing: false,
+  discordSharing: null,
   discordCamera: null,
   discordStreams: {},
   discordCameras: {},
@@ -937,6 +941,8 @@ export class ChatStore {
    * `discordSharing` beside it.
    */
   private discordShare: { stop: () => void; stream: MediaStream } | null = null
+  /** The conversation the share was started against, which is what stops it. */
+  private discordShareBuffer: string | null = null
   /** The Discord camera's encoder, held for the same reason. */
   private discordCameraSend: { stop: () => void; stream: MediaStream } | null = null
   /**
@@ -1775,11 +1781,11 @@ export class ChatStore {
     // What this end was sending goes with it. Left running, the camera light
     // would stay on and the encoder would go on handing frames to a call
     // that has ended.
-    this.stopDiscordCamera()
-    if (this.discordShare) {
+    if (this.state.discordCamera?.accountId === accountId) this.stopDiscordCamera(accountId)
+    if (this.discordShare && this.state.discordSharing === accountId) {
       this.discordShare.stop()
       this.discordShare = null
-      this.set({ discordSharing: false })
+      this.set({ discordSharing: null })
     }
     try {
       await window.moho.rpc('leaveVoiceChannel', { accountId })
@@ -2559,12 +2565,16 @@ export class ChatStore {
    */
   async toggleDiscordScreenShare(accountId: string, bufferId: string, quality: VideoQuality = DEFAULT_QUALITY): Promise<void> {
     if (this.discordShare) {
+      const was = this.state.discordSharing
       this.discordShare.stop()
       this.discordShare = null
-      this.set({ discordSharing: false })
-      await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
-      return
+      this.set({ discordSharing: null })
+      await window.moho.rpc('stopDiscordScreenShare', { bufferId: this.discordShareBuffer ?? bufferId }).catch(() => {})
+      // One screen, one stream: pressing share in another account's call
+      // moves it there rather than only stopping it.
+      if (was === accountId) return
     }
+    this.discordShareBuffer = bufferId
 
     try {
       // The screen first, then Discord. The person chooses while the click
@@ -2600,10 +2610,10 @@ export class ChatStore {
       this.discordShare = await shareScreen(accountId, stream, settings, (message) => {
         this.toast('error', message)
         this.discordShare = null
-        this.set({ discordSharing: false })
+        this.set({ discordSharing: null })
         void window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
       })
-      this.set({ discordSharing: true })
+      this.set({ discordSharing: accountId })
     } catch (e) {
       this.toast('error', `Couldn't share the screen: ${(e as Error).message}`)
       await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
@@ -2620,9 +2630,12 @@ export class ChatStore {
    * can read.
    */
   async toggleDiscordCamera(accountId: string): Promise<void> {
-    if (this.state.discordCamera) {
-      this.stopDiscordCamera(accountId)
-      return
+    const current = this.state.discordCamera
+    if (current) {
+      this.stopDiscordCamera(current.accountId)
+      // One camera, one call: pressing it in a second account's call moves
+      // it there rather than only turning it off.
+      if (current.accountId === accountId) return
     }
     let stream: MediaStream
     try {
@@ -2660,7 +2673,7 @@ export class ChatStore {
         this.set({ discordCamera: null })
         giveUp(message)
       })
-      this.set({ discordCamera: stream })
+      this.set({ discordCamera: { accountId, stream } })
     } catch (e) {
       giveUp(`Couldn't turn the camera on: ${(e as Error).message}`)
     }
@@ -2671,10 +2684,11 @@ export class ChatStore {
     const sending = this.discordCameraSend
     this.discordCameraSend = null
     sending?.stop()
-    const stream = this.state.discordCamera
-    if (stream) for (const track of stream.getTracks()) track.stop()
-    if (stream || sending) this.set({ discordCamera: null })
-    if (accountId) void window.moho.rpc('setDiscordCamera', { accountId, on: false }).catch(() => {})
+    const camera = this.state.discordCamera
+    if (camera) for (const track of camera.stream.getTracks()) track.stop()
+    if (camera || sending) this.set({ discordCamera: null })
+    const whose = accountId ?? camera?.accountId
+    if (whose) void window.moho.rpc('setDiscordCamera', { accountId: whose, on: false }).catch(() => {})
   }
 
   /** Waits for the daemon to say the stream connection is up. */

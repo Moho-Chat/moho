@@ -77,8 +77,10 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
   const store = useStore()
   const buffers = useChat((s) => s.buffers)
   const cameras = useChat((s) => s.discordCameras)
-  const sharing = useChat((s) => s.discordSharing)
-  const ownCamera = useChat((s) => s.discordCamera)
+  const sharing = useChat((s) => s.discordSharing) === session.accountId
+  const myCamera = useChat((s) => s.discordCamera)
+  // Only this call's account: one window can be in two accounts' calls.
+  const ownCamera = myCamera?.accountId === session.accountId ? myCamera.stream : null
   const [choosing, setChoosing] = useState(false)
   const watching = useChat((s) => s.discordWatching)
   const voicePrefs = useChat((s) => s.voicePrefs)
@@ -176,6 +178,13 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
     }
   }
 
+  // From this call's own account. The window can be in two accounts' calls,
+  // and asking the store for "the" Discord call picks whichever came first.
+  const share = (quality?: VideoQuality): Promise<void> =>
+    session.bufferId
+      ? store.toggleDiscordScreenShare(accountId, session.bufferId, quality)
+      : store.toggleScreenShare(quality)
+
   const buttons: StageButton[] = [
     {
       icon: voicePrefs.micMuted ? 'mic_off' : 'mic',
@@ -201,14 +210,14 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
       active: sharing,
       // Stopping needs no questions; starting asks how good a stream, the
       // way Discord's own client does, beside the button that asked.
-      onClick: () => (sharing ? void store.toggleScreenShare() : setChoosing(!choosing)),
+      onClick: () => (sharing ? void share() : setChoosing(!choosing)),
       popover:
         choosing && !sharing ? (
           <GoLiveChooser
             accountId={accountId}
             onStart={(quality) => {
               setChoosing(false)
-              void store.toggleScreenShare(quality)
+              void share(quality)
             }}
             onClose={() => setChoosing(false)}
           />
