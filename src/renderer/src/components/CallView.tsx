@@ -223,9 +223,7 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
   // From this call's own account. The window can be in two accounts' calls,
   // and asking the store for "the" Discord call picks whichever came first.
   const share = (quality?: VideoQuality): Promise<void> =>
-    session.bufferId
-      ? store.toggleDiscordScreenShare(accountId, session.bufferId, quality)
-      : store.toggleScreenShare(quality)
+    store.toggleDiscordScreenShare(accountId, session.bufferId, quality)
 
   const buttons: StageButton[] = [
     {

@@ -944,8 +944,8 @@ export class ChatStore {
    * `discordSharing` beside it.
    */
   private discordShare: { stop: () => void; stream: MediaStream } | null = null
-  /** The conversation the share was started against, which is what stops it. */
-  private discordShareBuffer: string | null = null
+  /** Where the share was started, which is what stops it. */
+  private discordShareWhere: { bufferId: string } | { accountId: string } | null = null
   /** The Discord camera's encoder, held for the same reason. */
   private discordCameraSend: { stop: () => void; stream: MediaStream } | null = null
   /**
@@ -2568,13 +2568,10 @@ export class ChatStore {
     // its audio lives in the daemon - so it is answered first and on its own
     // terms. The gesture and the button are the same either way, which is
     // the whole point of asking here rather than in two places.
-    // A conversation is needed as well as a session: the stream is asked for
-    // against a channel, and a call whose buffer this window has never opened
-    // has nothing to ask against.
-    const discord = this.state.voiceSessions.find(
-      (s) => s.accountId.startsWith('discord:') && !!s.bufferId
-    )
-    if (discord?.bufferId && !this.state.activeCall) {
+    // A DM's call has a conversation and a guild's voice channel does not;
+    // either can be shared into, named by its account where there is none.
+    const discord = this.state.voiceSessions.find((s) => s.accountId.startsWith('discord:'))
+    if (discord && !this.state.activeCall) {
       await this.toggleDiscordScreenShare(discord.accountId, discord.bufferId, quality)
       return
     }
@@ -2626,18 +2623,25 @@ export class ChatStore {
    * draw from the other side, where the browser holds the whole call because
    * WebRTC is the browser's.
    */
-  async toggleDiscordScreenShare(accountId: string, bufferId: string, quality: VideoQuality = DEFAULT_QUALITY): Promise<void> {
+  async toggleDiscordScreenShare(
+    accountId: string,
+    bufferId: string | undefined,
+    quality: VideoQuality = DEFAULT_QUALITY
+  ): Promise<void> {
+    // A DM's call is named by its conversation; a guild's voice channel has
+    // none, and is named by the account in it.
+    const where = bufferId ? { bufferId } : { accountId }
     if (this.discordShare) {
       const was = this.state.discordSharing
       this.discordShare.stop()
       this.discordShare = null
       this.set({ discordSharing: null, discordShareStream: null })
-      await window.moho.rpc('stopDiscordScreenShare', { bufferId: this.discordShareBuffer ?? bufferId }).catch(() => {})
+      await window.moho.rpc('stopDiscordScreenShare', this.discordShareWhere ?? where).catch(() => {})
       // One screen, one stream: pressing share in another account's call
       // moves it there rather than only stopping it.
       if (was === accountId) return
     }
-    this.discordShareBuffer = bufferId
+    this.discordShareWhere = where
 
     try {
       // The screen first, then Discord. The person chooses while the click
@@ -2651,7 +2655,7 @@ export class ChatStore {
       // follows the screen's own shape, and the daemon tells viewers exactly
       // what the encoder below will send.
       const settings = encodeSettings(stream.getVideoTracks()[0]?.getSettings() ?? {}, quality)
-      await window.moho.rpc('startDiscordScreenShare', { bufferId, ...settings })
+      await window.moho.rpc('startDiscordScreenShare', { ...where, ...settings })
       this.toast('info', 'Setting up the stream…')
 
       // The connection is opened by the daemon when Discord answers, which
@@ -2664,7 +2668,7 @@ export class ChatStore {
         // opened the stream" is true and useless; a token it would not take
         // or a server it could not find is a sentence somebody can act on.
         this.toast('error', ready.error ? `Couldn’t open the stream: ${ready.error}` : 'Discord never opened the stream')
-        await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
+        await window.moho.rpc('stopDiscordScreenShare', where).catch(() => {})
         // A capture already open has nobody to send it to.
         for (const track of stream.getTracks()) track.stop()
         return
@@ -2674,12 +2678,12 @@ export class ChatStore {
         this.toast('error', message)
         this.discordShare = null
         this.set({ discordSharing: null, discordShareStream: null })
-        void window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
+        void window.moho.rpc('stopDiscordScreenShare', where).catch(() => {})
       })
       this.set({ discordSharing: accountId, discordShareStream: stream })
     } catch (e) {
       this.toast('error', `Couldn't share the screen: ${(e as Error).message}`)
-      await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
+      await window.moho.rpc('stopDiscordScreenShare', where).catch(() => {})
     }
   }
 
