@@ -929,6 +929,7 @@ function MessageRowBody({
                   from={message.from}
                   onOpenInDiscord={(b, m) => void store.openInDiscord(b, m)}
                   onRefresh={(b, m) => store.refreshAttachments(b, m)}
+                  onStale={(b, m) => store.resignWhenIdle(b, m)}
                 />
               ))}
               {/* Links someone typed, unfurled from the body. Still needed

@@ -3621,6 +3621,33 @@ export class ChatStore {
     await window.moho.rpc('refreshDiscordAttachments', { bufferId, messageId })
   }
 
+  /** Lapsed Discord links waiting to be asked about, by conversation. */
+  private staleLinks = new Map<string, Set<string>>()
+  private staleTimer: ReturnType<typeof setTimeout> | null = null
+
+  /**
+   * Asks for fresh links for a message whose pictures have lapsed, gathered
+   * for a moment first: a screenful of old videos names fifty messages at
+   * once, and fifty requests where one batch would do is how a rate limit is
+   * met. The daemon re-signs them a page at a time and broadcasts each.
+   */
+  resignWhenIdle(bufferId: string, messageId: string): void {
+    const ids = this.staleLinks.get(bufferId) ?? new Set<string>()
+    ids.add(messageId)
+    this.staleLinks.set(bufferId, ids)
+    if (this.staleTimer) return
+    this.staleTimer = setTimeout(() => {
+      this.staleTimer = null
+      const batches = [...this.staleLinks.entries()]
+      this.staleLinks.clear()
+      for (const [buffer, messageIds] of batches) {
+        void window.moho
+          .rpc('resignDiscordAttachments', { bufferId: buffer, messageIds: [...messageIds] })
+          .catch(() => {})
+      }
+    }, 300)
+  }
+
   /**
    * Opens the real Discord message in a browser - the last resort when even
    * a refresh cannot produce a working link.
