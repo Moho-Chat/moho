@@ -1493,6 +1493,11 @@ function MatrixForm(): JSX.Element {
   const [flows, setFlows] = useState<string[] | null>(null)
   /** Whether this homeserver's accounts live with an OAuth provider. */
   const [delegated, setDelegated] = useState(false)
+  /** Whether the homeserver keeps QR sign-in mailboxes (MSC4108). */
+  const [qrOffered, setQrOffered] = useState(false)
+  /** A QR sign-in under way: the code to show, and whether it now wants digits. */
+  const [qr, setQr] = useState<{ loginId: string; path: string; wantsDigits: boolean } | null>(null)
+  const [digits, setDigits] = useState('')
   // What it takes to make an account here, which is a different question
   // again: a homeserver can be perfectly happy to sign people in and take no
   // new accounts at all, and a private one takes them only from somebody
@@ -1531,8 +1536,11 @@ function MatrixForm(): JSX.Element {
       // say what the homeserver itself accepts, and this says whether it has
       // handed its accounts to somebody else entirely.
       void window.moho
-        .rpc<{ delegated: boolean }>('matrixAuthMetadata', { useTor, homeserverUrl: url })
-        .then((a) => setDelegated(!!a.delegated))
+        .rpc<{ delegated: boolean; qr?: boolean }>('matrixAuthMetadata', { useTor, homeserverUrl: url })
+        .then((a) => {
+          setDelegated(!!a.delegated)
+          setQrOffered(!!a.qr)
+        })
         .catch(() => setDelegated(false))
       void window.moho
         .rpc<{ open: boolean; needsToken: boolean; wants: string[] }>('matrixRegistrationFlows', { useTor,
@@ -1555,7 +1563,19 @@ function MatrixForm(): JSX.Element {
         const d = e.data as { userCode?: string; verificationUri?: string }
         if (d.userCode) setDeviceCode({ userCode: d.userCode, uri: d.verificationUri || '' })
       }
-      if (e.event === 'matrixLoginResult') setDeviceCode(null)
+      if (e.event === 'matrixQrCode') {
+        const d = e.data as { loginId: string; qrPath: string }
+        setQr({ loginId: d.loginId, path: d.qrPath, wantsDigits: false })
+        setDigits('')
+      }
+      if (e.event === 'matrixQrCheckCode') {
+        const d = e.data as { loginId: string }
+        setQr((q) => (q && q.loginId === d.loginId ? { ...q, wantsDigits: true } : q))
+      }
+      if (e.event === 'matrixLoginResult') {
+        setDeviceCode(null)
+        setQr(null)
+      }
     })
     return off
   }, [])
@@ -1665,6 +1685,52 @@ function MatrixForm(): JSX.Element {
         </div>
       )}
 
+      {/* While a QR sign-in is under way. The code is for the phone to
+          read; after it has, the phone shows two digits, and typing them here
+          is what proves the phone and this screen are talking to each other
+          rather than to somebody who copied the code. */}
+      {qr && (
+        <div className="device-code">
+          {!qr.wantsDigits ? (
+            <>
+              <p className="small">
+                On your phone, open Element X and go to Settings → Link new device → Desktop
+                computer, then scan this code.
+              </p>
+              <img className="qr-image" src={resolveMediaUrl(qr.path)} alt="Matrix sign-in QR code" />
+            </>
+          ) : (
+            <>
+              <p className="small">Your phone now shows two digits. Enter them here.</p>
+              <div className="field-row">
+                <input
+                  id="matrix-qr-digits"
+                  className="text-field qr-digits"
+                  inputMode="numeric"
+                  maxLength={2}
+                  autoFocus
+                  value={digits}
+                  onChange={(e) => setDigits(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                />
+                <button
+                  type="button"
+                  className="button"
+                  disabled={digits.length !== 2}
+                  onClick={() =>
+                    void window.moho
+                      .rpc('confirmMatrixQrCode', { loginId: qr.loginId, code: Number(digits) })
+                      .then(() => setQr((q) => (q ? { ...q, wantsDigits: false, path: '' } : q)))
+                      .catch((e: Error) => store.toast('error', e.message))
+                  }
+                >
+                  Confirm
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="field-row">
         <button
           type="button"
@@ -1710,6 +1776,25 @@ function MatrixForm(): JSX.Element {
           }
         >
           Sign in with a code
+        </button>
+        {/* Offered only where the homeserver says it keeps the mailboxes this
+            needs. moho shows the code; a phone that is already signed in
+            scans it, approves, and hands over the account's keys - so the
+            new session starts verified, with its history readable. */}
+        <button
+          type="button"
+          className="button subtle"
+          hidden={!delegated || !qrOffered}
+          disabled={!homeserverUrl || asking || !!qr}
+          title="Scan a code with Element X on your phone instead of typing a password"
+          onClick={() =>
+            void window.moho
+              .rpc('addMatrixAccountQr', { useTor, homeserverUrl })
+              .then(() => store.setMatrixLoginStatus('Making a code…'))
+              .catch((e: Error) => store.toast('error', e.message))
+          }
+        >
+          Sign in with a QR code
         </button>
         <button
           type="button"
