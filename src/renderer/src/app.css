@@ -8101,3 +8101,74 @@ video.lightbox-media {
   color: var(--on-surface, inherit);
   font: inherit;
 }
+
+/* An event on right now, at the top of its guild's channel list. */
+.live-event {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px var(--spacing-xs) 8px;
+  padding: 10px 12px 12px;
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+}
+
+.live-event-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.live-event-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3ba55d;
+}
+
+.live-event-label {
+  color: #3ba55d;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.live-event-name {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--on-surface, inherit);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.live-event-where {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.live-event-join {
+  margin-top: 6px;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--corner-radius-small);
+  background: #248046;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.live-event-join:hover:not(:disabled) {
+  background: #1a6334;
+}
+
+.live-event-join:disabled {
+  background: var(--surface-container-highest);
+  color: var(--on-surface-variant, inherit);
+  cursor: default;
+}

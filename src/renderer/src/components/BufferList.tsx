@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Icon, MaskIcon } from './Icon'
+import { Icon, IconButton, MaskIcon } from './Icon'
 import { ContextMenu, useContextMenu } from './ContextMenu'
 import { bufferMenuEntries } from '../lib/buffermenu'
 import { UserFooter } from './UserFooter'
@@ -268,6 +268,11 @@ export function BufferList(): JSX.Element {
       : null
   const eventCounts = useChat((s) => s.discordEventCounts)
   const eventCount = eventGuild ? (eventCounts[`${eventGuild.accountId}|${eventGuild.guildId}`] ?? 0) : 0
+  const liveEvents = useChat((s) => s.discordLiveEvents)
+  const dismissedLive = useChat((s) => s.dismissedLiveEvents)
+  const live = eventGuild
+    ? (liveEvents[`${eventGuild.accountId}|${eventGuild.guildId}`] ?? []).filter((e) => !dismissedLive.includes(e.id))
+    : []
   useEffect(() => {
     if (eventGuild?.guildId) void store.refreshEventCount(eventGuild.accountId, eventGuild.guildId)
   }, [store, eventGuild?.accountId, eventGuild?.guildId])
@@ -437,6 +442,52 @@ export function BufferList(): JSX.Element {
                   something. */}
               {activeGroup.accountId && groupAccount && <ConnectionDot state={groupAccount.state} />}
             </div>
+
+            {/* What is on right now, above everything, as Discord shows it:
+                its name, where, and the way in. */}
+            {eventGuild &&
+              live.map((event) => {
+                const here =
+                  !!event.channelId &&
+                  voiceSessions.some((v) => v.accountId === eventGuild.accountId && v.channelId === event.channelId)
+                const link = event.where === 'external' && /^https?:\/\//.test(event.location ?? '') ? event.location! : null
+                return (
+                  <div key={event.id} className="live-event">
+                    <div className="live-event-head">
+                      <span className="live-event-dot" />
+                      <span className="live-event-label">Live Now</span>
+                      <span className="events-pane-spacer" />
+                      <IconButton name="close" size={16} title="Hide this" onClick={() => store.dismissLiveEvent(event.id)} />
+                    </div>
+                    <button
+                      type="button"
+                      className="live-event-name ellipsis"
+                      title="See the event"
+                      onClick={() => store.openEvents(eventGuild.accountId, eventGuild.guildId)}
+                    >
+                      {event.name}
+                    </button>
+                    <div className="live-event-where small muted">
+                      <Icon name={event.where === 'stage' ? 'podium' : event.where === 'voice' ? 'volume_up' : 'location_on'} size={15} />
+                      <span className="ellipsis">{event.where === 'external' ? event.location : event.channelName ?? 'A channel'}</span>
+                    </div>
+                    {event.channelId ? (
+                      <button
+                        type="button"
+                        className="live-event-join"
+                        disabled={here}
+                        onClick={() => void store.joinVoice(eventGuild.accountId, eventGuild.guildId, event.channelId!)}
+                      >
+                        {here ? 'Joined' : 'Join'}
+                      </button>
+                    ) : link ? (
+                      <button type="button" className="live-event-join" onClick={() => void window.moho.openExternal(link)}>
+                        Open
+                      </button>
+                    ) : null}
+                  </div>
+                )
+              })}
 
             {/* A Discord guild's events, at the top of its list as Discord
                 puts them - and only when there are some: a row reading

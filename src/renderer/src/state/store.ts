@@ -46,6 +46,16 @@ import type { PopoutState } from '../../../shared/ipc'
  */
 
 /** A wire Buffer plus the local-only counters nobilis doesn't track. */
+/** An event on right now, as the top of a guild's channel list shows it. */
+export interface LiveDiscordEvent {
+  id: string
+  name: string
+  where: 'voice' | 'stage' | 'external'
+  channelId?: string | null
+  channelName?: string | null
+  location?: string | null
+}
+
 export interface BufferEntry extends WireBuffer {
   unread: number
   highlight: boolean
@@ -543,6 +553,10 @@ export interface ChatState {
    * `accountId|guildId`. Absent or none means no events row in its list.
    */
   discordEventCounts: Record<string, number>
+  /** The events on right now, by `accountId|guildId`: a card each at the top of its list. */
+  discordLiveEvents: Record<string, LiveDiscordEvent[]>
+  /** Live-event cards closed with their ×, for as long as this window is open. */
+  dismissedLiveEvents: string[]
   /** The events pane, while open: whose guild. */
   eventsPane: { accountId: string; guildId: string } | null
   /** The create-an-event panel, while open. */
@@ -690,6 +704,8 @@ const INITIAL: ChatState = {
   screenSources: null,
   discordModal: null,
   discordEventCounts: {},
+  discordLiveEvents: {},
+  dismissedLiveEvents: [],
   eventsPane: null,
   eventCreate: null,
   activeCall: null,
@@ -1400,11 +1416,27 @@ export class ChatStore {
   /** Asks how many events a guild has, for the row at the top of its list. */
   async refreshEventCount(accountId: string, guildId: string): Promise<void> {
     try {
-      const { count } = await window.moho.rpc<{ count: number }>('discordEventCount', { accountId, guildId })
-      this.set({ discordEventCounts: { ...this.state.discordEventCounts, [`${accountId}|${guildId}`]: count } })
+      const { count, live } = await window.moho.rpc<{ count: number; live?: LiveDiscordEvent[] }>('discordEventCount', {
+        accountId,
+        guildId
+      })
+      this.noteEvents(accountId, guildId, count, live ?? [])
     } catch {
       /* an older daemon has no events; no row is the right answer */
     }
+  }
+
+  private noteEvents(accountId: string, guildId: string, count: number, live: LiveDiscordEvent[]): void {
+    const key = `${accountId}|${guildId}`
+    this.set({
+      discordEventCounts: { ...this.state.discordEventCounts, [key]: count },
+      discordLiveEvents: { ...this.state.discordLiveEvents, [key]: live }
+    })
+  }
+
+  /** Puts a live event's card away, until the window is next opened. */
+  dismissLiveEvent(eventId: string): void {
+    this.set({ dismissedLiveEvents: [...this.state.dismissedLiveEvents, eventId] })
   }
 
   openEvents(accountId: string, guildId: string): void {
@@ -2920,8 +2952,8 @@ export class ChatStore {
       // A bot answering a slash command with a form to fill in.
       // A guild's calendar changed: the count for its events row.
       case 'discordEvents': {
-        const d = data as unknown as { accountId: string; guildId: string; count: number }
-        this.set({ discordEventCounts: { ...this.state.discordEventCounts, [`${d.accountId}|${d.guildId}`]: d.count } })
+        const d = data as unknown as { accountId: string; guildId: string; count: number; live?: LiveDiscordEvent[] }
+        this.noteEvents(d.accountId, d.guildId, d.count, d.live ?? [])
         break
       }
 
