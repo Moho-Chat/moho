@@ -15,8 +15,9 @@ import { bufferDisplayName } from '../lib/util'
  * Ordered by what was said in recently, since a message being forwarded is
  * usually going somewhere the person has just been.
  *
- * Only the conversations of the account the message came from: Discord's
- * forward is the one moho offers, and it does not cross accounts.
+ * Only where the forward can land. Discord's does not leave the account it
+ * was made on; Matrix's is the content sent again, and goes to any Matrix
+ * room on any account here.
  */
 export function ForwardPicker({
   bufferId,
@@ -47,7 +48,7 @@ export function ForwardPicker({
   const choices = useMemo(() => {
     const q = query.trim().toLowerCase()
     return buffers
-      .filter((b) => b.id !== bufferId && b.kind !== 'server' && b.accountId === source?.accountId)
+      .filter((b) => b.id !== bufferId && b.kind !== 'server' && reaches(source?.accountId, b.accountId))
       .filter((b) => !q || bufferDisplayName(b.name).toLowerCase().includes(q))
       .sort((a, b) => (b.lastActivityTs ?? 0) - (a.lastActivityTs ?? 0))
       .slice(0, 60)
@@ -109,4 +110,10 @@ export function ForwardPicker({
     </div>,
     document.body
   )
+}
+
+function reaches(from: string | undefined, to: string): boolean {
+  if (!from) return false
+  if (from.startsWith('matrix:')) return to.startsWith('matrix:')
+  return from === to && from.startsWith('discord:')
 }
