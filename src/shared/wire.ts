@@ -198,6 +198,10 @@ export interface VoicePrefs {
   outputVolume?: number
   /** People turned up or down, by Discord user id. Absent is 1. */
   userVolumes?: Record<string, number>
+  /** Echo cancellation on a Discord call's microphone. Absent is on. */
+  echoCancellation?: boolean
+  /** Noise suppression on it. Absent is on. */
+  noiseSuppression?: boolean
 }
 
 /** Someone sitting in a voice channel. */

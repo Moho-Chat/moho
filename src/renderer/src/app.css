@@ -7604,3 +7604,86 @@ video.lightbox-media {
   min-width: 0;
   font-weight: 600;
 }
+
+/* A small panel above a call button: the call's volume, the soundboard. */
+.stage-panel {
+  padding: var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.call-volume-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.call-volume-panel input {
+  width: 180px;
+  accent-color: var(--primary);
+}
+
+.call-volume-value {
+  min-width: 3.5em;
+  text-align: right;
+}
+
+.soundboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  width: min(380px, 90vw);
+}
+
+.soundboard .emoji-search {
+  margin: 0;
+}
+
+.soundboard-list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.soundboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 6px;
+}
+
+.soundboard-sound {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-highest);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.soundboard-sound:hover:not(:disabled) {
+  background: var(--primary-hover-light, var(--surface-container-highest));
+  outline: 1px solid var(--primary);
+}
+
+.soundboard-sound:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.soundboard-sound img {
+  width: 18px;
+  height: 18px;
+}
+
+.soundboard-emoji {
+  font-size: 16px;
+  line-height: 1;
+}

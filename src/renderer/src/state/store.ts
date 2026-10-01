@@ -1382,6 +1382,15 @@ export class ChatStore {
     }, 150)
   }
 
+  /** Echo cancellation and noise suppression on a Discord call's microphone. */
+  async setVoiceProcessing(change: { echoCancellation?: boolean; noiseSuppression?: boolean }): Promise<void> {
+    try {
+      this.set({ voicePrefs: await window.moho.rpc<VoicePrefs>('setVoiceProcessing', change) })
+    } catch (e) {
+      this.toast('error', `Couldn't change that: ${(e as Error).message}`)
+    }
+  }
+
   /** On a stage: asks to speak, or takes the request back. */
   async setStageHand(accountId: string, guildId: string, channelId: string, on: boolean): Promise<void> {
     try {

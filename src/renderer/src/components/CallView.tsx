@@ -82,6 +82,8 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
   // Only this call's account: one window can be in two accounts' calls.
   const ownCamera = myCamera?.accountId === session.accountId ? myCamera.stream : null
   const [choosing, setChoosing] = useState(false)
+  /** Which of the stage's two small panels is open: the call's volume, or the soundboard. */
+  const [panel, setPanel] = useState<'volume' | 'soundboard' | null>(null)
   const shareStream = useChat((s) => s.discordShareStream)
   const watching = useChat((s) => s.discordWatching)
   const voicePrefs = useChat((s) => s.voicePrefs)
@@ -263,6 +265,51 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
           />
         ) : null
     },
+    // The whole call's loudness, on the call rather than in Settings: it is
+    // changed while listening, by somebody who should not have to leave the
+    // call to do it.
+    {
+      icon: (voicePrefs.outputVolume ?? 1) === 0 ? 'volume_off' : (voicePrefs.outputVolume ?? 1) < 1 ? 'volume_down' : 'volume_up',
+      label: 'Call volume',
+      active: panel === 'volume',
+      onClick: () => setPanel(panel === 'volume' ? null : 'volume'),
+      popover:
+        panel === 'volume' ? (
+          <StagePanel onClose={() => setPanel(null)} label="Call volume">
+            <div className="call-volume-panel">
+              <span className="small muted">Call volume</span>
+              <input
+                type="range"
+                min={0}
+                max={200}
+                step={5}
+                value={Math.round((voicePrefs.outputVolume ?? 1) * 100)}
+                aria-label="Call volume"
+                onChange={(e) => store.setVoiceVolume(Number(e.target.value) / 100)}
+              />
+              <span className="call-volume-value">{Math.round((voicePrefs.outputVolume ?? 1) * 100)}%</span>
+            </div>
+          </StagePanel>
+        ) : null
+    },
+    // Sounds anybody in a guild's voice channel can set off. Not in a one-to-
+    // one call, which Discord gives no soundboard.
+    ...(session.guildId
+      ? [
+          {
+            icon: 'graphic_eq',
+            label: 'Soundboard',
+            active: panel === 'soundboard',
+            onClick: () => setPanel(panel === 'soundboard' ? null : 'soundboard'),
+            popover:
+              panel === 'soundboard' ? (
+                <StagePanel onClose={() => setPanel(null)} label="Soundboard">
+                  <Soundboard accountId={accountId} />
+                </StagePanel>
+              ) : null
+          }
+        ]
+      : []),
     // A stage's own two controls. In the audience: put a hand up, and once
     // it is up - yours, or a moderator inviting you - step onto the stage.
     // On the stage: step back down. Discord refuses a step up nobody allowed,
@@ -442,4 +489,113 @@ function GoLiveChooser({
 function volumeBadge(volume: number | undefined): string | undefined {
   if (volume === undefined || Math.abs(volume - 1) < 0.005) return undefined
   return `${Math.round(volume * 100)}%`
+}
+
+/**
+ * A small panel above a stage button, closed by Escape or a press anywhere
+ * else - except on the stage's buttons, which open and close it themselves.
+ */
+function StagePanel({ onClose, label, children }: { onClose: () => void; label: string; children: React.ReactNode }): JSX.Element {
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose()
+    }
+    const onDown = (e: MouseEvent): void => {
+      const target = e.target as HTMLElement
+      if (box.current?.contains(target) || target.closest('.stage-button')) return
+      onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('mousedown', onDown)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('mousedown', onDown)
+    }
+  }, [onClose])
+  return (
+    <div className="stage-panel" ref={box} role="dialog" aria-label={label}>
+      {children}
+    </div>
+  )
+}
+
+interface SoundboardSound {
+  id: string
+  name: string
+  group: string
+  guildId?: string
+  emojiName?: string
+  emojiId?: string
+  locked: boolean
+}
+
+/**
+ * The soundboard: everything this account can play here, grouped as Discord
+ * groups it - this server's own, Discord's defaults, then the others, which
+ * need Nitro. Pressing one plays it to the whole channel, this end included.
+ */
+function Soundboard({ accountId }: { accountId: string }): JSX.Element {
+  const store = useStore()
+  const [sounds, setSounds] = useState<SoundboardSound[] | null>(null)
+  const [query, setQuery] = useState('')
+
+  useEffect(() => {
+    void window.moho
+      .rpc<SoundboardSound[]>('listSoundboard', { accountId })
+      .then(setSounds)
+      .catch(() => setSounds([]))
+  }, [accountId])
+
+  const q = query.trim().toLowerCase()
+  const groups = new Map<string, SoundboardSound[]>()
+  for (const s of sounds ?? []) {
+    if (q && !s.name.toLowerCase().includes(q)) continue
+    groups.set(s.group, [...(groups.get(s.group) ?? []), s])
+  }
+
+  const play = (s: SoundboardSound): void => {
+    void window.moho
+      .rpc('playSoundboard', { accountId, soundId: s.id, guildId: s.guildId })
+      .catch((e: Error) => store.toast('error', `Couldn't play ${s.name}: ${e.message}`))
+  }
+
+  return (
+    <div className="soundboard">
+      <div className="emoji-search">
+        <Icon name="search" size={16} />
+        <input autoFocus placeholder="Find a sound" value={query} onChange={(e) => setQuery(e.target.value)} />
+      </div>
+      <div className="soundboard-list">
+        {sounds === null && <p className="small muted">Loading…</p>}
+        {sounds !== null && groups.size === 0 && <p className="small muted">{q ? 'No matches.' : 'No sounds here.'}</p>}
+        {[...groups.entries()].map(([group, list]) => (
+          <div key={group}>
+            <div className="emoji-section small muted">{group}</div>
+            <div className="soundboard-grid">
+              {list.map((s) => (
+                <button
+                  key={`${group}:${s.id}`}
+                  type="button"
+                  className="soundboard-sound"
+                  disabled={s.locked}
+                  title={s.locked ? `${s.name} - needs Nitro outside its own server` : s.name}
+                  onClick={() => play(s)}
+                >
+                  {s.emojiId ? (
+                    <img src={`https://cdn.discordapp.com/emojis/${s.emojiId}.webp?size=32`} alt="" />
+                  ) : s.emojiName ? (
+                    <span className="soundboard-emoji">{s.emojiName}</span>
+                  ) : (
+                    <Icon name="music_note" size={16} />
+                  )}
+                  <span className="ellipsis">{s.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }

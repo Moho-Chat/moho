@@ -283,7 +283,7 @@ function VoiceSettings(): JSX.Element {
       description={
         none
           ? "No sound devices were found. Voice needs a running sound server; everything else works without one."
-          : 'Used for voice calls. A change takes effect on a call already in progress. Muting is on the status plaque at the foot of the channel list, where it stays reachable during one.'
+          : 'Used for voice calls. A change takes effect on a call already in progress. Muting is on the status plaque at the foot of the channel list, and the call\'s volume on the call itself, where both stay reachable during one.'
       }
     >
       <ChoiceSetting
@@ -301,30 +301,36 @@ function VoiceSettings(): JSX.Element {
         onChange={(id) => void store.setVoiceDevice('output', id)}
         disabled={none}
       />
-      {/* The whole call at once, for one that is simply too loud. One
-          person is turned up or down on their own tile in the call. */}
-      <div className="setting-row">
+      {/* What a Discord call's microphone goes through before it is sent -
+          the processing a Matrix call gets from the browser. The call's
+          volume is on the call itself, not here. */}
+      <label className="setting-row">
         <div className="setting-text">
-          <div>Call volume</div>
+          <div>Echo cancellation</div>
           <div className="small muted">
-            Everybody in a Discord call together. One person is set on their own tile, from the
-            slider that appears over it.
+            Takes what your speakers play back out of your microphone, so a call on speakers is not
+            sent back into itself. Off only makes sense with headphones.
           </div>
         </div>
-        <span className="call-volume">
-          <input
-            type="range"
-            min={0}
-            max={200}
-            step={5}
-            value={Math.round((voice.outputVolume ?? 1) * 100)}
-            aria-label="Call volume"
-            onChange={(e) => store.setVoiceVolume(Number(e.target.value) / 100)}
-            disabled={none}
-          />
-          <span className="small muted">{Math.round((voice.outputVolume ?? 1) * 100)}%</span>
-        </span>
-      </div>
+        <input
+          type="checkbox"
+          className="setting-toggle"
+          checked={voice.echoCancellation ?? true}
+          onChange={(e) => void store.setVoiceProcessing({ echoCancellation: e.target.checked })}
+        />
+      </label>
+      <label className="setting-row">
+        <div className="setting-text">
+          <div>Noise suppression</div>
+          <div className="small muted">Takes steady background noise - a fan, a hum - out of your microphone.</div>
+        </div>
+        <input
+          type="checkbox"
+          className="setting-toggle"
+          checked={voice.noiseSuppression ?? true}
+          onChange={(e) => void store.setVoiceProcessing({ noiseSuppression: e.target.checked })}
+        />
+      </label>
     </SettingsSection>
   )
 }
