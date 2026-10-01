@@ -8008,3 +8008,96 @@ video.lightbox-media {
   border-top: 1px solid var(--outline-variant, var(--outline-medium));
   background: var(--surface-container);
 }
+
+/* "Invite friends to event": over the events pane. */
+.share-event-backdrop {
+  z-index: 1600;
+}
+
+.share-event {
+  width: min(480px, 94vw);
+}
+
+.share-event-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 20px 12px;
+}
+
+.share-event-where {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.share-event-search {
+  margin: 0 20px 8px;
+}
+
+.share-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 120px;
+  max-height: 46vh;
+  padding: 0 20px 12px;
+  overflow-y: auto;
+}
+
+.share-event-section {
+  padding: 10px 0 4px;
+  font-weight: 600;
+}
+
+.share-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  border-radius: var(--corner-radius-small);
+}
+
+.share-row:hover {
+  background: var(--surface-container);
+}
+
+.share-row-name {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.share-event-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid var(--outline-variant, var(--outline-medium));
+  background: var(--surface-container);
+}
+
+.share-event-foot-title {
+  font-weight: 600;
+}
+
+.share-event-link {
+  display: flex;
+  gap: 8px;
+  padding: 4px 4px 4px 10px;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-lowest, rgba(0, 0, 0, 0.25));
+}
+
+.share-event-link input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--on-surface, inherit);
+  font: inherit;
+}

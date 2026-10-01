@@ -183,7 +183,7 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
             {
               label: 'Copy User ID',
               icon: 'badge',
-              onClick: () => void navigator.clipboard.writeText(m.userId).catch(() => {})
+              onClick: () => void window.moho.copyText(m.userId).catch(() => {})
             }
           ],
       volumeBadge: volumeBadge(voicePrefs.userVolumes?.[m.userId])

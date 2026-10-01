@@ -4,7 +4,7 @@ import { Icon, IconButton } from './Icon'
 import { Avatar } from './Avatar'
 import { ContextMenu, type MenuEntry } from './ContextMenu'
 import { useChat, useStore } from '../state/hooks'
-import type { VoiceChannel } from '../../../shared/wire'
+import type { DiscordFriend, VoiceChannel } from '../../../shared/wire'
 
 /** One scheduled event, as the daemon describes it. */
 interface DiscordEvent {
@@ -60,6 +60,8 @@ export function EventsPane(): JSX.Element | null {
   const [events, setEvents] = useState<DiscordEvent[] | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; event: DiscordEvent } | null>(null)
   const [busy, setBusy] = useState('')
+  /** The event whose share dialog is open. */
+  const [sharing, setSharing] = useState<DiscordEvent | null>(null)
 
   const load = useCallback(() => {
     if (!pane) return
@@ -88,11 +90,11 @@ export function EventsPane(): JSX.Element | null {
   useEffect(() => {
     if (!pane) return
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape' && !menu) store.closeEvents()
+      if (e.key === 'Escape' && !menu && !sharing) store.closeEvents()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [pane, menu, store])
+  }, [pane, menu, sharing, store])
 
   if (!pane) return null
 
@@ -106,8 +108,8 @@ export function EventsPane(): JSX.Element | null {
   }
 
   const copyLink = (event: DiscordEvent): void => {
-    void navigator.clipboard
-      .writeText(event.link)
+    void window.moho
+      .copyText(event.link)
       .then(() => store.toast('info', 'Link to the event copied'))
       .catch(() => store.toast('error', "Couldn't copy the link"))
   }
@@ -189,7 +191,7 @@ export function EventsPane(): JSX.Element | null {
                 >
                   <Icon name="more_horiz" size={18} />
                 </button>
-                <button type="button" className="event-button" onClick={() => copyLink(event)}>
+                <button type="button" className="event-button" onClick={() => setSharing(event)}>
                   <Icon name="ios_share" size={16} />
                   Share
                 </button>
@@ -208,6 +210,7 @@ export function EventsPane(): JSX.Element | null {
         </div>
       </div>
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={menuFor(menu.event)} onClose={() => setMenu(null)} />}
+      {sharing && <ShareEvent accountId={pane.accountId} event={sharing} onClose={() => setSharing(null)} />}
     </div>,
     document.body
   )
@@ -440,5 +443,157 @@ export function EventCreatePanel(): JSX.Element | null {
       </div>
     </div>,
     document.body
+  )
+}
+
+interface ShareTarget extends DiscordFriend {
+  inServer: boolean
+}
+
+/**
+ * "Invite friends to event", as Discord has it: the friends already in the
+ * server, then those who are not - each with an Invite that sends them the
+ * event's invite link in a direct message - and the link itself, to copy.
+ *
+ * The link is an invite to the guild that opens on the event, made when this
+ * opens, as Discord's own share makes one.
+ */
+function ShareEvent({
+  accountId,
+  event,
+  onClose
+}: {
+  accountId: string
+  event: DiscordEvent
+  onClose: () => void
+}): JSX.Element {
+  const store = useStore()
+  const [link, setLink] = useState<{ link: string; expiresDays: number } | null>(null)
+  const [linkError, setLinkError] = useState('')
+  const [targets, setTargets] = useState<ShareTarget[] | null>(null)
+  const [query, setQuery] = useState('')
+  /** Who has been sent it, and who is being. */
+  const [sent, setSent] = useState<Record<string, 'sending' | 'sent'>>({})
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    void window.moho
+      .rpc<{ link: string; expiresDays: number }>('discordEventInvite', { accountId, guildId: event.guildId, eventId: event.id })
+      .then(setLink)
+      .catch((e: Error) => setLinkError(e.message))
+    void window.moho
+      .rpc<ShareTarget[]>('discordEventShareTargets', { accountId, guildId: event.guildId })
+      .then(setTargets)
+      .catch(() => setTargets([]))
+  }, [accountId, event.guildId, event.id])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const q = query.trim().toLowerCase()
+  const shown = (targets ?? []).filter(
+    (t) => !q || t.username.toLowerCase().includes(q) || (t.globalName ?? '').toLowerCase().includes(q)
+  )
+  const members = shown.filter((t) => t.inServer)
+  const others = shown.filter((t) => !t.inServer)
+
+  // Sent in their direct messages, as Discord's Invite does: the
+  // conversation is opened if there is none yet, and the link is the message.
+  const invite = (t: ShareTarget): void => {
+    if (!link) return
+    setSent((was) => ({ ...was, [t.userId]: 'sending' }))
+    void window.moho
+      .rpc<{ bufferId: string }>('openDiscordDm', { accountId, userId: t.userId })
+      .then(({ bufferId }) => window.moho.rpc('sendMessage', { bufferId, body: link.link }))
+      .then(() => setSent((was) => ({ ...was, [t.userId]: 'sent' })))
+      .catch((e: Error) => {
+        setSent((was) => {
+          const next = { ...was }
+          delete next[t.userId]
+          return next
+        })
+        store.toast('error', `Couldn't invite ${t.globalName || t.username}: ${e.message}`)
+      })
+  }
+
+  const copy = (): void => {
+    if (!link) return
+    void window.moho
+      .copyText(link.link)
+      .then(() => {
+        setCopied(true)
+        window.setTimeout(() => setCopied(false), 1500)
+      })
+      .catch(() => store.toast('error', "Couldn't copy the link"))
+  }
+
+  const row = (t: ShareTarget): JSX.Element => {
+    const state = sent[t.userId]
+    return (
+      <div key={t.userId} className="share-row">
+        <Avatar name={t.globalName || t.username} url={t.avatarUrl ?? undefined} size={32} />
+        <span className="share-row-name">
+          <span className="ellipsis">{t.globalName || t.username}</span>
+          <span className="small muted ellipsis">{t.username}</span>
+        </span>
+        <button type="button" className="event-button" disabled={!link || !!state} onClick={() => invite(t)}>
+          {state === 'sent' ? 'Sent' : state === 'sending' ? 'Sending…' : 'Invite'}
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="lightbox-backdrop share-event-backdrop" onClick={onClose}>
+      <div className="events-pane share-event" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Invite friends to event">
+        <div className="share-event-head">
+          <div>
+            <div className="events-pane-count">Invite friends to event</div>
+            <div className="small muted share-event-where">
+              Recipients will land in{' '}
+              <Icon name={event.where === 'stage' ? 'podium' : event.where === 'voice' ? 'volume_up' : 'location_on'} size={14} />
+              {event.where === 'external' ? event.location : event.channelName ?? 'the server'}
+            </div>
+          </div>
+          <span className="events-pane-spacer" />
+          <IconButton name="close" title="Close" onClick={onClose} />
+        </div>
+        <div className="emoji-search share-event-search">
+          <Icon name="search" size={16} />
+          <input autoFocus placeholder="Search for friends" value={query} onChange={(e) => setQuery(e.target.value)} />
+        </div>
+        <div className="share-event-list">
+          {targets === null && <p className="small muted">Loading your friends…</p>}
+          {targets !== null && shown.length === 0 && (
+            <p className="small muted">{q ? 'No friends by that name.' : 'No friends to invite yet.'}</p>
+          )}
+          {members.length > 0 && <div className="share-event-section small muted">Server Members</div>}
+          {members.map(row)}
+          {others.length > 0 && <div className="share-event-section small muted">Invite to Server</div>}
+          {others.map(row)}
+        </div>
+        <div className="share-event-foot">
+          <div className="share-event-foot-title">Or, send an event invite link to a friend</div>
+          <div className="share-event-link">
+            <input readOnly value={link?.link ?? (linkError ? '' : 'Making a link…')} onFocus={(e) => e.currentTarget.select()} />
+            <button type="button" className="button primary" disabled={!link} onClick={copy}>
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          <div className="small muted">
+            {linkError
+              ? `No invite link: ${linkError}`
+              : link
+                ? `Your invite link expires in ${link.expiresDays} days.`
+                : ''}
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }

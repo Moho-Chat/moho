@@ -1674,8 +1674,8 @@ function MatrixForm(): JSX.Element {
             type="button"
             className="button subtle small"
             onClick={() => {
-              void navigator.clipboard
-                ?.writeText(deviceCode.userCode)
+              void window.moho
+                .copyText(deviceCode.userCode)
                 .then(() => store.toast('info', 'Code copied'))
                 .catch(() => store.toast('info', deviceCode.userCode))
             }}
