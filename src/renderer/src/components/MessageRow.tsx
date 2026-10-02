@@ -440,10 +440,11 @@ function MessageRowBody({
         ] as MenuEntry[])
       : []),
     { label: 'Reply', icon: 'reply', onClick: () => reply() },
-    // Sending somebody else's message on. Native where the service has one -
-    // Discord's forward carries the original itself, pictures and all - and a
-    // quoted copy where it does not.
-    ...(!isSystem && message.id
+    // Sending somebody else's message on. Only where the service has a real
+    // forward: Discord's carries the original itself, and Matrix's sends its
+    // content again, the same upload and formatting. Anywhere else it would
+    // be a copy posted as you, which is not a forward.
+    ...((service === 'discord' || service === 'matrix') && !isSystem && message.id
       ? ([{ label: 'Forward…', icon: 'forward', onClick: () => setForwarding(true) }] as MenuEntry[])
       : []),
     // Never hearing from them again. What that costs differs by service and
@@ -928,6 +929,7 @@ function MessageRowBody({
                   from={message.from}
                   onOpenInDiscord={(b, m) => void store.openInDiscord(b, m)}
                   onRefresh={(b, m) => store.refreshAttachments(b, m)}
+                  onStale={(b, m) => store.resignWhenIdle(b, m)}
                 />
               ))}
               {/* Links someone typed, unfurled from the body. Still needed

@@ -5,6 +5,7 @@ import { VideoStage } from './VideoStage'
 import { fitTiles } from './CallStage'
 import { useChat, useStore } from '../state/hooks'
 import { bufferDisplayName } from '../lib/util'
+import { StageWindow, STREAM_WINDOW_NAME } from './stage/StageWindow'
 
 /**
  * A Kick channel's stream, in the surface a call uses.
@@ -26,7 +27,7 @@ import { bufferDisplayName } from '../lib/util'
 /** The rendition ceiling. See the comment where it is used. */
 const MAX_HEIGHT = 720
 
-export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' }): JSX.Element | null {
+export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'window' }): JSX.Element | null {
   const store = useStore()
   const watching = useChat((s) => s.watching)
   const minimized = useChat((s) => s.watchMinimized)
@@ -52,18 +53,28 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' }): J
   useEffect(() => {
     const el = frame.current
     if (!el) return
+    // The window this is drawn in, which is not this one when popped out.
+    const view = el.ownerDocument.defaultView ?? window
     const measure = (): void =>
       setRoom({
         width: el.clientWidth,
-        height: Math.min(window.innerHeight * (mode === 'pip' ? 0.3 : 0.45), mode === 'pip' ? 260 : 460)
+        height:
+          mode === 'window'
+            ? // Its own window: all of it.
+              el.clientHeight
+            : mode === 'pip'
+              ? // The corner: as tall as its width makes the picture, so
+                // resizing the panel resizes the picture.
+                (el.clientWidth * 9) / 16
+              : Math.min(view.innerHeight * 0.45, 460)
       })
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(el)
-    window.addEventListener('resize', measure)
+    view.addEventListener('resize', measure)
     return () => {
       observer.disconnect()
-      window.removeEventListener('resize', measure)
+      view.removeEventListener('resize', measure)
     }
   }, [mode, minimized, watching])
 
@@ -157,6 +168,8 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' }): J
       onEnd={() => store.stopWatching()}
       endLabel="Stop watching"
       endIcon="stop_circle"
+      onPopOut={mode === 'window' ? undefined : () => store.setStreamPoppedOut(true)}
+      onBringBack={() => store.setStreamPoppedOut(false)}
       controls={
         <IconButton
           name={muted ? 'volume_off' : 'volume_up'}
@@ -170,11 +183,35 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' }): J
         />
       }
     >
-      <div className="video-stage" ref={frame}>
+      <div className={mode === 'window' ? 'video-stage in-window' : 'video-stage'} ref={frame}>
         <div className="video-tile" style={{ width: `${Math.floor(fit.tileWidth)}px` }}>
           <video ref={video} className="video-tile-picture" autoPlay playsInline />
         </div>
       </div>
     </VideoStage>
+  )
+}
+
+/**
+ * The stream being watched, in a window of its own while it is popped out.
+ *
+ * A child of this window, as a popped-out call is - see StageWindow - so the
+ * player is this renderer's and nothing restarts but the picture. Closing the
+ * window puts the stream back in moho rather than ending it.
+ */
+export function StreamWindowHost(): JSX.Element | null {
+  const store = useStore()
+  const poppedOut = useChat((s) => s.streamPoppedOut)
+  const watching = useChat((s) => s.watching)
+  if (!poppedOut || !watching) return null
+  return (
+    <StageWindow
+      name={STREAM_WINDOW_NAME}
+      title={`${watching.title} — moho`}
+      size="width=960,height=600"
+      onClosed={() => store.setStreamPoppedOut(false)}
+    >
+      <StreamStage mode="window" />
+    </StageWindow>
   )
 }

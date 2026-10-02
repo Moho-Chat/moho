@@ -4,6 +4,7 @@ import { resolveMediaUrl } from '../lib/util'
 import { Icon } from './Icon'
 import { discordEmojiUrl, emojiPreview, type SmilieEntry } from '../lib/format'
 import { drawableEmoteUrl, onLocalEmotes } from '../lib/emotecache'
+import { LottieSticker } from './LottieSticker'
 import type { CustomEmoji } from '../../../shared/wire'
 
 /**
@@ -91,6 +92,25 @@ function recentKey(accountId?: string): string {
   return `emoji.recent:${accountId || 'none'}`
 }
 
+/** The same for stickers, by the id each is sent by. */
+function recentStickerKey(accountId?: string): string {
+  return `stickers.recent:${accountId || 'none'}`
+}
+
+function readRecentStickers(accountId?: string): string[] {
+  try {
+    const stored = JSON.parse(localStorage.getItem(recentStickerKey(accountId)) || '[]')
+    return Array.isArray(stored) ? stored : []
+  } catch {
+    return []
+  }
+}
+
+/** What a sticker is sent by: its Discord id, or its Matrix upload. */
+function stickerKey(s: StickerEntry): string {
+  return s.id ?? s.mxc ?? s.name
+}
+
 function readRecent(accountId?: string): string[] {
   try {
     const stored = JSON.parse(localStorage.getItem(recentKey(accountId)) || '[]')
@@ -113,14 +133,25 @@ function travels(accountId?: string): boolean {
   return !!accountId?.startsWith('matrix:')
 }
 
-/** One image out of a Matrix sticker pack, as the daemon offers it. */
+/**
+ * One sticker, as the daemon offers it: out of a Matrix pack, or one of a
+ * Discord guild's.
+ */
 export interface StickerEntry {
   name: string
+  /** The pack, or on Discord the guild it belongs to. */
   pack: string
-  mxc: string
+  /** Matrix: the upload it is. */
+  mxc?: string
+  /** Discord: the sticker's id. */
+  id?: string
   body: string
-  /** A local path the daemon already fetched, absent while it is fetching. */
+  /** A picture of it, absent while fetching or where it cannot be drawn. */
   url?: string | null
+  /** Discord: belongs to a guild this conversation is not in, without Nitro. */
+  locked?: boolean
+  /** Discord: a vector animation with no picture, played from its JSON. */
+  lottie?: boolean
 }
 
 /** One place emoji come from, as `listAllEmoji` answers. */
@@ -157,13 +188,12 @@ interface Props {
   stickers?: StickerEntry[]
   onSticker?: (sticker: StickerEntry) => void
   /**
-   * Stickers and nothing else, for the button that opens exactly those.
-   *
-   * The two are different gestures rather than two tabs of one: an emoji goes
-   * into the line being written and a sticker *is* the message, so mixing
-   * them in one list would make half the cells type and half of them send.
+   * Which tab it opens on. Stickers and emoji are two tabs, as in Discord,
+   * never one mixed list: an emoji goes into the line being written and a
+   * sticker *is* the message, so a mixed list would make half the cells type
+   * and half of them send. The tabs exist only where `onSticker` does.
    */
-  stickersOnly?: boolean
+  initialTab?: 'emoji' | 'stickers'
   /** Whose recent picks to show. Absent means no account, so none are kept. */
   accountId?: string
   onSelect: (text: string) => void
@@ -176,13 +206,20 @@ export function EmojiPicker({
   customEmoji = [],
   smilies = [],
   stickers = [],
-  stickersOnly = false,
+  initialTab = 'emoji',
   accountId,
   onSelect,
   onSticker,
   onClose
 }: Props): JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
+  const [tab, setTab] = useState<'emoji' | 'stickers'>(onSticker ? initialTab : 'emoji')
+  const stickersOnly = tab === 'stickers'
+  const [recentStickers, setRecentStickers] = useState<string[]>(() => readRecentStickers(accountId))
+  /** What is under the pointer, for the line along the bottom. */
+  const [hovered, setHovered] = useState<{ name: string; from?: string; src?: string; text?: string } | null>(null)
+  /** The section the list is scrolled to, lit in the rail. */
+  const [current, setCurrent] = useState<string>('')
   const [query, setQuery] = useState('')
   const [pos, setPos] = useState({ left: 0, top: 0 })
   const [recent, setRecent] = useState<string[]>(() => readRecent(accountId))
@@ -401,52 +438,176 @@ export function EmojiPicker({
     onSelect(text)
   }
 
+  // Stickers picked before, newest first, as long as they still exist here.
+  const recentStickerEntries = useMemo(() => {
+    const byKey = new Map(stickers.map((st) => [stickerKey(st), st]))
+    return recentStickers.map((k) => byKey.get(k)).filter((st): st is StickerEntry => !!st && !st.locked)
+  }, [recentStickers, stickers])
+
+  const pickSticker = (sticker: StickerEntry): void => {
+    const key = stickerKey(sticker)
+    const next = [key, ...recentStickers.filter((k) => k !== key)].slice(0, MAX_RECENT)
+    setRecentStickers(next)
+    try {
+      localStorage.setItem(recentStickerKey(accountId), JSON.stringify(next))
+    } catch {
+      /* a full or disabled store just means recents don't persist */
+    }
+    onSticker?.(sticker)
+  }
+
+  /** A sticker as a picture: an image, or a Lottie animation that plays on hover. */
+  const stickerArt = (sticker: StickerEntry, size: number, play: 'hover' | 'never'): React.ReactNode =>
+    sticker.url ? (
+      <img src={resolveMediaUrl(sticker.url)} alt={sticker.name} loading="lazy" />
+    ) : sticker.lottie && sticker.id && accountId ? (
+      <LottieSticker accountId={accountId} stickerId={sticker.id} size={size} play={play} label={sticker.name} />
+    ) : (
+      sticker.name
+    )
+
+  const stickerCell = (sticker: StickerEntry, pack: string): JSX.Element => (
+    <button
+      key={`${pack}:${stickerKey(sticker)}`}
+      type="button"
+      className="emoji-cell sticker-cell"
+      disabled={sticker.locked}
+      data-name={sticker.name}
+      title={sticker.locked ? `${sticker.name} · only in ${pack} without Nitro` : sticker.name}
+      onClick={() => pickSticker(sticker)}
+    >
+      {stickerArt(sticker, 64, 'hover')}
+    </button>
+  )
+
+  // The rail down the side: one entry per section, in the order the
+  // sections come.
+  const rail: { id: string; name: string; icon: React.ReactNode }[] = stickersOnly
+    ? [
+        ...(!q && recentStickerEntries.length > 0
+          ? [{ id: 'recent', name: 'Frequently Used', icon: <Icon name="schedule" size={20} /> }]
+          : []),
+        ...packs.map(([pack, entries]) => ({
+          id: `pack:${pack}`,
+          name: pack,
+          // A pack is shown by its first sticker, as Discord shows it.
+          icon: entries[0] && (entries[0].url || entries[0].lottie)
+            ? stickerArt(entries[0], 28, 'never')
+            : <span className="emoji-jump-initial">{pack.slice(0, 1).toUpperCase()}</span>
+        }))
+      ]
+    : [
+        ...(!q && recent.length > 0 ? [{ id: 'recent', name: 'Recent', icon: <Icon name="schedule" size={20} /> }] : []),
+        ...sourceSections.map((src) => ({
+          id: src.id,
+          name: src.name,
+          icon: src.iconUrl ? (
+            <img src={resolveMediaUrl(src.iconUrl)} alt="" />
+          ) : (
+            <span className="emoji-jump-initial">{src.name.slice(0, 1).toUpperCase()}</span>
+          )
+        })),
+        ...customSections.map(([title]) => ({
+          id: `custom:${title}`,
+          name: title,
+          icon: <span className="emoji-jump-initial">{title.slice(0, 1).toUpperCase()}</span>
+        })),
+        ...(smilieList.length > 0
+          ? [{ id: 'smilies', name: 'Smilies', icon: <Icon name="sentiment_satisfied" size={20} /> }]
+          : []),
+        ...(unicode.length > 0 ? [{ id: 'unicode', name: 'Emoji', icon: <Icon name="mood" size={20} /> }] : [])
+      ]
+
+  // Lights the rail entry for whatever section the list is scrolled into.
+  const followScroll = (): void => {
+    const box = scroll.current
+    if (!box) return
+    const top = box.getBoundingClientRect().top + 8
+    let at = rail[0]?.id ?? ''
+    for (const r of rail) {
+      const el = sectionRefs.current[r.id]
+      if (el && el.getBoundingClientRect().top <= top) at = r.id
+    }
+    setCurrent((was) => (was === at ? was : at))
+  }
+  useEffect(followScroll, [tab, q, rail.length])
+
   return createPortal(
     <div
       ref={ref}
       className="emoji-picker"
       style={{ left: pos.left, top: pos.top }}
     >
-      <input
-        className="text-field"
-        autoFocus
-        placeholder={stickersOnly ? 'Search stickers…' : 'Search emoji…'}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
-
-      {/* One icon per section, to move down a list that is now long enough
-          to need it. Recent first because it is the one people reach for
-          most, and it is where the list starts. */}
-      {sourceSections.length > 0 && (
-        <div className="emoji-jump">
-          {!q && recent.length > 0 && (
-            <button type="button" className="emoji-jump-tab" title="Recent" onClick={() => jumpTo('recent')}>
-              <Icon name="history" size={16} />
-            </button>
-          )}
-          {sourceSections.map((src) => (
+      {/* Two tabs where the service has stickers, as Discord has them. */}
+      {onSticker && (
+        <div className="emoji-tabs" role="tablist">
+          {(['stickers', 'emoji'] as const).map((t) => (
             <button
-              key={src.id}
+              key={t}
               type="button"
-              className="emoji-jump-tab"
-              title={src.name}
-              onClick={() => jumpTo(src.id)}
+              role="tab"
+              aria-selected={tab === t}
+              className={`emoji-tab${tab === t ? ' active' : ''}`}
+              onClick={() => {
+                setTab(t)
+                setQuery('')
+                setHovered(null)
+                scroll.current?.scrollTo({ top: 0 })
+              }}
             >
-              {src.iconUrl ? (
-                <img src={resolveMediaUrl(src.iconUrl)} alt="" />
-              ) : (
-                <span className="emoji-jump-initial">{src.name.slice(0, 1).toUpperCase()}</span>
-              )}
+              {t === 'stickers' ? 'Stickers' : 'Emoji'}
             </button>
           ))}
-          <button type="button" className="emoji-jump-tab" title="Emoji" onClick={() => jumpTo('unicode')}>
-            <Icon name="mood" size={16} />
-          </button>
         </div>
       )}
+      <div className="emoji-search">
+        <Icon name="search" size={16} />
+        <input
+          autoFocus
+          placeholder={stickersOnly ? 'Find the perfect sticker' : 'Find the perfect emoji'}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
 
-      <div className="emoji-scroll" ref={scroll}>
+      <div className="emoji-body">
+      {/* One icon per section down the side, as Discord has it: the list is
+          long, and this is how to get to the far end of it. It scrolls on
+          its own when there are more sections than fit. */}
+      <nav className="emoji-rail" aria-label="Categories">
+        {rail.map((r) => (
+          <button
+            key={r.id}
+            type="button"
+            className={`emoji-rail-item${current === r.id ? ' active' : ''}`}
+            title={r.name}
+            onClick={() => jumpTo(r.id)}
+          >
+            {r.icon}
+          </button>
+        ))}
+      </nav>
+
+      <div
+        className="emoji-scroll"
+        ref={scroll}
+        onScroll={followScroll}
+        // What the pointer is over, read off the cell rather than passed in
+        // by each of the seven kinds of cell: its name, its picture, and the
+        // heading of the section it is in.
+        onMouseOver={(e) => {
+          const cell = (e.target as HTMLElement).closest('.emoji-cell') as HTMLElement | null
+          if (!cell) return
+          const img = cell.querySelector('img')
+          const heading = cell.closest('.emoji-grid-window')?.previousElementSibling?.textContent ?? undefined
+          setHovered({
+            name: cell.dataset.name || cell.title,
+            from: heading,
+            src: img?.getAttribute('src') ?? undefined,
+            text: img || cell.querySelector('.lottie-sticker') ? undefined : cell.textContent ?? undefined
+          })
+        }}
+      >
         <PickerScroll.Provider value={scroll}>
         {!stickersOnly && !q && recent.length > 0 && (
           <Section title="Recent" anchorRef={(el) => (sectionRefs.current.recent = el)}>
@@ -479,7 +640,10 @@ export function EmojiPicker({
           </Section>
         )}
 
-        {sourceSections.map((src) => (
+        {/* Guarded by the tab rather than by never having loaded: switched
+            to Stickers after Emoji, these are already here. */}
+        {!stickersOnly &&
+          sourceSections.map((src) => (
           <Section
             key={src.id}
             title={src.name}
@@ -523,30 +687,23 @@ export function EmojiPicker({
           </Section>
         ))}
 
-        {packs.map(([pack, entries]) => (
-          <Section key={pack} title={pack}>
-            {entries.map((sticker) => (
-              <button
-                key={sticker.mxc}
-                type="button"
-                className="emoji-cell sticker-cell"
-                title={`${sticker.name} · ${pack}`}
-                onClick={() => onSticker?.(sticker)}
-              >
-                {sticker.url ? (
-                  <img src={resolveMediaUrl(sticker.url)} alt={sticker.name} />
-                ) : (
-                  sticker.name
-                )}
-              </button>
-            ))}
+        {stickersOnly && !q && recentStickerEntries.length > 0 && (
+          <Section title="Frequently Used" anchorRef={(el) => (sectionRefs.current.recent = el)}>
+            {recentStickerEntries.map((sticker) => stickerCell(sticker, 'Frequently Used'))}
+          </Section>
+        )}
+
+        {stickersOnly && packs.map(([pack, entries]) => (
+          <Section key={pack} title={pack} anchorRef={(el) => (sectionRefs.current[`pack:${pack}`] = el)}>
+            {entries.map((sticker) => stickerCell(sticker, pack))}
           </Section>
         ))}
 
         {stickersOnly && packs.length === 0 && (
           <p className="small muted emoji-empty">
-            No sticker packs on this account. Packs added in another client - your own, or
-            one a room shares - turn up here.
+            {accountId?.startsWith('discord:')
+              ? 'None of your servers has stickers of its own.'
+              : 'No sticker packs on this account. Packs added in another client - your own, or one a room shares - turn up here.'}
           </p>
         )}
 
@@ -573,7 +730,7 @@ export function EmojiPicker({
             the one heading they always had. */}
         {!stickersOnly &&
           customSections.map(([title, list]) => (
-          <Section key={title} title={title}>
+          <Section key={title} title={title} anchorRef={(el) => (sectionRefs.current[`custom:${title}`] = el)}>
             {list.map((e) => (
               <button
                 key={e.id}
@@ -597,7 +754,7 @@ export function EmojiPicker({
           ))}
 
         {!stickersOnly && smilieList.length > 0 && (
-          <Section title="Smilies">
+          <Section title="Smilies" anchorRef={(el) => (sectionRefs.current.smilies = el)}>
             {smilieList.map((s) => (
               <button
                 key={s.file}
@@ -612,7 +769,8 @@ export function EmojiPicker({
           </Section>
         )}
 
-        {unicode.length === 0 &&
+        {!stickersOnly &&
+          unicode.length === 0 &&
           custom.length === 0 &&
           smilieList.length === 0 &&
           // Counted too, or a search that matches only a source's emoji
@@ -620,7 +778,30 @@ export function EmojiPicker({
           sourceSections.length === 0 && (
             <div className="small muted emoji-empty">No matches.</div>
           )}
+        {stickersOnly && q && packs.length === 0 && stickers.length > 0 && (
+          <div className="small muted emoji-empty">No matches.</div>
+        )}
         </PickerScroll.Provider>
+      </div>
+      </div>
+
+      {/* What the pointer is over, as Discord shows it along the bottom. */}
+      <div className="emoji-footer">
+        {hovered ? (
+          <>
+            {hovered.src ? (
+              <img src={hovered.src} alt="" />
+            ) : hovered.text ? (
+              <span className="emoji-footer-glyph">{hovered.text}</span>
+            ) : null}
+            <span className="emoji-footer-text">
+              <span className="ellipsis">{hovered.name}</span>
+              {hovered.from && <span className="small muted ellipsis">from {hovered.from}</span>}
+            </span>
+          </>
+        ) : (
+          <span className="small muted">{stickersOnly ? 'Pick a sticker to send it' : 'Pick an emoji'}</span>
+        )}
       </div>
     </div>,
     document.body
@@ -698,7 +879,13 @@ function Section({
     const cellW = first.offsetWidth
     const rowH = first.offsetHeight
     if (!cellW || !rowH) return
-    const cols = Math.max(1, Math.round((grid.clientWidth + colGap) / (cellW + colGap)))
+    // The tracks the grid actually laid out, which the computed style lists
+    // one width each. Worked out from the cell's width instead, a cell
+    // narrower than its column - a sticker in a stretched track - counted
+    // columns that were not there, and the section kept room for too few
+    // rows.
+    const tracks = style.gridTemplateColumns.split(' ').filter((t) => t.endsWith('px')).length
+    const cols = Math.max(1, tracks || Math.round((grid.clientWidth + colGap) / (cellW + colGap)))
     setMetrics((was) =>
       was && was.cols === cols && was.rowH === rowH && was.pitch === rowH + rowGap
         ? was

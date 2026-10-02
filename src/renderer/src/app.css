@@ -2860,12 +2860,15 @@ img.smilie {
 .emoji-picker {
   position: fixed;
   z-index: 1500;
-  width: 320px;
-  max-height: 360px;
+  width: min(420px, calc(100vw - 8px));
+  /* A fixed height, so the rail down the side always has the room the list
+     has, as Discord's does. */
+  height: min(440px, calc(100vh - 8px));
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
-  padding: var(--spacing-s);
+  padding: var(--spacing-s) 0 0;
+  overflow: hidden;
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
   border: 1px solid var(--outline-medium);
@@ -2888,6 +2891,13 @@ img.smilie {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
   gap: 2px;
+}
+
+/* Stickers are bigger than emoji, so their columns are too. Chosen by what
+   the grid holds rather than by a prop, so every caller gets it. */
+.emoji-grid:has(> .sticker-cell) {
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  justify-items: center;
 }
 
 /* Holds a section's full height while only the rows near the viewport are
@@ -3870,13 +3880,21 @@ img.smilie {
    one - an emoji cell is sized for a glyph and would draw these as thumbnails
    too small to tell apart. */
 .emoji-cell.sticker-cell {
-  width: 64px;
-  height: 64px;
+  width: 80px;
+  height: 80px;
+  padding: 4px;
+}
+
+.emoji-cell.sticker-cell:disabled {
+  opacity: 0.35;
 }
 
 .emoji-cell.sticker-cell img {
   width: 100%;
   height: 100%;
+  /* An emoji's cap would draw a sticker at emoji size in a sticker's cell. */
+  max-width: none;
+  max-height: none;
   object-fit: contain;
 }
 
@@ -7313,4 +7331,844 @@ video.lightbox-media {
   padding: var(--spacing-xs) var(--spacing-m);
   background: var(--surface-container-high);
   border-bottom: 1px solid var(--outline-light);
+}
+
+/* Something a call button asks before it acts, above the button. */
+.stage-popover {
+  position: fixed;
+  z-index: 1000;
+  transform: translateX(-50%);
+}
+
+/* Discord's Go Live question: how good a stream. */
+.go-live {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  width: max-content;
+  max-width: 92vw;
+  padding: var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.go-live-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.go-live-note {
+  margin: 0;
+}
+
+.go-live > .button.primary {
+  justify-content: center;
+  text-align: center;
+}
+
+.segmented {
+  display: inline-flex;
+  align-self: flex-start;
+  flex-wrap: wrap;
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  overflow: hidden;
+}
+
+.segmented button {
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.segmented button + button {
+  border-left: 1px solid var(--outline-medium);
+}
+
+.segmented button.active {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+
+/* Your own camera, as you would see yourself in a mirror. */
+.stage-picture.mirrored {
+  transform: scaleX(-1);
+}
+
+/* A live stage's topic, under its name in the voice list. */
+.voice-stage-topic {
+  padding: 0 var(--spacing-s) 2px 30px;
+}
+
+/* A volume set away from 100%, on that person's tile. Read-only: it is
+   changed from the tile's right-click menu. */
+.stage-tile-volume {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 1;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* A slider in a context menu: label and value above, the track below. */
+.context-menu-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  min-width: 200px;
+}
+
+.context-menu-slider-label {
+  display: flex;
+  justify-content: space-between;
+  font-variant-numeric: tabular-nums;
+}
+
+.context-menu-slider input {
+  width: 100%;
+  accent-color: var(--primary);
+}
+
+.call-volume {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.call-volume input {
+  width: 160px;
+}
+
+/* A Discord Lottie sticker, played as SVG. */
+.lottie-sticker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.lottie-sticker-name {
+  text-align: center;
+  padding: 4px;
+}
+
+/* The picker, laid out as Discord's: tabs, search, then the category rail
+   beside the list, and what the pointer is over along the bottom. */
+.emoji-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 var(--spacing-s);
+}
+
+.emoji-tab {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--corner-radius-small);
+  background: transparent;
+  color: var(--on-surface-variant, inherit);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.emoji-tab:hover {
+  background: var(--surface-container-highest);
+}
+
+.emoji-tab.active {
+  background: var(--surface-container-highest);
+  color: var(--on-surface, inherit);
+}
+
+.emoji-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 var(--spacing-s);
+  padding: 6px 10px;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-lowest, rgba(0, 0, 0, 0.25));
+  color: var(--on-surface-variant, inherit);
+}
+
+.emoji-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--on-surface, inherit);
+  font: inherit;
+}
+
+.emoji-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  border-top: 1px solid var(--outline-variant);
+}
+
+.emoji-body .emoji-scroll {
+  flex: 1;
+  min-width: 0;
+  padding: 0 var(--spacing-s);
+}
+
+/* Scrolls on its own with the wheel when there are more sections than fit. */
+.emoji-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  width: 48px;
+  padding: 8px 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  background: var(--surface-container, rgba(0, 0, 0, 0.15));
+}
+
+.emoji-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.emoji-rail-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--on-surface-variant, inherit);
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-radius 0.12s;
+}
+
+.emoji-rail-item:hover,
+.emoji-rail-item.active {
+  border-radius: 10px;
+  background: var(--surface-container-highest);
+}
+
+.emoji-rail-item img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.emoji-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  min-height: 48px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--outline-variant);
+  background: var(--surface-container, rgba(0, 0, 0, 0.15));
+}
+
+.emoji-footer img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.emoji-footer-glyph {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.emoji-footer-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-weight: 600;
+}
+
+/* A small panel above a call button: the call's volume, the soundboard. */
+.stage-panel {
+  padding: var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.call-volume-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.call-volume-panel input {
+  width: 180px;
+  accent-color: var(--primary);
+}
+
+.call-volume-value {
+  min-width: 3.5em;
+  text-align: right;
+}
+
+.soundboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  width: min(380px, 90vw);
+}
+
+.soundboard .emoji-search {
+  margin: 0;
+}
+
+.soundboard-list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.soundboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 6px;
+}
+
+.soundboard-sound {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-highest);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.soundboard-sound:hover:not(:disabled) {
+  background: var(--primary-hover-light, var(--surface-container-highest));
+  outline: 1px solid var(--primary);
+}
+
+.soundboard-sound:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.soundboard-sound img {
+  width: 18px;
+  height: 18px;
+}
+
+.soundboard-emoji {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* The corner panel's resize grip, in its inside (top-left) corner. */
+.call-stage.pip .call-stage-resize {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.call-stage.pip .call-stage-resize::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 7px;
+  height: 7px;
+  border-top: 2px solid var(--outline-strong, var(--outline-medium));
+  border-left: 2px solid var(--outline-strong, var(--outline-medium));
+  border-top-left-radius: 3px;
+  opacity: 0.8;
+}
+
+/* A stream in a window of its own: the whole window, picture first. */
+.call-stage.in-window {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: #000;
+}
+
+.call-stage.in-window .call-stage-title {
+  padding: 6px 8px;
+  background: var(--surface-container);
+}
+
+.call-stage.in-window .call-stage-title button {
+  -webkit-app-region: no-drag;
+}
+
+.video-stage.in-window {
+  flex: 1;
+  min-height: 0;
+  justify-content: center;
+}
+
+.call-stage.in-window .call-stage-controls {
+  padding: 4px 8px;
+  background: var(--surface-container);
+}
+
+/* The stream window has no frame of its own: its title bar moves it. */
+.call-stage-title.window-drag {
+  -webkit-app-region: drag;
+}
+
+/* A Discord guild's events row, at the top of its channel list. */
+.bufferlist-events {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 2 * var(--spacing-xs));
+  margin: 2px var(--spacing-xs) 6px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--corner-radius-small);
+  background: transparent;
+  color: var(--surface-variant-text, inherit);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bufferlist-events:hover {
+  background: var(--surface-container-highest);
+  color: var(--on-surface, inherit);
+}
+
+/* The events pane and the create panel: Discord's dark rounded sheet. */
+.events-pane {
+  display: flex;
+  flex-direction: column;
+  width: min(600px, 94vw);
+  max-height: 80vh;
+  margin: auto;
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.events-pane-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 20px 14px;
+}
+
+.events-pane-count {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.events-pane-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--outline-medium);
+}
+
+.events-pane-spacer {
+  flex: 1;
+}
+
+.events-pane-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 160px;
+  padding: 4px 20px 20px;
+  overflow-y: auto;
+}
+
+.events-pane-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 0;
+  text-align: center;
+}
+
+.event-card {
+  border: 1px solid var(--outline-variant, var(--outline-medium));
+  border-radius: var(--corner-radius);
+  background: var(--surface-container);
+  overflow: hidden;
+}
+
+.event-card.live {
+  border-color: #3ba55d;
+}
+
+.event-card-image {
+  display: block;
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+}
+
+.event-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+}
+
+.event-card-when {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.event-card.live .event-card-when {
+  color: #3ba55d;
+}
+
+.event-card-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--surface-container-highest);
+  color: var(--on-surface, inherit);
+  font-variant-numeric: tabular-nums;
+}
+
+.event-card-name {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.event-card-desc {
+  white-space: pre-wrap;
+}
+
+.event-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--outline-variant, var(--outline-medium));
+}
+
+.event-card-where {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.event-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-highest);
+  color: var(--on-surface, inherit);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.event-button.icon-only {
+  padding: 6px 8px;
+}
+
+.event-button:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+
+.event-button.on {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+
+.event-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Creating one. */
+.event-create {
+  width: min(520px, 94vw);
+}
+
+.event-create-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 0 20px 16px;
+  overflow-y: auto;
+}
+
+.event-create-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.event-create-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.event-where {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container);
+  cursor: pointer;
+}
+
+.event-where.on {
+  outline: 1px solid var(--primary);
+  background: var(--surface-container-highest);
+}
+
+.event-where.disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.event-where > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.event-where-label {
+  font-weight: 600;
+}
+
+.event-field {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.event-field-row {
+  display: flex;
+  gap: 10px;
+}
+
+.event-field textarea {
+  resize: vertical;
+  font: inherit;
+}
+
+.event-create-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--outline-variant, var(--outline-medium));
+  background: var(--surface-container);
+}
+
+/* "Invite friends to event": over the events pane. */
+.share-event-backdrop {
+  z-index: 1600;
+}
+
+.share-event {
+  width: min(480px, 94vw);
+}
+
+.share-event-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 20px 12px;
+}
+
+.share-event-where {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.share-event-search {
+  margin: 0 20px 8px;
+}
+
+.share-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 120px;
+  max-height: 46vh;
+  padding: 0 20px 12px;
+  overflow-y: auto;
+}
+
+.share-event-section {
+  padding: 10px 0 4px;
+  font-weight: 600;
+}
+
+.share-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  border-radius: var(--corner-radius-small);
+}
+
+.share-row:hover {
+  background: var(--surface-container);
+}
+
+.share-row-name {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.share-event-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid var(--outline-variant, var(--outline-medium));
+  background: var(--surface-container);
+}
+
+.share-event-foot-title {
+  font-weight: 600;
+}
+
+.share-event-link {
+  display: flex;
+  gap: 8px;
+  padding: 4px 4px 4px 10px;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-lowest, rgba(0, 0, 0, 0.25));
+}
+
+.share-event-link input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--on-surface, inherit);
+  font: inherit;
+}
+
+/* An event on right now, at the top of its guild's channel list. */
+.live-event {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px var(--spacing-xs) 8px;
+  padding: 10px 12px 12px;
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+}
+
+.live-event-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.live-event-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3ba55d;
+}
+
+.live-event-label {
+  color: #3ba55d;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.live-event-name {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--on-surface, inherit);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.live-event-where {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.live-event-join {
+  margin-top: 6px;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--corner-radius-small);
+  background: #248046;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.live-event-join:hover:not(:disabled) {
+  background: #1a6334;
+}
+
+.live-event-join:disabled {
+  background: var(--surface-container-highest);
+  color: var(--on-surface-variant, inherit);
+  cursor: default;
 }

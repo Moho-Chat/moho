@@ -157,13 +157,20 @@ export function isAllowed(target: string): boolean {
 /** Must run before app.whenReady(). */
 export function registerMediaScheme(): void {
   protocol.registerSchemesAsPrivileged([
-    { scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
+    {
+      scheme: SCHEME,
+      // corsEnabled, and the header below, so the page can read a file and
+      // not only draw one: the page is file://, which makes every request to
+      // this scheme cross-origin, and an <img> needs no permission where a
+      // fetch() does. A Lottie sticker is JSON read by script.
+      privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true }
+    }
   ])
 }
 
 /** Must run after app.whenReady(). */
 export function installMediaHandler(): void {
-  protocol.handle(SCHEME, (request) => {
+  protocol.handle(SCHEME, async (request) => {
     // The absolute path arrives as ?p=..., not as the URL path - see
     // resolveMediaUrl for why the path component can't be trusted here.
     const filePath = new URL(request.url).searchParams.get('p')
@@ -177,6 +184,12 @@ export function installMediaHandler(): void {
       }
       return new Response('forbidden', { status: 403 })
     }
-    return net.fetch(pathToFileURL(filePath).toString())
+    const response = await net.fetch(pathToFileURL(filePath).toString())
+    // Readable by the page as well as drawable by it. Nothing is opened up by
+    // this: the only pages are this app's own, and what is served is already
+    // limited to the roots above.
+    const headers = new Headers(response.headers)
+    headers.set('Access-Control-Allow-Origin', '*')
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
   })
 }

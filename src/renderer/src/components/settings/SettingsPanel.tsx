@@ -104,6 +104,7 @@ const CATEGORIES: { id: string; label: string; service?: Account['service'] }[] 
   { id: 'irc', label: 'IRC', service: 'irc' },
   { id: 'sneedchat', label: 'Sneedchat', service: 'sneedchat' },
   { id: 'tor', label: 'Tor' },
+  { id: 'discord', label: 'Discord', service: 'discord' },
   { id: 'matrix', label: 'Matrix', service: 'matrix' },
   { id: 'kick', label: 'Kick', service: 'kick' },
   { id: 'about', label: 'About' }
@@ -240,6 +241,7 @@ export function SettingsPanel(): JSX.Element {
             <MatrixReceiptSettings />
           </>
         )}
+        {selected === 'discord' && <DiscordSettings />}
         {selected === 'kick' && <KickSettings />}
         {selected === 'about' && <AboutSettings />}
       </div>
@@ -281,7 +283,7 @@ function VoiceSettings(): JSX.Element {
       description={
         none
           ? "No sound devices were found. Voice needs a running sound server; everything else works without one."
-          : 'Used for voice calls. A change takes effect on a call already in progress. Muting is on the status plaque at the foot of the channel list, where it stays reachable during one.'
+          : 'Used for voice calls. A change takes effect on a call already in progress. Muting is on the status plaque at the foot of the channel list, and the call\'s volume on the call itself, where both stay reachable during one.'
       }
     >
       <ChoiceSetting
@@ -299,6 +301,36 @@ function VoiceSettings(): JSX.Element {
         onChange={(id) => void store.setVoiceDevice('output', id)}
         disabled={none}
       />
+      {/* What a Discord call's microphone goes through before it is sent -
+          the processing a Matrix call gets from the browser. The call's
+          volume is on the call itself, not here. */}
+      <label className="setting-row">
+        <div className="setting-text">
+          <div>Echo cancellation</div>
+          <div className="small muted">
+            Takes what your speakers play back out of your microphone, so a call on speakers is not
+            sent back into itself. Off only makes sense with headphones.
+          </div>
+        </div>
+        <input
+          type="checkbox"
+          className="setting-toggle"
+          checked={voice.echoCancellation ?? true}
+          onChange={(e) => void store.setVoiceProcessing({ echoCancellation: e.target.checked })}
+        />
+      </label>
+      <label className="setting-row">
+        <div className="setting-text">
+          <div>Noise suppression</div>
+          <div className="small muted">Takes steady background noise - a fan, a hum - out of your microphone.</div>
+        </div>
+        <input
+          type="checkbox"
+          className="setting-toggle"
+          checked={voice.noiseSuppression ?? true}
+          onChange={(e) => void store.setVoiceProcessing({ noiseSuppression: e.target.checked })}
+        />
+      </label>
     </SettingsSection>
   )
 }
@@ -802,6 +834,52 @@ function TorSettings(): JSX.Element {
  * account's own row in the Accounts pane instead - a room-open toggle isn't
  * tied to any one account the way those are.
  */
+/**
+ * Mending Discord scrollback.
+ *
+ * A sweep over every Discord conversation rather than a button in each,
+ * because the messages a storage fault lost are by definition the ones
+ * nobody knows to go looking for. It re-reads recent history and keeps only
+ * what is missing, so running it when nothing is wrong costs a minute of
+ * requests and changes nothing.
+ */
+function DiscordSettings(): JSX.Element {
+  const [running, setRunning] = useState(false)
+  const [result, setResult] = useState<string | null>(null)
+
+  const repair = (): void => {
+    setRunning(true)
+    setResult(null)
+    void window.moho
+      .rpc<{ scanned: number; recovered: number; failed: number }>('refillDiscordHistory', {})
+      .then(({ scanned, recovered, failed }) => {
+        const found =
+          recovered === 0
+            ? 'nothing was missing'
+            : `${recovered} missing message${recovered === 1 ? ' was' : 's were'} put back`
+        const skipped = failed > 0 ? `; ${failed} could not be read` : ''
+        setResult(`Checked ${scanned} conversation${scanned === 1 ? '' : 's'}: ${found}${skipped}.`)
+      })
+      .catch((e: Error) => setResult(`The repair stopped: ${e.message}`))
+      .finally(() => setRunning(false))
+  }
+
+  return (
+    <SettingsSection
+      title="Scrollback"
+      description="Re-reads the last 50 messages of every Discord conversation on every account and stores any that are missing here. Nothing already stored is changed. A conversation takes about a third of a second, so a large account takes a few minutes."
+    >
+      <div className="setting-row">
+        <button type="button" className="button subtle" disabled={running} onClick={repair}>
+          {running ? 'Repairing…' : 'Repair scrollback'}
+        </button>
+        {running && <span className="spinner" aria-label="Repairing" />}
+      </div>
+      {result && <p className="small muted">{result}</p>}
+    </SettingsSection>
+  )
+}
+
 function MatrixSettings(): JSX.Element {
   return (
     <>

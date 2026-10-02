@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
 import { Lightbox } from './Lightbox'
 import { VoiceMessage } from './VoiceMessage'
+import { LottieSticker, lottieStickerId } from './LottieSticker'
 import { fullImageFor, knownFullImage } from '../lib/fullimage'
 import { resolveMediaUrl } from '../lib/util'
 import type { MediaItem } from '../lib/format'
@@ -32,6 +33,11 @@ interface Props {
   onOpenInDiscord?: (bufferId: string, messageId: string) => void
   /** Re-signs this message's links by asking Discord for it again. */
   onRefresh?: (bufferId: string, messageId: string) => Promise<void>
+  /**
+   * Says, without waiting, that this message's links have lapsed. Batched by
+   * the caller with every other picture on screen that says the same.
+   */
+  onStale?: (bufferId: string, messageId: string) => void
 }
 
 /**
@@ -81,7 +87,8 @@ export function MediaEmbed({
   messageId,
   from,
   onOpenInDiscord,
-  onRefresh
+  onRefresh,
+  onStale
 }: Props): JSX.Element | null {
   const [failed, setFailed] = useState(false)
   /**
@@ -157,6 +164,19 @@ export function MediaEmbed({
   const ratio = { aspectRatio: measured ? `${measured.width} / ${measured.height}` : UNKNOWN_RATIO }
 
   const canRefresh = !!(isDiscordAttachment(openTarget) && bufferId && messageId && onRefresh)
+  const lapsed = canRefresh && linkExpired(openTarget)
+
+  // A lapsed link on screen asks for a fresh one by itself. The daemon
+  // re-signs each page as it is read, but a window left open outlives the
+  // links in it, and a sweep stops after a few pages - so without this the
+  // repair waited for somebody to click. The fresh link arrives as a new
+  // attachment, which remounts this embed.
+  useEffect(() => {
+    if (lapsed) onStale?.(bufferId!, messageId!)
+    // Asked once per link, not once per render: the callback is a new
+    // function every time the row draws.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lapsed, fullSrc])
 
   const refresh = (): void => {
     if (!canRefresh) return
@@ -170,6 +190,23 @@ export function MediaEmbed({
       })
       .catch((e: Error) => setRefreshError(e.message))
       .finally(() => setRefreshing(false))
+  }
+
+  // A Discord Lottie sticker. Not a link that can lapse - a sticker id names
+  // one animation for good - so none of the re-signing below applies.
+  const lottieId = kind === 'lottie' ? lottieStickerId(attachment?.url) : null
+  if (lottieId && bufferId) {
+    return (
+      <div className="media-embed sticker">
+        <LottieSticker
+          accountId={bufferId.split('|')[0]}
+          stickerId={lottieId}
+          size={160}
+          play={autoplay ? 'always' : 'hover'}
+          label={attachment?.filename?.replace(/\.json$/, '') || 'sticker'}
+        />
+      </div>
+    )
   }
 
   if (failed || !fullSrc) {
@@ -199,10 +236,22 @@ export function MediaEmbed({
         <Icon name="broken_image" size={16} />
         {canRefresh ? (
           <>
-            <span>{refreshError || 'This attachment link has expired.'}</span>
+            {/* Expired only when the link says so. A link still in date
+                that will not load is one this player cannot handle - an
+                iPhone's HEVC video, most often - and calling that expired
+                sent people clicking Reload at something it cannot fix. */}
+            <span>
+              {refreshError ||
+                (lapsed ? 'This attachment link has expired.' : "This couldn't be shown here.")}
+            </span>
             <button type="button" className="link-button" disabled={refreshing} onClick={refresh}>
               {refreshing ? 'Reloading…' : 'Reload'}
             </button>
+            {!lapsed && (
+              <button type="button" className="link-button" onClick={open}>
+                Open the file
+              </button>
+            )}
             {onOpenInDiscord && (
               <button
                 type="button"

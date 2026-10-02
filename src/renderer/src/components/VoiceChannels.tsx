@@ -38,16 +38,20 @@ export function VoiceChannels({ group }: { group: RailGroup }): JSX.Element | nu
 
       {channels.map((c) => {
         const here = session?.channelId === c.id
-        const members = c.members ?? []
+        // On a stage the speakers come first and the audience after, which
+        // is the order anybody deciding whether to listen reads it in.
+        const members = c.stage
+          ? [...(c.members ?? [])].sort((a, b) => Number(!!a.suppressed) - Number(!!b.suppressed))
+          : (c.members ?? [])
         return (
           <div key={c.id} className={`voice-channel${here ? ' active' : ''}`}>
             <button
               type="button"
               className="voice-channel-row"
-              title={here ? `Connected to ${c.name}` : `Join ${c.name}`}
+              title={here ? `Connected to ${c.name}` : c.stage ? `Listen to ${c.name}` : `Join ${c.name}`}
               onClick={() => (here ? void store.leaveVoice(group.accountId) : void store.joinVoice(group.accountId, guild, c.id))}
             >
-              <Icon name="volume_up" size={16} />
+              <Icon name={c.stage ? 'podium' : 'volume_up'} size={16} />
               <span className="ellipsis">{c.name}</span>
               {/* A limit only means something once it is close to being hit. */}
               {c.userLimit > 0 && members.length >= c.userLimit - 1 && (
@@ -57,12 +61,20 @@ export function VoiceChannels({ group }: { group: RailGroup }): JSX.Element | nu
               )}
               {here && <IconButton name="call_end" size={16} title="Disconnect" onClick={() => void store.leaveVoice(group.accountId)} />}
             </button>
+            {/* What a live stage is about. A stage with no topic is not on. */}
+            {c.stage && c.topic && <div className="voice-stage-topic small muted ellipsis">{c.topic}</div>}
 
             {members.map((m) => (
               <div key={m.userId} className="voice-member small">
                 <span className="voice-member-dot" style={{ background: nickColor(m.nick) }} />
                 <span className="ellipsis">{m.nick}</span>
                 {m.isSelf && <span className="muted voice-you">you</span>}
+                {c.stage && m.suppressed && !m.handRaised && <span className="muted voice-you">listening</span>}
+                {c.stage && m.handRaised && (
+                  <span className="muted" title={`${m.nick} has asked to speak`}>
+                    <Icon name="front_hand" size={13} />
+                  </span>
+                )}
                 {/* Here as well as in the call view, because this is the list
                     you read to decide whether to join at all - and somebody
                     sharing a screen is the commonest reason to. */}

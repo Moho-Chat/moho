@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Icon, MaskIcon } from './Icon'
+import { Icon, IconButton, MaskIcon } from './Icon'
 import { ContextMenu, useContextMenu } from './ContextMenu'
 import { bufferMenuEntries } from '../lib/buffermenu'
 import { UserFooter } from './UserFooter'
@@ -260,6 +260,22 @@ export function BufferList(): JSX.Element {
   }
 
   const openGroupMenu = (e: React.MouseEvent): void => openGroupMenuAt(e)
+
+  // The Discord guild on screen, if it is one: where events come from.
+  const eventGuild =
+    activeGroup?.kind === 'guild' && activeGroup.accountId?.startsWith('discord:')
+      ? { accountId: activeGroup.accountId, guildId: activeGroup.id.split('|guild:')[1] ?? '' }
+      : null
+  const eventCounts = useChat((s) => s.discordEventCounts)
+  const eventCount = eventGuild ? (eventCounts[`${eventGuild.accountId}|${eventGuild.guildId}`] ?? 0) : 0
+  const liveEvents = useChat((s) => s.discordLiveEvents)
+  const dismissedLive = useChat((s) => s.dismissedLiveEvents)
+  const live = eventGuild
+    ? (liveEvents[`${eventGuild.accountId}|${eventGuild.guildId}`] ?? []).filter((e) => !dismissedLive.includes(e.id))
+    : []
+  useEffect(() => {
+    if (eventGuild?.guildId) void store.refreshEventCount(eventGuild.accountId, eventGuild.guildId)
+  }, [store, eventGuild?.accountId, eventGuild?.guildId])
   const openCategoryMenu = (e: React.MouseEvent, section: CategorySection): void => {
     e.preventDefault()
     // Only a heading you made is yours to rename or remove; a server's
@@ -413,11 +429,11 @@ export function BufferList(): JSX.Element {
                 type="button"
                 className="ellipsis group-title-name"
                 title={`${activeGroup.name} — organise this list`}
-                onClick={grouped ? openGroupMenu : undefined}
-                disabled={!grouped}
+                onClick={grouped || eventGuild ? openGroupMenu : undefined}
+                disabled={!grouped && !eventGuild}
               >
                 {activeGroup.name}
-                {grouped && <Icon name="expand_more" size={14} />}
+                {(grouped || eventGuild) && <Icon name="expand_more" size={14} />}
               </button>
               {/* Only where the page is actually one account's. The direct
                   messages and pinned pages gather several, so a single
@@ -426,6 +442,68 @@ export function BufferList(): JSX.Element {
                   something. */}
               {activeGroup.accountId && groupAccount && <ConnectionDot state={groupAccount.state} />}
             </div>
+
+            {/* What is on right now, above everything, as Discord shows it:
+                its name, where, and the way in. */}
+            {eventGuild &&
+              live.map((event) => {
+                const here =
+                  !!event.channelId &&
+                  voiceSessions.some((v) => v.accountId === eventGuild.accountId && v.channelId === event.channelId)
+                const link = event.where === 'external' && /^https?:\/\//.test(event.location ?? '') ? event.location! : null
+                return (
+                  <div key={event.id} className="live-event">
+                    <div className="live-event-head">
+                      <span className="live-event-dot" />
+                      <span className="live-event-label">Live Now</span>
+                      <span className="events-pane-spacer" />
+                      <IconButton name="close" size={16} title="Hide this" onClick={() => store.dismissLiveEvent(event.id)} />
+                    </div>
+                    <button
+                      type="button"
+                      className="live-event-name ellipsis"
+                      title="See the event"
+                      onClick={() => store.openEvents(eventGuild.accountId, eventGuild.guildId)}
+                    >
+                      {event.name}
+                    </button>
+                    <div className="live-event-where small muted">
+                      <Icon name={event.where === 'stage' ? 'podium' : event.where === 'voice' ? 'volume_up' : 'location_on'} size={15} />
+                      <span className="ellipsis">{event.where === 'external' ? event.location : event.channelName ?? 'A channel'}</span>
+                    </div>
+                    {event.channelId ? (
+                      <button
+                        type="button"
+                        className="live-event-join"
+                        disabled={here}
+                        onClick={() => void store.joinVoice(eventGuild.accountId, eventGuild.guildId, event.channelId!)}
+                      >
+                        {here ? 'Joined' : 'Join'}
+                      </button>
+                    ) : link ? (
+                      <button type="button" className="live-event-join" onClick={() => void window.moho.openExternal(link)}>
+                        Open
+                      </button>
+                    ) : null}
+                  </div>
+                )
+              })}
+
+            {/* A Discord guild's events, at the top of its list as Discord
+                puts them - and only when there are some: a row reading
+                "0 Events" is a row nobody needs. */}
+            {eventGuild && eventCount > 0 && (
+              <button
+                type="button"
+                className="bufferlist-events"
+                onClick={() => store.openEvents(eventGuild.accountId, eventGuild.guildId)}
+              >
+                <Icon name="calendar_month" size={18} />
+                <span>
+                  {eventCount} Event{eventCount === 1 ? '' : 's'}
+                </span>
+              </button>
+            )}
 
             {groupBuffers.length === 0 && (
               <div className="bufferlist-empty muted small">Nothing here yet.</div>
@@ -531,7 +609,19 @@ export function BufferList(): JSX.Element {
           x={groupMenu.x}
           y={groupMenu.y}
           entries={[
-            {
+            // Discord's own first item on a server's menu, and the way into
+            // the create panel.
+            ...(eventGuild
+              ? [
+                  {
+                    label: 'Create Event',
+                    icon: 'calendar_add_on',
+                    onClick: () => store.openEventCreate(eventGuild.accountId, eventGuild.guildId)
+                  },
+                  { separator: true as const }
+                ]
+              : []),
+            ...(grouped ? [{
               label: 'New category',
               icon: 'create_new_folder',
               onClick: () => {
@@ -551,7 +641,7 @@ export function BufferList(): JSX.Element {
                 // is not one anybody meant to keep.
                 setNaming({ id, name: 'New category' })
               }
-            }
+            }] : [])
           ]}
           onClose={closeGroupMenu}
         />

@@ -14,6 +14,10 @@ import { bufferDisplayName } from '../lib/util'
  *
  * Ordered by what was said in recently, since a message being forwarded is
  * usually going somewhere the person has just been.
+ *
+ * Only where the forward can land. Discord's does not leave the account it
+ * was made on; Matrix's is the content sent again, and goes to any Matrix
+ * room on any account here.
  */
 export function ForwardPicker({
   bufferId,
@@ -44,11 +48,11 @@ export function ForwardPicker({
   const choices = useMemo(() => {
     const q = query.trim().toLowerCase()
     return buffers
-      .filter((b) => b.id !== bufferId && b.kind !== 'server')
+      .filter((b) => b.id !== bufferId && b.kind !== 'server' && reaches(source?.accountId, b.accountId))
       .filter((b) => !q || bufferDisplayName(b.name).toLowerCase().includes(q))
       .sort((a, b) => (b.lastActivityTs ?? 0) - (a.lastActivityTs ?? 0))
       .slice(0, 60)
-  }, [buffers, bufferId, query])
+  }, [buffers, bufferId, source?.accountId, query])
 
   const send = (toBufferId: string): void => {
     setSending(toBufferId)
@@ -81,10 +85,6 @@ export function ForwardPicker({
         <div className="forward-picker-list">
           {choices.map((buffer) => {
             const account = accounts.find((a) => a.id === buffer.accountId)
-            // Discord carries a forward itself; everywhere else it is a
-            // quoted copy, and it is worth saying which before it is sent.
-            const native =
-              source?.accountId === buffer.accountId && buffer.accountId.startsWith('discord:')
             return (
               <button
                 key={buffer.id}
@@ -97,7 +97,6 @@ export function ForwardPicker({
                 <span className="ellipsis">{bufferDisplayName(buffer.name)}</span>
                 <span className="small muted ellipsis">
                   {account?.displayName ?? ''}
-                  {native ? '' : ' · as a quote'}
                 </span>
                 {sending === buffer.id && <span className="spinner" aria-label="Sending" />}
               </button>
@@ -111,4 +110,10 @@ export function ForwardPicker({
     </div>,
     document.body
   )
+}
+
+function reaches(from: string | undefined, to: string): boolean {
+  if (!from) return false
+  if (from.startsWith('matrix:')) return to.startsWith('matrix:')
+  return from === to && from.startsWith('discord:')
 }

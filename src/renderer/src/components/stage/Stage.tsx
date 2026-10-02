@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Icon } from '../Icon'
 import { Avatar } from '../Avatar'
+import { ContextMenu, type MenuEntry } from '../ContextMenu'
 import { usePref } from '../../state/hooks'
 import { classes, nickColor } from '../../lib/util'
 
@@ -41,6 +43,16 @@ export interface StageTile {
   action?: { label: string; onClick: () => void }
   /** A small button in the corner of a tile with one: "Stop watching". */
   dismiss?: { label: string; onClick: () => void }
+  /**
+   * What right-clicking the tile offers - a person's volume, as in Discord.
+   * Absent, the tile has no menu.
+   */
+  menu?: MenuEntry[]
+  /**
+   * A volume somebody set away from 100%, shown on the tile so nobody is
+   * left turned down without noticing. Set in the menu, not here.
+   */
+  volumeBadge?: string
 }
 
 export interface StageButton {
@@ -52,6 +64,12 @@ export interface StageButton {
   off?: boolean
   danger?: boolean
   onClick: () => void
+  /**
+   * Something to ask before the button does its thing, drawn above it while
+   * present - next to the gesture that asked, rather than in a dialog
+   * somewhere else on the screen.
+   */
+  popover?: JSX.Element | null
 }
 
 /** Sixteen by nine, which is what cameras and screens both are. */
@@ -117,6 +135,10 @@ export function Stage({
   const root = useRef<HTMLDivElement>(null)
   const area = useRef<HTMLDivElement>(null)
   const [focused, setFocused] = useState<string | null>(null)
+  /** A tile's right-click menu, while open. Looked up by id on every draw, so
+   * a slider in it shows the value it has just been dragged to. */
+  const [menu, setMenu] = useState<{ x: number; y: number; tileId: string } | null>(null)
+  const menuEntries = menu ? tiles.find((t) => t.id === menu.tileId)?.menu : undefined
   const [room, setRoom] = useState({ width: 640, height: 300 })
   const [collapsed, setCollapsed] = usePref<boolean>('ui.stageCollapsed', false)
   /**
@@ -201,6 +223,14 @@ export function Stage({
         }}
         title={stage?.id === tile.id ? 'Back to everybody' : `Focus on ${tile.name}`}
         onClick={() => setFocused(stage?.id === tile.id ? null : tile.id)}
+        onContextMenu={
+          tile.menu
+            ? (e) => {
+                e.preventDefault()
+                setMenu({ x: e.clientX, y: e.clientY, tileId: tile.id })
+              }
+            : undefined
+        }
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
@@ -242,6 +272,7 @@ export function Stage({
             <Icon name="close" size={16} />
           </button>
         )}
+        {tile.volumeBadge && slot === 'main' && <span className="stage-tile-volume">{tile.volumeBadge}</span>}
         <span className="stage-tile-name">
           {tile.deafened ? (
             <Icon name="headset_off" size={14} className="stage-tile-state" />
@@ -333,6 +364,9 @@ export function Stage({
           <ControlButton key={b.label} button={b} />
         ))}
       </div>
+      {menu && menuEntries && (
+        <ContextMenu x={menu.x} y={menu.y} entries={menuEntries} onClose={() => setMenu(null)} />
+      )}
       {where === 'inline' && !fullscreen && (
         <div
           className="stage-resize"
@@ -356,8 +390,45 @@ function HeadButton({ icon, label, onClick }: { icon: string; label: string; onC
 }
 
 function ControlButton({ button, compact }: { button: StageButton; compact?: boolean }): JSX.Element {
+  const ref = useRef<HTMLButtonElement>(null)
+  const [at, setAt] = useState<{ left: number; bottom: number } | null>(null)
+  // Placed against the button on screen, in a portal: the stage clips what
+  // overflows it, and a collapsed stage is a bar with no room above it.
+  useLayoutEffect(() => {
+    if (!button.popover || !ref.current) {
+      setAt(null)
+      return
+    }
+    const rect = ref.current.getBoundingClientRect()
+    setAt({ left: rect.left + rect.width / 2, bottom: window.innerHeight - rect.top + 8 })
+  }, [button.popover])
+  return (
+    <>
+      {button.popover &&
+        at &&
+        createPortal(
+          <div className="stage-popover" style={{ left: `${at.left}px`, bottom: `${at.bottom}px` }}>
+            {button.popover}
+          </div>,
+          document.body
+        )}
+      <ControlButtonFace button={button} compact={compact} buttonRef={ref} />
+    </>
+  )
+}
+
+function ControlButtonFace({
+  button,
+  compact,
+  buttonRef
+}: {
+  button: StageButton
+  compact?: boolean
+  buttonRef: React.Ref<HTMLButtonElement>
+}): JSX.Element {
   return (
     <button
+      ref={buttonRef}
       type="button"
       className={classes(
         'stage-button',

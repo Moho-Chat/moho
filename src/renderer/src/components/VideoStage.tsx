@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
 import { Icon, IconButton } from './Icon'
 import { usePref } from '../state/hooks'
 import { classes } from '../lib/util'
 
 /** How close to an edge the panel may be parked. */
 const EDGE = 4
+/** The narrowest the corner panel may be made: its controls still fit. */
+const MIN_PIP_WIDTH = 240
 
 /**
  * The frame a moving picture lives in, whatever is feeding it.
@@ -36,9 +38,14 @@ export function VideoStage({
   endIcon = 'call_end',
   /** Buttons that belong to this source: a microphone, a volume. */
   controls,
+  /** Out of moho into a window of its own, where the source can go there. */
+  onPopOut,
+  /** Back from that window into moho. */
+  onBringBack,
   children
 }: {
-  mode: 'inline' | 'pip'
+  /** Above the conversation, in a corner of the window, or a window of its own. */
+  mode: 'inline' | 'pip' | 'window'
   title: string
   subtitle: string
   minimized: boolean
@@ -48,6 +55,8 @@ export function VideoStage({
   endLabel: string
   endIcon?: string
   controls?: ReactNode
+  onPopOut?: () => void
+  onBringBack?: () => void
   children: ReactNode
 }): JSX.Element {
   const panel = useRef<HTMLDivElement>(null)
@@ -68,6 +77,13 @@ export function VideoStage({
   // preference goes to disk over IPC, and a drag is a hundred of them.
   const [spot, setSpot] = useState(saved)
   const grab = useRef<{ dx: number; dy: number } | null>(null)
+  /**
+   * How wide the corner panel is, as somebody last left it. Its height
+   * follows from the picture, so width is the one thing to remember.
+   */
+  const [savedWidth, setSavedWidth] = usePref<number | null>('ui.pipWidth', null)
+  const [width, setWidth] = useState(savedWidth)
+  const sizing = useRef<{ x: number; w: number; h: number; right: number; bottom: number } | null>(null)
 
   /**
    * Where the panel may be put, in the coordinates it is positioned in.
@@ -150,9 +166,70 @@ export function VideoStage({
     })
   }
 
+  /**
+   * Resizing from the top-left corner - the inside corner, for a panel that
+   * starts in the bottom-right - so the edges against the window stay put and
+   * the panel grows towards the middle of it.
+   */
+  const startResize = (e: PointerEvent<HTMLDivElement>): void => {
+    const box = panel.current?.getBoundingClientRect()
+    if (!box) return
+    const corner = local(box.right, box.bottom)
+    sizing.current = { x: e.clientX, w: box.width, h: box.height, right: corner.x, bottom: corner.y }
+    e.currentTarget.setPointerCapture(e.pointerId)
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  const onResize = (e: PointerEvent<HTMLDivElement>): void => {
+    const from = sizing.current
+    if (!from) return
+    const room = (panel.current?.offsetParent as HTMLElement | null)?.getBoundingClientRect()
+    const largest = Math.max(MIN_PIP_WIDTH, (room?.width ?? window.innerWidth) * 0.9)
+    const w = Math.round(Math.min(Math.max(from.w + (from.x - e.clientX), MIN_PIP_WIDTH), largest))
+    setWidth(w)
+  }
+
+  // The bottom-right corner stays where it was while the panel is resized.
+  // Placed from the size the panel actually came out at, not a guess at it:
+  // the title and controls do not grow with the picture, so scaling the whole
+  // height drifted the bottom edge up the screen.
+  useLayoutEffect(() => {
+    const from = sizing.current
+    const box = panel.current?.getBoundingClientRect()
+    if (!from || !box) return
+    setSpot(clamp(from.right - box.width, from.bottom - box.height))
+  }, [width, clamp])
+
+  const endResize = (e: PointerEvent<HTMLDivElement>): void => {
+    const from = sizing.current
+    if (!from) return
+    sizing.current = null
+    e.currentTarget.releasePointerCapture(e.pointerId)
+    setWidth((w) => {
+      setSavedWidth(w)
+      return w
+    })
+    // The picture inside settles its height a frame after the width: placed
+    // once more when it has, then remembered.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const box = panel.current?.getBoundingClientRect()
+        const rest = box ? clamp(from.right - box.width, from.bottom - box.height) : null
+        if (rest) setSpot(rest)
+        setSaved(rest)
+      })
+    )
+  }
+
   /** Where it sits: the corner it started in, or where it was put. */
   const placed =
-    mode === 'pip' && spot ? { left: `${spot.x}px`, top: `${spot.y}px`, right: 'auto', bottom: 'auto' } : undefined
+    mode === 'pip'
+      ? {
+          ...(spot ? { left: `${spot.x}px`, top: `${spot.y}px`, right: 'auto', bottom: 'auto' } : {}),
+          ...(width ? { width: `${width}px` } : {})
+        }
+      : undefined
   const handle =
     mode === 'pip'
       ? { onPointerDown: startDrag, onPointerMove: onDrag, onPointerUp: endDrag, onPointerCancel: endDrag }
@@ -176,7 +253,33 @@ export function VideoStage({
   }
 
   return (
-    <div className={classes('call-stage', mode === 'pip' && 'pip')} ref={panel} style={placed}>
+    <div className={classes('call-stage', mode === 'pip' && 'pip', mode === 'window' && 'in-window')} ref={panel} style={placed}>
+      {mode === 'pip' && (
+        // A grip in the inside corner, the way a window is resized from its
+        // corner.
+        <div
+          className="call-stage-resize"
+          title="Drag to resize"
+          onPointerDown={startResize}
+          onPointerMove={onResize}
+          onPointerUp={endResize}
+          onPointerCancel={endResize}
+        />
+      )}
+      {mode === 'window' && (
+        // A window of its own has no frame, so this is its title bar: it moves
+        // the window, and carries the two things a window is done with.
+        <div className="call-stage-title window-drag">
+          <Icon name={endIcon === 'call_end' ? 'call' : 'live_tv'} size={14} />
+          <span className="small ellipsis" title={title}>
+            {title || subtitle}
+          </span>
+          {/* Closing the window puts the picture back in moho, the same as
+              closing it from the compositor does. Ending it is the button
+              below, as it is everywhere else. */}
+          <IconButton name="close" size={14} title="Close the window - it goes back into moho" onClick={onBringBack ?? onEnd} />
+        </div>
+      )}
       {mode === 'pip' && (
         /* Dragged by its title bar, the way anything shaped like a window is. */
         <div className="call-stage-title draggable" {...handle}>
@@ -188,6 +291,7 @@ export function VideoStage({
               the conversation - the picture stops being a corner of somewhere
               else and becomes the room you are in. */}
           <IconButton name="open_in_full" size={14} title="Go to it" onClick={onGoTo} />
+          {onPopOut && <IconButton name="open_in_new" size={14} title="Pop out into its own window" onClick={onPopOut} />}
           {/* Where a window's own control would be, because in the corner this
               is a window: the thing you close is closed from its top right. */}
           <IconButton name="remove" size={14} title="Minimise" onClick={() => onMinimized(true)} />
@@ -203,7 +307,10 @@ export function VideoStage({
         {controls}
         {/* Out of the way without ending. In the corner this sits in the title
             bar instead, where a window's own controls live. */}
-        {mode !== 'pip' && (
+        {mode === 'inline' && onPopOut && (
+          <IconButton name="open_in_new" title="Pop out into its own window" onClick={onPopOut} />
+        )}
+        {mode === 'inline' && (
           <IconButton name="expand_more" title="Minimise" onClick={() => onMinimized(true)} />
         )}
         <IconButton name={endIcon} title={endLabel} className="calling" onClick={onEnd} />

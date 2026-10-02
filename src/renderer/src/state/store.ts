@@ -32,6 +32,7 @@ import type { CallPhase } from '../lib/webrtc'
 import { Levels } from '../lib/levels'
 import { firstFrame, SCREEN_CHOICE_MS } from '../lib/capture'
 import { cameraKey, closeFeeds, feedFrame, streamKey as feedStreamKey } from '../lib/framefeed'
+import { DEFAULT_QUALITY, encodeSettings, sendCamera, shareScreen, type VideoQuality } from '../lib/discordscreen'
 import type { PopoutState } from '../../../shared/ipc'
 
 /**
@@ -45,6 +46,16 @@ import type { PopoutState } from '../../../shared/ipc'
  */
 
 /** A wire Buffer plus the local-only counters nobilis doesn't track. */
+/** An event on right now, as the top of a guild's channel list shows it. */
+export interface LiveDiscordEvent {
+  id: string
+  name: string
+  where: 'voice' | 'stage' | 'external'
+  channelId?: string | null
+  channelName?: string | null
+  location?: string | null
+}
+
 export interface BufferEntry extends WireBuffer {
   unread: number
   highlight: boolean
@@ -510,6 +521,8 @@ export interface ChatState {
   callMinimized: boolean
   /** The call is drawn in a window of its own rather than over the conversation. */
   callPoppedOut: boolean
+  /** The stream being watched is in a window of its own. */
+  streamPoppedOut: boolean
   /**
    * Who is in each room's call, by buffer.
    *
@@ -535,10 +548,34 @@ export interface ChatState {
    * second arriving while one is open is a bot talking over itself.
    */
   discordModal: DiscordModal | null
+  /**
+   * How many scheduled events each Discord guild has coming or on, by
+   * `accountId|guildId`. Absent or none means no events row in its list.
+   */
+  discordEventCounts: Record<string, number>
+  /** The events on right now, by `accountId|guildId`: a card each at the top of its list. */
+  discordLiveEvents: Record<string, LiveDiscordEvent[]>
+  /** Live-event cards closed with their ×, for as long as this window is open. */
+  dismissedLiveEvents: string[]
+  /** The events pane, while open: whose guild. */
+  eventsPane: { accountId: string; guildId: string } | null
+  /** The create-an-event panel, while open. */
+  eventCreate: { accountId: string; guildId: string } | null
   /** The screens and windows on offer, while somebody is choosing one. */
   screenSources: { id: string; name: string; thumbnail: string }[] | null
-  /** Whether this window is sharing a screen into a Discord call. */
-  discordSharing: boolean
+  /**
+   * Which account this window is sharing a screen from into a Discord call,
+   * if any. An account rather than a flag: one window can be in two
+   * accounts' calls, and only one of them is sharing.
+   */
+  discordSharing: string | null
+  /** What is being shared, so the person sharing can see it. */
+  discordShareStream: MediaStream | null
+  /**
+   * This end's camera in a Discord call, while it is on: the capture, so the
+   * call can show you what everybody else sees.
+   */
+  discordCamera: { accountId: string; stream: MediaStream } | null
   /**
    * Who is streaming right now, by Discord user id, and the key their stream
    * is named by.
@@ -600,8 +637,6 @@ export interface ChatState {
   // Login flows
   discordQrPath: string
   discordLoginStatus: string
-  /** Set when a Discord password login stops at the two-factor step. */
-  discordMfa: { loginId: string; totp: boolean; sms: boolean; backup: boolean } | null
   /** The account being re-authenticated, or '' for a brand-new one. */
   discordReauthAccountId: string
   sneedChatLoginStatus: string
@@ -660,13 +695,21 @@ const INITIAL: ChatState = {
   ringingCall: null,
   callMinimized: false,
   callPoppedOut: false,
+  streamPoppedOut: false,
   callMembers: {},
   watching: null,
   watchMinimized: false,
   screenSources: null,
   discordModal: null,
+  discordEventCounts: {},
+  discordLiveEvents: {},
+  dismissedLiveEvents: [],
+  eventsPane: null,
+  eventCreate: null,
   activeCall: null,
-  discordSharing: false,
+  discordSharing: null,
+  discordShareStream: null,
+  discordCamera: null,
   discordStreams: {},
   discordCameras: {},
   discordWatching: null,
@@ -682,7 +725,6 @@ const INITIAL: ChatState = {
   matrixVerification: null,
   discordQrPath: '',
   discordLoginStatus: '',
-  discordMfa: null,
   discordReauthAccountId: '',
   sneedChatLoginStatus: '',
   matrixLoginStatus: ''
@@ -930,6 +972,10 @@ export class ChatStore {
    * `discordSharing` beside it.
    */
   private discordShare: { stop: () => void; stream: MediaStream } | null = null
+  /** Where the share was started, which is what stops it. */
+  private discordShareWhere: { bufferId: string } | { accountId: string } | null = null
+  /** The Discord camera's encoder, held for the same reason. */
+  private discordCameraSend: { stop: () => void; stream: MediaStream } | null = null
   /**
    * The Matrix call engine, one per window.
    *
@@ -1330,6 +1376,109 @@ export class ChatStore {
       this.set({ voicePrefs: await window.moho.rpc<VoicePrefs>('setVoiceDevice', { kind, deviceId }) })
     } catch (e) {
       this.toast('error', `Couldn't select that device: ${(e as Error).message}`)
+    }
+  }
+
+  /** Volume changes not yet sent, by who they are for ('' is the whole call). */
+  private pendingVolumes = new Map<string, number>()
+  private volumeTimer: ReturnType<typeof setTimeout> | null = null
+
+  /**
+   * Sets how loud a call is - overall, or one person in it.
+   *
+   * Shown at once and sent a moment later: a slider being dragged reports
+   * every step, and each one sent would rewrite the preferences file.
+   */
+  setVoiceVolume(volume: number, userId?: string): void {
+    const prefs = this.state.voicePrefs
+    if (userId) {
+      this.set({ voicePrefs: { ...prefs, userVolumes: { ...(prefs.userVolumes ?? {}), [userId]: volume } } })
+    } else {
+      this.set({ voicePrefs: { ...prefs, outputVolume: volume } })
+    }
+    this.pendingVolumes.set(userId ?? '', volume)
+    if (this.volumeTimer) return
+    this.volumeTimer = setTimeout(() => {
+      this.volumeTimer = null
+      const changes = [...this.pendingVolumes.entries()]
+      this.pendingVolumes.clear()
+      for (const [user, value] of changes) {
+        void window.moho
+          .rpc<VoicePrefs>('setVoiceVolume', user ? { userId: user, volume: value } : { volume: value })
+          .catch((e: Error) => this.toast('error', `Couldn't change the volume: ${e.message}`))
+      }
+    }, 150)
+  }
+
+  /** Asks how many events a guild has, for the row at the top of its list. */
+  async refreshEventCount(accountId: string, guildId: string): Promise<void> {
+    try {
+      const { count, live } = await window.moho.rpc<{ count: number; live?: LiveDiscordEvent[] }>('discordEventCount', {
+        accountId,
+        guildId
+      })
+      this.noteEvents(accountId, guildId, count, live ?? [])
+    } catch {
+      /* an older daemon has no events; no row is the right answer */
+    }
+  }
+
+  private noteEvents(accountId: string, guildId: string, count: number, live: LiveDiscordEvent[]): void {
+    const key = `${accountId}|${guildId}`
+    this.set({
+      discordEventCounts: { ...this.state.discordEventCounts, [key]: count },
+      discordLiveEvents: { ...this.state.discordLiveEvents, [key]: live }
+    })
+  }
+
+  /** Puts a live event's card away, until the window is next opened. */
+  dismissLiveEvent(eventId: string): void {
+    this.set({ dismissedLiveEvents: [...this.state.dismissedLiveEvents, eventId] })
+  }
+
+  openEvents(accountId: string, guildId: string): void {
+    this.set({ eventsPane: { accountId, guildId } })
+  }
+
+  closeEvents(): void {
+    this.set({ eventsPane: null })
+  }
+
+  /** The create panel, over the events pane if that is open. */
+  openEventCreate(accountId: string, guildId: string): void {
+    this.set({ eventCreate: { accountId, guildId } })
+  }
+
+  closeEventCreate(): void {
+    this.set({ eventCreate: null })
+  }
+
+  /** Echo cancellation and noise suppression on a Discord call's microphone. */
+  async setVoiceProcessing(change: { echoCancellation?: boolean; noiseSuppression?: boolean }): Promise<void> {
+    try {
+      this.set({ voicePrefs: await window.moho.rpc<VoicePrefs>('setVoiceProcessing', change) })
+    } catch (e) {
+      this.toast('error', `Couldn't change that: ${(e as Error).message}`)
+    }
+  }
+
+  /** On a stage: asks to speak, or takes the request back. */
+  async setStageHand(accountId: string, guildId: string, channelId: string, on: boolean): Promise<void> {
+    try {
+      await window.moho.rpc('setStageHand', { accountId, guildId, channelId, on })
+      await this.refreshVoiceChannels(accountId, guildId)
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
+  }
+
+  /** On a stage: steps up to the speakers, or back into the audience. */
+  async setStageSpeaker(accountId: string, guildId: string, channelId: string, on: boolean): Promise<void> {
+    try {
+      await window.moho.rpc('setStageSpeaker', { accountId, guildId, channelId, on })
+      await this.refreshVoiceChannels(accountId, guildId)
+    } catch (e) {
+      this.toast('error', (e as Error).message)
     }
   }
 
@@ -1763,6 +1912,15 @@ export class ChatStore {
   }
 
   async leaveVoice(accountId: string): Promise<void> {
+    // What this end was sending goes with it. Left running, the camera light
+    // would stay on and the encoder would go on handing frames to a call
+    // that has ended.
+    if (this.state.discordCamera?.accountId === accountId) this.stopDiscordCamera(accountId)
+    if (this.discordShare && this.state.discordSharing === accountId) {
+      this.discordShare.stop()
+      this.discordShare = null
+      this.set({ discordSharing: null, discordShareStream: null })
+    }
     try {
       await window.moho.rpc('leaveVoiceChannel', { accountId })
       await this.refreshVoiceSessions()
@@ -2127,6 +2285,11 @@ export class ChatStore {
 
   /** Puts the call away, or brings it back. It keeps running either way. */
   /** Moves the call into a window of its own, or back over the conversation. */
+  /** Puts the stream being watched in a window of its own, or back. */
+  setStreamPoppedOut(poppedOut: boolean): void {
+    this.set({ streamPoppedOut: poppedOut, watchMinimized: false })
+  }
+
   setCallPoppedOut(poppedOut: boolean): void {
     this.set({ callPoppedOut: poppedOut })
   }
@@ -2168,7 +2331,7 @@ export class ChatStore {
   }
 
   stopWatching(): void {
-    this.set({ watching: null, watchMinimized: false })
+    this.set({ watching: null, watchMinimized: false, streamPoppedOut: false })
   }
 
   setWatchMinimized(minimized: boolean): void {
@@ -2476,19 +2639,16 @@ export class ChatStore {
    * Opened by `openScreen`, which is where every share on every desktop
    * starts.
    */
-  async toggleScreenShare(): Promise<void> {
+  async toggleScreenShare(quality?: VideoQuality): Promise<void> {
     // A Discord call is not a Matrix one and has no activeCall behind it -
     // its audio lives in the daemon - so it is answered first and on its own
     // terms. The gesture and the button are the same either way, which is
     // the whole point of asking here rather than in two places.
-    // A conversation is needed as well as a session: the stream is asked for
-    // against a channel, and a call whose buffer this window has never opened
-    // has nothing to ask against.
-    const discord = this.state.voiceSessions.find(
-      (s) => s.accountId.startsWith('discord:') && !!s.bufferId
-    )
-    if (discord?.bufferId && !this.state.activeCall) {
-      await this.toggleDiscordScreenShare(discord.accountId, discord.bufferId)
+    // A DM's call has a conversation and a guild's voice channel does not;
+    // either can be shared into, named by its account where there is none.
+    const discord = this.state.voiceSessions.find((s) => s.accountId.startsWith('discord:'))
+    if (discord && !this.state.activeCall) {
+      await this.toggleDiscordScreenShare(discord.accountId, discord.bufferId, quality)
       return
     }
     if (!this.state.activeCall) return
@@ -2539,14 +2699,25 @@ export class ChatStore {
    * draw from the other side, where the browser holds the whole call because
    * WebRTC is the browser's.
    */
-  async toggleDiscordScreenShare(accountId: string, bufferId: string): Promise<void> {
+  async toggleDiscordScreenShare(
+    accountId: string,
+    bufferId: string | undefined,
+    quality: VideoQuality = DEFAULT_QUALITY
+  ): Promise<void> {
+    // A DM's call is named by its conversation; a guild's voice channel has
+    // none, and is named by the account in it.
+    const where = bufferId ? { bufferId } : { accountId }
     if (this.discordShare) {
+      const was = this.state.discordSharing
       this.discordShare.stop()
       this.discordShare = null
-      this.set({ discordSharing: false })
-      await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
-      return
+      this.set({ discordSharing: null, discordShareStream: null })
+      await window.moho.rpc('stopDiscordScreenShare', this.discordShareWhere ?? where).catch(() => {})
+      // One screen, one stream: pressing share in another account's call
+      // moves it there rather than only stopping it.
+      if (was === accountId) return
     }
+    this.discordShareWhere = where
 
     try {
       // The screen first, then Discord. The person chooses while the click
@@ -2556,7 +2727,11 @@ export class ChatStore {
       const stream = await this.openScreen()
       if (!stream) return
 
-      await window.moho.rpc('startDiscordScreenShare', { bufferId })
+      // Worked out from the capture, now that there is one: the width
+      // follows the screen's own shape, and the daemon tells viewers exactly
+      // what the encoder below will send.
+      const settings = encodeSettings(stream.getVideoTracks()[0]?.getSettings() ?? {}, quality)
+      await window.moho.rpc('startDiscordScreenShare', { ...where, ...settings })
       this.toast('info', 'Setting up the stream…')
 
       // The connection is opened by the daemon when Discord answers, which
@@ -2569,24 +2744,94 @@ export class ChatStore {
         // opened the stream" is true and useless; a token it would not take
         // or a server it could not find is a sentence somebody can act on.
         this.toast('error', ready.error ? `Couldn’t open the stream: ${ready.error}` : 'Discord never opened the stream')
-        await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
+        await window.moho.rpc('stopDiscordScreenShare', where).catch(() => {})
         // A capture already open has nobody to send it to.
         for (const track of stream.getTracks()) track.stop()
         return
       }
 
-      const { shareScreen } = await import('../lib/discordscreen')
-      this.discordShare = await shareScreen(accountId, stream, (message) => {
+      this.discordShare = await shareScreen(accountId, stream, settings, (message) => {
         this.toast('error', message)
         this.discordShare = null
-        this.set({ discordSharing: false })
-        void window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
+        this.set({ discordSharing: null, discordShareStream: null })
+        void window.moho.rpc('stopDiscordScreenShare', where).catch(() => {})
       })
-      this.set({ discordSharing: true })
+      this.set({ discordSharing: accountId, discordShareStream: stream })
     } catch (e) {
       this.toast('error', `Couldn't share the screen: ${(e as Error).message}`)
-      await window.moho.rpc('stopDiscordScreenShare', { bufferId }).catch(() => {})
+      await window.moho.rpc('stopDiscordScreenShare', where).catch(() => {})
     }
+  }
+
+  /**
+   * Turns this end's camera on or off in a Discord call.
+   *
+   * The camera is opened first, so a machine without one is told so before
+   * anybody in the call sees a tile appear. Then the daemon tells Discord a
+   * picture is coming, and only once the call's encryption group can be
+   * encrypted for does the encoder start - a frame before that is one nobody
+   * can read.
+   */
+  async toggleDiscordCamera(accountId: string): Promise<void> {
+    const current = this.state.discordCamera
+    if (current) {
+      this.stopDiscordCamera(current.accountId)
+      // One camera, one call: pressing it in a second account's call moves
+      // it there rather than only turning it off.
+      if (current.accountId === accountId) return
+    }
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+        audio: false
+      })
+    } catch (e) {
+      this.toast('error', `Couldn't turn the camera on: ${(e as Error).message}`)
+      return
+    }
+    // Discord's own client sends a camera at 720p30 whatever the account.
+    const settings = encodeSettings(stream.getVideoTracks()[0]?.getSettings() ?? {}, DEFAULT_QUALITY)
+    const giveUp = (message: string): void => {
+      for (const track of stream.getTracks()) track.stop()
+      this.toast('error', message)
+      void window.moho.rpc('setDiscordCamera', { accountId, on: false }).catch(() => {})
+    }
+    try {
+      await window.moho.rpc('setDiscordCamera', { accountId, on: true, ...settings })
+      let ready = false
+      for (let i = 0; i < 50 && !ready; i++) {
+        ready = await window.moho
+          .rpc<{ ready: boolean }>('discordCameraReady', { accountId })
+          .then((r) => r.ready)
+          .catch(() => false)
+        if (!ready) await new Promise((r) => setTimeout(r, 200))
+      }
+      if (!ready) {
+        giveUp("Couldn't turn the camera on: the call's encryption never got ready")
+        return
+      }
+      this.discordCameraSend = await sendCamera(accountId, stream, settings, (message) => {
+        this.discordCameraSend = null
+        this.set({ discordCamera: null })
+        giveUp(message)
+      })
+      this.set({ discordCamera: { accountId, stream } })
+    } catch (e) {
+      giveUp(`Couldn't turn the camera on: ${(e as Error).message}`)
+    }
+  }
+
+  /** Turns the Discord camera off, if it is on. */
+  private stopDiscordCamera(accountId?: string): void {
+    const sending = this.discordCameraSend
+    this.discordCameraSend = null
+    sending?.stop()
+    const camera = this.state.discordCamera
+    if (camera) for (const track of camera.stream.getTracks()) track.stop()
+    if (camera || sending) this.set({ discordCamera: null })
+    const whose = accountId ?? camera?.accountId
+    if (whose) void window.moho.rpc('setDiscordCamera', { accountId: whose, on: false }).catch(() => {})
   }
 
   /** Waits for the daemon to say the stream connection is up. */
@@ -2702,6 +2947,13 @@ export class ChatStore {
       // Somebody joined or left a room's call. Both the offer of a call to
       // join and, while in one, the signal to meet whoever just arrived.
       // A bot answering a slash command with a form to fill in.
+      // A guild's calendar changed: the count for its events row.
+      case 'discordEvents': {
+        const d = data as unknown as { accountId: string; guildId: string; count: number; live?: LiveDiscordEvent[] }
+        this.noteEvents(d.accountId, d.guildId, d.count, d.live ?? [])
+        break
+      }
+
       case 'discordModal': {
         this.set({ discordModal: data as unknown as DiscordModal })
         break
@@ -3023,24 +3275,12 @@ export class ChatStore {
       case 'discordLoginScanned':
         this.set({ discordLoginStatus: 'Scanned - approve it on your phone' })
         break
-      case 'discordLoginMfa':
-        this.set({
-          discordMfa: {
-            loginId: data.loginId,
-            totp: !!data.totp,
-            sms: !!data.sms,
-            backup: !!data.backup
-          },
-          discordLoginStatus: ''
-        })
-        break
 
       case 'discordLoginResult':
         this.set({
           discordQrPath: '',
           discordLoginStatus: data.error || '',
           // A failure leaves the form open to try again; success clears it.
-          discordMfa: data.error ? this.state.discordMfa : null,
           discordReauthAccountId: data.error ? this.state.discordReauthAccountId : ''
         })
         if (!data.error) {
@@ -3517,6 +3757,33 @@ export class ChatStore {
    */
   async refreshAttachments(bufferId: string, messageId: string): Promise<void> {
     await window.moho.rpc('refreshDiscordAttachments', { bufferId, messageId })
+  }
+
+  /** Lapsed Discord links waiting to be asked about, by conversation. */
+  private staleLinks = new Map<string, Set<string>>()
+  private staleTimer: ReturnType<typeof setTimeout> | null = null
+
+  /**
+   * Asks for fresh links for a message whose pictures have lapsed, gathered
+   * for a moment first: a screenful of old videos names fifty messages at
+   * once, and fifty requests where one batch would do is how a rate limit is
+   * met. The daemon re-signs them a page at a time and broadcasts each.
+   */
+  resignWhenIdle(bufferId: string, messageId: string): void {
+    const ids = this.staleLinks.get(bufferId) ?? new Set<string>()
+    ids.add(messageId)
+    this.staleLinks.set(bufferId, ids)
+    if (this.staleTimer) return
+    this.staleTimer = setTimeout(() => {
+      this.staleTimer = null
+      const batches = [...this.staleLinks.entries()]
+      this.staleLinks.clear()
+      for (const [buffer, messageIds] of batches) {
+        void window.moho
+          .rpc('resignDiscordAttachments', { bufferId: buffer, messageIds: [...messageIds] })
+          .catch(() => {})
+      }
+    }, 300)
   }
 
   /**
@@ -4256,14 +4523,10 @@ export class ChatStore {
     this.set({
       discordReauthAccountId: accountId,
       discordQrPath: '',
-      discordLoginStatus: '',
-      discordMfa: null
+      discordLoginStatus: ''
     })
   }
 
-  clearDiscordMfa(): void {
-    this.set({ discordMfa: null })
-  }
   setSneedChatLoginStatus(status: string): void {
     this.set({ sneedChatLoginStatus: status })
   }

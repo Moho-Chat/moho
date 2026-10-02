@@ -194,6 +194,14 @@ export interface VoicePrefs {
   output?: string
   micMuted: boolean
   deafened: boolean
+  /** A call's overall loudness, 1 as it arrives, up to 2. */
+  outputVolume?: number
+  /** People turned up or down, by Discord user id. Absent is 1. */
+  userVolumes?: Record<string, number>
+  /** Echo cancellation on a Discord call's microphone. Absent is on. */
+  echoCancellation?: boolean
+  /** Noise suppression on it. Absent is on. */
+  noiseSuppression?: boolean
 }
 
 /** Someone sitting in a voice channel. */
@@ -223,6 +231,10 @@ export interface VoiceMember {
   video?: boolean
   muted?: boolean
   deafened?: boolean
+  /** On a stage: in the audience rather than among the speakers. */
+  suppressed?: boolean
+  /** On a stage: has asked to speak, or been invited up. */
+  handRaised?: boolean
 }
 
 /**
@@ -306,6 +318,10 @@ export interface VoiceChannel {
    * before an upgrade.
    */
   members?: VoiceMember[]
+  /** A stage: speakers and an audience rather than a room everybody talks in. */
+  stage?: boolean
+  /** What a stage is about, while it is live. */
+  topic?: string
 }
 
 /**
@@ -332,6 +348,8 @@ export interface VoiceSession {
   isDirect: boolean
   /** The conversation the call is in, where one is known. */
   bufferId?: string
+  /** A stage channel: speakers and an audience. */
+  stage?: boolean
 }
 
 export interface ReplyPreview {
@@ -426,7 +444,8 @@ export interface Embed {
  * but not for Sneedchat or Matrix, which is what the local paths are for.
  */
 export interface Attachment {
-  kind: 'image' | 'video' | 'audio' | 'file'
+  /** `lottie` is a Discord sticker drawn as a vector animation. */
+  kind: 'image' | 'video' | 'audio' | 'file' | 'lottie'
   mimetype?: string
   filename?: string
   size?: number

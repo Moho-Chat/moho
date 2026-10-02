@@ -1,5 +1,6 @@
 /**
- * A screen, encoded here and sent to the daemon to put on the wire.
+ * A screen or a camera, encoded here and sent to the daemon to put on the
+ * wire.
  *
  * The division is the one the Matrix calls already draw, from the other side.
  * There the browser holds the whole call, because WebRTC is the browser's.
@@ -25,11 +26,55 @@ declare class MediaStreamTrackProcessor {
   readonly readable: ReadableStream<VideoFrame>
 }
 
-/** What to aim for. Discord's own Go Live default for a free account. */
-const WIDTH = 1280
-const HEIGHT = 720
-const FRAMERATE = 30
-const BITRATE = 2_500_000
+/**
+ * What a picture is sent at. The height is a ceiling, not a size: the width
+ * follows from the capture's own shape, so a tall window or an ultrawide
+ * screen is scaled once, in proportion, rather than squeezed into 16:9.
+ */
+export interface VideoQuality {
+  /** The tallest it may be, or `source` for the capture's own height. */
+  height: number | 'source'
+  framerate: number
+}
+
+/** Discord's own default, and the ceiling without Nitro. */
+export const DEFAULT_QUALITY: VideoQuality = { height: 720, framerate: 30 }
+
+/** What the encoder is configured with, worked out from the capture. */
+export interface EncodeSettings {
+  width: number
+  height: number
+  framerate: number
+  bitrate: number
+}
+
+/** No picture is ever sent larger than this, whatever the source. */
+const LARGEST_HEIGHT = 2160
+
+/**
+ * The size, rate and bitrate to encode a capture at.
+ *
+ * Even dimensions, because VP8 works in 16-pixel blocks and an odd one is
+ * refused by some encoders. The bitrate is about 0.09 bits a pixel a frame,
+ * which is what puts 720p30 at Discord's 2.5 Mbit, kept between half a
+ * megabit - below which text is mush - and eight.
+ */
+export function encodeSettings(
+  capture: { width?: number; height?: number },
+  quality: VideoQuality
+): EncodeSettings {
+  const sourceWidth = capture.width || 1280
+  const sourceHeight = capture.height || 720
+  const ceiling = Math.min(quality.height === 'source' ? sourceHeight : quality.height, LARGEST_HEIGHT)
+  // Never scaled up: sending a 600-pixel window as 1080p costs bandwidth and
+  // adds nothing.
+  const height = Math.min(sourceHeight, ceiling)
+  const width = Math.round((sourceWidth * height) / sourceHeight)
+  const even = (n: number): number => Math.max(16, n - (n % 2))
+  const settings = { width: even(width), height: even(height), framerate: quality.framerate }
+  const bitrate = Math.round(settings.width * settings.height * settings.framerate * 0.09)
+  return { ...settings, bitrate: Math.min(8_000_000, Math.max(500_000, bitrate)) }
+}
 
 /**
  * How often to send a keyframe unasked.
@@ -58,17 +103,45 @@ export interface ScreenShare {
 export async function shareScreen(
   accountId: string,
   source: MediaStream,
+  settings: EncodeSettings,
+  onError: (message: string) => void
+): Promise<ScreenShare> {
+  return sendVideo(accountId, 'screen', source, settings, onError)
+}
+
+/**
+ * Starts encoding a camera for the call this account is in.
+ *
+ * The same encoder as a screen: VP8 in software, keyframes on a clock. What
+ * differs is only where the daemon puts the frames - on the voice
+ * connection's camera SSRC rather than on a stream connection of its own.
+ */
+export async function sendCamera(
+  accountId: string,
+  source: MediaStream,
+  settings: EncodeSettings,
+  onError: (message: string) => void
+): Promise<ScreenShare> {
+  return sendVideo(accountId, 'camera', source, settings, onError)
+}
+
+async function sendVideo(
+  accountId: string,
+  kind: 'screen' | 'camera',
+  source: MediaStream,
+  settings: EncodeSettings,
   onError: (message: string) => void
 ): Promise<ScreenShare> {
   const track = source.getVideoTracks()[0]
   if (!track) throw new Error('that capture has no picture in it')
+  const { width, height, framerate, bitrate } = settings
 
   const supported = await VideoEncoder.isConfigSupported({
     codec: 'vp8',
-    width: WIDTH,
-    height: HEIGHT,
-    bitrate: BITRATE,
-    framerate: FRAMERATE
+    width,
+    height,
+    bitrate,
+    framerate
   })
   if (!supported.supported) throw new Error('this machine has no VP8 encoder')
 
@@ -82,6 +155,7 @@ export async function shareScreen(
       void window.moho
         .rpc('sendDiscordVideoFrame', {
           accountId,
+          kind,
           frame: toBase64(bytes),
           timestampMicros: chunk.timestamp
         })
@@ -98,10 +172,10 @@ export async function shareScreen(
   })
   encoder.configure({
     codec: 'vp8',
-    width: WIDTH,
-    height: HEIGHT,
-    bitrate: BITRATE,
-    framerate: FRAMERATE,
+    width,
+    height,
+    bitrate,
+    framerate,
     // Latency over quality, which is what a shared screen is for: somebody
     // is watching a pointer move.
     latencyMode: 'realtime'
@@ -109,6 +183,8 @@ export async function shareScreen(
 
   const reader = new MediaStreamTrackProcessor({ track }).readable.getReader()
   let lastKeyframe = 0
+  let lastFrame = 0
+  const spacing = 1000 / framerate
 
   const pump = async (): Promise<void> => {
     while (!stopped) {
@@ -122,6 +198,15 @@ export async function shareScreen(
         continue
       }
       const now = performance.now()
+      // Held to the rate chosen. A screen captures at whatever the display
+      // runs at, and 60 frames encoded for a 30 frame stream is twice the
+      // bandwidth for a picture nobody sees move faster. A little slack, so
+      // a capture running exactly at the rate is not halved by jitter.
+      if (now - lastFrame < spacing * 0.85) {
+        value.close()
+        continue
+      }
+      lastFrame = now
       const key = now - lastKeyframe > KEYFRAME_EVERY_MS
       if (key) lastKeyframe = now
       encoder.encode(value, { keyFrame: key })
