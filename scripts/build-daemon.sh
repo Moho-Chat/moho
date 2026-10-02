@@ -9,4 +9,6 @@ SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 . "$SRC_DIR/scripts/find-cargo.sh"
 
 echo "building the daemon with $CARGO"
-"$CARGO" build --release --manifest-path "$SRC_DIR/nobilis/Cargo.toml"
+# --locked: build exactly what Cargo.lock names, and fail rather than quietly
+# re-resolve and rewrite it when Cargo.toml and the lockfile disagree.
+"$CARGO" build --release --locked --manifest-path "$SRC_DIR/nobilis/Cargo.toml"
