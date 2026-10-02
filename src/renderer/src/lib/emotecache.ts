@@ -102,6 +102,39 @@ export function drawableEmoteUrl(url: string): string {
   return url
 }
 
+/** The emote id in a local copy's media URL, or null for anything else. */
+function localEmoteId(src: string): string | null {
+  const path = new URL(src, location.href).searchParams.get('p')
+  return path?.match(/kick-emotes[\\/](\d+)\.(?:gif|png)$/)?.[1] ?? null
+}
+
+/**
+ * A local copy that has gone, drawn from Kick again and fetched again.
+ *
+ * The daemon sweeps its emote cache by size, oldest first, while this map was
+ * filled at startup and still names what it deleted - which drew as a broken
+ * image for the rest of the session. So a local copy that fails to load is
+ * forgotten, the picture is put back from Kick at once, and the small copy is
+ * asked for again for next time.
+ *
+ * One listener on the document rather than one per picture: emotes are drawn
+ * by an HTML formatter that returns a string as well as by React, and `error`
+ * does not bubble but can be caught on the way down.
+ */
+export function recoverMissingEmotes(): () => void {
+  const onError = (e: Event): void => {
+    const img = e.target
+    if (!(img instanceof HTMLImageElement)) return
+    const id = localEmoteId(img.src)
+    if (!id) return
+    local.delete(id)
+    img.src = `https://files.kick.com/emotes/${id}/fullsize`
+    requestLocalEmotes([id])
+  }
+  document.addEventListener('error', onError, true)
+  return () => document.removeEventListener('error', onError, true)
+}
+
 /** Test seam: forget everything, so one test cannot colour the next. */
 export function resetLocalEmotes(): void {
   local.clear()

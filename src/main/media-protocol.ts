@@ -136,6 +136,12 @@ function underRoot(candidate: string, root: string): boolean {
   return comparable(candidate).startsWith(comparable(root))
 }
 
+/** Whether a path names somewhere inside the roots, without touching the disk. */
+function insideRoots(target: string): boolean {
+  const resolved = path.resolve(target) + path.sep
+  return allowedRoots().some((root) => underRoot(resolved, root))
+}
+
 /** Exported for tests: this predicate is the whole security boundary. */
 export function isAllowed(target: string): boolean {
   const resolved = path.resolve(target)
@@ -175,6 +181,11 @@ export function installMediaHandler(): void {
     // resolveMediaUrl for why the path component can't be trusted here.
     const filePath = new URL(request.url).searchParams.get('p')
     if (!filePath) return new Response('bad request', { status: 400 })
+    // Missing is not refused. A cache sweep deletes files the window may still
+    // name, and logging that as a request outside the roots made an ordinary
+    // eviction read like an attack on the boundary. Only inside the roots,
+    // so this says nothing about whether a file exists anywhere else.
+    if (insideRoots(filePath) && !fs.existsSync(filePath)) return new Response('not found', { status: 404 })
     if (!isAllowed(filePath)) {
       // Once per path: a refused avatar is re-requested for every message its
       // sender ever posted, and logging each one buries anything else.
