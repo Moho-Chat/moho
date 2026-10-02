@@ -132,7 +132,7 @@ jobs:
       # way to lose twenty minutes.
       - name: rust toolchain
         run: |
-          rustup toolchain install stable --profile minimal --no-self-update
+          rustup toolchain install stable --profile minimal --component clippy --no-self-update
           rustup default stable
           echo "RUSTC_VERSION=$(rustc -V | tr ' /' '--')" >> "$GITHUB_ENV"
 
@@ -239,6 +239,12 @@ jobs:
       # #[ignore]d, so this is hermetic on a runner.
       - name: cargo test
         run: cargo test --release --locked --manifest-path nobilis/Cargo.toml
+
+      # Held at zero, so a lint is the change that introduced it rather than
+      # one more in a pile nobody reads. Release profile for the same reason
+      # as the tests: the dependencies were checked by the build above.
+      - name: cargo clippy
+        run: cargo clippy --release --locked --all-targets --manifest-path nobilis/Cargo.toml -- -D warnings
 
       # MOHO_BUILD is computed inside the npm script - a shell assignment on
       # the electron-builder line - so it cannot be injected from out here.
