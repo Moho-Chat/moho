@@ -69,6 +69,17 @@ without them there is no Electron to run:
 npm install-scripts approve electron esbuild
 ```
 
+## Test it
+
+```bash
+npm test          # the window's unit tests (Vitest)
+npm run test:ui   # layout checks against the real app - popups must stay inside the window
+cd nobilis && cargo test --release
+```
+
+`test:ui` builds the window, runs it against a scratch home and a fake IRC server, and needs the
+daemon built first. On a machine with no display, run it under `xvfb-run`.
+
 ## Run it
 
 ```bash

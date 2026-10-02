@@ -121,7 +121,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential cmake pkg-config libasound2-dev
+            build-essential cmake pkg-config libasound2-dev xvfb
 
       # The image ships a stable rust, but its version floats and this tree's
       # effective floor is 1.93 (matrix-sdk-crypto). Ask explicitly.
@@ -207,6 +207,13 @@ jobs:
       - name: typecheck
         run: npm run typecheck
 
+      # The window's own unit tests: its formatting, its emote and media URL
+      # rewriting, the rail, search, mentions - and the media scheme's
+      # boundary. Seconds, so here beside the typecheck rather than after the
+      # long build.
+      - name: unit tests
+        run: npm test
+
       # Two jobs in one line. It warms the registry, and --locked turns a
       # stale lockfile into a loud failure here rather than a silent rewrite
       # later: the npm scripts call plain `cargo build`, which would quietly
@@ -245,6 +252,14 @@ jobs:
       # as the tests: the dependencies were checked by the build above.
       - name: cargo clippy
         run: cargo clippy --release --locked --all-targets --manifest-path nobilis/Cargo.toml -- -D warnings
+
+      # Layout, which only a real browser can check: the built app is run
+      # against a scratch home and a fake IRC server, every popup is opened at
+      # two window sizes, and each must stay inside the window - measured at
+      # several moments, because a popup that grows after it opens is the bug
+      # this was written for. Needs the daemon built above.
+      - name: layout check
+        run: xvfb-run -a npm run test:ui
 
       # MOHO_BUILD is computed inside the npm script - a shell assignment on
       # the electron-builder line - so it cannot be injected from out here.
