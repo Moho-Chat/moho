@@ -46,7 +46,7 @@ export async function applyTunnel(request: Request): Promise<void> {
   for (const contents of webContents.getAllWebContents()) applyPolicy(contents)
 }
 
-/** Routes a session made later - a sign-in or captcha window's partition. */
+/** Routes a session made later - a sign-in window's partition. */
 export async function routeSession(ses: Session): Promise<void> {
   extraSessions.add(ses)
   await routeOne(ses)

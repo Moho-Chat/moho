@@ -3320,12 +3320,19 @@ img.smilie {
   flex: none;
 }
 
-/* The actions that have to happen on Discord's own page. Side by side,
-   because they are the same kind of thing and neither is the main event. */
-.join-elsewhere-row {
+/* The actions that have to happen on Discord's own page, each with the
+   reason beside it: a button that leaves the app should say why it does. */
+.join-elsewhere-list {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: var(--spacing-s);
+}
+
+.join-elsewhere-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  min-width: 0;
 }
 
 .join-elsewhere {
@@ -3333,7 +3340,11 @@ img.smilie {
   align-items: center;
   gap: var(--spacing-xxs);
   align-self: flex-start;
-  font-size: var(--font-size-small);
+}
+
+.join-elsewhere-why {
+  margin: 0;
+  max-width: 60ch;
 }
 
 .join-friends-header {
