@@ -58,6 +58,11 @@ keeps running, so connections and unread tracking survive.
 - **Matrix security** - device verification by emoji or QR, cross-signing, server-side key
   backup, key export and import, and signing other sessions out, all under the account's own
   row in the Accounts pane. A session verified here is verified in Element too.
+- **Service interruptions** - a conversation that is not receiving is drawn in italics, with a
+  spinner while something is trying, and says why in a banner when opened: its account is
+  reconnecting, an IRC channel refused the join, a Kick channel is still being looked up. A
+  Sneedchat room that cannot connect is diagnosed - Tor, the forum, or only the chat - by
+  checking the route, then the forum's front page, then concluding it is the chat.
 - **Calls and streams** - a call stage like Discord's, which can sit in the corner or pop out
   into a window of its own, with tiles per person, volume per person and for the whole call on
   their right-click menu, and the camera and screen buttons in one row. A Kick stream is drawn

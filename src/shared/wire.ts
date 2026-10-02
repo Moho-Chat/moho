@@ -148,6 +148,18 @@ export interface Buffer {
    * a room with nothing in it.
    */
   syncing?: boolean
+  /**
+   * Set while this conversation's own connection is not up though its
+   * account's is - a Sneedchat room that cannot connect, an IRC channel that
+   * refused the join, a Kick channel still being looked up. See
+   * lib/bufferlink for how it combines with the account's state.
+   */
+  link?: {
+    state: 'connecting' | 'down'
+    detail?: string
+    /** tor | site | chat | refused */
+    cause?: string
+  }
 }
 
 /**

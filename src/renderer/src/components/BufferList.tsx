@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { bufferLink } from '../lib/bufferlink'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { ContextMenu, useContextMenu } from './ContextMenu'
 import { bufferMenuEntries } from '../lib/buffermenu'
@@ -876,6 +877,10 @@ function BufferRow({
   // than the map, so a viewer count ticking over in one channel does not
   // re-render every row in the list.
   const live = useChat((s) => s.kickStreams[buffer.id]?.live ?? false)
+  // Whether this conversation is receiving - see lib/bufferlink. Not
+  // connected reads in italics, with a spinner while something is trying.
+  const accountDetail = useChat((s) => s.connectionDetail[buffer.accountId])
+  const link = bufferLink(buffer, account, accountDetail)
   // Whether this channel's stream is the one in the window. Selected down to
   // a boolean for the same reason as `live` above.
   const watched = useChat((s) => s.watching?.bufferId === buffer.id)
@@ -955,7 +960,8 @@ function BufferRow({
           'buffer-row',
           active && 'active',
           buffer.highlight && 'highlight',
-          lifted && 'lifted'
+          lifted && 'lifted',
+          link && 'unlinked'
         )}
         onClick={onSelect}
         onContextMenu={open}
@@ -967,7 +973,7 @@ function BufferRow({
           onDragStart()
         }}
         onDragEnd={onDragEnd}
-        title={draggable ? `${buffer.name} — drag onto a heading to file it` : buffer.name}
+        title={link ? `${buffer.name} — ${link.detail}` : draggable ? `${buffer.name} — drag onto a heading to file it` : buffer.name}
       >
         {leading}
         <span className="ellipsis buffer-name">{bufferDisplayName(buffer.name)}</span>
@@ -977,6 +983,13 @@ function BufferRow({
             saying what is in it. A moving thing rather than a static mark,
             because what it says is "wait", not "note". */}
         {buffer.syncing && <span className="spinner" aria-label="Synchronising" />}
+        {link &&
+          !buffer.syncing &&
+          (link.retrying ? (
+            <span className="spinner" aria-label="Connecting" />
+          ) : (
+            <Icon name="link_off" size={13} className="buffer-muted-icon" />
+          ))}
         {poppedOut && <Icon name="open_in_new" size={13} className="buffer-muted-icon" />}
         {muted && <Icon name="notifications_off" size={13} className="buffer-muted-icon" />}
         {/* One badge, and being on air wins it: a live channel says LIVE,
