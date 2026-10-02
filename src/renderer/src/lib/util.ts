@@ -209,6 +209,12 @@ export function nickColor(nick: string): string {
 export function resolveMediaUrl(url: string): string {
   if (!url) return url
   let path: string | null = null
+  // A version the daemon puts on a file that keeps its name while its
+  // contents change - a Sneedchat avatar. It is not part of the path; it is
+  // carried on the media URL instead, so a new picture is a new URL and the
+  // window does not keep drawing the copy it already has.
+  const version = url.startsWith('file://') ? url.match(/#(\d+)$/)?.[1] : undefined
+  if (version) url = url.slice(0, -(version.length + 1))
   if (url.startsWith('file://')) {
     path = decodeURI(url.slice('file://'.length))
     // Some producers write file:///C:/x and some write file://C:\x. Both mean
@@ -230,7 +236,7 @@ export function resolveMediaUrl(url: string): string {
   // as the hostname - so a src of moho-media:///1tb/x.png arrives at the
   // handler as host "1tb" with path "/x.png". A query parameter is opaque to
   // that normalisation, and also can't be twisted by `..` segments.
-  return `${MEDIA_SCHEME}://file/?p=${encodeURIComponent(path)}`
+  return `${MEDIA_SCHEME}://file/?p=${encodeURIComponent(path)}${version ? `&v=${version}` : ''}`
 }
 
 export const MEDIA_SCHEME = 'moho-media'
