@@ -2866,6 +2866,14 @@ export class ChatStore {
   private handleEvent(frame: NobilisEvent): void {
     const { event, data } = frame
     switch (event) {
+      // Settings emptied the stored history. What the window holds is now a
+      // copy of nothing, so it goes, and the conversation on screen asks the
+      // daemon again - which, for a service that keeps its own history, is
+      // where that history starts coming back.
+      case 'historyCleared':
+        this.set({ messagesByBuffer: {}, loadedBuffers: {} })
+        if (this.state.activeBufferId) void this.loadBacklog(this.state.activeBufferId)
+        break
       case 'message':
         // An echo of our own send resolves the optimistic row in place; only
         // an unmatched message is a genuinely new one to append.

@@ -665,6 +665,9 @@ function MessageRowBody({
         )}
         // Addressable, so a search result can scroll to the message it found.
         data-msg-id={message.id}
+        // Where a picture in it came from, for fetching it again once its
+        // cached copy has gone - see lib/mediarestore.
+        data-buffer-id={bufferId}
         onContextMenu={open}
       >
         {/* Bubbles carry their own time inside, which is the whole point of

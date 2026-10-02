@@ -152,6 +152,10 @@ const api = {
   daemonStatus: (): Promise<{ binaryPath: string; available: boolean; linkUp: boolean }> =>
     ipcRenderer.invoke(IPC.daemonStatus),
   smiliesDir: (): Promise<string> => ipcRenderer.invoke(IPC.smiliesDir),
+  /** The pictures the window fetched itself from a CDN, in bytes. */
+  webCacheSize: (): Promise<number> => ipcRenderer.invoke(IPC.webCacheSize),
+  /** Empties that cache; answers what is left. */
+  clearWebCache: (): Promise<number> => ipcRenderer.invoke(IPC.clearWebCache),
   /**
    * False when this process is running without Chromium's sandbox.
    *

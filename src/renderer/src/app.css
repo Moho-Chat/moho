@@ -8183,3 +8183,18 @@ video.lightbox-media {
   color: var(--on-surface-variant, inherit);
   cursor: default;
 }
+
+/* Settings → Storage: each group's size beside its name, and the one
+   confirmation (chat history) inline where the button was. */
+.storage-size {
+  margin-left: var(--spacing-s);
+  font-variant-numeric: tabular-nums;
+}
+
+.storage-confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}

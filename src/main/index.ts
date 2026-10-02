@@ -37,6 +37,15 @@ import { applyPolicy, applyTunnel } from './tunnel'
 registerMediaScheme()
 
 /**
+ * A ceiling on Chromium's own HTTP cache - the pictures, emoji and embeds the
+ * window loads straight from Discord's and Kick's CDNs. Left to itself it
+ * sizes against free disk space and was found at 1.2GB; every other cache
+ * moho keeps has a size, and this one now has one too. Settings shows it and
+ * can empty it.
+ */
+app.commandLine.appendSwitch('disk-cache-size', String(256 * 1024 * 1024))
+
+/**
  * One client per profile. Launching moho again - from a launcher, a terminal,
  * a desktop file - should raise the window that already exists rather than
  * start a second copy.
@@ -823,6 +832,13 @@ function wireIpc(): void {
   })
 
   ipcMain.handle(IPC.smiliesDir, () => smiliesPath())
+
+  // Chromium's HTTP cache, which Settings reports beside the daemon's.
+  ipcMain.handle(IPC.webCacheSize, () => session.defaultSession.getCacheSize())
+  ipcMain.handle(IPC.clearWebCache, async () => {
+    await session.defaultSession.clearCache()
+    return session.defaultSession.getCacheSize()
+  })
 
   ipcMain.handle(IPC.sandboxState, () => sandboxed())
 }

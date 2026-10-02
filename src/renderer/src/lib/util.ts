@@ -319,3 +319,11 @@ export function formatRelativeTime(ts: number, now = Date.now()): string {
 export function classes(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(' ')
 }
+
+/** A size for a person to read: "312 KB", "1.2 GB". */
+export function humanBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${bytes} B`
+}

@@ -9,6 +9,7 @@ import {
 } from './controls'
 import { useChat, usePref, useStore } from '../../state/hooks'
 import { Icon } from '../Icon'
+import { humanBytes } from '../../lib/util'
 import { TunnelAllSwitch, useNetSettings } from './Tunnel'
 import type { Account, DccPrefs } from '../../../../shared/wire'
 
@@ -339,6 +340,120 @@ function VoiceSettings(): JSX.Element {
  * Cross-protocol preferences - these apply to every buffer regardless of
  * backend, unlike the per-protocol message filters.
  */
+/** What each group of stored things is, as Settings describes it. */
+const STORAGE_GROUPS: { id: string; label: string; description: string; confirm?: string }[] = [
+  {
+    id: 'history',
+    label: 'Chat history',
+    description:
+      'Messages kept on this computer. Discord, Matrix and IRC networks with history send theirs again as you scroll back; Kick and Sneedchat history is gone for good.',
+    confirm: 'Delete every stored message?'
+  },
+  {
+    id: 'media',
+    label: 'Pictures and video',
+    description: 'Attachments, thumbnails and Matrix media. Fetched again when you look at them.'
+  },
+  {
+    id: 'avatars',
+    label: 'Avatars and server icons',
+    description: 'Sneedchat avatars and Discord server icons. Fetched again as they are shown.'
+  },
+  {
+    id: 'emotes',
+    label: 'Emotes, stickers and sounds',
+    description: "Kick's emotes, Discord's animated stickers and soundboard sounds."
+  },
+  {
+    id: 'web',
+    label: 'Web cache',
+    description: "Pictures and emoji the window loads straight from Discord's and Kick's servers."
+  }
+]
+
+/**
+ * How much moho keeps on disk, and a way to empty each part of it.
+ *
+ * Everything but chat history is a cache: held to a size and to thirty days by
+ * the daemon, and fetched again when it is next looked at, so clearing it
+ * costs some downloading and nothing else. History is asked about first,
+ * because for two of the five services it cannot come back.
+ */
+function StorageSettings(): JSX.Element {
+  const store = useStore()
+  const [sizes, setSizes] = useState<Record<string, number> | null>(null)
+  const [busy, setBusy] = useState('')
+  const [confirming, setConfirming] = useState('')
+
+  const absorb = (groups: { id: string; bytes: number }[], web?: number): void =>
+    setSizes((old) => ({
+      ...(old ?? {}),
+      ...Object.fromEntries(groups.map((g) => [g.id, g.bytes])),
+      ...(web === undefined ? {} : { web })
+    }))
+
+  const refresh = (): void => {
+    void Promise.all([
+      window.moho.rpc<{ id: string; bytes: number }[]>('storageUsage').catch(() => []),
+      window.moho.webCacheSize().catch(() => 0)
+    ]).then(([groups, web]) => absorb(groups, web))
+  }
+  useEffect(refresh, [])
+
+  const clear = (id: string): void => {
+    setConfirming('')
+    setBusy(id)
+    const done =
+      id === 'web'
+        ? window.moho.clearWebCache().then((web) => absorb([], web))
+        : window.moho.rpc<{ id: string; bytes: number }[]>('clearStorage', { group: id }).then((groups) => absorb(groups))
+    void done
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(''))
+  }
+
+  const total = sizes ? Object.values(sizes).reduce((sum, b) => sum + b, 0) : null
+
+  return (
+    <SettingsSection
+      title="Storage"
+      description={`${total === null ? 'Measuring…' : `${humanBytes(total)} in all.`} Caches are kept for thirty days at most and each has a size limit, so none of them grows without end.`}
+    >
+      {STORAGE_GROUPS.map((group) => (
+        <div key={group.id} className="setting-row storage-row">
+          <div className="setting-text">
+            <div>
+              {group.label}
+              <span className="muted storage-size">{sizes?.[group.id] === undefined ? '…' : humanBytes(sizes[group.id])}</span>
+            </div>
+            <div className="small muted">{group.description}</div>
+          </div>
+          {confirming === group.id ? (
+            <div className="storage-confirm">
+              <span className="small">{group.confirm}</span>
+              <button type="button" className="button danger" onClick={() => clear(group.id)}>
+                Delete
+              </button>
+              <button type="button" className="button subtle" onClick={() => setConfirming('')}>
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="button subtle"
+              disabled={busy !== '' || !sizes?.[group.id]}
+              onClick={() => (group.confirm ? setConfirming(group.id) : clear(group.id))}
+            >
+              {busy === group.id ? 'Clearing…' : 'Clear'}
+            </button>
+          )}
+        </div>
+      ))}
+    </SettingsSection>
+  )
+}
+
 function GeneralSettings(): JSX.Element {
   const [defaultDir, setDefaultDir] = useState('')
   useEffect(() => {
@@ -405,6 +520,8 @@ function GeneralSettings(): JSX.Element {
       </SettingsSection>
 
       <VoiceSettings />
+
+      <StorageSettings />
 
       <SettingsSection
         title="Window"
