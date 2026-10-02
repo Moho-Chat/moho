@@ -2159,9 +2159,9 @@ export class ChatStore {
   }
 
   /** Takes the poll down, which the service allows whoever it allows. */
-  endPoll(bufferId: string): void {
+  endPoll(bufferId: string, pollId: string): void {
     void window.moho
-      .rpc('endPoll', { bufferId })
+      .rpc('endPoll', { bufferId, pollId })
       .catch((e: Error) => this.toast('error', e.message))
   }
 

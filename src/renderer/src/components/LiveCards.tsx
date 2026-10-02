@@ -150,7 +150,7 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
               it for anybody else - so it is offered and allowed to fail there
               rather than guessed at from a role this client may not know. */}
           {!reviewing && !isPrediction && open && (
-            <IconButton name="delete" size={16} title="End this poll" onClick={() => store.endPoll(card.bufferId)} />
+            <IconButton name="delete" size={16} title="End this poll" onClick={() => store.endPoll(card.bufferId, card.id)} />
           )}
           <IconButton
             name={reviewing ? 'close' : 'expand_less'}
