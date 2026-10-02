@@ -77,12 +77,12 @@ export default function App(): JSX.Element {
     // its small copy was noticed - the cache is on disk and outlives the
     // window, so there is no reason to rediscover it a megabyte at a time.
     void loadLocalEmotes()
-    const stopRecovering = recoverMissingEmotes()
-    return () => {
-      stopRecovering()
-      store.dispose()
-    }
+    return () => store.dispose()
   }, [prefsReady, booted, savedBufferId, savedGroupId, store])
+
+  // For the life of the window, and so its own effect: the one above is torn
+  // down the moment `booted` flips, which took this listener with it.
+  useEffect(() => recoverMissingEmotes(), [])
 
   /**
    * The mentions page is showing, so nothing in the window is scoped to one
