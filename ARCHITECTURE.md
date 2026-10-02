@@ -205,6 +205,6 @@ called `subscribe` for that buffer.
 | `~/.config/nobilis/matrix-crypto/` | Matrix E2EE device keys and Olm sessions |
 | `~/.config/nobilis/voice.toml` | microphone, speakers, volumes and voice processing |
 | `~/.config/nobilis/tor-state/`, `tor-cache/` | the embedded Tor client's state |
-| `~/.cache/nobilis/` | re-derivable media caches (Matrix media, Discord thumbnails, stickers and sounds, Kick emotes, Sneedchat avatars and attachments), most of them swept by size |
+| `~/.cache/nobilis/` | re-derivable media caches (Matrix media, Discord thumbnails, stickers and sounds, Kick emotes, Sneedchat avatars and attachments), each swept by size |
 | `~/.cache/moho/moho.log` | the app's log, the daemon's included |
 | `$XDG_RUNTIME_DIR/nobilis/nobilis.sock` | the daemon's control socket |
