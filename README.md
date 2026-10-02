@@ -22,15 +22,21 @@ again and everything is where you left it.
 - **It stays connected.** The daemon keeps IRC registered, Matrix syncing and Tor circuits
   open while the window is shut. Quitting says a proper goodbye rather than dropping the
   socket, so you don't come back to a ghosted nick.
-- **Calls.** Real audio on Discord and on Matrix, including the group calls Element holds
-  on a media server. On Matrix the camera and the screen both work, and either can be turned
-  on part-way through a call. Discord is voice only for now.
+- **Calls.** Voice, camera and screen sharing on Discord and on Matrix, including the group
+  calls Element holds on a media server. On Discord, Go Live streams both ways with sound,
+  echo cancellation, volume per person, the soundboard and stage channels. A call can sit in
+  the corner or pop out into a window of its own.
 - **Matrix, properly encrypted.** End-to-end encryption with device verification by emoji or
   QR, cross-signing, key backup, and encrypted attachments.
-- **Sneedchat over Tor.** An embedded Tor client, the site's proof-of-work gate and its login
-  captcha both handled, and every room you've joined connected at once.
-- **The awkward bits, in-app.** Where Discord demands a captcha to add a friend or join a
-  server, it opens in a moho window instead of sending you to a browser.
+- **Sneedchat, and Tor where you want it.** The site's proof-of-work gate and its login
+  captcha both handled, and every room you've joined connected at once. Any account on any of
+  the five can go through an embedded Tor client or a SOCKS5 proxy instead of the open internet.
+- **Kick streams in the window.** Watch the stream beside its chat, in the corner or in a
+  window of its own, with VODs, clips, 7TV and BTTV emotes, polls and predictions.
+- **No captchas on Discord, on purpose.** Discord puts joining a server, adding a friend and
+  making a server behind a captcha when they come from anything but its own client, and
+  answering one gets an account flagged for spam. moho opens discord.com for those three
+  instead of putting your account at risk.
 - **Yours.** GPL-3.0, no telemetry, no account with us — your history is a SQLite file on
   your own disk.
 
