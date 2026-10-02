@@ -3477,7 +3477,14 @@ export class ChatStore {
       // A re-broadcast of an already-known buffer (its lastActivityTs just
       // bumped). Merge the fresh server fields, keeping local-only unread and
       // highlight rather than resetting them.
-      this.set({ buffers: buffers.map((b) => (b.id === data.id ? { ...b, ...data } : b)) })
+      //
+      // `link` and `syncing` are taken as sent even when absent: the daemon
+      // leaves an optional field out when it is not set, so a plain spread
+      // kept the last value it ever had - a room that reconnected stayed
+      // marked as interrupted, and the banner over it stayed up.
+      this.set({
+        buffers: buffers.map((b) => (b.id === data.id ? { ...b, ...data, link: data.link, syncing: data.syncing } : b))
+      })
       this.followPeekJoin(data)
       return
     }
