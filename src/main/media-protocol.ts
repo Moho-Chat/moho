@@ -8,14 +8,22 @@ import { log } from './log'
 /**
  * nobilis hands back local `file://` paths for media it has already fetched on
  * the client's behalf - Tor-routed Sneedchat avatars and attachments, Matrix
- * media, the Discord login QR (see each nobilis backend's own cache dir).
- * The renderer has no route to any of those origins itself, which is why they
- * arrive as local files in the first place.
+ * media, a sign-in QR code. The renderer has no route to any of those origins
+ * itself, which is why they arrive as local files in the first place.
  *
  * Serving them through a dedicated scheme rather than turning off webSecurity
- * keeps the renderer unable to read arbitrary files: this handler resolves
- * only inside the known cache roots and refuses everything else, so a hostile
- * message body cannot smuggle `moho-media:///etc/passwd` past it.
+ * keeps the renderer unable to read arbitrary files - and this is the layer
+ * that holds when every other one has been got past (#247). It serves:
+ *
+ * - files directly inside the daemon's named media caches, and only if their
+ *   first bytes say they are a picture, a video or audio (a sticker's JSON in
+ *   the sticker cache alone) - never its config directory, never the system
+ *   temp directory, never anything nested or linked out;
+ * - the app's own files: its bundled resources, rail icons somebody chose;
+ * - single files the person picked or pasted this session.
+ *
+ * So a message that names a path - `moho-media://file/?p=/etc/passwd`, or the
+ * account file - gets nothing, whatever the window was persuaded to ask for.
  */
 
 export const SCHEME = 'moho-media'
@@ -95,27 +103,90 @@ function daemonDirs(): { cache: string; config: string }[] {
 }
 
 /**
- * These are the *daemon's* directories, not this app's: every local path that
- * arrives on the wire was written by nobilis (Tor-fetched Sneedchat media,
- * Matrix media, the Discord login QR), so nobilis is what the roots have to
- * track. They moved with the rename - pointing them at moho's own dirs
- * silently refuses every image the daemon fetches.
+ * The daemon's caches the window may draw from: the list in nobilis's
+ * media_cache.rs, and `transient`, where it writes what is drawn once and
+ * thrown away - a sign-in QR code, a voice message before it is sent.
+ *
+ * Named folders rather than the daemon's whole cache, and nothing from its
+ * config directory: that is where `accounts.toml`, the scrollback and the
+ * Matrix crypto store live, and no picture is ever drawn from there. And not
+ * the system temp directory, which used to be served whole - every file any
+ * program put there.
  */
+const DAEMON_MEDIA_DIRS = [
+  'matrix-media',
+  'sneedchat-attachments',
+  'sneedchat-avatars',
+  'discord-thumbnails',
+  'discord-icons',
+  'kick-emotes',
+  'discord-stickers',
+  'discord-sounds',
+  'transient'
+]
+
+/**
+ * The same caches under the daemon's pre-rename directory. Its migration only
+ * moves these when the destination does not already exist, so a client that
+ * ran under both names has stored messages still naming the old one.
+ */
+const LEGACY_MEDIA_DIRS = ['matrix-media', 'sneedchat-attachments', 'sneedchat-avatars']
+
+/** Where a Lottie sticker's animation is - the one place JSON is served. */
+const STICKER_DIR = 'discord-stickers'
+
 function allowedRoots(): string[] {
-  return daemonDirs().flatMap(({ cache, config }) => [
-    path.join(cache, 'nobilis'),
-    path.join(config, 'nobilis'),
-    // The daemon's pre-rename directories. Its migration only moves these
-    // when the destination does not already exist, so a client that ran under
-    // both names ends up with the two side by side and years of stored
-    // messages still naming the old one. Those files are the user's own cache
-    // either way; refusing them only blanks the avatars on old scrollback.
-    path.join(cache, 'moho'),
-    path.join(config, 'moho')
-  ])
-    .concat(os.tmpdir())
+  return daemonDirs()
+    .flatMap(({ cache }) => [
+      ...DAEMON_MEDIA_DIRS.map((dir) => path.join(cache, 'nobilis', dir)),
+      ...LEGACY_MEDIA_DIRS.map((dir) => path.join(cache, 'moho', dir))
+    ])
     .map((p) => path.resolve(p) + path.sep)
-    .concat(extraRoots)
+}
+
+/**
+ * Whether these bytes are something the window draws or plays: a picture, a
+ * video, or audio. Read from the file rather than taken from its name, because
+ * a name says nothing about what is in a file - and the point is that nothing
+ * else is served, whatever it is called.
+ *
+ * Exported for tests.
+ */
+export function isMediaBytes(head: Uint8Array, allowJson = false): boolean {
+  const at = (i: number, ...bytes: number[]): boolean => bytes.every((b, k) => head[i + k] === b)
+  const ascii = (i: number, text: string): boolean => at(i, ...[...text].map((c) => c.charCodeAt(0)))
+  if (at(0, 0x89, 0x50, 0x4e, 0x47)) return true // PNG
+  if (at(0, 0xff, 0xd8, 0xff)) return true // JPEG
+  if (ascii(0, 'GIF8')) return true
+  if (ascii(0, 'RIFF') && (ascii(8, 'WEBP') || ascii(8, 'WAVE') || ascii(8, 'AVI '))) return true
+  if (ascii(0, 'BM')) return true
+  if (at(0, 0x00, 0x00, 0x01, 0x00)) return true // ICO
+  if (ascii(4, 'ftyp')) return true // MP4, MOV, AVIF, HEIC, M4A
+  if (at(0, 0x1a, 0x45, 0xdf, 0xa3)) return true // WebM, Matroska
+  if (ascii(0, 'OggS')) return true // Ogg: Opus, Vorbis
+  if (ascii(0, 'fLaC')) return true
+  if (ascii(0, 'ID3')) return true // MP3 with a tag
+  if (head[0] === 0xff && (head[1] & 0xe0) === 0xe0) return true // MP3 frame
+  if (allowJson) {
+    const first = [...head].find((b) => b !== 0x20 && b !== 0x0a && b !== 0x0d && b !== 0x09)
+    if (first === 0x7b) return true // {
+  }
+  return false
+}
+
+/** The first bytes of a file, or nothing if it cannot be read. */
+function headOf(filePath: string): Uint8Array | null {
+  let fd: number | null = null
+  try {
+    fd = fs.openSync(filePath, 'r')
+    const head = new Uint8Array(32)
+    const n = fs.readSync(fd, head, 0, head.length, 0)
+    return head.subarray(0, n)
+  } catch {
+    return null
+  } finally {
+    if (fd !== null) fs.closeSync(fd)
+  }
 }
 
 /**
@@ -154,10 +225,21 @@ export function isAllowed(target: string): boolean {
     return false
   }
   if (pickedFiles.has(comparable(resolved)) || pickedFiles.has(comparable(real))) return true
-  if (real !== resolved && !allowedRoots().some((root) => underRoot(real + path.sep, root))) {
-    return false
-  }
-  return allowedRoots().some((root) => underRoot(resolved + path.sep, root))
+  // The app's own files - its bundled resources, a rail icon somebody chose -
+  // are whatever they are; they never came from anybody else.
+  const own = (p: string): boolean => extraRoots.some((root) => underRoot(p + path.sep, root))
+  if (own(resolved) && own(real)) return true
+
+  const roots = allowedRoots()
+  const inside = (p: string): boolean => roots.some((root) => underRoot(p + path.sep, root))
+  // A link planted inside that points out is judged by where it points.
+  if (!inside(resolved) || !inside(real)) return false
+  // Directly inside a cache folder, never deeper: nothing the daemon writes
+  // is nested, and a subfolder is not something it made.
+  if (!roots.some((root) => comparable(path.dirname(real) + path.sep) === comparable(root))) return false
+  const head = headOf(real)
+  if (!head) return false
+  return isMediaBytes(head, path.basename(path.dirname(real)) === STICKER_DIR)
 }
 
 /** Must run before app.whenReady(). */
@@ -191,7 +273,7 @@ export function installMediaHandler(): void {
       // sender ever posted, and logging each one buries anything else.
       if (!refused.has(filePath)) {
         refused.add(filePath)
-        log.warn('[media] refused out-of-root request:', filePath)
+        log.warn('[media] refused request:', filePath)
       }
       return new Response('forbidden', { status: 403 })
     }

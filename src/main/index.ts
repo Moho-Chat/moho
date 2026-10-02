@@ -783,6 +783,9 @@ function wireIpc(): void {
       const ext = type.slice('image/'.length).split(/[;+]/)[0] || 'png'
       const file = path.join(dir, `paste-${Date.now()}.${ext}`)
       fs.writeFileSync(file, Buffer.from(await blob.arrayBuffer()))
+      // Drawn in the composer before it is sent - and allowed by name, since
+      // the temp directory as a whole is not something the window may read.
+      allowPickedFile(file)
       return file
     }
     return null
@@ -959,6 +962,8 @@ app.whenReady().then(() => {
   // nobilis's cached media, so the renderer needs no file access of its own.
   allowRoot(resourcePath())
   allowRoot(smiliesPath())
+  // Rail icons somebody chose, copied here after being checked as images.
+  allowRoot(path.join(app.getPath('userData'), 'group-icons'))
   installMediaHandler()
 
   prefs = new Prefs()

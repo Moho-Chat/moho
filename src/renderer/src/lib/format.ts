@@ -104,7 +104,9 @@ export function emojiPreview(text: string, smilies: SmilieEntry[] = []): EmojiPr
 }
 
 export function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  // Quotes as well as brackets: the link passes write a URL from the text
+  // into an attribute, and a quote in it would end the attribute early.
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 /**
@@ -204,8 +206,11 @@ export interface SmilieEntry extends SneedchatSmilie {
  */
 export function buildSmilieIndex(smilies: SmilieEntry[]): SmilieIndex {
   const byAlias: Record<string, SmilieEntry> = {}
+  // Keyed as the text will read when they are looked for: formatMessage
+  // escapes a message before it reads it, so an alias with a < or & in it
+  // has to be matched in its escaped form.
   for (const s of smilies) {
-    for (const alias of s.aliases || []) byAlias[alias] = s
+    for (const alias of s.aliases || []) byAlias[escapeHtml(alias)] = s
   }
   const aliases = Object.keys(byAlias)
   if (aliases.length === 0) return { byAlias, regex: null }
@@ -369,6 +374,13 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   // otherwise break the pass that reads it. Stripped rather than rendered for
   // every protocol that does not use them, where a control character is
   // something somebody pasted rather than formatting.
+  // The sender's text is text. Escaped before anything else, so the only
+  // markup in what comes out is what this function builds - a raw tag typed
+  // into a message is shown, never drawn. Drawn, it was a way for anybody to
+  // put an image in front of the reader that loaded a file from the reader's
+  // own computer, or pinged a server of the sender's (#247, #145). Everything
+  // below matches the escaped forms of the tokens it looks for.
+  text = escapeHtml(text)
   text = ircFormat(text, opts.ircFormatting === 'render' ? 'render' : 'strip')
 
   // Stash already-formed markup so later passes don't re-touch its contents,
@@ -384,17 +396,12 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
 
   let out = text
 
-  // Existing HTML anchors (case-insensitive - some channels send <A HREF=...>).
-  out = out.replace(
-    /<a\s+href=["']([^"']+)["']\s*>([\s\S]*?)<\/a>/gi,
-    (_m, href: string, label: string) => stow(`<a href="${href}">${label}</a>`)
-  )
-
   // Inline `code` spans, stowed before anything else touches them so backticked
   // content is never reinterpreted as markdown or links, and escaped since code
   // commonly contains < > & that would corrupt the parse.
   out = out.replace(/`([^`\n]+)`/g, (_m, code: string) =>
-    stow(`<span class="inline-code">&nbsp;${escapeHtml(code)}&nbsp;</span>`)
+    // Already escaped with the rest of the text.
+    stow(`<span class="inline-code">&nbsp;${code}&nbsp;</span>`)
   )
 
   // Spoilers: ||text||, hidden behind a solid bar until clicked, same as
@@ -403,8 +410,8 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   let spoilerIndex = 0
   out = out.replace(/\|\|([\s\S]+?)\|\|/g, (_m, inner: string) => {
     const idx = spoilerIndex++
-    if (revealed[idx]) return stow(`<span class="spoiler revealed">${escapeHtml(inner)}</span>`)
-    return stow(`<a href="spoiler:${idx}" class="spoiler">${escapeHtml(inner)}</a>`)
+    if (revealed[idx]) return stow(`<span class="spoiler revealed">${inner}</span>`)
+    return stow(`<a href="spoiler:${idx}" class="spoiler">${inner}</a>`)
   })
 
   // Discord custom emoji, which arrive in the body as `<:name:id>` (or
@@ -412,8 +419,8 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   // No lookup is needed - the id is in the token, and the picture is public -
   // so this works for any guild's emoji, including ones from a server this
   // account is not in.
-  out = out.replace(/<(a?):([A-Za-z0-9_~]{2,32}):(\d+)>/g, (_m, _anim: string, name: string, id: string) =>
-    stow(`<img src="${discordEmojiUrl(id, 48)}" class="custom-emoji" alt=":${escapeHtml(name)}:">`)
+  out = out.replace(/&lt;(a?):([A-Za-z0-9_~]{2,32}):(\d+)&gt;/g, (_m, _anim: string, name: string, id: string) =>
+    stow(`<img src="${discordEmojiUrl(id, 48)}" class="custom-emoji" alt=":${name}:">`)
   )
 
   // Kick emotes, which arrive as `[emote:1082364:xqcAM]`. Like Discord's
@@ -423,7 +430,7 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   // on what they have paid for would leave a newcomer reading a chat that is
   // half raw tokens, and the tier gates sending, not looking.
   out = out.replace(/\[emote:(\d+):([^\]]{0,64})\]/g, (_m, id: string, name: string) =>
-    stow(`<img src="${kickEmoteUrl(id)}" class="custom-emoji" alt=":${escapeHtml(name)}:">`)
+    stow(`<img src="${kickEmoteUrl(id)}" class="custom-emoji" alt=":${name}:">`)
   )
 
   // Discord channel links. What arrives is `<#1393001234568164748>` and
@@ -433,7 +440,7 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   // `channel:` href into a click that switches buffers rather than something
   // the browser navigates. An id nothing here knows still beats showing the
   // raw token, which reads as a bug.
-  out = out.replace(/<#(\d+)>/g, (_m, id: string) => {
+  out = out.replace(/&lt;#(\d+)&gt;/g, (_m, id: string) => {
     const known = opts.channels?.[id]
     if (!known) return stow('<span class="channel-mention unknown">#unknown-channel</span>')
     // The "#" is drawn here, so a name that already carries one (IRC's do,
@@ -458,7 +465,7 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
       if (!s || !s.url) return m
       // No explicit width/height: most of these are small by design (24-64px),
       // and forcing a fixed square distorts the wider banner-shaped ones.
-      return stow(`<img src="${s.url}" class="smilie" alt="${escapeHtml(m)}">`)
+      return stow(`<img src="${s.url}" class="smilie" alt="${m}">`)
     })
   }
 
@@ -504,7 +511,11 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   // Any bare URL not already wrapped by one of the formats above.
   // ircs? alongside the web schemes: a link to a channel is a link, and one
   // written in a message means exactly what the same link means in a browser.
-  out = out.replace(/((?:https?|file|ircs?):\/\/[^\s<]+)/g, '<a href="$1">$1</a>')
+  // Web and IRC links only: a file:// link in somebody's message is not
+  // something to offer the reader to open (#247). And not into an escaped
+  // bracket: `<https://x>` is how Discord suppresses an embed, and arrives
+  // here as `&lt;https://x&gt;`.
+  out = out.replace(/((?:https?|ircs?):\/\/(?:(?!&gt;|&lt;|&quot;)[^\s<])+)/g, '<a href="$1">$1</a>')
 
   // Anything else BBCode-shaped that wasn't recognised (e.g. [USER=..]
   // mentions, [sub]/[sup], a typo'd tag) - stripped rather than shown as
@@ -602,7 +613,9 @@ export function extractMedia(
   // link into a local cached path once it's fetched through Tor. That only
   // ever originates from nobilis's own substitution, never from a remote
   // message's raw text.
-  const urls = text.match(/(?:https?|file):\/\/[^\s<[\]]+/g) || []
+  // Web links only. A local file reaches the window as an attachment the
+  // daemon filled in, never as text somebody typed (#247).
+  const urls = text.match(/https?:\/\/[^\s<[\]]+/g) || []
   const result: MediaItem[] = []
   // A message legitimately repeating the same link (quoted text plus the
   // original) shouldn't render the same embed twice.

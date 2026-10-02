@@ -274,7 +274,7 @@ function walk(node: Node, handlers: Handlers, depth: number): ReactNode[] {
         // data:, a custom app scheme) renders as inert text - main re-checks
         // the scheme before handing anything to the OS, so this is the first
         // of two gates, not the only one.
-        if (/^(https?|file):/i.test(href)) {
+        if (/^https?:/i.test(href)) {
           out.push(
             <a
               key={key}
@@ -405,6 +405,12 @@ function safeImageSrc(src: string, remoteAllowed: boolean): string | null {
   // which kind of markup this is, and the untrusted kind gets no remote
   // images at all.
   if (/^https:\/\//i.test(src)) return remoteAllowed ? src : null
+  // Nothing local in markup the sender wrote - not a file:// URL, not a bare
+  // path, and not a moho-media URL spelled out by hand, which would otherwise
+  // walk straight past every check before the main process's own (#247).
+  // Local pictures in a message are ones this client put there: an emote's
+  // cached copy, a bundled smilie.
+  if (!remoteAllowed) return null
   // Already routed (a smilie url built by the store) - passing it through
   // resolveMediaUrl again would double-wrap it.
   if (src.startsWith(`${MEDIA_SCHEME}://`)) return src

@@ -96,7 +96,7 @@ describe('BBCode', () => {
 
   it('formats greentext colour and strips tags it does not know', () => {
     const html = formatMessage('[color=#72ff72]>implying[/color] [blink]x[/blink]', { isSneedchat: true })
-    expect(html).toContain('<span style="color:#72ff72">&gt;implying</span>'.replace('&gt;', '>'))
+    expect(html).toContain('<span style="color:#72ff72">&gt;implying</span>')
     expect(html).not.toContain('[blink]')
   })
 })
@@ -134,7 +134,39 @@ describe('formatMessage', () => {
   })
 
   it('escapes what it is asked to', () => {
-    expect(escapeHtml('<a & b>')).toBe('&lt;a &amp; b&gt;')
+    expect(escapeHtml('<a & "b">')).toBe('&lt;a &amp; &quot;b&quot;&gt;')
+  })
+})
+
+describe('third-party text is text (#247)', () => {
+  it('shows a typed tag instead of drawing it', () => {
+    for (const typed of [
+      '<img src="file:///etc/passwd">',
+      '<img src=/home/me/.config/nobilis/accounts.toml>',
+      '<img src="moho-media://file/?p=/etc/passwd">',
+      '<a href="file:///etc/passwd">click</a>',
+      '<script>alert(1)</script>'
+    ]) {
+      const html = formatMessage(typed)
+      expect(html, typed).not.toMatch(/<(img|a|script)\b/)
+      expect(html, typed).toContain('&lt;')
+    }
+  })
+
+  it('does not link or embed a file:// URL from a message', () => {
+    expect(formatMessage('see file:///etc/passwd')).not.toContain('<a')
+    expect(extractMedia('file:///home/me/x.png file:///etc/passwd.jpg')).toEqual([])
+  })
+
+  it('keeps a URL inside its own attribute', () => {
+    const html = formatMessage('https://x.com/"onmouseover=alert(1)')
+    expect(html).not.toContain('"onmouseover')
+  })
+
+  it('still draws what it built itself', () => {
+    expect(formatMessage('<:ok:1>')).toContain('<img src="https://cdn.discordapp.com/emojis/1.webp')
+    expect(formatMessage('<#5>', { channels: { '5': { bufferId: 'b', name: 'c' } } })).toContain('class="channel-mention"')
+    expect(formatMessage('a & b < c')).toBe('a &amp; b &lt; c')
   })
 })
 
