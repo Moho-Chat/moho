@@ -52,6 +52,12 @@ export interface Account {
   torMode?: string
   torProxy?: string
   useTor: boolean
+  /**
+   * Where this account's traffic goes (#257): "clearnet"; "service", the
+   * connection and the media the daemon fetches for it; or "strict", that
+   * and everything the window loads for its conversations.
+   */
+  routeLevel?: 'clearnet' | 'service' | 'strict'
   hasKeyBackup: boolean
   /**
    * Matrix only: a media server for room calls, where the homeserver names
@@ -148,6 +154,18 @@ export interface Buffer {
    * a room with nothing in it.
    */
   syncing?: boolean
+  /**
+   * Set while this conversation's own connection is not up though its
+   * account's is - a Sneedchat room that cannot connect, an IRC channel that
+   * refused the join, a Kick channel still being looked up. See
+   * lib/bufferlink for how it combines with the account's state.
+   */
+  link?: {
+    state: 'connecting' | 'down'
+    detail?: string
+    /** tor | site | chat | refused */
+    cause?: string
+  }
 }
 
 /**
@@ -433,6 +451,10 @@ export interface Embed {
    * sniffing and are paired with the card separately.
    */
   imageUrl?: string
+  /** Who serves what the card is about - "YouTube" - shown small, first. */
+  provider?: string
+  /** Who made it: a video's channel. */
+  author?: string
 }
 
 /**

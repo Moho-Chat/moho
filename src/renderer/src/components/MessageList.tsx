@@ -6,6 +6,8 @@ import { PinnedBar } from './PinnedBar'
 import { CallView } from './CallView'
 import { CallStage, RoomCallBar } from './CallStage'
 import { StreamStage } from './StreamStage'
+import { ServiceBanner } from './ServiceBanner'
+import { RouteAccount, useStrictRoute } from '../lib/route'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, isChatKind } from '../lib/util'
 import type { ChannelIndex } from '../lib/format'
@@ -218,6 +220,7 @@ export function MessageList(): JSX.Element {
 
 
   const accountId = buffers.find((b) => b.id === bufferId)?.accountId || ''
+  const strictRoute = useStrictRoute(accountId || undefined)
   const syncing = !!buffers.find((b) => b.id === bufferId)?.syncing
   const all = messagesByBuffer[bufferId] || []
 
@@ -643,7 +646,14 @@ export function MessageList(): JSX.Element {
   const dividerIndex = dividerTs > 0 ? messages.findIndex((m) => m.ts > dividerTs) : -1
 
   return (
-    <div className="messagelist">
+    // Whose conversation this is, for everything drawn inside it: a strictly
+    // routed account's media goes through its route (#257). The attribute is
+    // for code outside React that loads pictures - the emote fallback.
+    <RouteAccount.Provider value={accountId || undefined}>
+    <div className="messagelist" data-route={strictRoute ? 'strict' : undefined}>
+      {/* First, because it explains everything under it: a conversation that
+          is not receiving looks like a quiet one otherwise. */}
+      <ServiceBanner bufferId={bufferId} />
       {/* Above the log and outside the scroller. Who is talking is only
           useful while it can be seen, and a panel that scrolled away with
           the backlog would be gone the moment anybody read anything. */}
@@ -779,6 +789,7 @@ export function MessageList(): JSX.Element {
         </button>
       )}
     </div>
+    </RouteAccount.Provider>
   )
 }
 

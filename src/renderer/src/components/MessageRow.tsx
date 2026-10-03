@@ -12,6 +12,7 @@ import { UploadMeter } from './UploadMeter'
 import { RichText } from '../lib/richtext'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { useSniffedTypes, sniffUrl } from '../lib/sniff'
+import { useMediaUrl, useStrictRoute } from '../lib/route'
 import type { ChatMessage } from '../state/store'
 import type {
   CustomEmoji,
@@ -47,8 +48,7 @@ import {
   isNotice,
   isReward,
   isWhisper,
-  nickColor,
-  resolveMediaUrl
+  nickColor
 } from '../lib/util'
 
 /**
@@ -312,6 +312,10 @@ function MessageRowBody({
   inThread,
   shared
 }: Props): JSX.Element {
+  // A strictly routed account's media and link checks go through its route
+  // (#257); the conversation around this row says whose it is.
+  const media = useMediaUrl()
+  const strictRoute = useStrictRoute()
   const store = useStore()
   const { menu, open, close } = useContextMenu()
   const [editing, setEditing] = useState(false)
@@ -387,7 +391,7 @@ function MessageRowBody({
     const media = extractMedia(normalized, {
       contentSniffing,
       sniffed,
-      onNeedSniff: sniffUrl,
+      onNeedSniff: (url) => sniffUrl(url, strictRoute),
       // Read from the un-normalised body: the pairing lives in the BBCode,
       // and normalising unwraps both tags into two unrelated bare URLs.
       thumbnails: thumbnailLinks(raw)
@@ -424,7 +428,7 @@ function MessageRowBody({
       codeBlocks,
       quoteBlocks
     }
-  }, [message.body, message.html, contentSniffing, sniffed, revealed, isSneedchat, smilieIndex, channels, service, ircColours])
+  }, [message.body, message.html, contentSniffing, sniffed, revealed, isSneedchat, smilieIndex, channels, service, ircColours, strictRoute])
 
   const entries: MenuEntry[] = [
     // First, above what to do about the message: the question a right click
@@ -665,6 +669,9 @@ function MessageRowBody({
         )}
         // Addressable, so a search result can scroll to the message it found.
         data-msg-id={message.id}
+        // Where a picture in it came from, for fetching it again once its
+        // cached copy has gone - see lib/mediarestore.
+        data-buffer-id={bufferId}
         onContextMenu={open}
       >
         {/* Bubbles carry their own time inside, which is the whole point of
@@ -689,7 +696,7 @@ function MessageRowBody({
             {!grouped &&
               (message.avatarUrl ? (
                 <img
-                  src={resolveMediaUrl(message.avatarUrl)}
+                  src={media(message.avatarUrl)}
                   alt=""
                   loading="lazy"
                   decoding="async"
@@ -859,6 +866,8 @@ function MessageRowBody({
               className="rich-embed selectable"
               style={{ borderLeftColor: embedColor(embed.color) || 'var(--outline-strong)' }}
             >
+              {embed.provider && <div className="rich-embed-provider small muted">{embed.provider}</div>}
+              {embed.author && <div className="rich-embed-author small">{embed.author}</div>}
               {embed.title &&
                 (embed.url ? (
                   <a
@@ -892,7 +901,7 @@ function MessageRowBody({
               {embed.imageUrl && !embedMedia.claimed.has(i) && (
                 <img
                   className="rich-embed-image"
-                  src={resolveMediaUrl(embed.imageUrl)}
+                  src={media(embed.imageUrl)}
                   alt=""
                   loading="lazy"
                   onClick={() => embed.url && void window.moho.openExternal(embed.url)}
@@ -1133,9 +1142,10 @@ function MessageRowBody({
  * the count.
  */
 function ReactionEmoji({ emoji }: { emoji: string; animated?: boolean }): JSX.Element {
+  const media = useMediaUrl()
   const custom = emoji.match(/^<?a?:?([A-Za-z0-9_~]{2,32}):(\d+)>?$/)
   if (!custom) return <span>{emoji}</span>
-  return <img className="reaction-emoji" src={discordEmojiUrl(custom[2])} alt={custom[1]} />
+  return <img className="reaction-emoji" src={media(discordEmojiUrl(custom[2]))} alt={custom[1]} />
 }
 
 function moderationEntries(

@@ -378,6 +378,12 @@ export interface ChatState {
    * nothing to read.
    */
   connectionDetail: Record<string, string>
+  /** Whether the daemon sends everything through Tor or the proxy, accounts
+   *  or not - so every conversation is routed, not only a routed account's. */
+  tunnelAll: boolean
+  /** Where routed traffic goes: moho's own Tor, or a SOCKS5 proxy the user
+   *  named - one daemon-wide choice, so one icon for every routed account. */
+  route: { kind: 'tor' } | { kind: 'proxy'; address: string }
   /** Sound devices and whether voice is silenced, as the daemon sees them. */
   voicePrefs: VoicePrefs
   audioDevices: AudioDevice[]
@@ -656,6 +662,8 @@ const INITIAL: ChatState = {
   groups: [],
   activeGroupId: '',
   connectionDetail: {},
+  tunnelAll: false,
+  route: { kind: 'tor' },
   voicePrefs: { micMuted: false, deafened: false },
   audioDevices: [],
   voiceChannels: [],
@@ -1141,9 +1149,26 @@ export class ChatStore {
     void window.moho.popout.close(bufferId, andShow)
   }
 
+  /** Reads whether everything is tunnelled - see `tunnelAll`. */
+  async refreshNetSettings(): Promise<void> {
+    try {
+      const net = await window.moho.rpc<{ tunnelAll?: boolean; torMode?: string; proxy?: string | null }>('getNetSettings')
+      this.set({
+        tunnelAll: !!net.tunnelAll,
+        route:
+          net.torMode === 'proxy'
+            ? { kind: 'proxy', address: (net.proxy ?? '').replace(/^socks5h?:\/\//, '') }
+            : { kind: 'tor' }
+      })
+    } catch {
+      /* an older daemon has no such method */
+    }
+  }
+
   async init(initialBufferId: string, initialGroupId = ''): Promise<void> {
     this.set({ activeBufferId: initialBufferId, activeGroupId: initialGroupId })
 
+    void this.refreshNetSettings()
     void window.moho.popout.list().then((popouts) => this.set({ popouts }))
     window.moho.popout.onChange((popouts) => this.set({ popouts }))
 
@@ -1156,7 +1181,10 @@ export class ChatStore {
 
     window.moho.onLinkChange((up) => {
       this.set({ linkUp: up })
-      if (up) void this.refreshAll()
+      if (up) {
+        void this.refreshAll()
+        void this.refreshNetSettings()
+      }
     })
     window.moho.onEvent((frame) => this.handleEvent(frame))
     // Both of these arrive from outside and mean "go and look at this", which
@@ -2159,9 +2187,9 @@ export class ChatStore {
   }
 
   /** Takes the poll down, which the service allows whoever it allows. */
-  endPoll(bufferId: string): void {
+  endPoll(bufferId: string, pollId: string): void {
     void window.moho
-      .rpc('endPoll', { bufferId })
+      .rpc('endPoll', { bufferId, pollId })
       .catch((e: Error) => this.toast('error', e.message))
   }
 
@@ -2866,6 +2894,14 @@ export class ChatStore {
   private handleEvent(frame: NobilisEvent): void {
     const { event, data } = frame
     switch (event) {
+      // Settings emptied the stored history. What the window holds is now a
+      // copy of nothing, so it goes, and the conversation on screen asks the
+      // daemon again - which, for a service that keeps its own history, is
+      // where that history starts coming back.
+      case 'historyCleared':
+        this.set({ messagesByBuffer: {}, loadedBuffers: {} })
+        if (this.state.activeBufferId) void this.loadBacklog(this.state.activeBufferId)
+        break
       case 'message':
         // An echo of our own send resolves the optimistic row in place; only
         // an unmatched message is a genuinely new one to append.
@@ -3469,7 +3505,14 @@ export class ChatStore {
       // A re-broadcast of an already-known buffer (its lastActivityTs just
       // bumped). Merge the fresh server fields, keeping local-only unread and
       // highlight rather than resetting them.
-      this.set({ buffers: buffers.map((b) => (b.id === data.id ? { ...b, ...data } : b)) })
+      //
+      // `link` and `syncing` are taken as sent even when absent: the daemon
+      // leaves an optional field out when it is not set, so a plain spread
+      // kept the last value it ever had - a room that reconnected stayed
+      // marked as interrupted, and the banner over it stayed up.
+      this.set({
+        buffers: buffers.map((b) => (b.id === data.id ? { ...b, ...data, link: data.link, syncing: data.syncing } : b))
+      })
       this.followPeekJoin(data)
       return
     }

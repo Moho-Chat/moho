@@ -105,3 +105,33 @@ export function MaskIcon({
     />
   )
 }
+
+/**
+ * A service's mark, drawn the way its artwork needs.
+ *
+ * A monochrome logo is masked to the theme like any glyph. A coloured one
+ * (Kick's green K on its own dark square, Sneedchat's) is shown as itself:
+ * masking keeps only the alpha, and a mark with an opaque ground of its own
+ * comes out as a solid block with nothing on it.
+ */
+export function ServiceMark({
+  icon,
+  size = 16
+}: {
+  icon: { mark?: string; colour?: boolean; glyph?: string }
+  size?: number
+}): JSX.Element {
+  if (icon.mark && icon.colour) {
+    return (
+      <img
+        className="service-mark"
+        src={icon.mark}
+        alt=""
+        draggable={false}
+        style={{ width: size, height: size, flex: 'none', borderRadius: Math.round(size / 5) }}
+      />
+    )
+  }
+  if (icon.mark) return <MaskIcon src={icon.mark} size={size} />
+  return <Icon name={icon.glyph ?? 'chat'} size={size} />
+}

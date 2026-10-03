@@ -1,3 +1,4 @@
+import { useMediaUrl } from '../lib/route'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon, IconButton } from './Icon'
@@ -56,6 +57,7 @@ export function eventWhen(iso: string, now = new Date()): string {
 export function EventsPane(): JSX.Element | null {
   const store = useStore()
   const pane = useChat((s) => s.eventsPane)
+  const media = useMediaUrl(pane?.accountId)
   const counts = useChat((s) => s.discordEventCounts)
   const [events, setEvents] = useState<DiscordEvent[] | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; event: DiscordEvent } | null>(null)
@@ -157,13 +159,13 @@ export function EventsPane(): JSX.Element | null {
           )}
           {events?.map((event) => (
             <div key={event.id} className={`event-card${event.live ? ' live' : ''}`}>
-              {event.image && <img className="event-card-image" src={event.image} alt="" />}
+              {event.image && <img className="event-card-image" src={media(event.image)} alt="" />}
               <div className="event-card-body">
                 <div className="event-card-when">
                   <Icon name={event.live ? 'radio_button_checked' : 'calendar_month'} size={16} />
                   <span>{event.live ? 'Happening now' : eventWhen(event.start)}</span>
                   <span className="events-pane-spacer" />
-                  {event.creatorName && <Avatar name={event.creatorName} url={event.creatorAvatar ?? undefined} size={20} />}
+                  {event.creatorName && <Avatar name={event.creatorName} url={event.creatorAvatar ?? undefined} size={20} accountId={pane.accountId} />}
                   <span className="event-card-count" title={`${event.userCount} interested`}>
                     <Icon name="group" size={14} />
                     {event.userCount}
@@ -536,7 +538,7 @@ function ShareEvent({
     const state = sent[t.userId]
     return (
       <div key={t.userId} className="share-row">
-        <Avatar name={t.globalName || t.username} url={t.avatarUrl ?? undefined} size={32} />
+        <Avatar name={t.globalName || t.username} url={t.avatarUrl ?? undefined} size={32} accountId={accountId} />
         <span className="share-row-name">
           <span className="ellipsis">{t.globalName || t.username}</span>
           <span className="small muted ellipsis">{t.username}</span>

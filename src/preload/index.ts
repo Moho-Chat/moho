@@ -44,22 +44,6 @@ const api = {
     return ipcRenderer.invoke(IPC.browserLogin, service, accountId, options)
   },
 
-  /**
-   * Puts Discord's captcha on screen and resolves with the solved token.
-   *
-   * The challenge itself is answered in a window of its own, on Discord's
-   * origin - see main/captcha.ts for why it cannot be answered in this page.
-   * What comes back is handed straight to the daemon, which repeats the
-   * request that asked for it.
-   */
-  solveCaptcha(request: { sitekey: string; rqdata?: string | null }): Promise<{
-    ok: boolean
-    token?: string
-    error?: string
-  }> {
-    return ipcRenderer.invoke(IPC.solveCaptcha, request)
-  },
-
   onEvent(cb: (frame: NobilisEvent) => void): () => void {
     const handler = (_e: unknown, frame: NobilisEvent): void => cb(frame)
     ipcRenderer.on(IPC.event, handler)
@@ -168,6 +152,10 @@ const api = {
   daemonStatus: (): Promise<{ binaryPath: string; available: boolean; linkUp: boolean }> =>
     ipcRenderer.invoke(IPC.daemonStatus),
   smiliesDir: (): Promise<string> => ipcRenderer.invoke(IPC.smiliesDir),
+  /** The pictures the window fetched itself from a CDN, in bytes. */
+  webCacheSize: (): Promise<number> => ipcRenderer.invoke(IPC.webCacheSize),
+  /** Empties that cache; answers what is left. */
+  clearWebCache: (): Promise<number> => ipcRenderer.invoke(IPC.clearWebCache),
   /**
    * False when this process is running without Chromium's sandbox.
    *

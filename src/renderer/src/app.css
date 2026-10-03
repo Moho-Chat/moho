@@ -2689,6 +2689,15 @@ img.smilie {
   margin-bottom: 2px;
 }
 
+.rich-embed-provider {
+  margin-bottom: 2px;
+}
+
+.rich-embed-author {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
 .rich-embed-desc {
   color: var(--surface-variant-text);
   white-space: pre-wrap;
@@ -2732,9 +2741,19 @@ img.smilie {
 
 .media-embed.youtube {
   position: relative;
+  display: inline-block;
   padding: 0;
   background: none;
   border: none;
+}
+
+.youtube-thumb {
+  display: block;
+  position: relative;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
 }
 
 .media-embed.youtube img {
@@ -2742,6 +2761,42 @@ img.smilie {
   max-height: 240px;
   border-radius: var(--corner-radius-small);
   display: block;
+}
+
+/* The player, at the thumbnail's width and YouTube's shape. */
+.media-embed.youtube.playing iframe {
+  display: block;
+  width: min(420px, 100%);
+  aspect-ratio: 16 / 9;
+  border: none;
+  border-radius: var(--corner-radius-small);
+  background: #000;
+}
+
+.media-embed.youtube.playing {
+  display: block;
+  width: min(420px, 100%);
+}
+
+/* Out to YouTube itself, over the thumbnail's corner, on hover. */
+.youtube-outside {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  padding: 4px;
+  border: none;
+  border-radius: var(--corner-radius-small);
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+
+.media-embed.youtube:hover .youtube-outside,
+.youtube-outside:focus-visible {
+  opacity: 1;
 }
 
 .youtube-play {
@@ -3320,12 +3375,19 @@ img.smilie {
   flex: none;
 }
 
-/* The actions that have to happen on Discord's own page. Side by side,
-   because they are the same kind of thing and neither is the main event. */
-.join-elsewhere-row {
+/* The actions that have to happen on Discord's own page, each with the
+   reason beside it: a button that leaves the app should say why it does. */
+.join-elsewhere-list {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: var(--spacing-s);
+}
+
+.join-elsewhere-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  min-width: 0;
 }
 
 .join-elsewhere {
@@ -3333,7 +3395,11 @@ img.smilie {
   align-items: center;
   gap: var(--spacing-xxs);
   align-self: flex-start;
-  font-size: var(--font-size-small);
+}
+
+.join-elsewhere-why {
+  margin: 0;
+  max-width: 60ch;
 }
 
 .join-friends-header {
@@ -8171,4 +8237,150 @@ video.lightbox-media {
   background: var(--surface-container-highest);
   color: var(--on-surface-variant, inherit);
   cursor: default;
+}
+
+/* Settings → Storage: each group's size beside its name, and the one
+   confirmation (chat history) inline where the button was. */
+.storage-size {
+  margin-left: var(--spacing-s);
+  font-variant-numeric: tabular-nums;
+}
+
+.storage-confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* A conversation that is not receiving - its account is not connected, or
+   its own connection is down. Italic, and a little quieter, so it reads as
+   "not here yet" without disappearing from where it lives in the list. */
+.buffer-row.unlinked .buffer-name {
+  font-style: italic;
+  opacity: 0.7;
+}
+
+/* The same, said at the top of the conversation itself. */
+.service-banner {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs) var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-m);
+  border-bottom: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  font-size: var(--font-size-small);
+}
+
+.service-banner .spinner,
+.service-banner .icon {
+  align-self: center;
+  color: var(--warning);
+}
+
+.service-banner.stopped {
+  border-bottom-color: color-mix(in srgb, var(--error) 45%, transparent);
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+}
+
+.service-banner.stopped .icon {
+  color: var(--error);
+}
+
+.service-banner-title {
+  font-weight: 600;
+}
+
+.service-banner-detail {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A rail entry whose service has not answered yet - on start, or after an
+   outage. The face dims and a spinner sits over it until it connects. */
+.rail-tile.connecting .rail-face {
+  opacity: 0.45;
+}
+
+.rail-connecting {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  color: var(--surface-text);
+}
+
+.rail-connecting .spinner {
+  width: 20px;
+  height: 20px;
+  border-width: 2.5px;
+  opacity: 0.9;
+}
+
+/* The Tor mark in the composer, beside the encryption lock. */
+.composer-tor {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 2px;
+}
+
+/* An account's routing: three positions on one track, the chosen one under
+   a sliding thumb (#257). */
+.route-level-head {
+  font-weight: 500;
+}
+
+.route-level {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: var(--spacing-xs);
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--surface-container-high);
+}
+
+.route-level-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / 3);
+  border-radius: 999px;
+  background: var(--primary-container);
+  transform: translateX(calc(var(--route-index, 0) * 100%));
+  transition: transform 160ms ease;
+}
+
+.route-level-option {
+  position: relative;
+  z-index: 1;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--surface-variant-text);
+  font: inherit;
+  font-size: var(--font-size-small);
+  cursor: pointer;
+}
+
+.route-level-option.on {
+  color: var(--primary-text);
+  font-weight: 500;
+}
+
+.route-level-desc {
+  margin: var(--spacing-xs) 0 0;
+  max-width: 60ch;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-level-thumb {
+    transition: none;
+  }
 }

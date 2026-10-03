@@ -1,5 +1,6 @@
+import { useMediaUrl } from './route'
 import { useState, type ReactNode } from 'react'
-import { MEDIA_SCHEME, resolveMediaUrl } from './util'
+import { MEDIA_SCHEME } from './util'
 import { isDeepLink } from '../../../shared/deeplink'
 
 /**
@@ -128,6 +129,9 @@ interface Handlers {
   onOpenLink?: RichTextProps['onOpenLink']
   /** Whether this markup is ours rather than the sender's - see safeImageSrc. */
   ownMarkup?: boolean
+  /** Turns a picture's URL into the one to load - through the account's
+   *  route when it is strictly routed (#257). */
+  media: (url: string) => string
 }
 
 export function RichText({
@@ -149,8 +153,9 @@ export function RichText({
   // Which is a live surface rather than a theoretical one: `safeImageSrc`
   // below passes any https image through, so a formatted body can name a URL
   // its author controls and learn that the message was read - see #145.
+  const media = useMediaUrl()
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
-  return <>{walk(doc.body, { onRevealSpoiler, onOpenChannel, onOpenLink, ownMarkup }, 0)}</>
+  return <>{walk(doc.body, { onRevealSpoiler, onOpenChannel, onOpenLink, ownMarkup, media }, 0)}</>
 }
 
 function walk(node: Node, handlers: Handlers, depth: number): ReactNode[] {
@@ -186,7 +191,7 @@ function walk(node: Node, handlers: Handlers, depth: number): ReactNode[] {
 
       case 'IMG': {
         const src = el.getAttribute('src') || ''
-        const resolved = safeImageSrc(src, !!ownMarkup)
+        const resolved = safeImageSrc(src, !!ownMarkup, handlers.media)
         const alt = el.getAttribute('alt') || ''
         if (!resolved) {
           // Refused rather than broken: what it was called is worth keeping
@@ -274,7 +279,7 @@ function walk(node: Node, handlers: Handlers, depth: number): ReactNode[] {
         // data:, a custom app scheme) renders as inert text - main re-checks
         // the scheme before handing anything to the OS, so this is the first
         // of two gates, not the only one.
-        if (/^(https?|file):/i.test(href)) {
+        if (/^https?:/i.test(href)) {
           out.push(
             <a
               key={key}
@@ -396,7 +401,7 @@ function classNameOf(el: Element): string | undefined {
  * both go through the guarded moho-media scheme. Remote https images are
  * allowed too (Discord CDN avatars and the like). Everything else is dropped.
  */
-function safeImageSrc(src: string, remoteAllowed: boolean): string | null {
+function safeImageSrc(src: string, remoteAllowed: boolean, media: (url: string) => string): string | null {
   // A remote picture is a request to somebody else's server, made the moment
   // the message is drawn. Where this client wrote the markup that is fine and
   // wanted - a Discord emoji is a URL we built from an id. Where the *sender*
@@ -404,10 +409,16 @@ function safeImageSrc(src: string, remoteAllowed: boolean): string | null {
   // from what address, and no chat message needs that. So the caller says
   // which kind of markup this is, and the untrusted kind gets no remote
   // images at all.
-  if (/^https:\/\//i.test(src)) return remoteAllowed ? src : null
+  if (/^https:\/\//i.test(src)) return remoteAllowed ? media(src) : null
+  // Nothing local in markup the sender wrote - not a file:// URL, not a bare
+  // path, and not a moho-media URL spelled out by hand, which would otherwise
+  // walk straight past every check before the main process's own (#247).
+  // Local pictures in a message are ones this client put there: an emote's
+  // cached copy, a bundled smilie.
+  if (!remoteAllowed) return null
   // Already routed (a smilie url built by the store) - passing it through
   // resolveMediaUrl again would double-wrap it.
   if (src.startsWith(`${MEDIA_SCHEME}://`)) return src
-  if (/^(file:\/\/|\/)/.test(src)) return resolveMediaUrl(src)
+  if (/^(file:\/\/|\/)/.test(src)) return media(src)
   return null
 }

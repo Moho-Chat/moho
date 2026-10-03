@@ -23,7 +23,6 @@ import { NobilisProcess } from './nobilis-process'
 import { Prefs } from './prefs'
 import { Notifier } from './notifications'
 import { browserLogin, LOGIN_FLOWS } from './browser-login'
-import { solveCaptcha } from './captcha'
 import { IPC, POPOUT_FLAG, type PopoutState } from '../shared/ipc'
 import { clearnetLinks } from '../shared/clearnet'
 import { readCapped, pictureNamedIn } from './imagepage'
@@ -34,8 +33,18 @@ import { defaultDownloadDir, saveMedia } from './downloads'
 import type { Buffer as ChatBuffer } from '../shared/wire'
 import { log } from './log'
 import { applyPolicy, applyTunnel } from './tunnel'
+import { installRoutedHandler, resetRoute } from './routed'
 
 registerMediaScheme()
+
+/**
+ * A ceiling on Chromium's own HTTP cache - the pictures, emoji and embeds the
+ * window loads straight from Discord's and Kick's CDNs. Left to itself it
+ * sizes against free disk space and was found at 1.2GB; every other cache
+ * moho keeps has a size, and this one now has one too. Settings shows it and
+ * can empty it.
+ */
+app.commandLine.appendSwitch('disk-cache-size', String(256 * 1024 * 1024))
 
 /**
  * One client per profile. Launching moho again - from a launcher, a terminal,
@@ -292,7 +301,11 @@ function createWindow(): void {
         }
       }
     }
-    shell.openExternal(url)
+    // The same schemes the window's own openExternal allows. The page now
+    // holds a frame of somebody else's (a YouTube player), and a frame can
+    // call window.open with anything - a file: URL or another program's
+    // scheme is not something it gets to have opened.
+    if (/^(https?|mailto):/i.test(url)) shell.openExternal(url)
     return { action: 'deny' }
   })
 
@@ -450,7 +463,8 @@ function openPopout(bufferId: string, title?: string): void {
     publishPopouts()
   })
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    // As the main window's: web addresses only, whatever a frame asks for.
+    if (/^(https?|mailto):/i.test(url)) shell.openExternal(url)
     return { action: 'deny' }
   })
 
@@ -775,6 +789,9 @@ function wireIpc(): void {
       const ext = type.slice('image/'.length).split(/[;+]/)[0] || 'png'
       const file = path.join(dir, `paste-${Date.now()}.${ext}`)
       fs.writeFileSync(file, Buffer.from(await blob.arrayBuffer()))
+      // Drawn in the composer before it is sent - and allowed by name, since
+      // the temp directory as a whole is not something the window may read.
+      allowPickedFile(file)
       return file
     }
     return null
@@ -823,19 +840,14 @@ function wireIpc(): void {
     }
   })
 
-  /**
-   * Discord's captcha, answered in a window belonging to the one that asked.
-   *
-   * Parented so it sits over the window somebody is working in rather than
-   * appearing somewhere else on the desktop - the challenge belongs to the
-   * action, and the action belongs to a window.
-   */
-  ipcMain.handle(IPC.solveCaptcha, async (e, request: { sitekey: string; rqdata?: string | null }) => {
-    const parent = BrowserWindow.fromWebContents(e.sender) ?? undefined
-    return await solveCaptcha(request, parent)
-  })
-
   ipcMain.handle(IPC.smiliesDir, () => smiliesPath())
+
+  // Chromium's HTTP cache, which Settings reports beside the daemon's.
+  ipcMain.handle(IPC.webCacheSize, () => session.defaultSession.getCacheSize())
+  ipcMain.handle(IPC.clearWebCache, async () => {
+    await session.defaultSession.clearCache()
+    return session.defaultSession.getCacheSize()
+  })
 
   ipcMain.handle(IPC.sandboxState, () => sandboxed())
 }
@@ -956,7 +968,21 @@ app.whenReady().then(() => {
   // nobilis's cached media, so the renderer needs no file access of its own.
   allowRoot(resourcePath())
   allowRoot(smiliesPath())
+  // Rail icons somebody chose, copied here after being checked as images.
+  allowRoot(path.join(app.getPath('userData'), 'group-icons'))
   installMediaHandler()
+  installRoutedHandler((method, params) => client.request(method, params))
+  // YouTube's player refuses to play (error 153) for an embedder it cannot
+  // name, and a window loaded from a file sends no Referer at all. YouTube's
+  // own answer for an app with no web address is to send its app id as one.
+  // Only on the player's own pages: nothing else hears from moho this way.
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    { urls: ['https://www.youtube-nocookie.com/embed/*'] },
+    (details, callback) => {
+      details.requestHeaders['Referer'] = 'https://com.salastil.moho/'
+      callback({ requestHeaders: details.requestHeaders })
+    }
+  )
 
   prefs = new Prefs()
   nobilis = new NobilisProcess()
@@ -991,6 +1017,7 @@ app.whenReady().then(() => {
     // Before anything is fetched for the window: whether its own traffic goes
     // through Tor or the proxy is the daemon's setting, asked of it here.
     void applyTunnel((method, params) => client.request(method, params))
+    resetRoute()
     // The daemon usually outlives this process, so its buffers were announced
     // long before this connection existed and no bufferListChange is coming
     // for them. Without asking outright, main knows of no conversations at
@@ -1016,6 +1043,7 @@ app.whenReady().then(() => {
       void notifier.handle(frame.data)
     } else if (frame.event === 'netSettings') {
       void applyTunnel((method, params) => client.request(method, params))
+      resetRoute()
     }
     send(IPC.event, frame)
   })

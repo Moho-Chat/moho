@@ -34,7 +34,8 @@ import { watchDelta, watchedKickBuffers } from './lib/kickwatch'
 import { useActiveBuffer, useChat, usePref, usePrefsReady, useStore } from './state/hooks'
 import { bufferDisplayName } from './lib/util'
 import type { BufferEntry } from './state/store'
-import { loadLocalEmotes } from './lib/emotecache'
+import { loadLocalEmotes, recoverMissingEmotes } from './lib/emotecache'
+import { restoreMissingMedia } from './lib/mediarestore'
 
 export default function App(): JSX.Element {
   const store = useStore()
@@ -79,6 +80,11 @@ export default function App(): JSX.Element {
     void loadLocalEmotes()
     return () => store.dispose()
   }, [prefsReady, booted, savedBufferId, savedGroupId, store])
+
+  // For the life of the window, and so its own effect: the one above is torn
+  // down the moment `booted` flips, which took this listener with it.
+  useEffect(() => recoverMissingEmotes(), [])
+  useEffect(() => restoreMissingMedia(), [])
 
   /**
    * The mentions page is showing, so nothing in the window is scoped to one

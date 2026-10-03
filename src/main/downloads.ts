@@ -93,7 +93,8 @@ export function safeName(filename: string | undefined, source: string): string {
 
 /** A local path if this source is already on disk, else null. */
 export function localPath(source: string): string | null {
-  if (source.startsWith('file://')) return decodeURI(source.slice('file://'.length))
+  // Less the version a daemon may put on a file that keeps its name.
+  if (source.startsWith('file://')) return decodeURI(source.slice('file://'.length).replace(/#\d+$/, ''))
   if (source.startsWith('/')) return source
   return null
 }

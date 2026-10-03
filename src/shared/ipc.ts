@@ -21,6 +21,9 @@ export const IPC = {
   restartDaemon: 'moho:restartDaemon',
   daemonStatus: 'moho:daemonStatus',
   smiliesDir: 'moho:smiliesDir',
+  /** Chromium's own HTTP cache: its size, and emptying it. */
+  webCacheSize: 'moho:webCacheSize',
+  clearWebCache: 'moho:clearWebCache',
   /** Whether this process got Chromium's sandbox, or is running without it. */
   sandboxState: 'moho:sandboxState',
   /** The screens and windows that could be shared into a call. */
@@ -30,7 +33,6 @@ export const IPC = {
   screenPicked: 'moho:screenPicked',
   markBufferRead: 'moho:markBufferRead',
   browserLogin: 'moho:browserLogin',
-  solveCaptcha: 'moho:solveCaptcha',
   popoutOpen: 'moho:popout:open',
   popoutClose: 'moho:popout:close',
   popoutList: 'moho:popout:list',

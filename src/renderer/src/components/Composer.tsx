@@ -1,5 +1,7 @@
+import { useMediaUrl } from '../lib/route'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Icon, IconButton } from './Icon'
+import { Icon, IconButton, MaskIcon } from './Icon'
+import torMark from '../assets/tor.svg'
 import { PollComposer } from './PollComposer'
 import { Avatar } from './Avatar'
 import { EmojiPicker, type StickerEntry } from './EmojiPicker'
@@ -168,6 +170,10 @@ export function Composer(): JSX.Element | null {
 
   const account = buffer && accounts.find((a) => a.id === buffer.accountId)
   const service = account?.service
+  const tunnelAll = useChat((s) => s.tunnelAll)
+  const route = useChat((s) => s.route)
+  const routed = tunnelAll || !!account?.useTor
+  const media = useMediaUrl(account?.id)
   const hasStickers = service === 'matrix' || service === 'discord'
   /**
    * The account's stickers, asked for when the picker opens - from either
@@ -328,7 +334,7 @@ export function Composer(): JSX.Element | null {
     if (preview) {
       const img = document.createElement('img')
       img.className = 'composer-emoji'
-      img.src = resolveMediaUrl(preview.src)
+      img.src = media(preview.src)
       img.alt = preview.label
       img.title = preview.label
       // What leaves the box when the message is sent. The picture is for the
@@ -673,6 +679,23 @@ export function Composer(): JSX.Element | null {
       )}
 
       <div className="composer-row">
+        {/* Where this conversation's traffic goes: through Tor, the account
+            being routed or everything being. Beside the lock rather than
+            instead of it - a Matrix room can be both encrypted and routed,
+            and those are two different promises. */}
+        {routed &&
+          (route.kind === 'proxy' ? (
+            <span
+              className="composer-tor"
+              title={`${tunnelAll ? 'Everything goes' : 'This account goes'} through your SOCKS5 proxy${route.address ? ` (${route.address})` : ''}`}
+            >
+              <Icon name="lan" size={16} color="var(--primary)" />
+            </span>
+          ) : (
+            <span className="composer-tor" title={tunnelAll ? 'Everything goes through Tor' : 'This account goes through Tor'}>
+              <MaskIcon src={torMark} size={16} color="var(--primary)" />
+            </span>
+          ))}
         {service === 'matrix' && (
           <Icon
             name={buffer.encrypted ? 'lock' : 'lock_open'}

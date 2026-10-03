@@ -1,10 +1,10 @@
+import { useMediaUrl } from '../lib/route'
 import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
 import { ContextMenu } from './ContextMenu'
 import { RoomSearch } from './RoomSearch'
 import { useChat, useStore } from '../state/hooks'
-import { classes, resolveMediaUrl } from '../lib/util'
-import { CaptchaCancelled, rpcAnsweringCaptcha } from '../lib/captcha'
+import { classes } from '../lib/util'
 import type { Account, DiscordFriend } from '../../../shared/wire'
 
 /**
@@ -15,25 +15,33 @@ import type { Account, DiscordFriend } from '../../../shared/wire'
 const GROUP_DM_MAX = 9
 
 /**
- * The code out of an invite, however it was written down.
+ * What moho leaves to Discord's own web app, and why.
  *
- * People paste the whole link, the short one, or just the code off the end of
- * a message, and all three mean the same server. Anything unrecognisable is
- * treated as a bare code, which is what it usually is - and if it is not,
- * Discord says so in a refusal clearer than anything this could produce.
- *
- * The daemon takes the last path segment too, but not a query string: a link
- * copied out of an event announcement carries `?event=…`, and the code has to
- * survive that.
+ * Discord answers each of these with an hCaptcha when it comes from anything
+ * but its own client, and answering one from a third-party client is what got
+ * test accounts flagged for spam and one suspended. So moho does not attempt
+ * them at all - not with the captcha shown, not without - and says why next to
+ * the button that sends somebody to where they can be done.
  */
-function inviteCode(entered: string): string {
-  const text = entered.trim()
-  const code = text
-    .replace(/^https?:\/\//i, '')
-    .replace(/^(www\.)?(discord\.gg|discord\.com\/invite|discordapp\.com\/invite)\//i, '')
-    .split(/[?#/]/)[0]
-  return code || text
-}
+const DISCORD_WEB = 'https://discord.com/channels/@me'
+
+const ON_DISCORD_ONLY: { label: string; icon: string; why: string }[] = [
+  {
+    label: 'Join a server',
+    icon: 'login',
+    why: 'Discord puts joining a server behind a captcha. A third-party client that answers it gets the account flagged for spam.'
+  },
+  {
+    label: 'Add a friend',
+    icon: 'person_add',
+    why: 'Discord puts friend requests behind a captcha. A third-party client that answers it gets the account flagged for spam.'
+  },
+  {
+    label: 'Create a server',
+    icon: 'add_circle',
+    why: 'Discord puts making a server behind a captcha. A third-party client that answers it gets the account flagged for spam.'
+  }
+]
 
 /** A room this account has been invited to and not yet answered. */
 type MatrixInvite = {
@@ -651,6 +659,7 @@ function SneedchatRooms({ account }: { account: Account }): JSX.Element {
  * the friends list rather than a search box.
  */
 function DiscordJoin({ account }: { account: Account }): JSX.Element {
+  const media = useMediaUrl(account.id)
   const store = useStore()
   const [friends, setFriends] = useState<DiscordFriend[]>([])
   const [onlineOnly, setOnlineOnly] = useState(true)
@@ -697,30 +706,6 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
   const settled = friends.filter((f) => !f.kind || f.kind === 'friend')
   const shown = onlineOnly ? settled.filter((f) => f.status && f.status !== 'offline') : settled
 
-  /**
-   * Does one of the three things above, showing Discord's captcha if it wants
-   * one - `rpcAnsweringCaptcha` makes the detour invisible from here.
-   *
-   * Silent on a cancelled captcha: somebody closing the challenge has already
-   * said what they meant, and a toast telling them they cancelled is noise.
-   */
-  const act = (
-    done: string,
-    method: string,
-    params: Record<string, unknown>,
-    after?: () => void
-  ): void => {
-    void rpcAnsweringCaptcha(method, params)
-      .then(() => {
-        store.toast('info', done)
-        after?.()
-      })
-      .catch((e: Error) => {
-        if (e instanceof CaptchaCancelled) return
-        store.toast('error', e.message)
-      })
-  }
-
   const answer = (userId: string, accept: boolean): void => {
     void window.moho
       .rpc('answerDiscordFriendRequest', { accountId: account.id, userId, accept })
@@ -751,37 +736,24 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
 
   return (
     <div className="panel join-panel">
-      {/* These used to be links to discord.com, because Discord asks for a
-          captcha on all three and this client had nowhere to show one. It
-          has now - a window of moho's own, on Discord's origin, where the
-          widget is the same widget their client uses (see main/captcha.ts) -
-          so these do the thing rather than pointing at where to do it. If a
-          challenge comes back, it appears; answer it and the action carries
-          on where it left off. */}
-      <SubmitField
-        label="Join a server"
-        placeholder="invite code or discord.gg/…"
-        onSubmit={(invite) =>
-          act(`Joined ${inviteCode(invite)}`, 'joinDiscordGuild', {
-            accountId: account.id,
-            invite: inviteCode(invite)
-          })
-        }
-      />
-
-      <SubmitField
-        label="Add a friend"
-        placeholder="username, or name#1234"
-        onSubmit={(username) =>
-          act(`Asked ${username}`, 'addDiscordFriend', { accountId: account.id, username }, refreshFriends)
-        }
-      />
-
-      <SubmitField
-        label="Create a server"
-        placeholder="what to call it"
-        onSubmit={(name) => act(`Made ${name}`, 'createDiscordGuild', { accountId: account.id, name })}
-      />
+      {/* Done in Discord's web app, in the browser, rather than here. */}
+      <div className="join-elsewhere-list">
+        {ON_DISCORD_ONLY.map((item) => (
+          <div key={item.label} className="join-elsewhere-item">
+            <button
+              type="button"
+              className="button join-elsewhere"
+              title="Opens discord.com in your browser"
+              onClick={() => void window.moho.openExternal(DISCORD_WEB)}
+            >
+              <Icon name={item.icon} size={16} />
+              {item.label} on discord.com
+              <Icon name="open_in_new" size={14} />
+            </button>
+            <p className="small muted join-elsewhere-why">{item.why}</p>
+          </div>
+        ))}
+      </div>
 
       {waiting.length > 0 && (
         <>
@@ -791,7 +763,7 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
           {waiting.map((f) => (
             <div key={f.userId} className="friend-row request">
               {f.avatarUrl ? (
-                <img className="friend-avatar" src={resolveMediaUrl(f.avatarUrl)} alt="" />
+                <img className="friend-avatar" src={media(f.avatarUrl)} alt="" />
               ) : (
                 <span className="friend-avatar placeholder">{(f.globalName || f.username).slice(0, 1)}</span>
               )}
@@ -915,7 +887,7 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
             <Icon name={picking.includes(f.userId) ? 'check_circle' : 'radio_button_unchecked'} size={16} />
           )}
           {f.avatarUrl ? (
-            <img className="friend-avatar" src={resolveMediaUrl(f.avatarUrl)} alt="" />
+            <img className="friend-avatar" src={media(f.avatarUrl)} alt="" />
           ) : (
             <span className="friend-avatar placeholder">{(f.globalName || f.username).slice(0, 1)}</span>
           )}

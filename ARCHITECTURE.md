@@ -42,21 +42,31 @@ Three panes: an account-grouped buffer sidebar, the message log, and a member li
 sidebar and member list independently foldable. Closing the window hides it to the tray; nobilis
 keeps running, so connections and unread tracking survive.
 
-- **Message rendering** - an IRC-style log rather than chat bubbles, with nick colouring,
-  BBCode and markdown, spoilers, code and quote blocks, inline image/video/YouTube embeds,
-  reactions, replies, inline edit, and Sneedchat's bundled smilies. A "comfy" mode groups
-  consecutive messages under one avatar.
-- **Settings** - a category rail covering Display, IRC, Sneedchat, Tor, Matrix, Kick and the
-  daemon itself. Message-kind filters (joins, parts, mode changes) are applied client-side, so toggling
+- **Message rendering** - an IRC-style log by default, with nick colouring, BBCode and
+  markdown, spoilers, code and quote blocks, inline image/video/YouTube embeds, custom emoji,
+  emotes and stickers (Discord's animated Lottie ones included), reactions, replies, inline
+  edit, and Sneedchat's bundled smilies. "Comfy" groups consecutive messages under one avatar,
+  and "Bubbles" draws them as chat bubbles.
+- **Settings** - a category rail covering General, IRC, Sneedchat, Tor, Discord, Matrix, Kick
+  and About. Message-kind filters (joins, parts, mode changes) are applied client-side, so toggling
   one takes effect immediately without a reconnect.
 - **Per-protocol join pages** - each service's mechanism is genuinely different (IRC joins by
-  channel name, Discord accepts an invite and offers a friends list, Matrix takes a room address
+  channel name, Discord offers the friends list and sends joining, adding a friend and making
+  a server to discord.com - see below - Matrix takes a room address
   or searches every homeserver's directory at once, Sneedchat lists the rooms the site itself
   publishes, Kick takes a streamer's handle), so each gets its own page.
-- **Matrix security** - SAS device verification, server-side key backup, and signing other
-  sessions out, all under the account's own row in the Accounts pane. Verification is between
-  your own sessions only: there is no cross-signing yet, so a session verified here is not
-  verified in Element.
+- **Matrix security** - device verification by emoji or QR, cross-signing, server-side key
+  backup, key export and import, and signing other sessions out, all under the account's own
+  row in the Accounts pane. A session verified here is verified in Element too.
+- **Service interruptions** - a conversation that is not receiving is drawn in italics, with a
+  spinner while something is trying, and says why in a banner when opened: its account is
+  reconnecting, an IRC channel refused the join, a Kick channel is still being looked up. A
+  Sneedchat room that cannot connect is diagnosed - Tor, the forum, or only the chat - by
+  checking the route, then the forum's front page, then concluding it is the chat.
+- **Calls and streams** - a call stage like Discord's, which can sit in the corner or pop out
+  into a window of its own, with tiles per person, volume per person and for the whole call on
+  their right-click menu, and the camera and screen buttons in one row. A Kick stream is drawn
+  in the same surface, resizable in the corner or popped out.
 - **Tagging** - typing "@" lists the people here, the roles the service lets anybody ping, and
   its whole-room words, matched fuzzily. What is sent is what the service understands: an id on
   Discord, `m.mentions` on Matrix, "nick: " on IRC.
@@ -104,7 +114,7 @@ bind the compositor to focus the window instead.
 
 ## Wire protocol
 
-Newline-delimited JSON over a Unix socket at `$XDG_RUNTIME_DIR/moho/nobilis.sock`:
+Newline-delimited JSON over a Unix socket at `$XDG_RUNTIME_DIR/nobilis/nobilis.sock`:
 
 ```
 request:  {"id": 1, "method": "sendMessage", "params": {...}}
@@ -134,50 +144,62 @@ called `subscribe` for that buffer.
 
 ## Protocol backends
 
-- **IRC** - TLS with SASL (PLAIN, EXTERNAL, SCRAM-SHA-256), NickServ auto-identify and GHOST
-  reclaim, autojoin, optional SOCKS5 proxying, DCC send and receive, and the network's own colour
-  codes. Twenty-four IRCv3 capabilities are negotiated, four of them drafts, alongside SASL and
-  WHOX - which a network advertises in ISUPPORT rather than as a capability. Among them:
+- **IRC** - TLS with SASL (PLAIN, EXTERNAL, SCRAM-SHA-256), STS, NickServ auto-identify and
+  GHOST reclaim, autojoin, optional SOCKS5 or Tor, DCC send and receive with resume, and the
+  network's own colour codes. Twenty-seven IRCv3 capabilities are negotiated, six of them drafts,
+  alongside SASL and WHOX - which a network advertises in ISUPPORT rather than as a capability. Among them:
   `echo-message` and `labeled-response`, so a sent line is the one the server actually delivered
   rather than this client's guess at it; `chathistory` in both spellings for server-side
   backfill; `draft/multiline`, so a long message is continued rather than cut at 512 bytes;
   `draft/message-redaction`, so a deleted message leaves the screen; `userhost-in-names` and
   `account-tag`, so a join says who somebody is rather than only what they are called. Typing
-  over `+typing`, a notify list over MONITOR with `extended-monitor`, WHOIS, away, and channel
-  modes passed through raw.
+  over `+typing`, a notify list over MONITOR with `extended-monitor`, avatars over METADATA,
+  WHOIS, away, and channel modes passed through raw. Images are uploaded to catbox, postimg,
+  ibb.co or imgur and sent as a link, since IRC itself carries only text.
 
   The list negotiated is `WANTED_CAPS` in `nobilis/src/backend/irc/connect.rs`, filtered against
   what the server offered in CAP LS - one REQ line with only the advertised ones, because
   twenty-odd REQ lines trip flood protection on a real network.
-- **Discord** - official cross-device QR login (the same one discord.com/app offers), password
-  sign-in, or a token; a real-time gateway client over the user gateway. Messages with
-  edit/delete/reactions/replies/forwarding, threads and forum posts, slash commands with buttons,
-  menus and modal forms, polls that can be voted in, pinned messages, Discord's own search,
-  invites made as well as accepted, server and channel mutes read from the account itself, voice
-  calls with real audio (Songbird), and the account's own mute settings honoured. Where Discord
-  asks for a captcha, it is shown in a window of moho's own rather than sending you to a browser.
-  No video or screen share.
-- **Sneedchat (SneedChat)** - the Tor-only chat built into Kiwi Farms. Runs over an embedded Tor
-  client (or an external SOCKS5 proxy), solves the site's own proof-of-work anti-bot gate *and*
-  the Tartarus captcha on its login form, and connects to every configured room simultaneously
-  (one persistent websocket per room, sharing a single login). Message edit/delete, whispers,
-  attachments (uploaded to postimg, since the chat itself is text-only), and avatars fetched
-  through the same Tor session and cached locally.
+- **Discord** - official cross-device QR login (the same one discord.com/app offers), Discord's
+  own sign-in page in a window moho opens, or a token; a real-time gateway client over the user
+  gateway. Messages with edit/delete/reactions/replies/forwarding, threads and forum posts, slash
+  commands with buttons, menus and modal forms, polls that can be voted in, stickers sent and
+  drawn, pinned messages, Discord's own search, invites, scheduled events, AutoMod's verdicts,
+  and server and channel mutes read from the account itself.
+
+  Voice and video are moho's own connections rather than a library's: voice, the camera and Go
+  Live streams - hosted and watched, with sound - over Discord's RTP with DAVE end-to-end
+  encryption, VP8 encoded and decoded in the window. Echo cancellation and noise suppression
+  (WebRTC's audio processing, in Rust), per-person and call volume, the soundboard both ways,
+  and stage channels.
+
+  Joining a server, adding a friend and making a server are deliberately not done here. Discord
+  puts each behind an hCaptcha when it comes from anything but its own client, and a third-party
+  client answering one is what gets an account flagged for spam - so moho opens discord.com for
+  them, and says why beside the button. A captcha that turns up anywhere else is refused the same
+  way rather than answered.
+- **Sneedchat (SneedChat)** - the chat built into Kiwi Farms. On the open internet by default,
+  or per account over an embedded Tor client (or an external SOCKS5 proxy) at the onion address.
+  Solves the site's own proof-of-work anti-bot gate *and* the Tartarus captcha on its login form,
+  with two-factor, and connects to every configured room simultaneously (one persistent
+  websocket per room, sharing a single login). Message edit/delete, whispers, attachments
+  (uploaded to postimg, since the chat itself is text-only), and avatars fetched through the
+  same route and cached locally.
 - **Matrix** - Client-Server API with full end-to-end encryption (vodozemac-backed Olm/Megolm via
   `matrix-sdk-crypto`), SAS device verification, cross-signing, server-side key backup and key
   import/export, encrypted attachments. Threads, read receipts, spaces (created and filled),
-  polls, stickers, knocking, reporting, room moderation, ignore lists, and a room directory
-  search that asks every homeserver this account knows at once. Calls both ways: one-to-one
+  polls, stickers, forwarding (the original content sent again, as Element does), knocking,
+  reporting, room moderation, widgets, ignore lists, sliding sync, and a room directory search
+  that asks every homeserver this account knows at once. Calls both ways: one-to-one
   signalling, and the group calls Element holds on a LiveKit media server, with the media keys
   the room passes round. Camera and screen share in all three shapes of call - a single
   connection, a mesh, or a media server - and either can be turned on part-way through, which
   is a renegotiation rather than a new call.
 - **Kick** - the streaming site's chat, over its Pusher socket. Joins by streamer handle, imports
-  the account's follows, and carries the three emote tiers with subscriber gating, redemptions,
-  subscriptions, gifted subs and raids, moderation, and polls and predictions that can be
-  answered rather than only watched.
-- **XMPP/Slack** - not implemented yet; `listProtocols` reports them as unavailable rather than
-  leaving a frontend to guess.
+  the account's follows, and carries the three emote tiers with subscriber gating (and 7TV and
+  BTTV beside them), redemptions, subscriptions, gifted subs and raids, moderation, chat modes,
+  and polls and predictions that can be answered rather than only watched. The stream itself
+  plays in the window over HLS, with its VODs and clips.
 
 ## On-disk state
 
@@ -186,5 +208,8 @@ called `subscribe` for that buffer.
 | `~/.config/nobilis/accounts.toml` | account config and credentials |
 | `~/.config/nobilis/scrollback.db` | SQLite scrollback |
 | `~/.config/nobilis/matrix-crypto/` | Matrix E2EE device keys and Olm sessions |
-| `~/.cache/moho/` | re-derivable media caches (Matrix media, Sneedchat avatars/attachments) |
-| `$XDG_RUNTIME_DIR/moho/nobilis.sock` | the daemon's control socket |
+| `~/.config/nobilis/voice.toml` | microphone, speakers, volumes and voice processing |
+| `~/.config/nobilis/tor-state/`, `tor-cache/` | the embedded Tor client's state |
+| `~/.cache/nobilis/` | re-derivable media caches (Matrix media, Discord thumbnails, stickers and sounds, Kick emotes, Sneedchat avatars and attachments), each held to a size and to thirty days, and fetched again when a missing file is looked at - see `nobilis/src/media_cache.rs` |
+| `~/.cache/moho/moho.log` | the app's log, the daemon's included |
+| `$XDG_RUNTIME_DIR/nobilis/nobilis.sock` | the daemon's control socket |

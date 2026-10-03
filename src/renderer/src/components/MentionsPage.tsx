@@ -1,3 +1,4 @@
+import { accountOfBuffer } from '../lib/route'
 import { Icon } from './Icon'
 import { Avatar } from './Avatar'
 import { useChat, usePref, useStore } from '../state/hooks'
@@ -66,7 +67,7 @@ export function MentionsPage(): JSX.Element {
             }}
             disabled={!buffer}
           >
-            <Avatar name={m.from} url={m.avatarUrl} size={32} />
+            <Avatar name={m.from} url={m.avatarUrl} size={32} accountId={accountOfBuffer(m.bufferId)} />
             <span className="mention-body">
               <span className="mention-head small">
                 <span className="mention-from">{m.from}</span>

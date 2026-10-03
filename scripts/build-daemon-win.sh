@@ -22,7 +22,8 @@ MANIFEST="$SRC_DIR/nobilis/Cargo.toml"
 . "$SRC_DIR/scripts/find-cargo.sh"
 
 echo "building the Windows daemon with $CARGO"
-"$CARGO" build --release --target "$TARGET" --manifest-path "$MANIFEST"
+# --locked: see build-daemon.sh.
+"$CARGO" build --release --locked --target "$TARGET" --manifest-path "$MANIFEST"
 
 BUILT="$SRC_DIR/nobilis/target/$TARGET/release/nobilis.exe"
 WANTED="$SRC_DIR/nobilis/target/release/nobilis.exe"

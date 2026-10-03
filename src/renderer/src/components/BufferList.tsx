@@ -1,5 +1,7 @@
+import { useMediaUrl } from '../lib/route'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Icon, IconButton, MaskIcon } from './Icon'
+import { bufferLink } from '../lib/bufferlink'
+import { Icon, IconButton, ServiceMark } from './Icon'
 import { ContextMenu, useContextMenu } from './ContextMenu'
 import { bufferMenuEntries } from '../lib/buffermenu'
 import { UserFooter } from './UserFooter'
@@ -25,7 +27,6 @@ import {
   bufferKindGlyph,
   serviceRoomGlyph,
   classes,
-  resolveMediaUrl,
   serviceIcon
 } from '../lib/util'
 import type { Account, Member } from '../../../shared/wire'
@@ -872,10 +873,17 @@ function BufferRow({
 }: BufferRowProps): JSX.Element {
   const { menu, open, close } = useContextMenu()
   const account = accounts.find((a) => a.id === buffer.accountId)
+  // A DM's picture comes off the service's CDN; through the route for a
+  // strictly routed account (#257).
+  const media = useMediaUrl(buffer.accountId)
   // Whether this channel is on air. Selected down to the one boolean rather
   // than the map, so a viewer count ticking over in one channel does not
   // re-render every row in the list.
   const live = useChat((s) => s.kickStreams[buffer.id]?.live ?? false)
+  // Whether this conversation is receiving - see lib/bufferlink. Not
+  // connected reads in italics, with a spinner while something is trying.
+  const accountDetail = useChat((s) => s.connectionDetail[buffer.accountId])
+  const link = bufferLink(buffer, account, accountDetail)
   // Whether this channel's stream is the one in the window. Selected down to
   // a boolean for the same reason as `live` above.
   const watched = useChat((s) => s.watching?.bufferId === buffer.id)
@@ -887,18 +895,14 @@ function BufferRow({
   // name as text in front of every entry.
   const service = serviceIcon(account?.service ?? '')
   const leading = showServiceIcon ? (
-    service.mark ? (
-      <MaskIcon src={service.mark} size={15} />
-    ) : (
-      <Icon name={service.glyph!} size={15} />
-    )
+    <ServiceMark icon={service} size={15} />
   ) : buffer.kind === 'dm' ? (
     // A conversation with a person is headed by that person, whatever
     // protocol they are on: their picture where there is one, their initial
     // where there is not.
-    <Avatar name={buffer.name} url={buffer.avatarUrl} size={22} status={status} />
+    <Avatar name={buffer.name} url={buffer.avatarUrl} size={22} status={status} accountId={buffer.accountId} />
   ) : buffer.avatarUrl ? (
-    <img className="buffer-avatar" src={resolveMediaUrl(buffer.avatarUrl)} alt="" />
+    <img className="buffer-avatar" src={media(buffer.avatarUrl)} alt="" />
   ) : buffer.serviceRoom ? (
     // The server's own room. Marked here because the fact worth knowing is
     // that it is not one of the others - a notice about a quota is easy to
@@ -955,7 +959,8 @@ function BufferRow({
           'buffer-row',
           active && 'active',
           buffer.highlight && 'highlight',
-          lifted && 'lifted'
+          lifted && 'lifted',
+          link && 'unlinked'
         )}
         onClick={onSelect}
         onContextMenu={open}
@@ -967,7 +972,7 @@ function BufferRow({
           onDragStart()
         }}
         onDragEnd={onDragEnd}
-        title={draggable ? `${buffer.name} — drag onto a heading to file it` : buffer.name}
+        title={link ? `${buffer.name} — ${link.detail}` : draggable ? `${buffer.name} — drag onto a heading to file it` : buffer.name}
       >
         {leading}
         <span className="ellipsis buffer-name">{bufferDisplayName(buffer.name)}</span>
@@ -977,6 +982,13 @@ function BufferRow({
             saying what is in it. A moving thing rather than a static mark,
             because what it says is "wait", not "note". */}
         {buffer.syncing && <span className="spinner" aria-label="Synchronising" />}
+        {link &&
+          !buffer.syncing &&
+          (link.retrying ? (
+            <span className="spinner" aria-label="Connecting" />
+          ) : (
+            <Icon name="link_off" size={13} className="buffer-muted-icon" />
+          ))}
         {poppedOut && <Icon name="open_in_new" size={13} className="buffer-muted-icon" />}
         {muted && <Icon name="notifications_off" size={13} className="buffer-muted-icon" />}
         {/* One badge, and being on air wins it: a live channel says LIVE,

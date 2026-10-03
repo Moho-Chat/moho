@@ -1,5 +1,7 @@
+import { useMediaUrl } from '../lib/route'
 import { useRef, useState } from 'react'
 import { ContextMenu, useContextMenu } from './ContextMenu'
+import { railConnecting } from '../lib/bufferlink'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { Avatar } from './Avatar'
 import { LeaveConfirm } from './LeaveConfirm'
@@ -88,6 +90,7 @@ interface TileProps {
  */
 function GroupFace({ group, customIcon }: { group: RailGroup; customIcon?: string }): JSX.Element {
   const service = serviceIcon(group.service)
+  const media = useMediaUrl(group.accountId)
   // draggable={false} throughout: a picture is draggable on its own by
   // default, so taking hold of a tile by its icon dragged the icon rather
   // than the tile - which is a different gesture with different data behind
@@ -99,7 +102,7 @@ function GroupFace({ group, customIcon }: { group: RailGroup; customIcon?: strin
   // usually has no picture and often no name, and initials taken off a raw
   // room id say nothing at all.
   if (group.kind === 'invite') return <Icon name="mark_email_unread" size={22} />
-  if (group.iconUrl) return <img className="rail-icon" src={resolveMediaUrl(group.iconUrl)} alt="" draggable={false} />
+  if (group.iconUrl) return <img className="rail-icon" src={media(group.iconUrl)} alt="" draggable={false} />
   if (group.kind === 'dms') return <Icon name="forum" size={22} />
   if (group.kind === 'account' && service.mark && service.colour) {
     // Artwork with colour worth keeping, shown as-is rather than flattened to
@@ -184,6 +187,9 @@ function RailTile(props: TileProps): JSX.Element {
   const badge = group.kind === 'guild' || group.kind === 'space' ? service : null
 
   const content = <GroupFace group={group} customIcon={customIcon} />
+  // Not connected yet, or reconnecting: a spinner over the face until its
+  // service has answered - see lib/bufferlink.
+  const connecting = useChat((s) => railConnecting(group, s.buffers, s.accounts, s.connectionDetail))
 
   return (
     <button
@@ -194,9 +200,10 @@ function RailTile(props: TileProps): JSX.Element {
         dropTarget && 'drop-target',
         mergeTarget && 'merge-target',
         lifted && 'lifted',
-        muted && 'muted'
+        muted && 'muted',
+        connecting && 'connecting'
       )}
-      title={group.name}
+      title={connecting ? `${group.name} — connecting…` : group.name}
       aria-label={group.name}
       aria-current={active}
       draggable={draggable}
@@ -223,6 +230,11 @@ function RailTile(props: TileProps): JSX.Element {
           reads at a glance without opening anything. */}
       <span className={`rail-pill${active ? ' active' : unread ? ' unread' : ''}`} />
       <span className="rail-face">{content}</span>
+      {connecting && (
+        <span className="rail-connecting" aria-label="Connecting">
+          <span className="spinner" />
+        </span>
+      )}
       {/* Which service this belongs to, rather than a count. The unread
           count lives on the channel rows; up here the pill already says
           something is waiting, and what a tile needs to answer at a glance
@@ -310,7 +322,7 @@ function DmTile(props: { buffer: BufferEntry; active: boolean; onSelect: () => v
     >
       <span className={`rail-pill${active ? ' active' : ' unread'}`} />
       <span className="rail-face">
-        <Avatar name={name} url={buffer.avatarUrl} size={40} />
+        <Avatar name={name} url={buffer.avatarUrl} size={40} accountId={buffer.accountId} />
       </span>
       {/* A count rather than a dot: one message from someone and thirty of
           them are different situations, and this column is where that gets

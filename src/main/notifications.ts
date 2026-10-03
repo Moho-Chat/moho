@@ -248,7 +248,8 @@ export class Notifier {
    */
   private async fetchAvatar(url?: string): Promise<string | null> {
     if (!url || this.avatarFetchInFlight) return null
-    if (url.startsWith('file://')) return decodeURI(url.slice('file://'.length))
+    // Less the version a daemon may put on a file that keeps its name.
+    if (url.startsWith('file://')) return decodeURI(url.slice('file://'.length).replace(/#\d+$/, ''))
     if (!/^https?:\/\//i.test(url)) return null
 
     this.avatarFetchInFlight = true

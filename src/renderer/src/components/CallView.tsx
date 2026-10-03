@@ -1,3 +1,4 @@
+import { useMediaUrl } from '../lib/route'
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { useChat, useStore } from '../state/hooks'
@@ -534,6 +535,7 @@ interface SoundboardSound {
  * need Nitro. Pressing one plays it to the whole channel, this end included.
  */
 function Soundboard({ accountId }: { accountId: string }): JSX.Element {
+  const media = useMediaUrl(accountId)
   const store = useStore()
   const [sounds, setSounds] = useState<SoundboardSound[] | null>(null)
   const [query, setQuery] = useState('')
@@ -581,7 +583,7 @@ function Soundboard({ accountId }: { accountId: string }): JSX.Element {
                   onClick={() => play(s)}
                 >
                   {s.emojiId ? (
-                    <img src={`https://cdn.discordapp.com/emojis/${s.emojiId}.webp?size=32`} alt="" />
+                    <img src={media(`https://cdn.discordapp.com/emojis/${s.emojiId}.webp?size=32`)} alt="" />
                   ) : s.emojiName ? (
                     <span className="soundboard-emoji">{s.emojiName}</span>
                   ) : (
