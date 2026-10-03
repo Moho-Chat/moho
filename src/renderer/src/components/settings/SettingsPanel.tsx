@@ -872,6 +872,8 @@ function TorSettings(): JSX.Element {
         store.toast('info', note)
         reload()
         void store.refreshAccounts()
+        // Tor or a proxy decides the composer's route icon.
+        void store.refreshNetSettings()
       })
       .catch((e: Error) => store.toast('error', e.message))
   }

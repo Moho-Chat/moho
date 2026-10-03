@@ -170,6 +170,7 @@ export function Composer(): JSX.Element | null {
   const account = buffer && accounts.find((a) => a.id === buffer.accountId)
   const service = account?.service
   const tunnelAll = useChat((s) => s.tunnelAll)
+  const route = useChat((s) => s.route)
   const routed = tunnelAll || !!account?.useTor
   const hasStickers = service === 'matrix' || service === 'discord'
   /**
@@ -680,11 +681,19 @@ export function Composer(): JSX.Element | null {
             being routed or everything being. Beside the lock rather than
             instead of it - a Matrix room can be both encrypted and routed,
             and those are two different promises. */}
-        {routed && (
-          <span className="composer-tor" title={tunnelAll ? 'Everything goes through Tor' : 'This account goes through Tor'}>
-            <MaskIcon src={torMark} size={16} color="var(--primary)" />
-          </span>
-        )}
+        {routed &&
+          (route.kind === 'proxy' ? (
+            <span
+              className="composer-tor"
+              title={`${tunnelAll ? 'Everything goes' : 'This account goes'} through your SOCKS5 proxy${route.address ? ` (${route.address})` : ''}`}
+            >
+              <Icon name="lan" size={16} color="var(--primary)" />
+            </span>
+          ) : (
+            <span className="composer-tor" title={tunnelAll ? 'Everything goes through Tor' : 'This account goes through Tor'}>
+              <MaskIcon src={torMark} size={16} color="var(--primary)" />
+            </span>
+          ))}
         {service === 'matrix' && (
           <Icon
             name={buffer.encrypted ? 'lock' : 'lock_open'}

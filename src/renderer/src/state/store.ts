@@ -381,6 +381,9 @@ export interface ChatState {
   /** Whether the daemon sends everything through Tor or the proxy, accounts
    *  or not - so every conversation is routed, not only a routed account's. */
   tunnelAll: boolean
+  /** Where routed traffic goes: moho's own Tor, or a SOCKS5 proxy the user
+   *  named - one daemon-wide choice, so one icon for every routed account. */
+  route: { kind: 'tor' } | { kind: 'proxy'; address: string }
   /** Sound devices and whether voice is silenced, as the daemon sees them. */
   voicePrefs: VoicePrefs
   audioDevices: AudioDevice[]
@@ -660,6 +663,7 @@ const INITIAL: ChatState = {
   activeGroupId: '',
   connectionDetail: {},
   tunnelAll: false,
+  route: { kind: 'tor' },
   voicePrefs: { micMuted: false, deafened: false },
   audioDevices: [],
   voiceChannels: [],
@@ -1148,8 +1152,14 @@ export class ChatStore {
   /** Reads whether everything is tunnelled - see `tunnelAll`. */
   async refreshNetSettings(): Promise<void> {
     try {
-      const net = await window.moho.rpc<{ tunnelAll?: boolean }>('getNetSettings')
-      this.set({ tunnelAll: !!net.tunnelAll })
+      const net = await window.moho.rpc<{ tunnelAll?: boolean; torMode?: string; proxy?: string | null }>('getNetSettings')
+      this.set({
+        tunnelAll: !!net.tunnelAll,
+        route:
+          net.torMode === 'proxy'
+            ? { kind: 'proxy', address: (net.proxy ?? '').replace(/^socks5h?:\/\//, '') }
+            : { kind: 'tor' }
+      })
     } catch {
       /* an older daemon has no such method */
     }
