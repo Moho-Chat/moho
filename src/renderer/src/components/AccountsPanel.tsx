@@ -1,6 +1,6 @@
 import { useMediaUrl } from '../lib/route'
 import { useEffect, useState } from 'react'
-import { Icon, IconButton, MaskIcon } from './Icon'
+import { Icon, IconButton, ServiceMark } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
 import { IgnoreList } from './IgnoreList'
 import { TunnelAllSwitch } from './settings/Tunnel'
@@ -119,7 +119,7 @@ export function AccountsPanel(): JSX.Element {
                 className={`service-chip${adding === service ? ' active' : ''}`}
                 onClick={() => setAdding(adding === service ? null : service)}
               >
-                {icon.mark ? <MaskIcon src={icon.mark} size={16} /> : <Icon name={icon.glyph!} size={16} />}
+                <ServiceMark icon={icon} size={16} />
                 {nameFor(service)}
               </button>
             )
@@ -163,7 +163,7 @@ export function AccountsPanel(): JSX.Element {
                 onClick={() => setOpenGroups(service, shut)}
               >
                 <Icon name={shut ? 'chevron_right' : 'expand_more'} size={18} />
-                {icon.mark ? <MaskIcon src={icon.mark} size={16} /> : <Icon name={icon.glyph!} size={16} />}
+                <ServiceMark icon={icon} size={16} />
                 <span className="account-group-name">{serviceLabel(service)}</span>
                 {/* The count is what makes a folded heading worth reading. */}
                 <span className="small muted">{mine.length}</span>
@@ -328,10 +328,8 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
       <div className="account-card-head">
         {account.avatarUrl ? (
           <img className="account-avatar" src={media(account.avatarUrl)} alt="" />
-        ) : icon.mark ? (
-          <MaskIcon src={icon.mark} size={20} />
         ) : (
-          <Icon name={icon.glyph!} size={20} />
+          <ServiceMark icon={icon} size={20} />
         )}
         <div className="account-card-title">
           <div className="ellipsis">{account.displayName || account.id}</div>

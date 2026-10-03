@@ -1,7 +1,7 @@
 import { useMediaUrl } from '../lib/route'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { bufferLink } from '../lib/bufferlink'
-import { Icon, IconButton, MaskIcon } from './Icon'
+import { Icon, IconButton, ServiceMark } from './Icon'
 import { ContextMenu, useContextMenu } from './ContextMenu'
 import { bufferMenuEntries } from '../lib/buffermenu'
 import { UserFooter } from './UserFooter'
@@ -895,11 +895,7 @@ function BufferRow({
   // name as text in front of every entry.
   const service = serviceIcon(account?.service ?? '')
   const leading = showServiceIcon ? (
-    service.mark ? (
-      <MaskIcon src={service.mark} size={15} />
-    ) : (
-      <Icon name={service.glyph!} size={15} />
-    )
+    <ServiceMark icon={service} size={15} />
   ) : buffer.kind === 'dm' ? (
     // A conversation with a person is headed by that person, whatever
     // protocol they are on: their picture where there is one, their initial
