@@ -378,6 +378,9 @@ export interface ChatState {
    * nothing to read.
    */
   connectionDetail: Record<string, string>
+  /** Whether the daemon sends everything through Tor or the proxy, accounts
+   *  or not - so every conversation is routed, not only a routed account's. */
+  tunnelAll: boolean
   /** Sound devices and whether voice is silenced, as the daemon sees them. */
   voicePrefs: VoicePrefs
   audioDevices: AudioDevice[]
@@ -656,6 +659,7 @@ const INITIAL: ChatState = {
   groups: [],
   activeGroupId: '',
   connectionDetail: {},
+  tunnelAll: false,
   voicePrefs: { micMuted: false, deafened: false },
   audioDevices: [],
   voiceChannels: [],
@@ -1141,9 +1145,20 @@ export class ChatStore {
     void window.moho.popout.close(bufferId, andShow)
   }
 
+  /** Reads whether everything is tunnelled - see `tunnelAll`. */
+  async refreshNetSettings(): Promise<void> {
+    try {
+      const net = await window.moho.rpc<{ tunnelAll?: boolean }>('getNetSettings')
+      this.set({ tunnelAll: !!net.tunnelAll })
+    } catch {
+      /* an older daemon has no such method */
+    }
+  }
+
   async init(initialBufferId: string, initialGroupId = ''): Promise<void> {
     this.set({ activeBufferId: initialBufferId, activeGroupId: initialGroupId })
 
+    void this.refreshNetSettings()
     void window.moho.popout.list().then((popouts) => this.set({ popouts }))
     window.moho.popout.onChange((popouts) => this.set({ popouts }))
 
@@ -1156,7 +1171,10 @@ export class ChatStore {
 
     window.moho.onLinkChange((up) => {
       this.set({ linkUp: up })
-      if (up) void this.refreshAll()
+      if (up) {
+        void this.refreshAll()
+        void this.refreshNetSettings()
+      }
     })
     window.moho.onEvent((frame) => this.handleEvent(frame))
     // Both of these arrive from outside and mean "go and look at this", which

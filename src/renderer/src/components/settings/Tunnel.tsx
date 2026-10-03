@@ -47,6 +47,7 @@ export function TunnelAllSwitch(): JSX.Element | null {
     try {
       await window.moho.rpc('setNetSettings', { tunnelAll: next })
       reload()
+      void store.refreshNetSettings()
       if (next) {
         // Asked once so the switch can say whether it worked; the window
         // itself is pointed at the route by the main process either way.
