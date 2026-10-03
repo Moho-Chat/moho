@@ -2689,6 +2689,15 @@ img.smilie {
   margin-bottom: 2px;
 }
 
+.rich-embed-provider {
+  margin-bottom: 2px;
+}
+
+.rich-embed-author {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
 .rich-embed-desc {
   color: var(--surface-variant-text);
   white-space: pre-wrap;
@@ -2732,9 +2741,19 @@ img.smilie {
 
 .media-embed.youtube {
   position: relative;
+  display: inline-block;
   padding: 0;
   background: none;
   border: none;
+}
+
+.youtube-thumb {
+  display: block;
+  position: relative;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
 }
 
 .media-embed.youtube img {
@@ -2742,6 +2761,42 @@ img.smilie {
   max-height: 240px;
   border-radius: var(--corner-radius-small);
   display: block;
+}
+
+/* The player, at the thumbnail's width and YouTube's shape. */
+.media-embed.youtube.playing iframe {
+  display: block;
+  width: min(420px, 100%);
+  aspect-ratio: 16 / 9;
+  border: none;
+  border-radius: var(--corner-radius-small);
+  background: #000;
+}
+
+.media-embed.youtube.playing {
+  display: block;
+  width: min(420px, 100%);
+}
+
+/* Out to YouTube itself, over the thumbnail's corner, on hover. */
+.youtube-outside {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  padding: 4px;
+  border: none;
+  border-radius: var(--corner-radius-small);
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+
+.media-embed.youtube:hover .youtube-outside,
+.youtube-outside:focus-visible {
+  opacity: 1;
 }
 
 .youtube-play {

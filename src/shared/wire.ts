@@ -451,6 +451,10 @@ export interface Embed {
    * sniffing and are paired with the card separately.
    */
   imageUrl?: string
+  /** Who serves what the card is about - "YouTube" - shown small, first. */
+  provider?: string
+  /** Who made it: a video's channel. */
+  author?: string
 }
 
 /**

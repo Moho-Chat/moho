@@ -301,7 +301,11 @@ function createWindow(): void {
         }
       }
     }
-    shell.openExternal(url)
+    // The same schemes the window's own openExternal allows. The page now
+    // holds a frame of somebody else's (a YouTube player), and a frame can
+    // call window.open with anything - a file: URL or another program's
+    // scheme is not something it gets to have opened.
+    if (/^(https?|mailto):/i.test(url)) shell.openExternal(url)
     return { action: 'deny' }
   })
 
@@ -459,7 +463,8 @@ function openPopout(bufferId: string, title?: string): void {
     publishPopouts()
   })
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    // As the main window's: web addresses only, whatever a frame asks for.
+    if (/^(https?|mailto):/i.test(url)) shell.openExternal(url)
     return { action: 'deny' }
   })
 
@@ -967,6 +972,17 @@ app.whenReady().then(() => {
   allowRoot(path.join(app.getPath('userData'), 'group-icons'))
   installMediaHandler()
   installRoutedHandler((method, params) => client.request(method, params))
+  // YouTube's player refuses to play (error 153) for an embedder it cannot
+  // name, and a window loaded from a file sends no Referer at all. YouTube's
+  // own answer for an app with no web address is to send its app id as one.
+  // Only on the player's own pages: nothing else hears from moho this way.
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    { urls: ['https://www.youtube-nocookie.com/embed/*'] },
+    (details, callback) => {
+      details.requestHeaders['Referer'] = 'https://com.salastil.moho/'
+      callback({ requestHeaders: details.requestHeaders })
+    }
+  )
 
   prefs = new Prefs()
   nobilis = new NobilisProcess()

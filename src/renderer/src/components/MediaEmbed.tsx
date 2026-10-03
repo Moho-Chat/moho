@@ -4,7 +4,7 @@ import { Lightbox } from './Lightbox'
 import { VoiceMessage } from './VoiceMessage'
 import { LottieSticker, lottieStickerId } from './LottieSticker'
 import { fullImageFor, knownFullImage } from '../lib/fullimage'
-import { useMediaUrl } from '../lib/route'
+import { useMediaUrl, useStrictRoute } from '../lib/route'
 import type { MediaItem } from '../lib/format'
 import type { Attachment } from '../../../shared/wire'
 
@@ -446,17 +446,78 @@ export function MediaEmbed({
   }
 
   // youtube - a detected link, never an attachment
+  return <YouTubeEmbed id={item?.youtubeId ?? ''} link={fullSrc} media={media} onFailed={() => setFailed(true)} />
+}
+
+/**
+ * A YouTube video: its thumbnail until pressed, then the player, in place.
+ *
+ * The player is YouTube's own page in a frame, from youtube-nocookie.com -
+ * the address YouTube offers for embedding that sets no tracking cookie until
+ * the video is played. A page is not something the strict route can carry:
+ * pictures are fetched for the window one at a time, but a player is a whole
+ * site loading what it likes. So on an account that routes strictly the video
+ * opens in the browser instead, and says so, rather than reaching YouTube
+ * from the reader's own address behind their back.
+ */
+function YouTubeEmbed({
+  id,
+  link,
+  media,
+  onFailed
+}: {
+  id: string
+  link: string
+  media: (url: string) => string
+  onFailed: () => void
+}): JSX.Element {
+  const strict = useStrictRoute()
+  const [playing, setPlaying] = useState(false)
+  const outside = (): void => void window.moho.openExternal(link)
+
+  // No button of ours over the player: its corners are its own controls, and
+  // its YouTube mark already opens the video outside.
+  if (playing) {
+    return (
+      <div className="media-embed youtube playing">
+        <iframe
+          src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=1&rel=0`}
+          title="YouTube video"
+          allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+          allowFullScreen
+          referrerPolicy="strict-origin-when-cross-origin"
+        />
+      </div>
+    )
+  }
+
   return (
-    <button type="button" className="media-embed youtube" onClick={open} title={fullSrc}>
-      <img
-        src={media(`https://i.ytimg.com/vi/${item?.youtubeId}/hqdefault.jpg`)}
-        alt=""
-        loading="lazy"
-        onError={() => setFailed(true)}
-      />
-      <span className="youtube-play">
-        <Icon name="play_arrow" size={28} fill />
-      </span>
-    </button>
+    <span className="media-embed youtube">
+      <button
+        type="button"
+        className="youtube-thumb"
+        onClick={strict ? outside : () => setPlaying(true)}
+        title={
+          strict
+            ? 'Opens in your browser: this account routes strictly, and a video player cannot go through its route'
+            : 'Play'
+        }
+      >
+        <img
+          src={media(`https://i.ytimg.com/vi/${id}/hqdefault.jpg`)}
+          alt=""
+          loading="lazy"
+          onError={onFailed}
+        />
+        <span className="youtube-play">
+          <Icon name={strict ? 'open_in_new' : 'play_arrow'} size={28} fill />
+        </span>
+      </button>
+      {!strict && (
+        <button type="button" className="youtube-outside" title="Open on YouTube" onClick={outside}>
+          <Icon name="open_in_new" size={16} />
+        </button>
+      )}
+    </span>
   )
 }

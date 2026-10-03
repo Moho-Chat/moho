@@ -866,6 +866,8 @@ function MessageRowBody({
               className="rich-embed selectable"
               style={{ borderLeftColor: embedColor(embed.color) || 'var(--outline-strong)' }}
             >
+              {embed.provider && <div className="rich-embed-provider small muted">{embed.provider}</div>}
+              {embed.author && <div className="rich-embed-author small">{embed.author}</div>}
               {embed.title &&
                 (embed.url ? (
                   <a
