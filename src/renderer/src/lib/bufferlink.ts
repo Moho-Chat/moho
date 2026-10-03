@@ -41,3 +41,27 @@ export function bufferLink(buffer: Buffer, account: Account | undefined, account
     cause: link.cause
   }
 }
+
+/**
+ * Whether a rail entry is still connecting, for the spinner over its badge.
+ *
+ * An entry that belongs to one account follows that account - and also any
+ * of its own conversations that are retrying on their own, which is a
+ * Sneedchat room whose chat is down or a Kick channel Kick has not answered
+ * for. The direct-messages entry spans accounts, so it spins while any of the
+ * conversations in it would.
+ */
+export function railConnecting(
+  group: { id: string; kind: string; accountId?: string },
+  buffers: Buffer[],
+  accounts: Account[],
+  details: Record<string, string>
+): boolean {
+  const accountOf = (id: string): Account | undefined => accounts.find((a) => a.id === id)
+  const retrying = (b: Buffer): boolean => bufferLink(b, accountOf(b.accountId), details[b.accountId])?.retrying === true
+  if (group.kind === 'dms') return buffers.some((b) => b.kind === 'dm' && retrying(b))
+  if (group.kind === 'pinned' || group.kind === 'invite' || !group.accountId) return false
+  const account = accountOf(group.accountId)
+  if (account && account.state === 'connecting') return true
+  return buffers.some((b) => b.groupId === group.id && retrying(b))
+}

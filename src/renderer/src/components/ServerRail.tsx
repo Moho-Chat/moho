@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { ContextMenu, useContextMenu } from './ContextMenu'
+import { railConnecting } from '../lib/bufferlink'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { Avatar } from './Avatar'
 import { LeaveConfirm } from './LeaveConfirm'
@@ -184,6 +185,9 @@ function RailTile(props: TileProps): JSX.Element {
   const badge = group.kind === 'guild' || group.kind === 'space' ? service : null
 
   const content = <GroupFace group={group} customIcon={customIcon} />
+  // Not connected yet, or reconnecting: a spinner over the face until its
+  // service has answered - see lib/bufferlink.
+  const connecting = useChat((s) => railConnecting(group, s.buffers, s.accounts, s.connectionDetail))
 
   return (
     <button
@@ -194,9 +198,10 @@ function RailTile(props: TileProps): JSX.Element {
         dropTarget && 'drop-target',
         mergeTarget && 'merge-target',
         lifted && 'lifted',
-        muted && 'muted'
+        muted && 'muted',
+        connecting && 'connecting'
       )}
-      title={group.name}
+      title={connecting ? `${group.name} — connecting…` : group.name}
       aria-label={group.name}
       aria-current={active}
       draggable={draggable}
@@ -223,6 +228,11 @@ function RailTile(props: TileProps): JSX.Element {
           reads at a glance without opening anything. */}
       <span className={`rail-pill${active ? ' active' : unread ? ' unread' : ''}`} />
       <span className="rail-face">{content}</span>
+      {connecting && (
+        <span className="rail-connecting" aria-label="Connecting">
+          <span className="spinner" />
+        </span>
+      )}
       {/* Which service this belongs to, rather than a count. The unread
           count lives on the channel rows; up here the pill already says
           something is waiting, and what a tile needs to answer at a glance
