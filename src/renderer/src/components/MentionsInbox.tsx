@@ -1,3 +1,4 @@
+import { accountOfBuffer } from '../lib/route'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
 import { HeaderPopover } from './HeaderPopover'
@@ -157,7 +158,7 @@ export function MentionsInbox(): JSX.Element {
                 onClick={() => buffer && void jumpTo(buffer.id, m.id)}
                 disabled={!buffer}
               >
-                <Avatar name={m.from} url={m.avatarUrl} size={28} />
+                <Avatar name={m.from} url={m.avatarUrl} size={28} accountId={accountOfBuffer(m.bufferId)} />
                 <span className="mention-body">
                   <span className="mention-head small">
                     <span className="mention-from">{m.from}</span>

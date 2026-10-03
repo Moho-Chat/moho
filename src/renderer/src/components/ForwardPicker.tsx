@@ -93,7 +93,7 @@ export function ForwardPicker({
                 disabled={!!sending}
                 onClick={() => send(buffer.id)}
               >
-                <Avatar name={buffer.name} url={buffer.avatarUrl} size={22} />
+                <Avatar name={buffer.name} url={buffer.avatarUrl} size={22} accountId={buffer.accountId} />
                 <span className="ellipsis">{bufferDisplayName(buffer.name)}</span>
                 <span className="small muted ellipsis">
                   {account?.displayName ?? ''}

@@ -48,7 +48,7 @@ export function IncomingCallPanel(): JSX.Element | null {
         const name = buffer ? bufferDisplayName(buffer.name) : 'Someone'
         return (
           <div key={call.bufferId} className="incoming-call">
-            <Avatar name={name} url={buffer?.avatarUrl} size={44} />
+            <Avatar name={name} url={buffer?.avatarUrl} size={44} accountId={buffer?.accountId} />
             <div className="incoming-call-who">
               <span className="ellipsis incoming-call-name">{name}</span>
               <span className="small muted ellipsis">

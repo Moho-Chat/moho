@@ -17,7 +17,7 @@ export function BufferFace({ buffer }: { buffer: BufferEntry }): JSX.Element | n
 
   return (
     <span className="header-face">
-      <Avatar name={buffer.name} url={buffer.avatarUrl} size={24} status={dmStatus(buffer, presence, buffers)} />
+      <Avatar name={buffer.name} url={buffer.avatarUrl} size={24} status={dmStatus(buffer, presence, buffers)} accountId={buffer.accountId} />
     </span>
   )
 }

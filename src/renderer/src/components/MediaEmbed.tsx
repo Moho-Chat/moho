@@ -4,7 +4,7 @@ import { Lightbox } from './Lightbox'
 import { VoiceMessage } from './VoiceMessage'
 import { LottieSticker, lottieStickerId } from './LottieSticker'
 import { fullImageFor, knownFullImage } from '../lib/fullimage'
-import { resolveMediaUrl } from '../lib/util'
+import { useMediaUrl } from '../lib/route'
 import type { MediaItem } from '../lib/format'
 import type { Attachment } from '../../../shared/wire'
 
@@ -90,6 +90,8 @@ export function MediaEmbed({
   onRefresh,
   onStale
 }: Props): JSX.Element | null {
+  // Through the account's route when it is strictly routed (#257).
+  const media = useMediaUrl()
   const [failed, setFailed] = useState(false)
   /**
    * The locally cached preview is gone, so fall back to the original.
@@ -223,7 +225,7 @@ export function MediaEmbed({
           title={refreshError || 'Link expired — click to reload from Discord'}
           onClick={refresh}
         >
-          <img src={resolveMediaUrl(preview)} alt={attachment?.filename || ''} loading="lazy" />
+          <img src={media(preview)} alt={attachment?.filename || ''} loading="lazy" />
           <span className="expired-overlay small">
             <Icon name={refreshing ? 'hourglass_empty' : 'refresh'} size={18} />
             {refreshing ? 'Reloading…' : refreshError || 'Click to reload'}
@@ -318,7 +320,7 @@ export function MediaEmbed({
         <img
           className="media-embed"
           style={ratio}
-          src={resolveMediaUrl(showingPreview ? previewSrc : fullSrc)}
+          src={media(showingPreview ? previewSrc : fullSrc)}
           alt={attachment?.filename || ''}
           title={refreshError || attachment?.filename}
           loading="lazy"
@@ -349,7 +351,7 @@ export function MediaEmbed({
           <Lightbox
             source={{
               kind: 'image',
-              src: resolveMediaUrl(expandedSrc),
+              src: media(expandedSrc),
               externalUrl: openTarget,
               filename: attachment?.filename,
               width: attachment?.width,
@@ -375,7 +377,7 @@ export function MediaEmbed({
           <video
             className="media-embed"
             style={ratio}
-            src={resolveMediaUrl(fullSrc)}
+            src={media(fullSrc)}
             controls
             // Enough to draw the first frame and know how long it is, without
             // pulling megabytes for every video in a scrolled-past backlog.
@@ -397,7 +399,7 @@ export function MediaEmbed({
           <Lightbox
             source={{
               kind: 'video',
-              src: resolveMediaUrl(fullSrc),
+              src: media(fullSrc),
               externalUrl: openTarget,
               filename: attachment?.filename,
               loop,
@@ -422,7 +424,7 @@ export function MediaEmbed({
     return (
       <div className="media-embed audio">
         <span className="small ellipsis">{attachment?.filename || 'audio'}</span>
-        <audio src={resolveMediaUrl(fullSrc)} controls onError={() => setFailed(true)} />
+        <audio src={media(fullSrc)} controls onError={() => setFailed(true)} />
       </div>
     )
   }
@@ -447,7 +449,7 @@ export function MediaEmbed({
   return (
     <button type="button" className="media-embed youtube" onClick={open} title={fullSrc}>
       <img
-        src={`https://i.ytimg.com/vi/${item?.youtubeId}/hqdefault.jpg`}
+        src={media(`https://i.ytimg.com/vi/${item?.youtubeId}/hqdefault.jpg`)}
         alt=""
         loading="lazy"
         onError={() => setFailed(true)}

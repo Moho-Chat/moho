@@ -33,6 +33,7 @@ import { defaultDownloadDir, saveMedia } from './downloads'
 import type { Buffer as ChatBuffer } from '../shared/wire'
 import { log } from './log'
 import { applyPolicy, applyTunnel } from './tunnel'
+import { installRoutedHandler, resetRoute } from './routed'
 
 registerMediaScheme()
 
@@ -965,6 +966,7 @@ app.whenReady().then(() => {
   // Rail icons somebody chose, copied here after being checked as images.
   allowRoot(path.join(app.getPath('userData'), 'group-icons'))
   installMediaHandler()
+  installRoutedHandler((method, params) => client.request(method, params))
 
   prefs = new Prefs()
   nobilis = new NobilisProcess()
@@ -999,6 +1001,7 @@ app.whenReady().then(() => {
     // Before anything is fetched for the window: whether its own traffic goes
     // through Tor or the proxy is the daemon's setting, asked of it here.
     void applyTunnel((method, params) => client.request(method, params))
+    resetRoute()
     // The daemon usually outlives this process, so its buffers were announced
     // long before this connection existed and no bufferListChange is coming
     // for them. Without asking outright, main knows of no conversations at
@@ -1024,6 +1027,7 @@ app.whenReady().then(() => {
       void notifier.handle(frame.data)
     } else if (frame.event === 'netSettings') {
       void applyTunnel((method, params) => client.request(method, params))
+      resetRoute()
     }
     send(IPC.event, frame)
   })

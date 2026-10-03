@@ -1,3 +1,4 @@
+import { useMediaUrl } from '../lib/route'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { bufferLink } from '../lib/bufferlink'
 import { Icon, IconButton, MaskIcon } from './Icon'
@@ -26,7 +27,6 @@ import {
   bufferKindGlyph,
   serviceRoomGlyph,
   classes,
-  resolveMediaUrl,
   serviceIcon
 } from '../lib/util'
 import type { Account, Member } from '../../../shared/wire'
@@ -873,6 +873,9 @@ function BufferRow({
 }: BufferRowProps): JSX.Element {
   const { menu, open, close } = useContextMenu()
   const account = accounts.find((a) => a.id === buffer.accountId)
+  // A DM's picture comes off the service's CDN; through the route for a
+  // strictly routed account (#257).
+  const media = useMediaUrl(buffer.accountId)
   // Whether this channel is on air. Selected down to the one boolean rather
   // than the map, so a viewer count ticking over in one channel does not
   // re-render every row in the list.
@@ -901,9 +904,9 @@ function BufferRow({
     // A conversation with a person is headed by that person, whatever
     // protocol they are on: their picture where there is one, their initial
     // where there is not.
-    <Avatar name={buffer.name} url={buffer.avatarUrl} size={22} status={status} />
+    <Avatar name={buffer.name} url={buffer.avatarUrl} size={22} status={status} accountId={buffer.accountId} />
   ) : buffer.avatarUrl ? (
-    <img className="buffer-avatar" src={resolveMediaUrl(buffer.avatarUrl)} alt="" />
+    <img className="buffer-avatar" src={media(buffer.avatarUrl)} alt="" />
   ) : buffer.serviceRoom ? (
     // The server's own room. Marked here because the fact worth knowing is
     // that it is not one of the others - a notice about a quota is easy to

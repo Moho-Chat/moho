@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from 'react'
+import { routedUrl } from './routedurl'
 
 /**
  * Content-Type probing for links that extension- and host-based detection
@@ -40,7 +41,12 @@ function notify(): void {
   for (const l of listeners) l()
 }
 
-export function sniffUrl(url: string): void {
+/**
+ * `viaRoute` for a strictly routed account's link (#257): the check is a
+ * request to whatever was linked, sent the moment the message arrives, so for
+ * such an account it goes through the route like everything else.
+ */
+export function sniffUrl(url: string, viaRoute = false): void {
   if (resolved[url] !== undefined || inFlight.has(url)) return
   inFlight.add(url)
 
@@ -59,7 +65,7 @@ export function sniffUrl(url: string): void {
 
   // HEAD rather than GET: the Content-Type header is the whole answer, and a
   // GET would pull the entire body of something that may not even be media.
-  fetch(url, { method: 'HEAD', signal: controller.signal })
+  fetch(viaRoute ? routedUrl(url) : url, { method: 'HEAD', signal: controller.signal })
     .then((res) => {
       const contentType = res.headers.get('content-type') || ''
       if (contentType.startsWith('image/')) finish('image')

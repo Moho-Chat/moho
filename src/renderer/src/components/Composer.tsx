@@ -1,3 +1,4 @@
+import { useMediaUrl } from '../lib/route'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import torMark from '../assets/tor.svg'
@@ -172,6 +173,7 @@ export function Composer(): JSX.Element | null {
   const tunnelAll = useChat((s) => s.tunnelAll)
   const route = useChat((s) => s.route)
   const routed = tunnelAll || !!account?.useTor
+  const media = useMediaUrl(account?.id)
   const hasStickers = service === 'matrix' || service === 'discord'
   /**
    * The account's stickers, asked for when the picker opens - from either
@@ -332,7 +334,7 @@ export function Composer(): JSX.Element | null {
     if (preview) {
       const img = document.createElement('img')
       img.className = 'composer-emoji'
-      img.src = resolveMediaUrl(preview.src)
+      img.src = media(preview.src)
       img.alt = preview.label
       img.title = preview.label
       // What leaves the box when the message is sent. The picture is for the

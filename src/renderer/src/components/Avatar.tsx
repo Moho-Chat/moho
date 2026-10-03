@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { resolveMediaUrl, nickColor } from '../lib/util'
+import { useMediaUrl } from '../lib/route'
+import { nickColor } from '../lib/util'
 import { presenceColor, presenceLabel } from '../lib/presence'
 
 /**
@@ -19,13 +20,18 @@ export function Avatar({
   name,
   url,
   size = 24,
-  status
+  status,
+  accountId
 }: {
   name: string
   url?: string
   size?: number
   status?: string
+  /** Whose picture: a strictly routed account's is fetched through its route
+   *  (#257). Taken from the surrounding conversation when not given. */
+  accountId?: string
 }): JSX.Element {
+  const media = useMediaUrl(accountId)
   // A picture that will not load falls back to the initial rather than to a
   // broken-image glyph. Not hypothetical: a room directory lists icons hosted
   // on servers that may refuse to hand them over, and a column of broken
@@ -36,7 +42,7 @@ export function Avatar({
     <span className="avatar" style={{ width: size, height: size }}>
       {url && !broken ? (
         <img
-          src={resolveMediaUrl(url)}
+          src={media(url)}
           alt=""
           style={{ width: size, height: size }}
           // A member list or a long log is hundreds of these, most of them

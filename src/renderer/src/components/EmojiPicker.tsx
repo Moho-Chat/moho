@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { resolveMediaUrl } from '../lib/util'
+import { useMediaUrl } from '../lib/route'
 import { Icon } from './Icon'
 import { discordEmojiUrl, emojiPreview, type SmilieEntry } from '../lib/format'
 import { drawableEmoteUrl, onLocalEmotes } from '../lib/emotecache'
@@ -212,6 +212,9 @@ export function EmojiPicker({
   onSticker,
   onClose
 }: Props): JSX.Element {
+  // The account's emoji and stickers through its route when it is strictly
+  // routed (#257) - Discord's come straight off its CDN otherwise.
+  const media = useMediaUrl(accountId)
   const ref = useRef<HTMLDivElement>(null)
   const [tab, setTab] = useState<'emoji' | 'stickers'>(onSticker ? initialTab : 'emoji')
   const stickersOnly = tab === 'stickers'
@@ -459,7 +462,7 @@ export function EmojiPicker({
   /** A sticker as a picture: an image, or a Lottie animation that plays on hover. */
   const stickerArt = (sticker: StickerEntry, size: number, play: 'hover' | 'never'): React.ReactNode =>
     sticker.url ? (
-      <img src={resolveMediaUrl(sticker.url)} alt={sticker.name} loading="lazy" />
+      <img src={media(sticker.url)} alt={sticker.name} loading="lazy" />
     ) : sticker.lottie && sticker.id && accountId ? (
       <LottieSticker accountId={accountId} stickerId={sticker.id} size={size} play={play} label={sticker.name} />
     ) : (
@@ -502,7 +505,7 @@ export function EmojiPicker({
           id: src.id,
           name: src.name,
           icon: src.iconUrl ? (
-            <img src={resolveMediaUrl(src.iconUrl)} alt="" />
+            <img src={media(src.iconUrl)} alt="" />
           ) : (
             <span className="emoji-jump-initial">{src.name.slice(0, 1).toUpperCase()}</span>
           )
@@ -630,7 +633,7 @@ export function EmojiPicker({
                   onClick={() => pick(r)}
                 >
                   {preview ? (
-                    <img src={resolveMediaUrl(preview.src)} alt={preview.label} />
+                    <img src={media(preview.src)} alt={preview.label} />
                   ) : (
                     r
                   )}
@@ -663,7 +666,7 @@ export function EmojiPicker({
               // its own label and the section drew as a smear of overlapping
               // words instead of a table of faces.
               const art = e.url
-                ? resolveMediaUrl(drawableEmoteUrl(e.url))
+                ? media(drawableEmoteUrl(e.url))
                 : src.service === 'discord'
                   ? discordEmojiUrl(e.id, 48)
                   : emojiPreview(e.id, smilies)?.src
@@ -680,7 +683,7 @@ export function EmojiPicker({
                   title={why || e.name}
                   onClick={() => pick(e.id)}
                 >
-                  {art ? <img src={art} alt={e.name} loading="lazy" /> : e.name}
+                  {art ? <img src={media(art)} alt={e.name} loading="lazy" /> : e.name}
                 </button>
               )
             })}
@@ -747,7 +750,7 @@ export function EmojiPicker({
                 // renders it and it goes out as this literal text.
                 onClick={() => pick(emojiToken(e))}
               >
-                <img src={emojiImage(e)} alt={e.name} />
+                <img src={media(emojiImage(e))} alt={e.name} />
               </button>
             ))}
             </Section>
@@ -763,7 +766,7 @@ export function EmojiPicker({
                 title={s.label}
                 onClick={() => pick(s.aliases[0] || s.label)}
               >
-                {s.url ? <img src={resolveMediaUrl(s.url)} alt={s.label} /> : s.aliases[0]}
+                {s.url ? <img src={media(s.url)} alt={s.label} /> : s.aliases[0]}
               </button>
             ))}
           </Section>
@@ -790,7 +793,7 @@ export function EmojiPicker({
         {hovered ? (
           <>
             {hovered.src ? (
-              <img src={hovered.src} alt="" />
+              <img src={media(hovered.src)} alt="" />
             ) : hovered.text ? (
               <span className="emoji-footer-glyph">{hovered.text}</span>
             ) : null}

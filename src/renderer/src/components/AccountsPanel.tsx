@@ -1,3 +1,4 @@
+import { useMediaUrl } from '../lib/route'
 import { useEffect, useState } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
@@ -296,6 +297,7 @@ function GroupIcons({ accountId }: { accountId: string }): JSX.Element | null {
 }
 
 function AccountRow({ account }: { account: Account }): JSX.Element {
+  const media = useMediaUrl(account.id)
   const store = useStore()
   const [expanded, setExpanded] = useState(false)
   const icon = serviceIcon(account.service)
@@ -325,7 +327,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
     <div className="account-card">
       <div className="account-card-head">
         {account.avatarUrl ? (
-          <img className="account-avatar" src={resolveMediaUrl(account.avatarUrl)} alt="" />
+          <img className="account-avatar" src={media(account.avatarUrl)} alt="" />
         ) : icon.mark ? (
           <MaskIcon src={icon.mark} size={20} />
         ) : (
@@ -437,11 +439,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
           )}
 
           {account.service !== 'sneedchat' && (
-            <TorSwitch
-              service={account.service}
-              on={account.useTor}
-              onChange={(useTor) => call('setAccountRouted', { accountId: account.id, enabled: useTor })}
-            />
+            <RouteLevel account={account} onChange={(level) => call('setAccountRoute', { accountId: account.id, level })} />
           )}
 
           {account.service === 'discord' && <DiscordReauth account={account} />}
@@ -450,11 +448,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
 
           {account.service === 'sneedchat' && (
             <>
-              <TorSwitch
-                service="sneedchat"
-                on={account.useTor}
-                onChange={(useTor) => call('setAccountRouted', { accountId: account.id, enabled: useTor })}
-              />
+              <RouteLevel account={account} onChange={(level) => call('setAccountRoute', { accountId: account.id, level })} />
               <SneedChatBrowserLogin accountId={account.id} useTor={account.useTor} />
             </>
           )}
@@ -1186,6 +1180,62 @@ function KickForm({ onDone }: { onDone: () => void }): JSX.Element {
  * differs by service, and somebody turning it on should know before the
  * connection fails rather than after. Shown only when it is on.
  */
+type Level = 'clearnet' | 'service' | 'strict'
+
+const LEVELS: { id: Level; label: string }[] = [
+  { id: 'clearnet', label: 'Clearnet' },
+  { id: 'service', label: 'Service tunnel' },
+  { id: 'strict', label: 'Strict' }
+]
+
+/**
+ * Where an account's traffic goes, in three positions (#257).
+ *
+ * The middle one is what a Tor switch used to mean: the connection to the
+ * service, and the media the daemon fetches for it, go through the route -
+ * but everything the window loads for itself (a linked picture, an avatar,
+ * the check on a link) goes out directly, and anybody who can post a link
+ * learns the address. Strict closes that: those go through the route too, and
+ * nothing loads if the route is down.
+ */
+function RouteLevel({ account, onChange }: { account: Account; onChange: (level: Level) => void }): JSX.Element {
+  const level: Level = account.routeLevel ?? (account.useTor ? 'service' : 'clearnet')
+  const sneedchat = account.service === 'sneedchat'
+  const via = sneedchat ? 'Tor' : 'Tor or the SOCKS5 proxy'
+  const describe: Record<Level, string> = {
+    clearnet: sneedchat
+      ? 'Reaches kiwifarms.st directly over the open internet. Tor is not started.'
+      : 'Connects directly. Tor is not started.',
+    service: `The connection, and the media moho fetches for it, go through ${via}. Pictures, links and avatars the window loads itself still come directly from your address.`,
+    strict: `Everything for this account goes through ${via} - the connection, and every picture, link check, avatar and emoji its conversations load. If the route is down, they do not load.`
+  }
+  const index = LEVELS.findIndex((l) => l.id === level)
+  return (
+    <div className="tor-switch">
+      <div className="route-level-head">
+        <span>Routing</span>
+      </div>
+      <div className="route-level" role="radiogroup" aria-label="Routing" style={{ '--route-index': index } as React.CSSProperties}>
+        <span className="route-level-thumb" aria-hidden="true" />
+        {LEVELS.map((l) => (
+          <button
+            key={l.id}
+            type="button"
+            role="radio"
+            aria-checked={level === l.id}
+            className={level === l.id ? 'route-level-option on' : 'route-level-option'}
+            onClick={() => level !== l.id && onChange(l.id)}
+          >
+            {l.label}
+          </button>
+        ))}
+      </div>
+      <p className="small muted route-level-desc">{describe[level]}</p>
+      {level !== 'clearnet' && <TorWarning service={account.service} />}
+    </div>
+  )
+}
+
 function TorSwitch({
   service,
   on,

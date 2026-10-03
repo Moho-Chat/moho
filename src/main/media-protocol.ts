@@ -252,6 +252,13 @@ export function registerMediaScheme(): void {
       // this scheme cross-origin, and an <img> needs no permission where a
       // fetch() does. A Lottie sticker is JSON read by script.
       privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true }
+    },
+    // Registered together because registration happens once: remote media
+    // for a strictly routed account, fetched through its route - see
+    // routed.ts.
+    {
+      scheme: 'moho-routed',
+      privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true }
     }
   ])
 }

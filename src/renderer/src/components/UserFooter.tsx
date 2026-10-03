@@ -74,7 +74,7 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
           onClick={open}
           title={detail ? `${name} — ${label(status)}\n${detail}` : `${name} — ${label(status)}`}
         >
-          <Avatar name={name} url={account.avatarUrl} size={28} status={status} />
+          <Avatar name={name} url={account.avatarUrl} size={28} status={status} accountId={account.id} />
           <span className="user-identity">
             <span className="ellipsis user-name">{name}</span>
             <span className="ellipsis small muted">{label(status)}</span>

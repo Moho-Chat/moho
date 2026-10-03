@@ -1,8 +1,9 @@
+import { useMediaUrl } from '../lib/route'
 import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
 import { HeaderPopover } from './HeaderPopover'
 import { useChat, useStore } from '../state/hooks'
-import { classes, resolveMediaUrl } from '../lib/util'
+import { classes } from '../lib/util'
 import type { BufferEntry } from '../state/store'
 import type { DiscordFriend } from '../../../shared/wire'
 
@@ -24,6 +25,7 @@ const GROUP_DM_MAX_OTHERS = 9
  * their conversation appears to have forked.
  */
 export function AddToConversation({ buffer }: { buffer: BufferEntry }): JSX.Element | null {
+  const media = useMediaUrl(buffer.accountId)
   const store = useStore()
   const roster = useChat((s) => s.presenceByBuffer[buffer.id])
   const [open, setOpen] = useState(false)
@@ -149,7 +151,7 @@ export function AddToConversation({ buffer }: { buffer: BufferEntry }): JSX.Elem
                   size={16}
                 />
                 {f.avatarUrl ? (
-                  <img className="friend-avatar" src={resolveMediaUrl(f.avatarUrl)} alt="" />
+                  <img className="friend-avatar" src={media(f.avatarUrl)} alt="" />
                 ) : (
                   <span className="friend-avatar placeholder">
                     {(f.globalName || f.username).slice(0, 1)}

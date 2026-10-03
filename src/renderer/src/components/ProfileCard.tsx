@@ -46,7 +46,7 @@ export function ProfileCard(): JSX.Element | null {
     <div className="modal-scrim" onClick={() => store.closeProfile()}>
       <div className="profile-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <div className="profile-head">
-          <Avatar name={profile.name} url={profile.avatarUrl} size={40} status={profile.status} />
+          <Avatar name={profile.name} url={profile.avatarUrl} size={40} status={profile.status} accountId={profile.accountId} />
           <div className="profile-title">
             <span className="profile-name ellipsis">{profile.name}</span>
             <span className="small muted">

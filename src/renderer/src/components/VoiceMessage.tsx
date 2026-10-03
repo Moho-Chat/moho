@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from './Icon'
-import { resolveMediaUrl } from '../lib/util'
+import { useMediaUrl } from '../lib/route'
 import { useStore } from '../state/hooks'
 import type { Attachment } from '../../../shared/wire'
 
@@ -66,7 +66,8 @@ export function VoiceMessage({ attachment }: { attachment: Attachment }): JSX.El
    */
   const asked = useRef(false)
 
-  const src = resolveMediaUrl(attachment.path || attachment.url || '')
+  const media = useMediaUrl()
+  const src = media(attachment.path || attachment.url || '')
   // The sender's figure where there is one. An audio element only knows the
   // length once it has enough of the file to say, which is after the fetch
   // this display exists to let somebody avoid.

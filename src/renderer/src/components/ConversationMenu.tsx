@@ -149,6 +149,7 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
       >
         {buffer.kind === 'dm' || buffer.avatarUrl ? (
           <Avatar
+            accountId={buffer.accountId}
             name={buffer.name}
             url={buffer.avatarUrl}
             size={24}

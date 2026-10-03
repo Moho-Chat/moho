@@ -1,9 +1,10 @@
+import { useMediaUrl } from '../lib/route'
 import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
 import { ContextMenu } from './ContextMenu'
 import { RoomSearch } from './RoomSearch'
 import { useChat, useStore } from '../state/hooks'
-import { classes, resolveMediaUrl } from '../lib/util'
+import { classes } from '../lib/util'
 import type { Account, DiscordFriend } from '../../../shared/wire'
 
 /**
@@ -658,6 +659,7 @@ function SneedchatRooms({ account }: { account: Account }): JSX.Element {
  * the friends list rather than a search box.
  */
 function DiscordJoin({ account }: { account: Account }): JSX.Element {
+  const media = useMediaUrl(account.id)
   const store = useStore()
   const [friends, setFriends] = useState<DiscordFriend[]>([])
   const [onlineOnly, setOnlineOnly] = useState(true)
@@ -761,7 +763,7 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
           {waiting.map((f) => (
             <div key={f.userId} className="friend-row request">
               {f.avatarUrl ? (
-                <img className="friend-avatar" src={resolveMediaUrl(f.avatarUrl)} alt="" />
+                <img className="friend-avatar" src={media(f.avatarUrl)} alt="" />
               ) : (
                 <span className="friend-avatar placeholder">{(f.globalName || f.username).slice(0, 1)}</span>
               )}
@@ -885,7 +887,7 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
             <Icon name={picking.includes(f.userId) ? 'check_circle' : 'radio_button_unchecked'} size={16} />
           )}
           {f.avatarUrl ? (
-            <img className="friend-avatar" src={resolveMediaUrl(f.avatarUrl)} alt="" />
+            <img className="friend-avatar" src={media(f.avatarUrl)} alt="" />
           ) : (
             <span className="friend-avatar placeholder">{(f.globalName || f.username).slice(0, 1)}</span>
           )}

@@ -1,3 +1,4 @@
+import { routedUrl } from './routedurl'
 /**
  * Small local copies of Kick emotes.
  *
@@ -128,7 +129,10 @@ export function recoverMissingEmotes(): () => void {
     const id = localEmoteId(img.src)
     if (!id) return
     local.delete(id)
-    img.src = `https://files.kick.com/emotes/${id}/fullsize`
+    const kick = `https://files.kick.com/emotes/${id}/fullsize`
+    // Through the route when this is a strictly routed account's
+    // conversation (#257) - the message list says so on itself.
+    img.src = img.closest('[data-route="strict"]') ? routedUrl(kick) : kick
     requestLocalEmotes([id])
   }
   document.addEventListener('error', onError, true)

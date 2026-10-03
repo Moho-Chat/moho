@@ -52,6 +52,12 @@ export interface Account {
   torMode?: string
   torProxy?: string
   useTor: boolean
+  /**
+   * Where this account's traffic goes (#257): "clearnet"; "service", the
+   * connection and the media the daemon fetches for it; or "strict", that
+   * and everything the window loads for its conversations.
+   */
+  routeLevel?: 'clearnet' | 'service' | 'strict'
   hasKeyBackup: boolean
   /**
    * Matrix only: a media server for room calls, where the homeserver names
