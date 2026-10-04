@@ -489,6 +489,15 @@ function GeneralSettings(): JSX.Element {
         <GlobalHighlightKeywords />
       </SettingsSection>
 
+      <SettingsSection title="Updates">
+        <ToggleSetting
+          settingKey="updates.notify"
+          label="Tell me when a new version is out"
+          description="Checks GitHub for a newer release at start and once a day, through Tor or your proxy whenever anything is routed, and says so in the mentions inbox"
+          defaultValue={true}
+        />
+      </SettingsSection>
+
       <SettingsSection title="Media">
         <ToggleSetting
           settingKey="media.autoplay"

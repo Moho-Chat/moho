@@ -34,6 +34,7 @@ import { firstFrame, SCREEN_CHOICE_MS } from '../lib/capture'
 import { cameraKey, closeFeeds, feedFrame, streamKey as feedStreamKey } from '../lib/framefeed'
 import { DEFAULT_QUALITY, encodeSettings, sendCamera, shareScreen, type VideoQuality } from '../lib/discordscreen'
 import type { PopoutState } from '../../../shared/ipc'
+import { isNewerVersion } from '../lib/version'
 
 /**
  * The whole client-side model, held in one immutable object that is replaced
@@ -362,6 +363,12 @@ export interface ChatState {
    * reopened, and so the composer can send into it.
    */
   openThread: OpenThread | null
+  /**
+   * A released moho newer than this one, shown at the top of the mentions
+   * inbox until it is dismissed or installed. Null when there is none, or
+   * when asking has been switched off.
+   */
+  newRelease: { version: string; name: string; url: string } | null
   linkUp: boolean
   accounts: Account[]
   buffers: BufferEntry[]
@@ -662,6 +669,7 @@ export interface Toast {
 }
 
 const INITIAL: ChatState = {
+  newRelease: null,
   linkUp: false,
   accounts: [],
   buffers: [],
@@ -1230,9 +1238,45 @@ export class ChatStore {
     const status = await window.moho.daemonStatus()
     this.set({ linkUp: status.linkUp })
     if (status.linkUp) await this.refreshAll()
+    // Again once a day, for a window that stays open for weeks. A release
+    // has no event to wait for, so this is asked rather than heard.
+    if (!this.state.pinnedBufferId) {
+      this.releaseTimer = setInterval(() => void this.checkForRelease(), 24 * 60 * 60 * 1000)
+    }
+  }
+
+  private releaseTimer: ReturnType<typeof setInterval> | null = null
+
+  /**
+   * Whether a newer moho has been released - see newRelease.
+   *
+   * Asked of the daemon, which goes the way any request belonging to no
+   * account goes: through Tor or the proxy whenever anything is routed.
+   * Quiet on failure - offline, rate-limited, no route - since the next
+   * reconnect or the next day asks again, and an error about an update
+   * check is worse than no news.
+   */
+  async checkForRelease(): Promise<void> {
+    if (this.state.pinnedBufferId) return
+    try {
+      const prefs = await window.moho.prefs.getAll()
+      if (prefs['updates.notify'] === false) {
+        this.set({ newRelease: null })
+        return
+      }
+      // A setting with no switch for it: a fork names its own repository.
+      const repo = typeof prefs['updates.repo'] === 'string' && prefs['updates.repo'] ? prefs['updates.repo'] : 'Moho-Chat/moho'
+      const found = await window.moho.rpc<{ version: string; name: string; url: string } | null>('latestRelease', {
+        repo
+      })
+      this.set({ newRelease: found && isNewerVersion(found.version, __APP_VERSION__) ? found : null })
+    } catch {
+      // Left as it was; asked again on the next reconnect or the next day.
+    }
   }
 
   dispose(): void {
+    if (this.releaseTimer) clearInterval(this.releaseTimer)
     if (this.sweepTimer) clearInterval(this.sweepTimer)
     if (this.mentionsTimer) clearTimeout(this.mentionsTimer)
   }
@@ -1249,6 +1293,8 @@ export class ChatStore {
       this.refreshVoiceSessions(),
       this.refreshIncomingCalls()
     ])
+    // Not awaited: GitHub being slow is no reason to hold the window up.
+    void this.checkForRelease()
     if (this.state.activeBufferId) await this.selectBuffer(this.state.activeBufferId)
   }
 

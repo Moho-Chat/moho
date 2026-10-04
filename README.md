@@ -43,8 +43,13 @@ again and everything is where you left it.
 ## Get it
 
 Prebuilt Linux and Windows downloads are on the
-[latest release](https://github.com/Moho-Chat/moho/releases/tag/latest), rebuilt from `master`
-on every change.
+[latest release](https://github.com/Moho-Chat/moho/releases/latest); what each version
+changed is in [CHANGELOG.md](CHANGELOG.md). moho tells you in its mentions inbox when a newer
+version is out.
+
+Versions are MAJOR.FEATURE.FIX: a major release, then protocols added and major features,
+then bug and security fixes - 1.1.0 would add a protocol, 1.0.5 is the fifth fix release
+of 1.0.
 
 The AppImage needs `libfuse2` on recent distributions; if it refuses to start, either install
 that or run it with `APPIMAGE_EXTRACT_AND_RUN=1`.

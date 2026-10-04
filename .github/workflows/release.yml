@@ -1,7 +1,13 @@
-# Builds moho on every push to master and replaces the files on the single
-# rolling release that lives on the moving `latest` tag. A pushed version tag
-# (v1.0.0) builds the same way and publishes a release of its own beside it,
-# leaving `latest` alone (#239).
+# Builds moho and, for a pushed version tag (v1.0.0), publishes the release.
+#
+# A push to master builds and tests everything the same way and publishes
+# nothing: it is the check that master is releasable. Only a tag publishes,
+# with the notes for that version taken from CHANGELOG.md and its files named
+# after the version (#239). A tag with a pre-release suffix (v1.0.0-rc.1)
+# publishes as a pre-release, to rehearse a release without making one.
+#
+# The rolling `latest` build this file used to keep is retired: there are
+# versions now, and only versions.
 #
 # The shape mirrors how this is built by hand: the daemon first, then the app
 # around it, with the Windows installer cross-compiled from Linux exactly as
@@ -16,19 +22,19 @@
 #
 # Two properties this file is arranged to keep:
 #
-#   - Nothing reaches the release unless typecheck and the Rust tests passed.
+#   - Nothing reaches a release unless typecheck and the Rust tests passed.
 #     That is structural rather than a convention: `publish` has `needs:` on
 #     both build jobs, and a needs-dependency on a failed job never runs.
-#   - The asset names and the release body agree about which commit they came
-#     from. See the "the tree is clean" step for why that is not automatic.
+#   - What is published was built from a clean tree. See the "the tree is
+#     clean" step for why that is not automatic.
 
-name: rolling release
+name: release
 
 on:
   push:
     branches: [master]
-    # A versioned release: its own page, its own notes, files named after the
-    # version. The path filter below does not apply to tags.
+    # A version: built, then published with its changelog. The path filter
+    # below does not apply to tags.
     tags: ['v*']
     # A README edit should not cost forty minutes of compute. Note the absence
     # of .github/** - editing this workflow SHOULD trigger a run that
@@ -37,21 +43,14 @@ on:
     paths-ignore:
       - '**/*.md'
       - 'LICENSE'
-  # The escape hatch for the case above: master moved for documentation
-  # reasons and the release should catch up anyway.
   workflow_dispatch:
 
-# Newest push wins. A build for a commit master has already moved past is of
-# no use to a release that only ever holds the latest one.
-#
-# The cost is a few seconds of exposure: a cancellation landing inside
-# `publish` could leave the release holding a mix of old and new files. The
-# next run's prune step repairs that. If that window ever matters, split this
-# into a build group with cancel-in-progress true and a publish group with it
-# false, so publishes queue rather than cancel.
+# Newest push wins on master: a check of a commit master has already moved
+# past is of no use. A tag is its own ref, so a release is never cancelled by
+# a push to master, nor one tag by another.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 # Read by default. Only `publish` asks for more, and only for itself.
 permissions:
@@ -321,6 +320,17 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # The daemon on its own, for nobilis's release - attached to that by
+      # scripts/mirror-release.sh, since this job's token can only release
+      # here. Not an asset of moho's release: the AppImage already carries it.
+      - uses: actions/upload-artifact@v4
+        if: github.ref_type == 'tag'
+        with:
+          name: daemon-linux
+          path: nobilis/target/release/nobilis
+          if-no-files-found: error
+          retention-days: 30
+
   # --------------------------------------------------------------------
   # Windows, cross-compiled. Same runner OS, same scripts, plus mingw.
   #
@@ -480,15 +490,24 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - uses: actions/upload-artifact@v4
+        if: github.ref_type == 'tag'
+        with:
+          name: daemon-windows
+          path: nobilis/target/release/nobilis.exe
+          if-no-files-found: error
+          retention-days: 30
+
   # --------------------------------------------------------------------
-  # Move the `latest` tag onto this commit, and make the release sitting on
-  # it hold exactly the two files the build jobs produced.
+  # A version tag only: the release, its files and its changelog.
   #
-  # No checkout at all: everything here is the GitHub API through gh, which
-  # is preinstalled on the runner, with the built-in token. Nothing to clone
-  # and no credentials to arrange.
+  # The notes are the version's section of CHANGELOG.md - major features,
+  # then fixes, patches and changes, each linked to its commit - followed by
+  # the downloads table. A version with no section is not published: a
+  # release without its changelog is the one thing this step exists to stop.
   # --------------------------------------------------------------------
   publish:
+    if: github.ref_type == 'tag'
     needs: [build-linux, build-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -501,204 +520,88 @@ jobs:
       BUILD: ${{ needs.build-linux.outputs.build }}
 
     steps:
-      # Both jobs' artifacts into one flat directory, which is then the
-      # authoritative list of what the release should contain.
+      # Only the changelog is needed from the tree.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
+
       - uses: actions/download-artifact@v4
         with:
+          pattern: '{linux,windows}'
           path: artifacts
           merge-multiple: true
 
-      - name: what was built
-        run: |
-          ls -l artifacts
-          # Three files, no more and no fewer: AppImage, deb, Windows
-          # installer. If electron-builder ever starts emitting something else
-          # into those globs, this says so here rather than by surprise on the
-          # release page.
-          test "$(find artifacts -maxdepth 1 -type f | wc -l)" -eq 3
-
-      # A release is tied to a tag, so a rolling release means a moving tag.
-      # The refs API rather than `git push -f` because it needs no checkout
-      # and no credential helper. The PATCH fails the very first time - there
-      # is no such ref yet - which is what the POST is for.
-      #
-      # -F force=true, capital: it sends a JSON boolean. Lowercase -f would
-      # send the string "true", which the API rejects.
-      #
-      # Refs written with GITHUB_TOKEN do not start workflow runs, so this
-      # cannot loop back into itself.
-      - name: move the latest tag onto this commit
-        if: github.ref_type != 'tag'
-        run: |
-          gh api -X PATCH "repos/$GH_REPO/git/refs/tags/latest" \
-                 -f sha="$GITHUB_SHA" -F force=true \
-          || gh api -X POST "repos/$GH_REPO/git/refs" \
-                    -f ref=refs/tags/latest -f sha="$GITHUB_SHA"
-
-      # Rewritten every run, because the whole job of this text is to say
-      # which commit the files below came from.
-      #
-      # The warning about asset links is not boilerplate: the files are named
-      # after the commit, so a direct link to one stops resolving the moment
-      # the next push lands. The release page URL is the stable thing.
-      - name: compose the release notes
-        if: github.ref_type != 'tag'
-        env:
-          SUBJECT: ${{ github.event.head_commit.message }}
-        run: |
-          # A dispatched run has no head_commit, so there is no subject to
-          # quote - say the commit without a dangling dash after it.
-          if [ -n "${SUBJECT:-}" ]; then
-            commit="**Commit:** \`$BUILD\` — ${SUBJECT%%$'\n'*}"
-          else
-            commit="**Commit:** \`$BUILD\`"
-          fi
-          {
-            echo "Rolling build of \`master\`, rebuilt and its files replaced on every"
-            echo "push. They are named after the commit, so a direct link to one stops"
-            echo "resolving once the next commit lands - the release page URL is the"
-            echo "stable thing to share."
-            echo
-            echo "$commit"
-            echo "**Built:** $(date -u '+%Y-%m-%d %H:%M UTC')"
-            echo "**Run:** $GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID"
-            echo
-            echo "| file | platform |"
-            echo "| --- | --- |"
-            echo "| \`moho-$BUILD.AppImage\` | Linux x86_64 - mark it executable and run it |"
-            echo "| \`moho-$BUILD.deb\` | Debian / Ubuntu x86_64 - installs the sandbox profile with it |"
-            echo "| \`moho-$BUILD.exe\` | Windows x64 - a per-user NSIS installer, no administrator needed |"
-            echo
-            echo "Each carries the \`nobilis\` daemon built alongside it, so the app and"
-            echo "the daemon in one download always match."
-            echo
-            echo "**The Windows installer is not code-signed**, and cross-built with mingw."
-            echo
-            echo "- SmartScreen warns when you run it: choose *More info*, then *Run anyway*."
-            echo "- If Windows 11's **Smart App Control** is on, moho will install and then"
-            echo "  never open - it blocks every unsigned program, silently. Turn it off in"
-            echo "  *Windows Security > App & browser control > Smart App Control settings*."
-            echo "  The installer checks and warns before installing."
-            echo
-            echo "Not a versioned release, and no stability promise."
-          } > "$RUNNER_TEMP/notes.md"
-          cat "$RUNNER_TEMP/notes.md"
-
-      - name: create or refresh the release
-        if: github.ref_type != 'tag'
-        run: |
-          if gh release view latest >/dev/null 2>&1; then
-            gh release edit latest \
-              --title "Latest build" \
-              --notes-file "$RUNNER_TEMP/notes.md"
-          else
-            gh release create latest \
-              --title "Latest build" \
-              --notes-file "$RUNNER_TEMP/notes.md"
-          fi
-
-      # Upload first and prune second, deliberately. The files are named after
-      # the commit, so --clobber alone never removes anything and the release
-      # would grow a pair per push forever; deleting first would leave a
-      # window where somebody landing on the page finds nothing to download.
-      # In this order it briefly holds four files and never holds none.
-      - name: upload this build's files
-        if: github.ref_type != 'tag'
-        run: gh release upload latest artifacts/* --clobber
-
-      - name: drop the previous build's files
-        if: github.ref_type != 'tag'
-        run: |
-          keep="$(cd artifacts && ls -1)"
-          for asset in $(gh release view latest --json assets -q '.assets[].name'); do
-            printf '%s\n' "$keep" | grep -qxF "$asset" && continue
-            echo "dropping $asset"
-            gh release delete-asset latest "$asset" --yes
-          done
-
-      # Last, because this is what dates the release, and it should say when
-      # the files below it were finished rather than when the job started.
-      #
-      # `gh release edit` above rewrites the title, the body and the assets,
-      # but it cannot touch published_at - that field only moves when a
-      # release goes from draft to published, and this one was published once,
-      # in the run that first created it. Everything after that refreshed the
-      # contents underneath a header still dated to that first run, so the
-      # page read as though the build had stopped publishing while it was in
-      # fact replacing both files every push. Twelve builds landed behind a
-      # timestamp that never moved before anyone noticed.
-      #
-      # Draft and back is the only way to move it. Addressed by release id
-      # rather than by tag because a draft is not reliably addressable by tag,
-      # and the id is read while the release is still published.
-      #
-      # The release is invisible between the two calls - a second or so - and
-      # /releases/latest 404s for anyone who lands in exactly that gap. That
-      # is the same brief exposure the concurrency note above already accepts,
-      # and it is at the very end, after the assets are in place, so the
-      # release never reappears holding the wrong files.
-      - name: date the release to now
-        if: github.ref_type != 'tag'
-        run: |
-          id="$(gh api "repos/$GH_REPO/releases/tags/latest" -q .id)"
-          gh api -X PATCH "repos/$GH_REPO/releases/$id" -F draft=true  >/dev/null
-          gh api -X PATCH "repos/$GH_REPO/releases/$id" -F draft=false >/dev/null
-
-      # --- a version tag: a release of its own (#239) -----------------------
-      #
-      # Named after the version rather than the commit, because this one is
-      # meant to be linked to and kept: moho-1.0.0.AppImage, not
-      # moho-<sha>.AppImage. The build itself is named after the commit (the
-      # name is decided inside the npm script), so the files are renamed here.
+      # Three files, no more and no fewer: AppImage, deb, Windows installer.
+      # Built named after the commit (the name is decided inside the npm
+      # script); published named after the version.
       - name: name the files after the version
-        if: github.ref_type == 'tag'
         run: |
           version="${GITHUB_REF_NAME#v}"
+          test "$(find artifacts -maxdepth 1 -type f | wc -l)" -eq 3
           for f in artifacts/moho-"$BUILD".*; do
             mv -v "$f" "artifacts/moho-$version.${f##*.}"
           done
+          ls -l artifacts
 
-      - name: compose the version's notes
-        if: github.ref_type == 'tag'
+      - name: compose the notes from the changelog
         run: |
           version="${GITHUB_REF_NAME#v}"
+          # The section headed "## [<version>]", up to the next "## [".
+          section() {
+            awk -v v="$1" '
+              index($0, "## [" v "]") == 1 { on = 1; next }
+              on && /^## \[/ { exit }
+              on { print }
+            ' CHANGELOG.md
+          }
+          section "$version" > "$RUNNER_TEMP/changes.md"
+          # A release candidate rehearses its release's notes, unless it has
+          # a section of its own: v1.0.0-rc.1 publishes "## [1.0.0]".
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/changes.md" && [ "${version%%-*}" != "$version" ]; then
+            section "${version%%-*}" > "$RUNNER_TEMP/changes.md"
+          fi
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/changes.md"; then
+            echo "::error::CHANGELOG.md has no section for $version - write it, then tag again"
+            exit 1
+          fi
           {
-            echo "moho $version, built from \`$BUILD\`."
+            cat "$RUNNER_TEMP/changes.md"
             echo
-            echo "| file | platform |"
+            echo "## Downloads"
+            echo
+            echo "| File | Platform |"
             echo "| --- | --- |"
             echo "| \`moho-$version.AppImage\` | Linux x86_64 - mark it executable and run it |"
-            echo "| \`moho-$version.deb\` | Debian / Ubuntu x86_64 - installs the sandbox profile with it |"
-            echo "| \`moho-$version.exe\` | Windows x64 - a per-user NSIS installer, no administrator needed |"
+            echo "| \`moho-$version.deb\` | Debian / Ubuntu x86_64 |"
+            echo "| \`moho-$version.exe\` | Windows x64 - a per-user installer, no administrator needed |"
             echo
-            echo "Each carries the \`nobilis\` daemon built alongside it."
-            echo
-            echo "**The Windows installer is not code-signed.**"
-            echo
-            echo "- SmartScreen warns when you run it: choose *More info*, then *Run anyway*."
-            echo "- If Windows 11's **Smart App Control** is on, moho will install and then"
-            echo "  never open - it blocks every unsigned program, silently. Turn it off in"
-            echo "  *Windows Security > App & browser control > Smart App Control settings*."
-            echo "  The installer checks and warns before installing."
-            echo
-            echo "**Built:** $(date -u '+%Y-%m-%d %H:%M UTC')"
-            echo "**Run:** $GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID"
+            echo "**The Windows installer is not code-signed.** SmartScreen warns when you run it:"
+            echo "choose *More info*, then *Run anyway*. If Windows 11's **Smart App Control** is on,"
+            echo "moho installs but never opens; turn it off in *Windows Security > App & browser"
+            echo "control > Smart App Control settings*. The installer checks and warns."
           } > "$RUNNER_TEMP/notes.md"
           cat "$RUNNER_TEMP/notes.md"
 
-      # Created as a draft and published only once its files are attached, so
-      # nobody lands on a version page with nothing to download. A tag pushed
-      # again (a failed run retried) finds its release already there: the
-      # files are replaced and the notes kept, since they may have been edited
-      # by hand since.
+      # Created as a draft and published once its files are attached, so
+      # nobody lands on a version with nothing to download. A pre-release
+      # (a suffix after the version) is never GitHub's "Latest". A tag pushed
+      # again finds its release there: the files are replaced, the notes too,
+      # since the changelog is where they are corrected.
       - name: publish the version
-        if: github.ref_type == 'tag'
         run: |
+          version="${GITHUB_REF_NAME#v}"
+          case "$version" in
+            *-*) kind="--prerelease --latest=false" ;;
+            *)   kind="--latest" ;;
+          esac
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
             gh release upload "$GITHUB_REF_NAME" artifacts/* --clobber
           else
             gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
-              --title "moho ${GITHUB_REF_NAME#v}" --notes-file "$RUNNER_TEMP/notes.md"
+              --title "moho $version" --notes-file "$RUNNER_TEMP/notes.md"
             gh release upload "$GITHUB_REF_NAME" artifacts/*
-            gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+            # shellcheck disable=SC2086 - two flags, deliberately split
+            gh release edit "$GITHUB_REF_NAME" --draft=false $kind
           fi
