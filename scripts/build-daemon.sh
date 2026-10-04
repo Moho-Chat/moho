@@ -9,6 +9,21 @@ SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 . "$SRC_DIR/scripts/find-cargo.sh"
 
 echo "building the daemon with $CARGO"
+# From inside nobilis/: cargo reads .cargo/config.toml from the directory it
+# runs in, not from the manifest's, and nobilis's names the version a bundled
+# libopus reports (#251).
+cd "$SRC_DIR/nobilis"
 # --locked: build exactly what Cargo.lock names, and fail rather than quietly
 # re-resolve and rewrite it when Cargo.toml and the lockfile disagree.
 "$CARGO" build --release --locked --manifest-path "$SRC_DIR/nobilis/Cargo.toml"
+
+# A bundled libopus built before .cargo/config.toml named its version still
+# says "unknown", and its build script does not rerun for that setting - so a
+# kept target directory (here, or CI's cache) would ship "unknown" for good.
+# Only that crate is built again, and only when it happened. A daemon linked
+# to the system's libopus does not contain the string at all.
+if grep -aq 'libopus unknown' "$SRC_DIR/nobilis/target/release/nobilis"; then
+  echo "the bundled libopus does not know its version - building it again"
+  "$CARGO" clean --release -p libopus_sys --manifest-path "$SRC_DIR/nobilis/Cargo.toml"
+  "$CARGO" build --release --locked --manifest-path "$SRC_DIR/nobilis/Cargo.toml"
+fi

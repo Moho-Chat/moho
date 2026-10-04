@@ -1124,12 +1124,12 @@ function AboutSettings(): JSX.Element {
   const store = useStore()
   const linkUp = useChat((s) => s.linkUp)
   const [status, setStatus] = useState<{ binaryPath: string; available: boolean } | null>(null)
-  const [daemon, setDaemon] = useState<{ version: string; commit: string } | null>(null)
+  const [daemon, setDaemon] = useState<{ version: string; commit: string; opus?: string } | null>(null)
 
   useEffect(() => {
     void window.moho.daemonStatus().then(setStatus)
     void window.moho
-      .rpc<{ version: string; commit: string }>('version')
+      .rpc<{ version: string; commit: string; opus?: string }>('version')
       .then(setDaemon)
       // A daemon too old to answer cannot say - which is itself the useful
       // answer, since it means the two are out of step.
@@ -1150,6 +1150,10 @@ function AboutSettings(): JSX.Element {
       >
         <BuildRow label="Version" value={daemon?.version ?? (linkUp ? 'not reported' : '\u2014')} />
         <BuildRow label="Build" value={daemon?.commit ?? (linkUp ? 'older than this client' : '\u2014')} />
+        {/* The C library that decodes every Discord voice packet and
+            soundboard sound (#251): what a report about audio needs to name,
+            and what to compare against libopus's own advisories. */}
+        <BuildRow label="Audio decoder" value={daemon?.opus ?? (linkUp ? 'not reported' : '\u2014')} />
         <div className="setting-row">
           <div className="setting-text">
             <div>Status</div>
