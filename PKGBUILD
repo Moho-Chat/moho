@@ -33,10 +33,13 @@ options=(!strip !debug !lto)
 pkgver() {
   cd "$srcdir/moho"
   # The release's own number first (#239), then where in the history this
-  # build sits: 0.1.0.r1234.abc1234. A number sorts above the bare r1234.abc
+  # build sits: 1.0.0.r1234.abc1234. A number sorts above the bare r1234.abc
   # this used to be, so an existing install upgrades rather than going back.
+  # A pre-release is written the way pacman orders one, without the hyphen
+  # it does not allow: 1.0.0-rc.1 is 1.0.0rc1, which sorts before 1.0.0 and
+  # after 1.0.0rc0 - so the release upgrades its own candidates.
   printf "%s.r%s.%s" \
-    "$(sed -n 's/^  "version": "\(.*\)",$/\1/p' package.json)" \
+    "$(sed -n 's/^  "version": "\(.*\)",$/\1/p' package.json | sed -E 's/-([a-z]+)\.?([0-9]+)$/\1\2/')" \
     "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
 }
 
