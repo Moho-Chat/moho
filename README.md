@@ -43,12 +43,25 @@ again and everything is where you left it.
 ## Get it
 
 Prebuilt Linux and Windows downloads are on the
-[latest release](https://github.com/Moho-Chat/moho/releases/tag/latest), rebuilt from `master`
-on every change.
+[latest release](https://github.com/Moho-Chat/moho/releases/latest); what each version
+changed is in [CHANGELOG.md](CHANGELOG.md). moho tells you in its mentions inbox when a newer
+version is out.
+
+Versions are MAJOR.FEATURE.FIX: a major release, then protocols added and major features,
+then bug and security fixes - 1.1.0 would add a protocol, 1.0.5 is the fifth fix release
+of 1.0.
 
 The AppImage needs `libfuse2` on recent distributions; if it refuses to start, either install
-that or run it with `APPIMAGE_EXTRACT_AND_RUN=1`. The Windows installer is unsigned and
-cross-built, so SmartScreen will warn on first run.
+that or run it with `APPIMAGE_EXTRACT_AND_RUN=1`.
+
+The Windows installer is not code-signed, and won't be. Two things in Windows react to that:
+
+- **SmartScreen** warns when you run the downloaded installer. Choose *More info*, then
+  *Run anyway* - or beforehand, right-click the file, open *Properties* and tick *Unblock*.
+- **Smart App Control**, on some fresh Windows 11 installs, silently refuses to start any
+  unsigned program: moho installs, then never opens. Turn it off in *Windows Security > App
+  & browser control > Smart App Control settings*. Windows does not let it be switched back
+  on without resetting the PC. The installer checks for this and says so before installing.
 
 ## Build it
 

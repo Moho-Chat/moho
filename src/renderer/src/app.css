@@ -5078,6 +5078,13 @@ video.lightbox-media {
   border-radius: var(--corner-radius-small);
   background: var(--surface-container-high);
   color: var(--surface-variant-text);
+  /* One line, and not the thing that gives way: the stream title beside it
+     is what shrinks into an ellipsis. */
+  white-space: nowrap;
+  flex: none;
+}
+
+.channel-modes.letters {
   font-family: var(--font-mono, monospace);
   letter-spacing: 0.04em;
 }
@@ -8383,4 +8390,59 @@ video.lightbox-media {
   .route-level-thumb {
     transition: none;
   }
+}
+
+/* In place of the box, for an account that can only watch. */
+.composer-watching {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+}
+
+.composer-watching .button {
+  margin-left: auto;
+}
+
+/* Removing an account, asked in place of the button that asked for it. */
+.remove-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  border: 1px solid #c9403c;
+  border-radius: var(--corner-radius-small);
+}
+
+/* A newer moho, at the top of the mentions inbox. */
+.release-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.release-open {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.release-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--on-primary, #fff);
 }

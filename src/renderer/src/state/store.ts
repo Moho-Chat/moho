@@ -34,6 +34,7 @@ import { firstFrame, SCREEN_CHOICE_MS } from '../lib/capture'
 import { cameraKey, closeFeeds, feedFrame, streamKey as feedStreamKey } from '../lib/framefeed'
 import { DEFAULT_QUALITY, encodeSettings, sendCamera, shareScreen, type VideoQuality } from '../lib/discordscreen'
 import type { PopoutState } from '../../../shared/ipc'
+import { isNewerVersion } from '../lib/version'
 
 /**
  * The whole client-side model, held in one immutable object that is replaced
@@ -362,6 +363,12 @@ export interface ChatState {
    * reopened, and so the composer can send into it.
    */
   openThread: OpenThread | null
+  /**
+   * A released moho newer than this one, shown at the top of the mentions
+   * inbox until it is dismissed or installed. Null when there is none, or
+   * when asking has been switched off.
+   */
+  newRelease: { version: string; name: string; url: string } | null
   linkUp: boolean
   accounts: Account[]
   buffers: BufferEntry[]
@@ -662,6 +669,7 @@ export interface Toast {
 }
 
 const INITIAL: ChatState = {
+  newRelease: null,
   linkUp: false,
   accounts: [],
   buffers: [],
@@ -1230,9 +1238,45 @@ export class ChatStore {
     const status = await window.moho.daemonStatus()
     this.set({ linkUp: status.linkUp })
     if (status.linkUp) await this.refreshAll()
+    // Again once a day, for a window that stays open for weeks. A release
+    // has no event to wait for, so this is asked rather than heard.
+    if (!this.state.pinnedBufferId) {
+      this.releaseTimer = setInterval(() => void this.checkForRelease(), 24 * 60 * 60 * 1000)
+    }
+  }
+
+  private releaseTimer: ReturnType<typeof setInterval> | null = null
+
+  /**
+   * Whether a newer moho has been released - see newRelease.
+   *
+   * Asked of the daemon, which goes the way any request belonging to no
+   * account goes: through Tor or the proxy whenever anything is routed.
+   * Quiet on failure - offline, rate-limited, no route - since the next
+   * reconnect or the next day asks again, and an error about an update
+   * check is worse than no news.
+   */
+  async checkForRelease(): Promise<void> {
+    if (this.state.pinnedBufferId) return
+    try {
+      const prefs = await window.moho.prefs.getAll()
+      if (prefs['updates.notify'] === false) {
+        this.set({ newRelease: null })
+        return
+      }
+      // A setting with no switch for it: a fork names its own repository.
+      const repo = typeof prefs['updates.repo'] === 'string' && prefs['updates.repo'] ? prefs['updates.repo'] : 'Moho-Chat/moho'
+      const found = await window.moho.rpc<{ version: string; name: string; url: string } | null>('latestRelease', {
+        repo
+      })
+      this.set({ newRelease: found && isNewerVersion(found.version, __APP_VERSION__) ? found : null })
+    } catch {
+      // Left as it was; asked again on the next reconnect or the next day.
+    }
   }
 
   dispose(): void {
+    if (this.releaseTimer) clearInterval(this.releaseTimer)
     if (this.sweepTimer) clearInterval(this.sweepTimer)
     if (this.mentionsTimer) clearTimeout(this.mentionsTimer)
   }
@@ -1249,6 +1293,8 @@ export class ChatStore {
       this.refreshVoiceSessions(),
       this.refreshIncomingCalls()
     ])
+    // Not awaited: GitHub being slow is no reason to hold the window up.
+    void this.checkForRelease()
     if (this.state.activeBufferId) await this.selectBuffer(this.state.activeBufferId)
   }
 
@@ -1304,6 +1350,17 @@ export class ChatStore {
       // Not removed here: the next sync stops listing it, which is what
       // actually confirms the server agreed.
       .catch((e: Error) => this.toast('error', e.message))
+  }
+
+  private groupsTimer: ReturnType<typeof setTimeout> | null = null
+
+  /** The rail again, once a burst of conversations naming new entries settles. */
+  refreshGroupsSoon(): void {
+    if (this.groupsTimer) clearTimeout(this.groupsTimer)
+    this.groupsTimer = setTimeout(() => {
+      this.groupsTimer = null
+      void this.refreshGroups()
+    }, 250)
   }
 
   /**
@@ -3524,6 +3581,18 @@ export class ChatStore {
       return
     }
     this.set({ buffers: [...buffers, { unread: 0, highlight: false, ...data }] })
+    // Filed under a rail entry this window has never been told of. An
+    // account's own entry is not announced when the account is made - the
+    // daemon lists one for every account when asked - so the first
+    // conversation of an account added during this run arrived pointing at
+    // nothing, and showed nowhere until a restart: a new Kick viewer joined
+    // a streamer and watched the window not change.
+    if (data.groupId && !this.state.groups.some((g) => g.id === data.groupId)) this.refreshGroupsSoon()
+    const waiting = this.openOnArrival
+    if (waiting && waiting.accountId === data.accountId && data.kind !== 'server' && Date.now() < waiting.until) {
+      this.openOnArrival = null
+      void this.selectBuffer(data.id)
+    }
     this.followPeekJoin(data)
     bestEffort(window.moho.rpc('subscribe', { bufferId: data.id }), `subscribe ${data.id}`)
     // A channel this client had not heard of may already hold mentions in the
@@ -3578,6 +3647,9 @@ export class ChatStore {
       })
     } else {
       void this.refreshAccounts()
+      // And its rail entry, which nothing else announces: a new account
+      // showed nowhere on the left until its first conversation arrived.
+      this.refreshGroupsSoon()
     }
     if (data.error) this.toast('error', `${data.accountId}: ${data.error}`)
   }
@@ -4444,6 +4516,40 @@ export class ChatStore {
   }
 
   /** The room that was being joined has turned up: open it for real. */
+  /** A join asked for from the join page, waiting for its conversation. */
+  private openOnArrival: { accountId: string; until: number } | null = null
+
+  /**
+   * Joins, and opens what was joined once it exists.
+   *
+   * The join page used to ask and stay where it was, so somebody who had just
+   * joined a channel - a first-time user, especially, with nothing else on
+   * screen - went on looking at the form, and had to find the result on the
+   * left for themselves. One already joined opens at once.
+   */
+  async joinAndOpen(accountId: string, name: string): Promise<void> {
+    // As the conversation will be named: an IRC channel as typed, a Kick
+    // streamer out of whichever form the handle came in.
+    const typed = name.trim().toLowerCase()
+    const wanted = typed.startsWith('#')
+      ? typed
+      : typed.replace(/^https?:\/\/(www\.)?kick\.com\//, '').replace(/^@/, '').replace(/[/?#].*$/, '')
+    const existing = this.state.buffers.find(
+      (b) => b.accountId === accountId && b.name.toLowerCase() === wanted && !isJoining(b)
+    )
+    if (existing) {
+      void this.selectBuffer(existing.id)
+      return
+    }
+    this.openOnArrival = { accountId, until: Date.now() + 20_000 }
+    try {
+      await window.moho.rpc('joinBuffer', { accountId, name })
+    } catch (e) {
+      this.openOnArrival = null
+      this.toast('error', (e as Error).message)
+    }
+  }
+
   private followPeekJoin(data: { id: string; remoteId?: string }): void {
     const peek = this.state.peek
     if (!peek?.joining || !data.remoteId) return

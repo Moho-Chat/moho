@@ -137,8 +137,8 @@ export function AccountsPanel(): JSX.Element {
         {accounts.length === 0 && (
           <>
             <p className="muted">
-              No accounts yet. Pick a service above to connect one — nobilis keeps the connection
-              alive in the background, so it survives closing this window.
+              No accounts yet. Pick a service above to connect one — moho stays connected in the
+              background, even with this window closed.
             </p>
             {/* Before the first account rather than after: adding one is the
                 first thing that fetches anything, and somebody who needs all
@@ -300,6 +300,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
   const media = useMediaUrl(account.id)
   const store = useStore()
   const [expanded, setExpanded] = useState(false)
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
   const icon = serviceIcon(account.service)
   const connected = account.state === 'connected'
   /**
@@ -459,16 +460,44 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
               on and never find again. */}
           <IgnoreList account={account} />
 
-          <button
-            type="button"
-            className="button danger"
-            onClick={() => {
-              call('removeAccount', { accountId: account.id })
-              void store.refreshBuffers()
-            }}
-          >
-            <Icon name="delete" size={16} /> Remove account
-          </button>
+          {/* Asked first, in place. Removing takes the saved sign-in, the
+              history kept here and - for Matrix - this device's keys, and
+              none of it comes back; it used to happen on the first click. */}
+          {confirmingRemove ? (
+            <div className="remove-confirm" role="alertdialog" aria-label="Remove this account?">
+              <span className="small">
+                Remove {account.displayName || account.id}? Its saved sign-in and the history kept
+                here are deleted
+                {account.service === 'matrix' ? ', and so are this device’s keys, so encrypted history stays unreadable if you add it again' : ''}
+                .
+              </span>
+              <div className="field-row">
+                <button
+                  type="button"
+                  className="button danger"
+                  onClick={() => {
+                    // Its conversations and its rail entry with it, once it
+                    // is gone. An account's own entry is listed for as long
+                    // as the account exists, and nothing announces it going,
+                    // so a removed account's tile stayed until a restart.
+                    void window.moho
+                      .rpc('removeAccount', { accountId: account.id })
+                      .then(() => Promise.all([store.refreshAccounts(), store.refreshBuffers(), store.refreshGroups()]))
+                      .catch((e: Error) => store.toast('error', e.message))
+                  }}
+                >
+                  <Icon name="delete" size={16} /> Remove
+                </button>
+                <button type="button" className="button" autoFocus onClick={() => setConfirmingRemove(false)}>
+                  Keep it
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="button danger" onClick={() => setConfirmingRemove(true)}>
+              <Icon name="delete" size={16} /> Remove account
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -742,6 +771,10 @@ function IrcForm({ onDone }: { onDone: () => void }): JSX.Element {
       await store.refreshAccounts()
       store.clearPendingLink()
       onDone()
+      // On to choosing a channel, as for Kick - a network with nothing to
+      // join on connect is otherwise a server tab and the accounts page.
+      // Not when channels were named here: those arrive by themselves.
+      if (!autojoin.trim()) store.setActivePanel('join', `${nick}@${host}`)
     } catch (e) {
       store.toast('error', (e as Error).message)
     } finally {
@@ -1117,8 +1150,18 @@ function KickForm({ onDone }: { onDone: () => void }): JSX.Element {
   const add = (token?: string): void => {
     setBusy(true)
     void window.moho
-      .rpc('addKickAccount', token ? { token, useTor } : { useTor })
-      .then(() => onDone())
+      .rpc<{ accountId: string }>('addKickAccount', token ? { token, useTor } : { useTor })
+      .then((r) => {
+        onDone()
+        // Straight to choosing a streamer. A new Kick account watches
+        // nothing, so it has no conversations and no rail entry yet - and
+        // left on the accounts page, a first-time user was looking at
+        // "select a server on the left" with nothing on the left, the way
+        // forward being a small + in the footer. Signing in may bring the
+        // account's follows with it; this is still where the next one is
+        // added.
+        if (r?.accountId) store.setActivePanel('join', r.accountId)
+      })
       .catch((e: Error) => store.toast('error', e.message))
       .finally(() => setBusy(false))
   }
@@ -1484,6 +1527,12 @@ function MatrixForm(): JSX.Element {
   const [flows, setFlows] = useState<string[] | null>(null)
   /** Whether this homeserver's accounts live with an OAuth provider. */
   const [delegated, setDelegated] = useState(false)
+  /**
+   * Where a delegating server signs people up: its account service's own
+   * site. matrix.org is one - closed to registration through the API this
+   * form uses, open to anyone through account.matrix.org.
+   */
+  const [signUpSite, setSignUpSite] = useState('')
   /** Whether the homeserver keeps QR sign-in mailboxes (MSC4108). */
   const [qrOffered, setQrOffered] = useState(false)
   /** A QR sign-in under way: the code to show, and whether it now wants digits. */
@@ -1527,12 +1576,16 @@ function MatrixForm(): JSX.Element {
       // say what the homeserver itself accepts, and this says whether it has
       // handed its accounts to somebody else entirely.
       void window.moho
-        .rpc<{ delegated: boolean; qr?: boolean }>('matrixAuthMetadata', { useTor, homeserverUrl: url })
+        .rpc<{ delegated: boolean; qr?: boolean; issuer?: string }>('matrixAuthMetadata', { useTor, homeserverUrl: url })
         .then((a) => {
           setDelegated(!!a.delegated)
           setQrOffered(!!a.qr)
+          setSignUpSite(a.delegated && a.issuer && /^https:\/\//.test(a.issuer) ? a.issuer : '')
         })
-        .catch(() => setDelegated(false))
+        .catch(() => {
+          setDelegated(false)
+          setSignUpSite('')
+        })
       void window.moho
         .rpc<{ open: boolean; needsToken: boolean; wants: string[] }>('matrixRegistrationFlows', { useTor,
           homeserverUrl: url
@@ -1647,8 +1700,19 @@ function MatrixForm(): JSX.Element {
           />
         </label>
       )}
-      {registration?.open === false && (
-        <p className="small muted">This homeserver is not accepting new accounts.</p>
+      {/* A server that hands its accounts to an account service is closed to
+          the registration API and open on that service's site - matrix.org
+          is. Said as "not accepting new accounts", a new user's first look at
+          Matrix told them sign-up was impossible. */}
+      {signUpSite ? (
+        <p className="small muted">
+          This server signs people up on its own website, {new URL(signUpSite).host}. Make the
+          account there, then come back and use Sign in with a code.
+        </p>
+      ) : (
+        registration?.open === false && (
+          <p className="small muted">This homeserver is not accepting new accounts.</p>
+        )
       )}
       {/* While a code sign-in is waiting. The code is the whole of what
           somebody needs, so it is the largest thing here and selectable -
@@ -1807,6 +1871,16 @@ function MatrixForm(): JSX.Element {
             server wants a captcha, an email or its terms agreed to, the
             daemon says which and says to sign up on the server's own page,
             because those need a person somewhere this window is not. */}
+        {signUpSite ? (
+          <button
+            type="button"
+            className="button subtle"
+            title={`Opens ${signUpSite} in your browser`}
+            onClick={() => void window.moho.openExternal(signUpSite)}
+          >
+            Create account <Icon name="open_in_new" size={14} />
+          </button>
+        ) : (
         <button
           type="button"
           className="button subtle"
@@ -1838,6 +1912,7 @@ function MatrixForm(): JSX.Element {
         >
           Create account
         </button>
+        )}
       </div>
       {status && <p className="small muted">{status}</p>}
       <p className="small muted">

@@ -15,7 +15,9 @@ options=(!strip !debug !lto)
 
 pkgver() {
   cd "$srcdir/moho"
-  printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+  printf "%s.r%s.%s" \
+    "$(sed -n 's/^  "version": "\(.*\)",$/\1/p' package.json | sed -E 's/-([a-z]+)\.?([0-9]+)$/\1\2/')" \
+    "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
 }
 
 prepare() {

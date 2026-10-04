@@ -55,6 +55,7 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
   const store = useStore()
   const { menu, open, close } = useContextMenu()
   const voice = useChat((s) => s.voicePrefs)
+  const inACall = useChat((s) => s.voiceSessions.length > 0 || !!s.activeCall)
   const details = useChat((s) => s.connectionDetail)
 
   // With no account selected there is nobody to show, but the footer still
@@ -64,6 +65,13 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
   const status = effectiveStatus(account)
   const name = account.displayName || account.id
   const detail = details[account.id]
+  // A signed-out Kick account is a reader: it has no presence to show, and
+  // "Online" claimed one.
+  const watching = account.service === 'kick' && !account.hasPassword && status !== 'connecting' && status !== 'offline'
+  // Mute and deafen are the whole client's, for whatever call is up - so
+  // shown on a service that has calls, or anywhere while one is running,
+  // and not beside an IRC or Kick account with nothing to apply them to.
+  const showVoice = account.service === 'discord' || account.service === 'matrix' || inACall
 
   return (
     <>
@@ -77,10 +85,12 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
           <Avatar name={name} url={account.avatarUrl} size={28} status={status} accountId={account.id} />
           <span className="user-identity">
             <span className="ellipsis user-name">{name}</span>
-            <span className="ellipsis small muted">{label(status)}</span>
+            <span className="ellipsis small muted">{watching ? 'Watching, signed out' : label(status)}</span>
           </span>
         </button>
 
+        {showVoice && (
+          <>
         <button
           type="button"
           className={`user-audio-button${voice.micMuted ? ' muted' : ''}`}
@@ -102,6 +112,8 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
         >
           <Icon name={voice.deafened ? 'headset_off' : 'headset_mic'} size={18} />
         </button>
+          </>
+        )}
 
         {/* Joining something new, beside the account it would be joined on.
             It used to sit in the heading above the channel list, where it read

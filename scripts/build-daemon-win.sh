@@ -22,10 +22,20 @@ MANIFEST="$SRC_DIR/nobilis/Cargo.toml"
 . "$SRC_DIR/scripts/find-cargo.sh"
 
 echo "building the Windows daemon with $CARGO"
+# From inside nobilis/, for its .cargo/config.toml - see build-daemon.sh.
+cd "$SRC_DIR/nobilis"
 # --locked: see build-daemon.sh.
 "$CARGO" build --release --locked --target "$TARGET" --manifest-path "$MANIFEST"
 
 BUILT="$SRC_DIR/nobilis/target/$TARGET/release/nobilis.exe"
+
+# The Windows build always bundles libopus; see build-daemon.sh for why a kept
+# target directory can leave it calling itself "unknown".
+if [ -f "$BUILT" ] && grep -aq 'libopus unknown' "$BUILT"; then
+  echo "the bundled libopus does not know its version - building it again"
+  "$CARGO" clean --release --target "$TARGET" -p libopus_sys --manifest-path "$MANIFEST"
+  "$CARGO" build --release --locked --target "$TARGET" --manifest-path "$MANIFEST"
+fi
 WANTED="$SRC_DIR/nobilis/target/release/nobilis.exe"
 
 # Not merely "did cargo exit 0": a build that fails after having produced an

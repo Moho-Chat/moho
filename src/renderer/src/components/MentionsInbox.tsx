@@ -23,6 +23,12 @@ import { bufferDisplayName, formatFullTime, formatRelativeTime, serviceLabel } f
 export function MentionsInbox(): JSX.Element {
   const store = useStore()
   const mentions = useChat((s) => s.mentions)
+  const newRelease = useChat((s) => s.newRelease)
+  // Dismissed by version: the next release is news again.
+  const [dismissedRelease, setDismissedRelease] = usePref<string>('updates.dismissed', '')
+  // Switched off in Settings: gone at once, not at the next check.
+  const [notify] = usePref<boolean>('updates.notify', true)
+  const release = notify && newRelease && newRelease.version !== dismissedRelease ? newRelease : null
   const buffers = useChat((s) => s.buffers)
   const accounts = useChat((s) => s.accounts)
   const [muted] = usePref<string[]>('mutedBuffers', [])
@@ -100,20 +106,27 @@ export function MentionsInbox(): JSX.Element {
     store.setJumpTarget(id)
   }
 
+  // A new release counts as one more thing waiting, so the badge shows it.
+  const waiting = unread.length + (release ? 1 : 0)
+
   return (
     <div className="mentions-inbox" ref={box}>
       <IconButton
         name="alternate_email"
-        title={unread.length > 0 ? `${unread.length} unread mentions` : 'Mentions'}
-        className={unread.length > 0 ? 'has-mentions' : undefined}
+        title={
+          release && unread.length === 0
+            ? `moho ${release.version} is out`
+            : unread.length > 0
+              ? `${unread.length} unread mentions`
+              : 'Mentions'
+        }
+        className={waiting > 0 ? 'has-mentions' : undefined}
         onClick={() => setOpen(!open)}
       />
       {/* Capped in the label rather than the list: past a certain number the
           exact count stops meaning anything, and a three-digit badge stops
           fitting on the button. */}
-      {unread.length > 0 && (
-        <span className="mentions-count">{unread.length > 99 ? '99+' : unread.length}</span>
-      )}
+      {waiting > 0 && <span className="mentions-count">{waiting > 99 ? '99+' : waiting}</span>}
 
       {open && (
         <HeaderPopover anchor={box.current} width={380} className="mentions-panel" onClose={() => setOpen(false)}>
@@ -136,7 +149,39 @@ export function MentionsInbox(): JSX.Element {
             )}
           </div>
 
-          {unread.length === 0 && (
+          {/* A newer moho, at the top: not a mention, but the same kind of
+              thing - a notice owed a look, gone once it has had one. The page
+              it opens is that version's changelog. */}
+          {release && (
+            <div className="mention-row release-row">
+              <button
+                type="button"
+                className="release-open"
+                onClick={() => void window.moho.openExternal(release.url)}
+                title={`Opens ${release.url}`}
+              >
+                <span className="release-icon">
+                  <Icon name="new_releases" size={20} />
+                </span>
+                <span className="mention-body">
+                  <span className="mention-head small">
+                    <span className="mention-from">moho {release.version} is out</span>
+                  </span>
+                  <span className="mention-text small muted">
+                    You have {__APP_VERSION__}. See what changed and download it.
+                  </span>
+                </span>
+              </button>
+              <IconButton
+                name="close"
+                size={16}
+                title="Dismiss until the next release"
+                onClick={() => setDismissedRelease(release.version)}
+              />
+            </div>
+          )}
+
+          {unread.length === 0 && !release && (
             <div className="mentions-panel-empty muted">
               <Icon name="alternate_email" size={24} />
               <span className="small">Nothing is waiting on you.</span>
