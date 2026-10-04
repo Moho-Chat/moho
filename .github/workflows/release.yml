@@ -1,7 +1,8 @@
 # Builds moho for a pushed version tag (v1.0.0) and publishes the release,
 # with the notes for that version taken from CHANGELOG.md and its files named
-# after the version (#239). A tag with a pre-release suffix (v1.0.0-rc.1)
-# publishes as a pre-release, to rehearse a release without making one.
+# after the version (#239). Every version tag publishes a full release, marked
+# GitHub's "Latest" - a release candidate (v1.0.0-rc.1) included, so it is
+# shown on the repository's page like any other release.
 #
 # Tags only. A push to master builds nothing: master and a tag on it were two
 # push events, so every release was built twice. To check a branch without
@@ -576,17 +577,14 @@ jobs:
           cat "$RUNNER_TEMP/notes.md"
 
       # Created as a draft and published once its files are attached, so
-      # nobody lands on a version with nothing to download. A pre-release
-      # (a suffix after the version) is never GitHub's "Latest". A tag pushed
+      # nobody lands on a version with nothing to download. Always a full
+      # release and GitHub's "Latest", a release candidate included - shown on
+      # the repository's page, not tucked away as a pre-release. A tag pushed
       # again finds its release there: the files are replaced, the notes too,
       # since the changelog is where they are corrected.
       - name: publish the version
         run: |
           version="${GITHUB_REF_NAME#v}"
-          case "$version" in
-            *-*) kind="--prerelease --latest=false" ;;
-            *)   kind="--latest" ;;
-          esac
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release edit "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
             gh release upload "$GITHUB_REF_NAME" artifacts/* --clobber
@@ -594,6 +592,5 @@ jobs:
             gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
               --title "moho $version" --notes-file "$RUNNER_TEMP/notes.md"
             gh release upload "$GITHUB_REF_NAME" artifacts/*
-            # shellcheck disable=SC2086 - two flags, deliberately split
-            gh release edit "$GITHUB_REF_NAME" --draft=false $kind
+            gh release edit "$GITHUB_REF_NAME" --draft=false --latest
           fi
