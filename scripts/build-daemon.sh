@@ -9,6 +9,11 @@ SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 . "$SRC_DIR/scripts/find-cargo.sh"
 
 echo "building the daemon with $CARGO"
+# Whether this is a release build, decided by moho's checkout - the
+# submodule's own cannot tell (in CI it is a bare commit, on no branch). The
+# daemon then reports its version, or "development".
+NOBILIS_CHANNEL="$(node "$SRC_DIR/scripts/version-label.mjs" --channel)"
+export NOBILIS_CHANNEL
 # From inside nobilis/: cargo reads .cargo/config.toml from the directory it
 # runs in, not from the manifest's, and nobilis's names the version a bundled
 # libopus reports (#251).
