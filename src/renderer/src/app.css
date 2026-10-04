@@ -5078,6 +5078,13 @@ video.lightbox-media {
   border-radius: var(--corner-radius-small);
   background: var(--surface-container-high);
   color: var(--surface-variant-text);
+  /* One line, and not the thing that gives way: the stream title beside it
+     is what shrinks into an ellipsis. */
+  white-space: nowrap;
+  flex: none;
+}
+
+.channel-modes.letters {
   font-family: var(--font-mono, monospace);
   letter-spacing: 0.04em;
 }
@@ -8395,4 +8402,14 @@ video.lightbox-media {
 
 .composer-watching .button {
   margin-left: auto;
+}
+
+/* Removing an account, asked in place of the button that asked for it. */
+.remove-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  border: 1px solid #c9403c;
+  border-radius: var(--corner-radius-small);
 }

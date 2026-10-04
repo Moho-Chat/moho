@@ -1,6 +1,6 @@
 import discordSvg from '../assets/discord.svg'
 import sneedchatMark from '../assets/sneedchat.png'
-import matrixSvg from '../assets/matrix.svg'
+import matrixSvg from '../assets/matrix-mark.svg'
 import kickSvg from '../assets/kick.svg'
 
 /**

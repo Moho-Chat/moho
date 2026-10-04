@@ -835,7 +835,13 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           with the long form, since the letters are only obvious to people who
           already knew. */}
       {buffer.channelModes && (
-        <span className="channel-modes small" title={describeModes(buffer.channelModes)}>
+        <span
+          // Mode letters ("+nt") are set like code; a service that names its
+          // modes in words - Kick's "followers only" - is set like text, or it
+          // wraps into a two-line box in a monospace fallback.
+          className={`channel-modes small${/^[+-][A-Za-z]/.test(buffer.channelModes) ? ' letters' : ''}`}
+          title={describeModes(buffer.channelModes)}
+        >
           {buffer.channelModes}
         </span>
       )}
