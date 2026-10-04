@@ -8384,3 +8384,15 @@ video.lightbox-media {
     transition: none;
   }
 }
+
+/* In place of the box, for an account that can only watch. */
+.composer-watching {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+}
+
+.composer-watching .button {
+  margin-left: auto;
+}

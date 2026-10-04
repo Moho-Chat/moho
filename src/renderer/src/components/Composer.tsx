@@ -548,6 +548,23 @@ export function Composer(): JSX.Element | null {
     if (inputRef.current) setText(composerText(inputRef.current))
   }
 
+  // A Kick account with no sign-in watches; it cannot talk. Offering the
+  // box anyway meant typing a message the service was always going to refuse.
+  if (account && account.service === 'kick' && !account.hasPassword) {
+    return (
+      <div className="composer">
+        <div className="divider-h" />
+        <div className="composer-watching small muted">
+          <Icon name="visibility" size={16} />
+          <span>Watching signed out. Sign in to Kick to talk here.</span>
+          <button type="button" className="button" onClick={() => store.setActivePanel('accounts')}>
+            Sign in
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="composer">
       <div className="divider-h" />

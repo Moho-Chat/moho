@@ -122,22 +122,19 @@ function SubmitField({
 
 function IrcJoin({ account }: { account: Account }): JSX.Element {
   const store = useStore()
-  const call = (method: string, params: Record<string, unknown>): void => {
-    void window.moho.rpc(method, params).catch((e: Error) => store.toast('error', e.message))
-  }
   return (
     <div className="panel join-panel">
       <SubmitField
         label="Join a channel"
         placeholder="#channel"
-        onSubmit={(name) => call('joinBuffer', { accountId: account.id, name })}
+        onSubmit={(name) => void store.joinAndOpen(account.id, name)}
       />
       <SubmitField
         label="Message someone"
         placeholder="nick"
         // IRC has no "open a DM" call - a query buffer only exists once
         // something is sent, so this joins a buffer named for the nick.
-        onSubmit={(nick) => call('joinBuffer', { accountId: account.id, name: nick })}
+        onSubmit={(nick) => void store.joinAndOpen(account.id, nick)}
       />
       <IrcChannelBrowser account={account} />
     </div>
@@ -259,7 +256,7 @@ interface IrcChannelListing {
 }
 
 function join(accountId: string, name: string, store: ReturnType<typeof useStore>): void {
-  void window.moho.rpc('joinBuffer', { accountId, name }).catch((e: Error) => store.toast('error', e.message))
+  void store.joinAndOpen(accountId, name)
 }
 
 /**
@@ -279,11 +276,7 @@ function KickJoin({ account }: { account: Account }): JSX.Element {
       <SubmitField
         label="Watch a streamer's chat"
         placeholder="handle, or a kick.com link"
-        onSubmit={(name) =>
-          void window.moho
-            .rpc('joinBuffer', { accountId: account.id, name })
-            .catch((e: Error) => store.toast('error', e.message))
-        }
+        onSubmit={(name) => void store.joinAndOpen(account.id, name)}
       />
       <p className="small muted">
         Kick chat is public, so this works signed out. Signing in adds talking, and your

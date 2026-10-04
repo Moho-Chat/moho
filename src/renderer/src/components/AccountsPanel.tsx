@@ -137,8 +137,8 @@ export function AccountsPanel(): JSX.Element {
         {accounts.length === 0 && (
           <>
             <p className="muted">
-              No accounts yet. Pick a service above to connect one — nobilis keeps the connection
-              alive in the background, so it survives closing this window.
+              No accounts yet. Pick a service above to connect one — moho stays connected in the
+              background, even with this window closed.
             </p>
             {/* Before the first account rather than after: adding one is the
                 first thing that fetches anything, and somebody who needs all
@@ -463,8 +463,14 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
             type="button"
             className="button danger"
             onClick={() => {
-              call('removeAccount', { accountId: account.id })
-              void store.refreshBuffers()
+              // Its conversations and its rail entry with it, once it is
+              // gone. An account's own entry is listed for as long as the
+              // account exists, and nothing announces it going, so a removed
+              // account's tile stayed until a restart.
+              void window.moho
+                .rpc('removeAccount', { accountId: account.id })
+                .then(() => Promise.all([store.refreshAccounts(), store.refreshBuffers(), store.refreshGroups()]))
+                .catch((e: Error) => store.toast('error', e.message))
             }}
           >
             <Icon name="delete" size={16} /> Remove account
@@ -742,6 +748,10 @@ function IrcForm({ onDone }: { onDone: () => void }): JSX.Element {
       await store.refreshAccounts()
       store.clearPendingLink()
       onDone()
+      // On to choosing a channel, as for Kick - a network with nothing to
+      // join on connect is otherwise a server tab and the accounts page.
+      // Not when channels were named here: those arrive by themselves.
+      if (!autojoin.trim()) store.setActivePanel('join', `${nick}@${host}`)
     } catch (e) {
       store.toast('error', (e as Error).message)
     } finally {
@@ -1117,8 +1127,18 @@ function KickForm({ onDone }: { onDone: () => void }): JSX.Element {
   const add = (token?: string): void => {
     setBusy(true)
     void window.moho
-      .rpc('addKickAccount', token ? { token, useTor } : { useTor })
-      .then(() => onDone())
+      .rpc<{ accountId: string }>('addKickAccount', token ? { token, useTor } : { useTor })
+      .then((r) => {
+        onDone()
+        // Straight to choosing a streamer. A new Kick account watches
+        // nothing, so it has no conversations and no rail entry yet - and
+        // left on the accounts page, a first-time user was looking at
+        // "select a server on the left" with nothing on the left, the way
+        // forward being a small + in the footer. Signing in may bring the
+        // account's follows with it; this is still where the next one is
+        // added.
+        if (r?.accountId) store.setActivePanel('join', r.accountId)
+      })
       .catch((e: Error) => store.toast('error', e.message))
       .finally(() => setBusy(false))
   }

@@ -1306,6 +1306,17 @@ export class ChatStore {
       .catch((e: Error) => this.toast('error', e.message))
   }
 
+  private groupsTimer: ReturnType<typeof setTimeout> | null = null
+
+  /** The rail again, once a burst of conversations naming new entries settles. */
+  refreshGroupsSoon(): void {
+    if (this.groupsTimer) clearTimeout(this.groupsTimer)
+    this.groupsTimer = setTimeout(() => {
+      this.groupsTimer = null
+      void this.refreshGroups()
+    }, 250)
+  }
+
   /**
    * The rail. Kept in nobilis's order (its own `position`, then name), which
    * for Discord is the order the user arranged their servers in.
@@ -3524,6 +3535,18 @@ export class ChatStore {
       return
     }
     this.set({ buffers: [...buffers, { unread: 0, highlight: false, ...data }] })
+    // Filed under a rail entry this window has never been told of. An
+    // account's own entry is not announced when the account is made - the
+    // daemon lists one for every account when asked - so the first
+    // conversation of an account added during this run arrived pointing at
+    // nothing, and showed nowhere until a restart: a new Kick viewer joined
+    // a streamer and watched the window not change.
+    if (data.groupId && !this.state.groups.some((g) => g.id === data.groupId)) this.refreshGroupsSoon()
+    const waiting = this.openOnArrival
+    if (waiting && waiting.accountId === data.accountId && data.kind !== 'server' && Date.now() < waiting.until) {
+      this.openOnArrival = null
+      void this.selectBuffer(data.id)
+    }
     this.followPeekJoin(data)
     bestEffort(window.moho.rpc('subscribe', { bufferId: data.id }), `subscribe ${data.id}`)
     // A channel this client had not heard of may already hold mentions in the
@@ -3578,6 +3601,9 @@ export class ChatStore {
       })
     } else {
       void this.refreshAccounts()
+      // And its rail entry, which nothing else announces: a new account
+      // showed nowhere on the left until its first conversation arrived.
+      this.refreshGroupsSoon()
     }
     if (data.error) this.toast('error', `${data.accountId}: ${data.error}`)
   }
@@ -4444,6 +4470,40 @@ export class ChatStore {
   }
 
   /** The room that was being joined has turned up: open it for real. */
+  /** A join asked for from the join page, waiting for its conversation. */
+  private openOnArrival: { accountId: string; until: number } | null = null
+
+  /**
+   * Joins, and opens what was joined once it exists.
+   *
+   * The join page used to ask and stay where it was, so somebody who had just
+   * joined a channel - a first-time user, especially, with nothing else on
+   * screen - went on looking at the form, and had to find the result on the
+   * left for themselves. One already joined opens at once.
+   */
+  async joinAndOpen(accountId: string, name: string): Promise<void> {
+    // As the conversation will be named: an IRC channel as typed, a Kick
+    // streamer out of whichever form the handle came in.
+    const typed = name.trim().toLowerCase()
+    const wanted = typed.startsWith('#')
+      ? typed
+      : typed.replace(/^https?:\/\/(www\.)?kick\.com\//, '').replace(/^@/, '').replace(/[/?#].*$/, '')
+    const existing = this.state.buffers.find(
+      (b) => b.accountId === accountId && b.name.toLowerCase() === wanted && !isJoining(b)
+    )
+    if (existing) {
+      void this.selectBuffer(existing.id)
+      return
+    }
+    this.openOnArrival = { accountId, until: Date.now() + 20_000 }
+    try {
+      await window.moho.rpc('joinBuffer', { accountId, name })
+    } catch (e) {
+      this.openOnArrival = null
+      this.toast('error', (e as Error).message)
+    }
+  }
+
   private followPeekJoin(data: { id: string; remoteId?: string }): void {
     const peek = this.state.peek
     if (!peek?.joining || !data.remoteId) return
