@@ -1,5 +1,5 @@
 import { Icon } from './Icon'
-import { useChat } from '../state/hooks'
+import { useChat, useConnectionDetail } from '../state/hooks'
 import { bufferLink } from '../lib/bufferlink'
 
 /**
@@ -12,7 +12,7 @@ import { bufferLink } from '../lib/bufferlink'
 export function ServiceBanner({ bufferId }: { bufferId: string }): JSX.Element | null {
   const buffer = useChat((s) => s.buffers.find((b) => b.id === bufferId))
   const account = useChat((s) => s.accounts.find((a) => a.id === buffer?.accountId))
-  const detail = useChat((s) => (buffer ? s.connectionDetail[buffer.accountId] : undefined))
+  const detail = useConnectionDetail(buffer?.accountId)
   if (!buffer) return null
   const link = bufferLink(buffer, account, detail)
   if (!link) return null
