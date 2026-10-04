@@ -1,5 +1,7 @@
-# Builds moho on every push to master and replaces the two files on the single
-# rolling release that lives on the moving `latest` tag.
+# Builds moho on every push to master and replaces the files on the single
+# rolling release that lives on the moving `latest` tag. A pushed version tag
+# (v1.0.0) builds the same way and publishes a release of its own beside it,
+# leaving `latest` alone (#239).
 #
 # The shape mirrors how this is built by hand: the daemon first, then the app
 # around it, with the Windows installer cross-compiled from Linux exactly as
@@ -25,6 +27,9 @@ name: rolling release
 on:
   push:
     branches: [master]
+    # A versioned release: its own page, its own notes, files named after the
+    # version. The path filter below does not apply to tags.
+    tags: ['v*']
     # A README edit should not cost forty minutes of compute. Note the absence
     # of .github/** - editing this workflow SHOULD trigger a run that
     # exercises the edit. A submodule bump touches the `nobilis` gitlink,
@@ -204,6 +209,18 @@ jobs:
       # Before anything expensive. `npm run pack` builds the daemon first and
       # typechecks afterwards, so without this a missing semicolon would not
       # surface until half an hour in. The repeat inside pack costs seconds.
+      # A version tag that disagrees with the version in package.json would
+      # publish "v1.0.0" carrying an app that calls itself something else in
+      # Settings > About. Said before half an hour of building, not after.
+      - name: the tag matches the version
+        if: github.ref_type == 'tag'
+        run: |
+          want="$(node -p 'require("./package.json").version')"
+          if [ "$GITHUB_REF_NAME" != "v$want" ]; then
+            echo "::error::tag $GITHUB_REF_NAME, but package.json says $want - tag v$want, or bump the version first"
+            exit 1
+          fi
+
       - name: typecheck
         run: npm run typecheck
 
@@ -511,6 +528,7 @@ jobs:
       # Refs written with GITHUB_TOKEN do not start workflow runs, so this
       # cannot loop back into itself.
       - name: move the latest tag onto this commit
+        if: github.ref_type != 'tag'
         run: |
           gh api -X PATCH "repos/$GH_REPO/git/refs/tags/latest" \
                  -f sha="$GITHUB_SHA" -F force=true \
@@ -524,6 +542,7 @@ jobs:
       # after the commit, so a direct link to one stops resolving the moment
       # the next push lands. The release page URL is the stable thing.
       - name: compose the release notes
+        if: github.ref_type != 'tag'
         env:
           SUBJECT: ${{ github.event.head_commit.message }}
         run: |
@@ -566,6 +585,7 @@ jobs:
           cat "$RUNNER_TEMP/notes.md"
 
       - name: create or refresh the release
+        if: github.ref_type != 'tag'
         run: |
           if gh release view latest >/dev/null 2>&1; then
             gh release edit latest \
@@ -583,9 +603,11 @@ jobs:
       # window where somebody landing on the page finds nothing to download.
       # In this order it briefly holds four files and never holds none.
       - name: upload this build's files
+        if: github.ref_type != 'tag'
         run: gh release upload latest artifacts/* --clobber
 
       - name: drop the previous build's files
+        if: github.ref_type != 'tag'
         run: |
           keep="$(cd artifacts && ls -1)"
           for asset in $(gh release view latest --json assets -q '.assets[].name'); do
@@ -616,7 +638,67 @@ jobs:
       # and it is at the very end, after the assets are in place, so the
       # release never reappears holding the wrong files.
       - name: date the release to now
+        if: github.ref_type != 'tag'
         run: |
           id="$(gh api "repos/$GH_REPO/releases/tags/latest" -q .id)"
           gh api -X PATCH "repos/$GH_REPO/releases/$id" -F draft=true  >/dev/null
           gh api -X PATCH "repos/$GH_REPO/releases/$id" -F draft=false >/dev/null
+
+      # --- a version tag: a release of its own (#239) -----------------------
+      #
+      # Named after the version rather than the commit, because this one is
+      # meant to be linked to and kept: moho-1.0.0.AppImage, not
+      # moho-<sha>.AppImage. The build itself is named after the commit (the
+      # name is decided inside the npm script), so the files are renamed here.
+      - name: name the files after the version
+        if: github.ref_type == 'tag'
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          for f in artifacts/moho-"$BUILD".*; do
+            mv -v "$f" "artifacts/moho-$version.${f##*.}"
+          done
+
+      - name: compose the version's notes
+        if: github.ref_type == 'tag'
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          {
+            echo "moho $version, built from \`$BUILD\`."
+            echo
+            echo "| file | platform |"
+            echo "| --- | --- |"
+            echo "| \`moho-$version.AppImage\` | Linux x86_64 - mark it executable and run it |"
+            echo "| \`moho-$version.deb\` | Debian / Ubuntu x86_64 - installs the sandbox profile with it |"
+            echo "| \`moho-$version.exe\` | Windows x64 - a per-user NSIS installer, no administrator needed |"
+            echo
+            echo "Each carries the \`nobilis\` daemon built alongside it."
+            echo
+            echo "**The Windows installer is not code-signed.**"
+            echo
+            echo "- SmartScreen warns when you run it: choose *More info*, then *Run anyway*."
+            echo "- If Windows 11's **Smart App Control** is on, moho will install and then"
+            echo "  never open - it blocks every unsigned program, silently. Turn it off in"
+            echo "  *Windows Security > App & browser control > Smart App Control settings*."
+            echo "  The installer checks and warns before installing."
+            echo
+            echo "**Built:** $(date -u '+%Y-%m-%d %H:%M UTC')"
+            echo "**Run:** $GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID"
+          } > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+
+      # Created as a draft and published only once its files are attached, so
+      # nobody lands on a version page with nothing to download. A tag pushed
+      # again (a failed run retried) finds its release already there: the
+      # files are replaced and the notes kept, since they may have been edited
+      # by hand since.
+      - name: publish the version
+        if: github.ref_type == 'tag'
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" artifacts/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+              --title "moho ${GITHUB_REF_NAME#v}" --notes-file "$RUNNER_TEMP/notes.md"
+            gh release upload "$GITHUB_REF_NAME" artifacts/*
+            gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+          fi

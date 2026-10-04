@@ -32,7 +32,12 @@ options=(!strip !debug !lto)
 
 pkgver() {
   cd "$srcdir/moho"
-  printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+  # The release's own number first (#239), then where in the history this
+  # build sits: 0.1.0.r1234.abc1234. A number sorts above the bare r1234.abc
+  # this used to be, so an existing install upgrades rather than going back.
+  printf "%s.r%s.%s" \
+    "$(sed -n 's/^  "version": "\(.*\)",$/\1/p' package.json)" \
+    "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
 }
 
 prepare() {
