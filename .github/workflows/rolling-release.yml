@@ -553,9 +553,13 @@ jobs:
             echo "Each carries the \`nobilis\` daemon built alongside it, so the app and"
             echo "the daemon in one download always match."
             echo
-            echo "**The Windows installer is unsigned**, and cross-built with mingw."
-            echo "SmartScreen will warn on first run, and it is right about what it"
-            echo "knows: there is no certificate on it."
+            echo "**The Windows installer is not code-signed**, and cross-built with mingw."
+            echo
+            echo "- SmartScreen warns when you run it: choose *More info*, then *Run anyway*."
+            echo "- If Windows 11's **Smart App Control** is on, moho will install and then"
+            echo "  never open - it blocks every unsigned program, silently. Turn it off in"
+            echo "  *Windows Security > App & browser control > Smart App Control settings*."
+            echo "  The installer checks and warns before installing."
             echo
             echo "Not a versioned release, and no stability promise."
           } > "$RUNNER_TEMP/notes.md"
