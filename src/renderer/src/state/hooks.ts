@@ -112,3 +112,27 @@ export function useActiveBuffer() {
     [buffers, activeBufferId]
   )
 }
+
+/**
+ * What to say about an account that is not connected: the daemon's reason,
+ * and - while it is waiting to try again - how long until it does, counted
+ * down a second at a time. Once the wait is up and the attempt is under way,
+ * it says so instead of a countdown stuck at zero.
+ */
+export function useConnectionDetail(accountId: string | undefined): string | undefined {
+  const detail = useChat((s) => (accountId ? s.connectionDetail[accountId] : undefined))
+  const retryAt = useChat((s) => (accountId ? s.connectionRetryAt[accountId] : undefined))
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!retryAt) return
+    setNow(Date.now())
+    const timer = setInterval(() => {
+      setNow(Date.now())
+      if (Date.now() >= retryAt) clearInterval(timer)
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [retryAt])
+  if (!detail || !retryAt) return detail
+  const left = Math.ceil((retryAt - now) / 1000)
+  return left > 0 ? `${detail} - reconnecting in ${left}s` : `${detail} - reconnecting…`
+}

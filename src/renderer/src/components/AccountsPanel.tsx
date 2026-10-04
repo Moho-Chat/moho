@@ -4,7 +4,7 @@ import { Icon, IconButton, ServiceMark } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
 import { IgnoreList } from './IgnoreList'
 import { TunnelAllSwitch } from './settings/Tunnel'
-import { useChat, useMapPref, usePref, useStore } from '../state/hooks'
+import { useChat, useConnectionDetail, useMapPref, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, classes, resolveMediaUrl, serviceIcon, serviceLabel } from '../lib/util'
 import { IRC_NETWORKS, ircNetworkFor } from '../lib/networks'
 import type { Account } from '../../../shared/wire'
@@ -314,7 +314,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
   const connecting = account.state === 'connecting'
   // What the daemon last said about why. Only meaningful while something is
   // wrong, which is exactly when the state line alone explains nothing.
-  const detail = useChat((st) => st.connectionDetail)[account.id]
+  const detail = useConnectionDetail(account.id)
 
   const call = (method: string, params: Record<string, unknown>): void => {
     void window.moho

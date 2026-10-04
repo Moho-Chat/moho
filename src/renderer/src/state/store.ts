@@ -378,6 +378,12 @@ export interface ChatState {
    * nothing to read.
    */
   connectionDetail: Record<string, string>
+  /**
+   * When each reconnecting account tries next, in milliseconds since the
+   * epoch - counted down to on screen (state/hooks' useConnectionDetail)
+   * rather than said once as "reconnecting in 60s" and left there.
+   */
+  connectionRetryAt: Record<string, number>
   /** Whether the daemon sends everything through Tor or the proxy, accounts
    *  or not - so every conversation is routed, not only a routed account's. */
   tunnelAll: boolean
@@ -662,6 +668,7 @@ const INITIAL: ChatState = {
   groups: [],
   activeGroupId: '',
   connectionDetail: {},
+  connectionRetryAt: {},
   tunnelAll: false,
   route: { kind: 'tor' },
   voicePrefs: { micMuted: false, deafened: false },
@@ -3547,6 +3554,7 @@ export class ChatStore {
     state: string
     error?: string
     detail?: string
+    retryAt?: number
   }): void {
     const { accounts } = this.state
 
@@ -3555,7 +3563,12 @@ export class ChatStore {
     const detail = { ...this.state.connectionDetail }
     if (data.detail && data.state !== 'connected') detail[data.accountId] = tidyDetail(data.detail)
     else delete detail[data.accountId]
-    this.set({ connectionDetail: detail })
+    // Only the event that names it: a progress line from the attempt itself
+    // means the wait is over.
+    const retryAt = { ...this.state.connectionRetryAt }
+    if (data.retryAt && data.state === 'connecting') retryAt[data.accountId] = data.retryAt
+    else delete retryAt[data.accountId]
+    this.set({ connectionDetail: detail, connectionRetryAt: retryAt })
     // Upsert rather than map-update: this connection also observes accounts
     // added elsewhere (nobilis reconnecting saved accounts at startup, another
     // client) that this session's list never had to begin with.
