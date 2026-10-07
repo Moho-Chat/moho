@@ -204,6 +204,58 @@ export function Composer(): JSX.Element | null {
     inputRef.current?.focus()
   }, [buffer?.id])
 
+  // Typing anywhere in an active window goes into the box, as it does in
+  // every other chat client: no click first. Only when nothing else is being
+  // typed into and nothing is open over the window - a dialog's own fields,
+  // a picture being looked at - and never with a shortcut key held, which is
+  // the app's own to answer.
+  useEffect(() => {
+    const free = (): boolean => {
+      const active = document.activeElement
+      if (active instanceof HTMLElement) {
+        if (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return false
+      }
+      return !document.querySelector('.modal-scrim, [role="dialog"], [aria-modal="true"], .lightbox')
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      const el = inputRef.current
+      if (!el || e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return
+      if (e.key.length !== 1 || !free()) return
+      // A focused button or link takes Space as a press; that is its own.
+      if (e.key === ' ' && document.activeElement instanceof HTMLElement && document.activeElement !== document.body) return
+      e.preventDefault()
+      el.focus()
+      // Put at the end, where a person who was not in the box would expect it.
+      const range = document.createRange()
+      range.selectNodeContents(el)
+      range.collapse(false)
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      document.execCommand('insertText', false, e.key)
+    }
+    const onPaste = (e: ClipboardEvent): void => {
+      const el = inputRef.current
+      if (!el || e.defaultPrevented || !free()) return
+      e.preventDefault()
+      el.focus()
+      void window.moho.editAction('paste')
+    }
+    // Back to the window: ready to type, which is what coming back to a chat
+    // window means.
+    const onWindowFocus = (): void => {
+      if (free() && document.activeElement === document.body) inputRef.current?.focus()
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('paste', onPaste)
+    window.addEventListener('focus', onWindowFocus)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('paste', onPaste)
+      window.removeEventListener('focus', onWindowFocus)
+    }
+  }, [])
+
   /**
    * Everything that can be tagged here: the people in the conversation, the
    * roles the service lets anybody ping, and its whole-room keywords.
