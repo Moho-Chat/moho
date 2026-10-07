@@ -1,3 +1,4 @@
+import { EditMenu } from './components/EditMenu'
 import { useEffect, useRef, useState } from 'react'
 import { TitleBar } from './components/TitleBar'
 import { BufferList } from './components/BufferList'
@@ -313,6 +314,7 @@ export default function App(): JSX.Element {
       <TransferPanel />
       <FileDrop />
       <Toasts />
+      <EditMenu />
     </div>
   )
 }

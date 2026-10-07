@@ -17,6 +17,10 @@ export const IPC = {
   importGroupIcon: 'moho:importGroupIcon',
   defaultDownloadDir: 'moho:defaultDownloadDir',
   readClipboardImage: 'moho:readClipboardImage',
+  /** Undo, cut, paste... on whatever has focus - see main's editAction. */
+  editAction: 'moho:editAction',
+  replaceMisspelling: 'moho:replaceMisspelling',
+  addToDictionary: 'moho:addToDictionary',
   writeClipboardText: 'moho:writeClipboardText',
   restartDaemon: 'moho:restartDaemon',
   daemonStatus: 'moho:daemonStatus',
@@ -43,6 +47,8 @@ export const IPC = {
   prefsChanged: 'moho:prefs:changed',
   maximizeChanged: 'moho:window:maximizeChanged',
   activateBuffer: 'moho:activateBuffer',
+  /** main -> window: a right click landed on somewhere text is typed. */
+  editMenu: 'moho:editMenu',
   deepLink: 'moho:deepLink',
   popoutsChanged: 'moho:popout:changed'
 } as const
@@ -77,4 +83,20 @@ export interface ScreenSource {
   name: string
   /** A data: URL of what is on it. */
   thumbnail: string
+}
+
+/** What can be done to the text at the caret, by Chromium, on whatever has focus. */
+export type EditAction = 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'delete' | 'selectAll'
+
+export const EDIT_ACTIONS: readonly EditAction[] = ['undo', 'redo', 'cut', 'copy', 'paste', 'delete', 'selectAll']
+
+/** A right click where text is typed, as Chromium saw it. */
+export interface EditMenuRequest {
+  x: number
+  y: number
+  /** The word under the click, if it is misspelled. */
+  word: string
+  suggestions: string[]
+  can: Record<EditAction, boolean>
+  hasSelection: boolean
 }
