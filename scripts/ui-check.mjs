@@ -180,7 +180,7 @@ const MEASURE = `(() => {
 /** A right-click at the window's far corner, on whatever element is named. */
 const rightClickInCorner = (selector, text) => `(() => {
   const el = [...document.querySelectorAll(${JSON.stringify(selector)})]
-    .find((e) => ${JSON.stringify(text ?? '')} === '' || e.innerText.includes(${JSON.stringify(text ?? '')}))
+    .find((e) => ${JSON.stringify(text ?? '')} === '' || (e.innerText + " " + (e.title || "")).includes(${JSON.stringify(text ?? '')}))
   if (!el) return false
   el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: innerWidth - 2, clientY: innerHeight - 2, button: 2 }))
   return true
@@ -266,7 +266,7 @@ async function main() {
     await sleep(1000)
     await until(page, 'document.querySelector("[title*=\\"localhost\\"]")', 'the account in the rail')
     await page.evaluate(click('[title*="localhost"]'))
-    await until(page, `[...document.querySelectorAll(".buffer-row")].some((r) => r.innerText.includes("#ui"))`, 'the channel row')
+    await until(page, `[...document.querySelectorAll(".buffer-row")].some((r) => (r.title || r.innerText).includes("#ui"))`, 'the channel row')
     await page.evaluate(click('.buffer-row', '#ui'))
     await until(page, `[...document.querySelectorAll(".message-row")].some((r) => r.innerText.includes("line 12"))`, 'the messages')
 
