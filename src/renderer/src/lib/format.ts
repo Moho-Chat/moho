@@ -137,7 +137,10 @@ export function normalizeBBCode(text: string): string {
   // URL; left alone, the trailing "[/url]" runs into the URL match and breaks
   // the extension check. Only fires when the label matches the href, so a
   // genuine custom-label link still reaches the [url=] handling below.
-  out = out.replace(/\[url=(https?:\/\/[^\]\s]+)\]\s*\1\s*\[\/url\]/gi, '$1')
+  // Newline-padded for the reason [img] is: a script that posts several
+  // pictures writes the pairs back to back, and bare "$1" glued their URLs into
+  // one that was neither picture.
+  out = out.replace(/\[url=(https?:\/\/[^\]\s]+)\]\s*\1\s*\[\/url\]/gi, '\n$1\n')
 
   // [spoiler] -> the ||text|| convention formatMessage already handles.
   out = out.replace(/\[spoiler\]([\s\S]*?)\[\/spoiler\]/gi, '||$1||')

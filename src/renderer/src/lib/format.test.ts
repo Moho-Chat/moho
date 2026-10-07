@@ -79,6 +79,13 @@ describe('IRC formatting codes', () => {
 })
 
 describe('BBCode', () => {
+  it('keeps back-to-back picture links apart', () => {
+    const body =
+      '[url=https://i.x/u/a.webp][img]https://i.x/u/a.webp[/img][/url][url=https://i.x/u/b.webp][img]https://i.x/u/b.webp[/img][/url]\ntext'
+    const items = extractMedia(normalizeBBCode(body), {}).map((i) => i.url)
+    expect(items).toEqual(['https://i.x/u/a.webp', 'https://i.x/u/b.webp'])
+  })
+
   it('unwraps pictures to bare URLs a link scan can find', () => {
     expect(normalizeBBCode('[img]https://a/x.png[/img][img]https://a/y.png[/img]').split('\n').filter(Boolean)).toEqual([
       'https://a/x.png',
