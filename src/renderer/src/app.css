@@ -2763,6 +2763,15 @@ img.smilie {
   display: block;
 }
 
+/* A video with no picture to show: the frame the player will fill. */
+.youtube-blank {
+  display: block;
+  width: min(420px, 100%);
+  aspect-ratio: 16 / 9;
+  border-radius: var(--corner-radius-small);
+  background: #000;
+}
+
 /* The player, at the thumbnail's width and YouTube's shape. */
 .media-embed.youtube.playing iframe {
   display: block;

@@ -177,7 +177,12 @@ describe('media in a message', () => {
       'https://youtu.be/dQw4w9WgXcQ',
       'https://www.youtube.com/shorts/dQw4w9WgXcQ',
       'https://www.youtube.com/embed/dQw4w9WgXcQ',
-      'https://www.youtube.com/live/dQw4w9WgXcQ'
+      'https://www.youtube.com/live/dQw4w9WgXcQ',
+      'https://www.youtube.com/watch?feature=share&v=dQw4w9WgXcQ',
+      'https://www.youtube.com/watch?t=30&list=PLx&v=dQw4w9WgXcQ&index=2',
+      'https://music.youtube.com/watch?v=dQw4w9WgXcQ&si=x',
+      'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ',
+      'https://youtube.com/watch/dQw4w9WgXcQ'
     ]) {
       expect(youtubeId(url), url).toBe('dQw4w9WgXcQ')
     }

@@ -542,7 +542,7 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
  */
 export function youtubeId(url: string): string | null {
   const m = url.match(
-    /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/|live\/|v\/)|youtu\.be\/)([\w-]{11})/
+    /(?:youtube(?:-nocookie)?\.com\/(?:watch\?(?:[^\s#]*&)?v=|(?:watch|shorts|embed|live|v|e)\/)|youtu\.be\/)([\w-]{11})/
   )
   return m ? m[1] : null
 }

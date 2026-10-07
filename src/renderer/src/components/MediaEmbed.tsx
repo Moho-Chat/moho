@@ -446,8 +446,11 @@ export function MediaEmbed({
   }
 
   // youtube - a detected link, never an attachment
-  return <YouTubeEmbed id={item?.youtubeId ?? ''} link={fullSrc} media={media} onFailed={() => setFailed(true)} />
+  return <YouTubeEmbed id={item?.youtubeId ?? ''} link={fullSrc} media={media} />
 }
+
+/** YouTube's pictures of a video, best first; a live one has only some. */
+const YOUTUBE_PICTURES = ['hqdefault', 'hqdefault_live', 'mqdefault', 'default']
 
 /**
  * A YouTube video: its thumbnail until pressed, then the player, in place.
@@ -463,16 +466,19 @@ export function MediaEmbed({
 function YouTubeEmbed({
   id,
   link,
-  media,
-  onFailed
+  media
 }: {
   id: string
   link: string
   media: (url: string) => string
-  onFailed: () => void
 }): JSX.Element {
   const strict = useStrictRoute()
   const [playing, setPlaying] = useState(false)
+  // Which of YouTube's pictures of the video to try. A live broadcast, a
+  // premiere that has not started and some shorts have no hqdefault - the
+  // address answers 404 - and giving up there drew nothing at all for them.
+  // The video is still a video; with no picture it is a dark frame to play.
+  const [pictures, setPictures] = useState(0)
   const outside = (): void => void window.moho.openExternal(link)
 
   // No button of ours over the player: its corners are its own controls, and
@@ -503,12 +509,17 @@ function YouTubeEmbed({
             : 'Play'
         }
       >
-        <img
-          src={media(`https://i.ytimg.com/vi/${id}/hqdefault.jpg`)}
-          alt=""
-          loading="lazy"
-          onError={onFailed}
-        />
+        {pictures < YOUTUBE_PICTURES.length ? (
+          <img
+            key={pictures}
+            src={media(`https://i.ytimg.com/vi/${id}/${YOUTUBE_PICTURES[pictures]}.jpg`)}
+            alt=""
+            loading="lazy"
+            onError={() => setPictures((n) => n + 1)}
+          />
+        ) : (
+          <span className="youtube-blank" />
+        )}
         <span className="youtube-play">
           <Icon name={strict ? 'open_in_new' : 'play_arrow'} size={28} fill />
         </span>
