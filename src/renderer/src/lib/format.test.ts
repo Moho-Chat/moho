@@ -66,6 +66,13 @@ describe('IRC formatting codes', () => {
     expect(html.match(/<span/g)?.length).toBe(html.match(/<\/span>/g)?.length)
   })
 
+  it('renders strikethrough and monospace, which this client also sends', () => {
+    const html = ircFormat('\u001ewrong\u001e \u0011code\u0011', 'render')
+    expect(html).toContain('text-decoration:line-through')
+    expect(html).toContain('monospace')
+    expect(ircFormat('\u001ea\u001e\u0011b\u0011', 'strip')).toBe('ab')
+  })
+
   it('strips them before formatting even when not rendering them', () => {
     expect(formatMessage('https://ex\u0002ample.com')).toContain('href="https://example.com"')
   })

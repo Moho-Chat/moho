@@ -244,20 +244,21 @@ export interface FormatOptions {
  * same index to the same run.
  */
 /** mIRC's sixteen colours, in their numbered order. */
-const MIRC_COLOURS = [
+export const MIRC_COLOURS = [
   '#ffffff', '#000000', '#00007f', '#009300', '#ff0000', '#7f0000', '#9c009c', '#fc7f00',
   '#ffff00', '#00fc00', '#009393', '#00ffff', '#0000fc', '#ff00ff', '#7f7f7f', '#d2d2d2'
 ]
 
 /** Every code IRC uses to mark up a line. */
-const IRC_CODES = /[\u0002\u001d\u001f\u0016\u000f\u0003\u0004]/
+const IRC_CODES = /[\u0002\u001d\u001f\u001e\u0011\u0016\u000f\u0003\u0004]/
 
 /**
  * Turns IRC's formatting codes into markup, or removes them.
  *
  * These are the oldest formatting in chat and moho showed them as control
  * characters: `\x02` bold, `\x1d` italic, `\x1f` underline, `\x16` reverse,
- * `\x0f` reset, and `\x03fg,bg` colour. On a channel where anyone uses colour
+ * `\x1e` strikethrough, `\x11` monospace, `\x0f` reset, and `\x03fg,bg`
+ * colour. On a channel where anyone uses colour
  * - which is every channel with a bot in it - the text arrived with invisible
  * junk in the middle of it.
  *
@@ -273,7 +274,7 @@ export function ircFormat(text: string, mode: 'render' | 'strip'): string {
       // Colour: the code plus up to "99,99" of digits.
       .replace(/\u0003\d{0,2}(,\d{1,2})?/g, '')
       .replace(/\u0004[0-9a-fA-F]{6}(,[0-9a-fA-F]{6})?/g, '')
-      .replace(/[\u0002\u001d\u001f\u0016\u000f]/g, '')
+      .replace(/[\u0002\u001d\u001f\u001e\u0011\u0016\u000f]/g, '')
   }
 
   let out = ''
@@ -281,6 +282,8 @@ export function ircFormat(text: string, mode: 'render' | 'strip'): string {
   let bold = false
   let italic = false
   let underline = false
+  let strike = false
+  let mono = false
   let colour: string | null = null
   let background: string | null = null
 
@@ -295,7 +298,10 @@ export function ircFormat(text: string, mode: 'render' | 'strip'): string {
     const styles: string[] = []
     if (bold) styles.push('font-weight:600')
     if (italic) styles.push('font-style:italic')
-    if (underline) styles.push('text-decoration:underline')
+    if (underline || strike) {
+      styles.push(`text-decoration:${[underline && 'underline', strike && 'line-through'].filter(Boolean).join(' ')}`)
+    }
+    if (mono) styles.push('font-family:var(--font-mono,monospace)')
     if (colour) styles.push(`color:${colour}`)
     if (background) styles.push(`background:${background}`)
     if (styles.length) {
@@ -319,6 +325,14 @@ export function ircFormat(text: string, mode: 'render' | 'strip'): string {
         underline = !underline
         restyle()
         break
+      case '\u001e':
+        strike = !strike
+        restyle()
+        break
+      case '\u0011':
+        mono = !mono
+        restyle()
+        break
       case '\u0016':
         // Reverse video: swap the two, which is what it means and is far
         // more legible than trying to invert whatever theme is in use.
@@ -326,7 +340,7 @@ export function ircFormat(text: string, mode: 'render' | 'strip'): string {
         restyle()
         break
       case '\u000f':
-        bold = italic = underline = false
+        bold = italic = underline = strike = mono = false
         colour = background = null
         restyle()
         break

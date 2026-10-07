@@ -1,3 +1,6 @@
+import { FormatBar } from './FormatBar'
+import { formatsFor, serialize, type FormatKind } from '../lib/composeFormat'
+import { applyFormat } from '../lib/composeFormatDom'
 import { useMediaUrl } from '../lib/route'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
@@ -175,6 +178,7 @@ export function Composer(): JSX.Element | null {
   const routed = tunnelAll || !!account?.useTor
   const media = useMediaUrl(account?.id)
   const hasStickers = service === 'matrix' || service === 'discord'
+  const formats = formatsFor(service)
   /**
    * The account's stickers, asked for when the picker opens - from either
    * button, since either can be switched to the Stickers tab. Not kept in
@@ -283,7 +287,9 @@ export function Composer(): JSX.Element | null {
   }
 
   const submit = (): void => {
-    const body = text.trim()
+    // The text as this service will read it: formatting in the box becomes
+    // its markup here and nowhere earlier.
+    const body = (inputRef.current ? serialize(inputRef.current, service) : text).trim()
     if (!body && staged.length === 0) return
 
     // A command whose name was completed into the box: what follows it is
@@ -792,6 +798,21 @@ export function Composer(): JSX.Element | null {
                 if (!e.shiftKey) submit()
                 return
               }
+              // The browser would make its own bold and italic here, in markup
+              // this service may not have. Taken over: the same keys, applied
+              // as the formats this service carries, and nothing where it has
+              // none.
+              if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+                const shortcut: Record<string, FormatKind> = { b: 'bold', i: 'italic', u: 'underline' }
+                const kind = shortcut[e.key.toLowerCase()]
+                if (kind) {
+                  e.preventDefault()
+                  if (formats.includes(kind) && inputRef.current && applyFormat(inputRef.current, kind)) {
+                    setText(composerText(inputRef.current))
+                  }
+                  return
+                }
+              }
               // Tab completes the name being typed, and completes it again on
               // the next press. Every IRC client does this and nothing here
               // did: on a network where people are called `[Fish]tank_` or
@@ -809,6 +830,11 @@ export function Composer(): JSX.Element | null {
             // and asks where it should go - which is why this only refuses
             // the default rather than stopping the event.
             onDrop={(e) => e.preventDefault()}
+          />
+          <FormatBar
+            input={inputRef}
+            formats={formats}
+            onChange={() => inputRef.current && setText(composerText(inputRef.current))}
           />
           {!text.trim() && (
             <span className="composer-placeholder muted">

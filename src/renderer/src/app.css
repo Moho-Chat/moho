@@ -8455,3 +8455,90 @@ video.lightbox-media {
   background: var(--primary);
   color: var(--on-primary, #fff);
 }
+
+/* --- formatting in the message box ------------------------------------- */
+
+/* The box shows a format as it will look. */
+.composer-input [data-fmt='bold'] { font-weight: 700; }
+.composer-input [data-fmt='italic'] { font-style: italic; }
+.composer-input [data-fmt='underline'] { text-decoration: underline; }
+.composer-input [data-fmt='strike'] { text-decoration: line-through; }
+.composer-input [data-fmt='code'] {
+  font-family: var(--font-mono, monospace);
+  background: var(--surface-container-high);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+.composer-input [data-fmt='spoiler'] {
+  background: var(--surface-container-high);
+  border-radius: 3px;
+  opacity: 0.75;
+}
+.composer-input [data-fmt='quote'] {
+  border-left: 3px solid var(--outline-medium);
+  padding-left: var(--spacing-s);
+}
+
+/* The strip over selected text. Centred on the selection, above it. */
+.format-bar {
+  position: fixed;
+  z-index: 1000;
+  transform: translate(-50%, calc(-100% - 8px));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  max-width: 90vw;
+  padding: var(--spacing-xxs);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline-medium);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+}
+
+.format-group {
+  display: flex;
+  align-items: center;
+}
+
+.format-group + .format-group {
+  margin-left: var(--spacing-xxs);
+  padding-left: var(--spacing-xxs);
+  border-left: 1px solid var(--outline-medium);
+}
+
+.format-button {
+  display: flex;
+  padding: 4px;
+  border: none;
+  border-radius: var(--corner-radius-small);
+  background: none;
+  color: var(--surface-variant-text);
+  cursor: pointer;
+}
+
+.format-button:hover {
+  background: var(--surface-container-highest, var(--outline-medium));
+  color: var(--on-surface, inherit);
+}
+
+.format-colours {
+  display: grid;
+  grid-template-columns: repeat(8, 20px);
+  gap: 4px;
+  flex-basis: 100%;
+  padding: var(--spacing-xs);
+}
+
+.format-swatch {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--outline-medium);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--surface-variant-text);
+  background: none;
+}
