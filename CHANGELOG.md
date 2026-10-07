@@ -30,6 +30,13 @@ Each section has two parts:
 
 ### Fixes, patches and changes
 
+- Channel rows in the sidebar now show a single `#` instead of two ([moho `ccdf090`](https://github.com/Moho-Chat/moho/commit/ccdf090))
+- Typing anywhere in the window now goes into the message box, without clicking it first ([moho `b5f920f`](https://github.com/Moho-Chat/moho/commit/b5f920f))
+- Added a formatting strip over selected text in the message box, offering the formats each service can carry ([moho `9ca477c`](https://github.com/Moho-Chat/moho/commit/9ca477c))
+- Added a right-click menu to every text field, with spelling suggestions, Undo, Cut, Copy, Paste and Select all ([moho `b2a6210`](https://github.com/Moho-Chat/moho/commit/b2a6210))
+- Fixed YouTube cards not appearing on Sneedchat when YouTube refused a Tor exit, so most links there had none ([moho `0368796`](https://github.com/Moho-Chat/moho/commit/0368796), [nobilis `71e6036`](https://github.com/Moho-Chat/nobilis/commit/71e6036))
+- Fixed live and premiere YouTube videos vanishing because they have no thumbnail yet ([moho `916abd4`](https://github.com/Moho-Chat/moho/commit/916abd4))
+- Fixed YouTube links with the video id after other parameters, `music.youtube.com` and `youtube-nocookie.com` links getting no card ([nobilis `f8409fc`](https://github.com/Moho-Chat/nobilis/commit/f8409fc))
 - Patched a flaw that let a message's content make moho load a local file ([moho `7138201`](https://github.com/Moho-Chat/moho/commit/7138201), [nobilis `f972611`](https://github.com/Moho-Chat/nobilis/commit/f972611))
 - Strict routing now sends a Tor or proxy account's pictures, links and embeds through its route instead of directly ([moho `cee8604`](https://github.com/Moho-Chat/moho/commit/cee8604), [nobilis `a3897ba`](https://github.com/Moho-Chat/nobilis/commit/a3897ba))
 - Discord voice and soundboard audio is now checked before it reaches the C decoder ([nobilis `8eca16e`](https://github.com/Moho-Chat/nobilis/commit/8eca16e))
