@@ -33,7 +33,7 @@ gitea_release() { # repo title notes-file prerelease file...
   local repo="$1" title="$2" notes="$3" pre="$4"; shift 4
   local body id
   body="$(python3 -c 'import json,sys; print(json.dumps({"tag_name": sys.argv[1], "name": sys.argv[2], "body": open(sys.argv[3]).read(), "prerelease": sys.argv[4] == "true"}))' "$TAG" "$title" "$notes" "$pre")"
-  if id="$(gitea GET "/repos/$repo/releases/tags/$TAG" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"; then
+  if id="$(gitea GET "/repos/$repo/releases/tags/$TAG" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' 2>/dev/null)"; then
     gitea PATCH "/repos/$repo/releases/$id" -H 'Content-Type: application/json' -d "$body" >/dev/null
     for asset in $(gitea GET "/repos/$repo/releases/$id/assets" | python3 -c 'import json,sys; print(" ".join(str(a["id"]) for a in json.load(sys.stdin)))'); do
       gitea DELETE "/repos/$repo/releases/$id/assets/$asset" >/dev/null
