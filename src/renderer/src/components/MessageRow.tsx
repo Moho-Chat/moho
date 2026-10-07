@@ -1008,6 +1008,9 @@ function MessageRowBody({
               bytes={message.upload.bytes}
               host={message.upload.host}
               since={message.upload.since}
+              sent={message.upload.sent}
+              total={message.upload.total}
+              files={message.upload.files}
             />
           )}
 

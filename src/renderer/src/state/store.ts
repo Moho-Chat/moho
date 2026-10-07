@@ -95,8 +95,8 @@ export interface ChatMessage extends Message {
   /** The body as typed, kept so a retry can resend the original text. */
   pendingBody?: string
   pendingReplyTo?: string
-  /** The staged file, kept for the same reason as the body. */
-  pendingAttachment?: string
+  /** The staged file or files, kept for the same reason as the body. */
+  pendingAttachment?: string | string[]
   /**
    * Where the attachment's upload has got to, while one is running.
    *
@@ -104,7 +104,17 @@ export interface ChatMessage extends Message {
    * ends either way - so its presence is exactly "there is an upload
    * happening for this row", which is what the spinner is drawn from.
    */
-  upload?: { phase: 'preparing' | 'sending' | 'waiting'; bytes: number; host: string; since: number }
+  upload?: {
+    phase: 'preparing' | 'sending' | 'waiting'
+    bytes: number
+    host: string
+    since: number
+    /** Bytes taken by the connection and in all, from an upload that counts them. */
+    sent?: number
+    total?: number
+    /** How many files are going in this message, when more than one. */
+    files?: number
+  }
 }
 
 /**
@@ -3184,7 +3194,14 @@ export class ChatStore {
       // id the send named, so a second message sent while the first is
       // still uploading updates its own row rather than the newest one.
       case 'uploadProgress': {
-        const d = data as { uploadId?: string; phase?: string; bytes?: number; host?: string }
+        const d = data as {
+          uploadId?: string
+          phase?: string
+          bytes?: number
+          host?: string
+          sent?: number
+          total?: number
+        }
         if (!d.uploadId) break
         for (const [clientId, info] of this.pendingSends) {
           if (info.uploadId !== d.uploadId) continue
@@ -3204,7 +3221,13 @@ export class ChatStore {
                 // The first phase sets the clock; later ones keep it, so the
                 // elapsed time on screen is the upload's age rather than the
                 // current phase's.
-                since: m.upload?.since ?? Date.now()
+                since: m.upload?.since ?? Date.now(),
+                files: m.upload?.files,
+                // What has been counted, where the upload counts: kept across
+                // the phases, and full once everything has gone, so the ring
+                // does not empty again while the host thinks.
+                total: d.total ?? m.upload?.total,
+                sent: d.phase === 'waiting' ? (m.upload?.total ?? d.bytes) : (d.sent ?? m.upload?.sent)
               }
             }))
           }
@@ -4192,7 +4215,7 @@ export class ChatStore {
    * either the real "message" event echoes it back (reconcileOwnEcho) or the
    * timeout sweep gives up on it.
    */
-  async sendMessage(bufferId: string, body: string, attachmentPath?: string): Promise<void> {
+  async sendMessage(bufferId: string, body: string, attachmentPath?: string | string[]): Promise<void> {
     // A fresh send takes its reply target from the composer, and consumes it.
     const reply = this.state.replyingTo
     this.set({ replyingTo: null })
@@ -4212,8 +4235,11 @@ export class ChatStore {
     bufferId: string,
     body: string,
     reply: { id: string; from: string; body: string; thread?: boolean } | null,
-    attachmentPath?: string
+    attachment?: string | string[]
   ): Promise<void> {
+    // One file, or several that go as one message.
+    const paths = attachment === undefined ? [] : Array.isArray(attachment) ? attachment : [attachment]
+    const attachmentPath = paths[0]
     if (!body.trim() && !attachmentPath) return
     const replyToId = reply?.id
     const clientId = `pending-${++this.sendSeq}-${Date.now()}`
@@ -4245,7 +4271,7 @@ export class ChatStore {
       pending: true,
       pendingBody: body,
       pendingReplyTo: replyToId,
-      pendingAttachment: attachmentPath,
+      pendingAttachment: attachment,
       ...(reply ? { replyTo: reply } : {})
     }
     // Warn before the message rather than after it. On IRC a message to
@@ -4263,7 +4289,7 @@ export class ChatStore {
     if (attachmentPath) {
       this.mapMessage(bufferId, clientId, (m) => ({
         ...m,
-        upload: { phase: 'preparing', bytes: 0, host: '', since: Date.now() }
+        upload: { phase: 'preparing', bytes: 0, host: '', since: Date.now(), ...(paths.length > 1 ? { files: paths.length } : {}) }
       }))
     }
 
@@ -4277,7 +4303,13 @@ export class ChatStore {
         // change between one message and the next, and the daemon falls back
         // to its own default if this is absent or unknown to it.
         ...(attachmentPath
-          ? { attachmentPath, uploadHost: await uploadHost(account?.service, attachmentPath) }
+          ? {
+              attachmentPath,
+              // Several files that make one message; the daemon reads this
+              // where the service can carry them together.
+              ...(paths.length > 1 ? { attachmentPaths: paths } : {}),
+              uploadHost: await uploadHost(account?.service, attachmentPath)
+            }
           : {}),
         ...(replyToId ? { replyToId } : {}),
         // Into the thread rather than at the message: the daemon needs to be

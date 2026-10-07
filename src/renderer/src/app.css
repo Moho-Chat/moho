@@ -1384,6 +1384,15 @@ button.video-tile {
   animation: upload-spin 1.1s linear infinite;
 }
 
+/* Filling rather than turning: the arc's length is the share uploaded, drawn
+   from the top. */
+.upload-ring-arc.counted {
+  animation: none;
+  transform: rotate(-90deg);
+  stroke-linecap: butt;
+  transition: stroke-dasharray 150ms linear;
+}
+
 @keyframes upload-spin {
   to {
     transform: rotate(360deg);

@@ -9,20 +9,27 @@ import { useEffect, useState } from 'react'
  * the send timeout called it failed - so the only feedback anybody got was
  * wrong.
  *
- * A ring rather than a bar, and no percentage: the file is handed to the HTTP
- * client whole, so there is no byte count to honestly draw. What can be said
- * is which wait this is and how long it has been, and that is what this says.
+ * A ring that fills where the upload counts its bytes (Discord's does: the
+ * files are streamed), and one that turns where it cannot - most hosts take
+ * the file whole, so a percentage there would be invented. Either way it says
+ * which wait this is and how long it has been.
  */
 export function UploadMeter({
   phase,
   bytes,
   host,
-  since
+  since,
+  sent,
+  total,
+  files
 }: {
   phase: 'preparing' | 'sending' | 'waiting'
   bytes: number
   host: string
   since: number
+  sent?: number
+  total?: number
+  files?: number
 }): JSX.Element {
   // Ticks so the elapsed time moves. A second is the right grain: this is
   // there to show the thing is alive, not to be read off.
@@ -34,18 +41,34 @@ export function UploadMeter({
 
   const seconds = Math.max(0, Math.floor((now - since) / 1000))
   const where = host || 'the image host'
+  const noun = files && files > 1 ? `${files} files` : ''
+  // Counted: how far through, in the one unit people read at a glance.
+  const counted = phase === 'sending' && !!total && sent !== undefined
+  const fraction = counted ? Math.min(1, Math.max(0, sent! / total!)) : 0
   const said =
     phase === 'preparing'
-      ? 'Preparing the file…'
+      ? `Preparing the ${noun || 'file'}…`
       : phase === 'sending'
-        ? `Uploading${bytes ? ` ${formatSize(bytes)}` : ''} to ${where}…`
+        ? counted
+          ? `Uploading${noun ? ` ${noun}` : ''} to ${where} - ${Math.floor(fraction * 100)}% (${formatSize(sent!)} of ${formatSize(total!)})`
+          : `Uploading${noun ? ` ${noun}` : bytes ? ` ${formatSize(bytes)}` : ''} to ${where}…`
         : `Waiting for ${where}…`
+  const CIRCUMFERENCE = 2 * Math.PI * 6
 
   return (
     <span className="upload-meter small" role="status">
       <svg className="upload-ring" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
         <circle className="upload-ring-track" cx="8" cy="8" r="6" fill="none" />
-        <circle className="upload-ring-arc" cx="8" cy="8" r="6" fill="none" />
+        <circle
+          className={`upload-ring-arc${counted ? ' counted' : ''}`}
+          cx="8"
+          cy="8"
+          r="6"
+          fill="none"
+          // A style, not an attribute: the stylesheet's own dash pattern for the
+          // turning ring would win over an attribute.
+          style={counted ? { strokeDasharray: `${fraction * CIRCUMFERENCE} ${CIRCUMFERENCE}` } : undefined}
+        />
       </svg>
       <span>{said}</span>
       {seconds >= 3 && <span className="upload-elapsed">{seconds}s</span>}

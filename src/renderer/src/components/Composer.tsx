@@ -368,9 +368,22 @@ export function Composer(): JSX.Element | null {
     if (staged.length > 0) {
       // Each attachment is its own send; the typed text rides along as the
       // caption on the first one, matching how Discord treats a caption.
-      staged.forEach((att, i) => {
-        void store.sendMessage(buffer.id, i === 0 ? body : '', att.path)
-      })
+      if (service === 'discord') {
+        // Discord carries up to ten files in one message, which is what its
+        // own client makes of several chosen at once: one post, one caption,
+        // one upload to watch. Past ten, the next ten make the next message.
+        for (let i = 0; i < staged.length; i += 10) {
+          void store.sendMessage(
+            buffer.id,
+            i === 0 ? body : '',
+            staged.slice(i, i + 10).map((att) => att.path)
+          )
+        }
+      } else {
+        staged.forEach((att, i) => {
+          void store.sendMessage(buffer.id, i === 0 ? body : '', att.path)
+        })
+      }
       setStaged([])
     } else {
       void store.sendMessage(buffer.id, body)
