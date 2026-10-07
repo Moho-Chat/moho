@@ -1,3 +1,4 @@
+import { EditMenu } from './components/EditMenu'
 import { useEffect, useState } from 'react'
 import { TitleBar } from './components/TitleBar'
 import { MessageList } from './components/MessageList'
@@ -143,6 +144,7 @@ export function Popout({ bufferId }: { bufferId: string }): JSX.Element {
       {activeCall && activeCall.bufferId !== bufferId && <CallStage mode="pip" />}
       {watching && watching.bufferId !== bufferId && <StreamStage mode="pip" />}
       <Toasts />
+      <EditMenu />
     </div>
   )
 }

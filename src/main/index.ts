@@ -23,7 +23,7 @@ import { NobilisProcess } from './nobilis-process'
 import { Prefs } from './prefs'
 import { Notifier } from './notifications'
 import { browserLogin, LOGIN_FLOWS } from './browser-login'
-import { IPC, POPOUT_FLAG, type PopoutState } from '../shared/ipc'
+import { EDIT_ACTIONS, IPC, POPOUT_FLAG, type EditAction, type EditMenuRequest, type PopoutState } from '../shared/ipc'
 import { clearnetLinks } from '../shared/clearnet'
 import { readCapped, pictureNamedIn } from './imagepage'
 import { DEEP_LINK_SCHEMES, isDeepLink } from '../shared/deeplink'
@@ -237,6 +237,34 @@ function revealOnce(win: BrowserWindow, focus = false): void {
   win.webContents.once('did-finish-load', reveal)
 }
 
+/**
+ * Right click where text is typed. The page cannot know what Chromium's
+ * spellchecker thinks of the word under the pointer, so Chromium's answer is
+ * handed to the window, which draws the menu in the app's own style.
+ */
+function wireEditMenu(win: BrowserWindow): void {
+  win.webContents.on('context-menu', (_e, params) => {
+    if (!params.isEditable) return
+    const f = params.editFlags
+    win.webContents.send(IPC.editMenu, {
+      x: params.x,
+      y: params.y,
+      word: params.misspelledWord,
+      suggestions: params.dictionarySuggestions.slice(0, 5),
+      can: {
+        undo: f.canUndo,
+        redo: f.canRedo,
+        cut: f.canCut,
+        copy: f.canCopy,
+        paste: f.canPaste,
+        delete: f.canDelete,
+        selectAll: f.canSelectAll
+      },
+      hasSelection: params.selectionText.length > 0
+    } satisfies EditMenuRequest)
+  })
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1100,
@@ -267,6 +295,7 @@ function createWindow(): void {
   })
 
   revealOnce(mainWindow)
+  wireEditMenu(mainWindow)
 
   // A link that arrived before this window existed - from the click that
   // launched moho - goes over once the renderer is listening for it. Cleared
@@ -438,6 +467,7 @@ function openPopout(bufferId: string, title?: string): void {
   // Focused as well as shown: unlike the main window at startup, this one was
   // asked for just now.
   revealOnce(win, true)
+  wireEditMenu(win)
 
   // Sent to this window rather than broadcast: every window draws its own
   // title bar, and they are not maximised together.
@@ -774,6 +804,20 @@ function wireIpc(): void {
     } catch (e) {
       return { error: (e as Error).message }
     }
+  })
+
+  // The edit menu's verbs. Chromium does these to whatever has focus in the
+  // window that asked, which is what makes paste go through the box's own
+  // paste handling and cut and delete go through its undo history.
+  ipcMain.handle(IPC.editAction, (e, action: EditAction) => {
+    if (!EDIT_ACTIONS.includes(action)) return
+    e.sender[action]()
+  })
+  ipcMain.handle(IPC.replaceMisspelling, (e, word: string) => {
+    if (typeof word === 'string' && word) e.sender.replaceMisspelling(word)
+  })
+  ipcMain.handle(IPC.addToDictionary, (e, word: string) => {
+    if (typeof word === 'string' && word) e.sender.session.addWordToSpellCheckerDictionary(word)
   })
 
   ipcMain.handle(IPC.readClipboardImage, async () => {

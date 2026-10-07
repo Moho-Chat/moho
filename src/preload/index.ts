@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { IPC, POPOUT_FLAG, type PopoutState, type ScreenSource } from '../shared/ipc'
+import { IPC, POPOUT_FLAG, type EditAction, type EditMenuRequest, type PopoutState, type ScreenSource } from '../shared/ipc'
 import type { NobilisEvent } from '../shared/wire'
 
 /**
@@ -64,6 +64,17 @@ const api = {
     const handler = (_e: unknown, url: string): void => cb(url)
     ipcRenderer.on(IPC.deepLink, handler)
     return () => ipcRenderer.off(IPC.deepLink, handler)
+  },
+
+  /**
+   * A right click on a place text is typed - the box a message is written in,
+   * a settings field. Chromium knows what is misspelled there and what could
+   * replace it; the page does not, so it is told.
+   */
+  onEditMenu(cb: (menu: EditMenuRequest) => void): () => void {
+    const handler = (_e: unknown, menu: EditMenuRequest): void => cb(menu)
+    ipcRenderer.on(IPC.editMenu, handler)
+    return () => ipcRenderer.off(IPC.editMenu, handler)
   },
 
   onActivateBuffer(cb: (bufferId: string) => void): () => void {
@@ -148,6 +159,9 @@ const api = {
   downloadMedia: (source: string, filename?: string): Promise<{ path?: string; error?: string }> =>
     ipcRenderer.invoke(IPC.downloadMedia, source, filename),
   readClipboardImage: (): Promise<string | null> => ipcRenderer.invoke(IPC.readClipboardImage),
+  editAction: (action: EditAction): Promise<void> => ipcRenderer.invoke(IPC.editAction, action),
+  replaceMisspelling: (word: string): Promise<void> => ipcRenderer.invoke(IPC.replaceMisspelling, word),
+  addToDictionary: (word: string): Promise<void> => ipcRenderer.invoke(IPC.addToDictionary, word),
   restartDaemon: (): Promise<void> => ipcRenderer.invoke(IPC.restartDaemon),
   daemonStatus: (): Promise<{ binaryPath: string; available: boolean; linkUp: boolean }> =>
     ipcRenderer.invoke(IPC.daemonStatus),

@@ -1,10 +1,13 @@
-# Builds moho and, for a pushed version tag (v1.0.0), publishes the release.
-#
-# A push to master builds and tests everything the same way and publishes
-# nothing: it is the check that master is releasable. Only a tag publishes,
+# Builds moho for a pushed version tag (v1.0.0) and publishes the release,
 # with the notes for that version taken from CHANGELOG.md and its files named
-# after the version (#239). A tag with a pre-release suffix (v1.0.0-rc.1)
-# publishes as a pre-release, to rehearse a release without making one.
+# after the version (#239). Every version tag publishes a full release, marked
+# GitHub's "Latest" - a release candidate (v1.0.0-rc.1) included, so it is
+# shown on the repository's page like any other release.
+#
+# Tags only. A push to master builds nothing: master and a tag on it were two
+# push events, so every release was built twice. To check a branch without
+# releasing it, run this by hand from the Actions tab - a run that is not for
+# a tag builds and tests everything and publishes nothing.
 #
 # The rolling `latest` build this file used to keep is retired: there are
 # versions now, and only versions.
@@ -32,22 +35,12 @@ name: release
 
 on:
   push:
-    branches: [master]
-    # A version: built, then published with its changelog. The path filter
-    # below does not apply to tags.
     tags: ['v*']
-    # A README edit should not cost forty minutes of compute. Note the absence
-    # of .github/** - editing this workflow SHOULD trigger a run that
-    # exercises the edit. A submodule bump touches the `nobilis` gitlink,
-    # which is a path change, so a daemon update is never filtered out.
-    paths-ignore:
-      - '**/*.md'
-      - 'LICENSE'
   workflow_dispatch:
 
-# Newest push wins on master: a check of a commit master has already moved
-# past is of no use. A tag is its own ref, so a release is never cancelled by
-# a push to master, nor one tag by another.
+# A hand-started check of a branch gives way to a newer one of the same
+# branch. A tag is its own ref and is never cancelled, by a check or by
+# another tag.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref_type != 'tag' }}
@@ -584,17 +577,14 @@ jobs:
           cat "$RUNNER_TEMP/notes.md"
 
       # Created as a draft and published once its files are attached, so
-      # nobody lands on a version with nothing to download. A pre-release
-      # (a suffix after the version) is never GitHub's "Latest". A tag pushed
+      # nobody lands on a version with nothing to download. Always a full
+      # release and GitHub's "Latest", a release candidate included - shown on
+      # the repository's page, not tucked away as a pre-release. A tag pushed
       # again finds its release there: the files are replaced, the notes too,
       # since the changelog is where they are corrected.
       - name: publish the version
         run: |
           version="${GITHUB_REF_NAME#v}"
-          case "$version" in
-            *-*) kind="--prerelease --latest=false" ;;
-            *)   kind="--latest" ;;
-          esac
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release edit "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
             gh release upload "$GITHUB_REF_NAME" artifacts/* --clobber
@@ -602,6 +592,5 @@ jobs:
             gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
               --title "moho $version" --notes-file "$RUNNER_TEMP/notes.md"
             gh release upload "$GITHUB_REF_NAME" artifacts/*
-            # shellcheck disable=SC2086 - two flags, deliberately split
-            gh release edit "$GITHUB_REF_NAME" --draft=false $kind
+            gh release edit "$GITHUB_REF_NAME" --draft=false --latest
           fi

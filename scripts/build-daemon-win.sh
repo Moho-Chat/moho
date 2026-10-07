@@ -22,6 +22,11 @@ MANIFEST="$SRC_DIR/nobilis/Cargo.toml"
 . "$SRC_DIR/scripts/find-cargo.sh"
 
 echo "building the Windows daemon with $CARGO"
+# Whether this is a release build, decided by moho's checkout - the
+# submodule's own cannot tell (in CI it is a bare commit, on no branch). The
+# daemon then reports its version, or "development".
+NOBILIS_CHANNEL="$(node "$SRC_DIR/scripts/version-label.mjs" --channel)"
+export NOBILIS_CHANNEL
 # From inside nobilis/, for its .cargo/config.toml - see build-daemon.sh.
 cd "$SRC_DIR/nobilis"
 # --locked: see build-daemon.sh.

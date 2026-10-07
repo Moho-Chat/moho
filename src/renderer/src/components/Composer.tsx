@@ -1,3 +1,6 @@
+import { FormatBar } from './FormatBar'
+import { formatsFor, serialize, type FormatKind } from '../lib/composeFormat'
+import { applyFormat } from '../lib/composeFormatDom'
 import { useMediaUrl } from '../lib/route'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
@@ -175,6 +178,7 @@ export function Composer(): JSX.Element | null {
   const routed = tunnelAll || !!account?.useTor
   const media = useMediaUrl(account?.id)
   const hasStickers = service === 'matrix' || service === 'discord'
+  const formats = formatsFor(service)
   /**
    * The account's stickers, asked for when the picker opens - from either
    * button, since either can be switched to the Stickers tab. Not kept in
@@ -199,6 +203,58 @@ export function Composer(): JSX.Element | null {
   useEffect(() => {
     inputRef.current?.focus()
   }, [buffer?.id])
+
+  // Typing anywhere in an active window goes into the box, as it does in
+  // every other chat client: no click first. Only when nothing else is being
+  // typed into and nothing is open over the window - a dialog's own fields,
+  // a picture being looked at - and never with a shortcut key held, which is
+  // the app's own to answer.
+  useEffect(() => {
+    const free = (): boolean => {
+      const active = document.activeElement
+      if (active instanceof HTMLElement) {
+        if (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return false
+      }
+      return !document.querySelector('.modal-scrim, [role="dialog"], [aria-modal="true"], .lightbox')
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      const el = inputRef.current
+      if (!el || e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return
+      if (e.key.length !== 1 || !free()) return
+      // A focused button or link takes Space as a press; that is its own.
+      if (e.key === ' ' && document.activeElement instanceof HTMLElement && document.activeElement !== document.body) return
+      e.preventDefault()
+      el.focus()
+      // Put at the end, where a person who was not in the box would expect it.
+      const range = document.createRange()
+      range.selectNodeContents(el)
+      range.collapse(false)
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      document.execCommand('insertText', false, e.key)
+    }
+    const onPaste = (e: ClipboardEvent): void => {
+      const el = inputRef.current
+      if (!el || e.defaultPrevented || !free()) return
+      e.preventDefault()
+      el.focus()
+      void window.moho.editAction('paste')
+    }
+    // Back to the window: ready to type, which is what coming back to a chat
+    // window means.
+    const onWindowFocus = (): void => {
+      if (free() && document.activeElement === document.body) inputRef.current?.focus()
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('paste', onPaste)
+    window.addEventListener('focus', onWindowFocus)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('paste', onPaste)
+      window.removeEventListener('focus', onWindowFocus)
+    }
+  }, [])
 
   /**
    * Everything that can be tagged here: the people in the conversation, the
@@ -283,7 +339,9 @@ export function Composer(): JSX.Element | null {
   }
 
   const submit = (): void => {
-    const body = text.trim()
+    // The text as this service will read it: formatting in the box becomes
+    // its markup here and nowhere earlier.
+    const body = (inputRef.current ? serialize(inputRef.current, service) : text).trim()
     if (!body && staged.length === 0) return
 
     // A command whose name was completed into the box: what follows it is
@@ -792,6 +850,21 @@ export function Composer(): JSX.Element | null {
                 if (!e.shiftKey) submit()
                 return
               }
+              // The browser would make its own bold and italic here, in markup
+              // this service may not have. Taken over: the same keys, applied
+              // as the formats this service carries, and nothing where it has
+              // none.
+              if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+                const shortcut: Record<string, FormatKind> = { b: 'bold', i: 'italic', u: 'underline' }
+                const kind = shortcut[e.key.toLowerCase()]
+                if (kind) {
+                  e.preventDefault()
+                  if (formats.includes(kind) && inputRef.current && applyFormat(inputRef.current, kind)) {
+                    setText(composerText(inputRef.current))
+                  }
+                  return
+                }
+              }
               // Tab completes the name being typed, and completes it again on
               // the next press. Every IRC client does this and nothing here
               // did: on a network where people are called `[Fish]tank_` or
@@ -809,6 +882,11 @@ export function Composer(): JSX.Element | null {
             // and asks where it should go - which is why this only refuses
             // the default rather than stopping the event.
             onDrop={(e) => e.preventDefault()}
+          />
+          <FormatBar
+            input={inputRef}
+            formats={formats}
+            onChange={() => inputRef.current && setText(composerText(inputRef.current))}
           />
           {!text.trim() && (
             <span className="composer-placeholder muted">

@@ -72,7 +72,9 @@ const ALLOWED_CLASSES = new Set([
 const SAFE_COLOR = /^#[0-9a-f]{3,8}$|^[a-z]{3,20}$/i
 const SAFE_WEIGHT = /^(bold|[1-9]00)$/i
 const SAFE_FONT_STYLE = /^italic$/i
-const SAFE_DECORATION = /^underline$/i
+const SAFE_DECORATION = /^(underline|line-through)( (underline|line-through))?$/i
+/** Only the one family format.ts emits for IRC's monospace; never a name from a message. */
+const MONOSPACE = /^var\(--font-mono,\s*monospace\)$/i
 
 /**
  * The handful of style properties a message is allowed to set on a span.
@@ -97,7 +99,9 @@ function safeSpanStyle(attr: string | null): React.CSSProperties | undefined {
   const fontStyle = read('font-style')
   if (fontStyle && SAFE_FONT_STYLE.test(fontStyle)) style.fontStyle = 'italic'
   const decoration = read('text-decoration')
-  if (decoration && SAFE_DECORATION.test(decoration)) style.textDecoration = 'underline'
+  if (decoration && SAFE_DECORATION.test(decoration)) style.textDecoration = decoration.toLowerCase()
+  const family = read('font-family')
+  if (family && MONOSPACE.test(family)) style.fontFamily = 'var(--font-mono, monospace)'
 
   return Object.keys(style).length ? style : undefined
 }

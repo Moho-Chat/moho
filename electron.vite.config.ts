@@ -1,8 +1,9 @@
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+// @ts-expect-error - a plain .mjs script, shared with the daemon build scripts
+import { versionLabel } from './scripts/version-label.mjs'
 
 /**
  * The commit this build came from, stamped in at build time.
@@ -30,11 +31,10 @@ function buildCommit(): string {
 const define = {
   __BUILD_COMMIT__: JSON.stringify(buildCommit()),
   __BUILD_DATE__: JSON.stringify(new Date().toISOString()),
-  // Read from the manifest rather than exposed over IPC: it is a constant
-  // known at build time, and a round trip to ask for it would be one.
-  __APP_VERSION__: JSON.stringify(
-    JSON.parse(readFileSync(resolve('package.json'), 'utf8')).version as string
-  )
+  // The release's version for a release build, "development" for anything
+  // else - see scripts/version-label.mjs. Known at build time, so stamped in
+  // rather than asked for over IPC.
+  __APP_VERSION__: JSON.stringify(versionLabel())
 }
 
 export default defineConfig({

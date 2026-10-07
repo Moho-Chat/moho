@@ -66,6 +66,13 @@ describe('IRC formatting codes', () => {
     expect(html.match(/<span/g)?.length).toBe(html.match(/<\/span>/g)?.length)
   })
 
+  it('renders strikethrough and monospace, which this client also sends', () => {
+    const html = ircFormat('\u001ewrong\u001e \u0011code\u0011', 'render')
+    expect(html).toContain('text-decoration:line-through')
+    expect(html).toContain('monospace')
+    expect(ircFormat('\u001ea\u001e\u0011b\u0011', 'strip')).toBe('ab')
+  })
+
   it('strips them before formatting even when not rendering them', () => {
     expect(formatMessage('https://ex\u0002ample.com')).toContain('href="https://example.com"')
   })
@@ -177,7 +184,12 @@ describe('media in a message', () => {
       'https://youtu.be/dQw4w9WgXcQ',
       'https://www.youtube.com/shorts/dQw4w9WgXcQ',
       'https://www.youtube.com/embed/dQw4w9WgXcQ',
-      'https://www.youtube.com/live/dQw4w9WgXcQ'
+      'https://www.youtube.com/live/dQw4w9WgXcQ',
+      'https://www.youtube.com/watch?feature=share&v=dQw4w9WgXcQ',
+      'https://www.youtube.com/watch?t=30&list=PLx&v=dQw4w9WgXcQ&index=2',
+      'https://music.youtube.com/watch?v=dQw4w9WgXcQ&si=x',
+      'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ',
+      'https://youtube.com/watch/dQw4w9WgXcQ'
     ]) {
       expect(youtubeId(url), url).toBe('dQw4w9WgXcQ')
     }

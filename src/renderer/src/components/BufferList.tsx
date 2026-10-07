@@ -912,6 +912,18 @@ function BufferRow({
     <Icon name={bufferKindGlyph(buffer.kind)} size={15} />
   )
 
+  // A channel's own name starts with the "#" that the row's glyph already is,
+  // so with the glyph in front it is said once. Kept where the row leads with
+  // the service's mark instead (a pinned row), which says nothing of the kind.
+  const hashGlyph =
+    !showServiceIcon &&
+    buffer.kind !== 'dm' &&
+    buffer.kind !== 'server' &&
+    !buffer.avatarUrl &&
+    !buffer.serviceRoom
+  const shownName = bufferDisplayName(buffer.name)
+  const rowName = hashGlyph && shownName.length > 1 ? shownName.replace(/^#/, '') : shownName
+
   // Calling from the row it belongs to, as well as from the header of the
   // conversation once it is open - the list is where you look for somebody
   // you want to reach, so it is where reaching them should be offered.
@@ -975,7 +987,7 @@ function BufferRow({
         title={link ? `${buffer.name} — ${link.detail}` : draggable ? `${buffer.name} — drag onto a heading to file it` : buffer.name}
       >
         {leading}
-        <span className="ellipsis buffer-name">{bufferDisplayName(buffer.name)}</span>
+        <span className="ellipsis buffer-name">{rowName}</span>
         {/* So a conversation with no unread count and no traffic in it is
             explained rather than merely quiet: it is being read elsewhere. */}
         {/* Still filling in - a Matrix room between joining it and the server
