@@ -4559,7 +4559,7 @@ img.smilie {
   z-index: var(--z-lightbox);
   /* Belt and braces: nothing in the viewer should ever be draggable. */
   -webkit-app-region: no-drag;
-  background: rgba(0, 0, 0, 0.85);
+  background: var(--scrim-strong);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -4568,6 +4568,8 @@ img.smilie {
 
 .lightbox-bar {
   position: absolute;
+  /* Over a picture magnified past the window, which is drawn in its own layer. */
+  z-index: 1;
   top: 0;
   left: 0;
   right: 0;
@@ -4617,13 +4619,22 @@ img.smilie {
   object-fit: contain;
   border-radius: var(--corner-radius-small);
   cursor: zoom-in;
+  /* Grows out of the middle as it opens, and again for each one stepped to. */
+  animation: lightbox-in var(--motion-slow) var(--ease);
+  user-select: none;
 }
 
-/* At full size the picture is free to overflow the stage; dragging pans it. */
+@keyframes lightbox-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+/* Magnified, it is carried by the pointer rather than by scrolling. */
 .lightbox-stage.zoomed .lightbox-media {
-  max-width: none;
-  max-height: none;
   cursor: grab;
+  animation: none;
 }
 
 .lightbox-stage.zoomed .lightbox-media:active {
@@ -4644,6 +4655,64 @@ video.lightbox-media {
 .lightbox-saved {
   color: var(--success);
   max-width: 40ch;
+}
+
+.lightbox-saved.failed {
+  color: var(--danger);
+}
+
+.lightbox-count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* How far in it is: also the way back out. */
+.lightbox-level {
+  min-width: 4ch;
+  padding: var(--spacing-xs);
+  border-radius: var(--corner-radius-small);
+  color: var(--surface-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.lightbox-level:not(:disabled):hover {
+  background: var(--overlay-control);
+}
+
+.lightbox-level:disabled {
+  color: var(--text-muted);
+}
+
+/* Beside the picture, in the middle of its height: where the eye already is. */
+.lightbox-nav {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-top: -22px;
+  border-radius: var(--radius-pill);
+  background: var(--overlay-control);
+  color: var(--surface-text);
+  transition: background var(--motion-fast) var(--ease);
+}
+
+.lightbox-nav.prev {
+  left: var(--spacing-m);
+}
+
+.lightbox-nav.next {
+  right: var(--spacing-m);
+}
+
+.lightbox-nav:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.lightbox-nav:disabled {
+  opacity: 0.3;
 }
 
 /* --- server rail ------------------------------------------------------ */

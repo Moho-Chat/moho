@@ -14,6 +14,7 @@ export const IPC = {
   pickSavePath: 'moho:pickSavePath',
   pickDirectory: 'moho:pickDirectory',
   downloadMedia: 'moho:downloadMedia',
+  copyImage: 'moho:copyImage',
   importGroupIcon: 'moho:importGroupIcon',
   defaultDownloadDir: 'moho:defaultDownloadDir',
   readClipboardImage: 'moho:readClipboardImage',

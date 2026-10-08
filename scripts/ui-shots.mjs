@@ -173,6 +173,25 @@ const discord = (inCall) => async (page) => {
 
 // --- scenes ------------------------------------------------------------------
 
+/** Three pictures posted in a row, drawn as SVG so nothing is fetched. */
+const stageLightbox = async (page) => {
+  await page.evaluate(`(() => {
+    const shots = window.__mohoShots
+    const s = shots.state()
+    const id = s.activeBufferId
+    const now = Math.floor(Date.now() / 1000)
+    const pic = (name, a, b, label) => 'data:image/svg+xml;utf8,' + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + a + '"/><stop offset="1" stop-color="' + b + '"/></linearGradient></defs><rect width="1600" height="1000" fill="url(#g)"/><circle cx="800" cy="500" r="260" fill="none" stroke="#fff" stroke-width="14" stroke-dasharray="40 24"/><text x="800" y="540" font-size="120" font-family="sans-serif" fill="#fff" text-anchor="middle">' + label + '</text></svg>')
+    const msg = (i, label, a, b) => ({
+      id: 'pic' + i, bufferId: id, from: 'Wren', senderId: 'Wren', body: '', ts: now - (3 - i) * 20, isAction: false, isHighlight: false, kind: 'chat', isOwn: false,
+      attachments: [{ kind: 'image', filename: label.toLowerCase() + '.svg', width: 1600, height: 1000, url: pic(i, a, b, label) }]
+    })
+    shots.patch({ messagesByBuffer: { ...s.messagesByBuffer, [id]: [...(s.messagesByBuffer[id] || []), msg(1, 'Amigurumi', '#e0a43a', '#b0457a'), msg(2, 'Granny squares', '#3a8fe0', '#4a2f9a'), msg(3, 'Blanket', '#3ae0a4', '#1f6f5a')] } })
+    return true
+  })()`)
+  await sleep(700)
+}
+
 const mouse = async (page, type, x, y, button = 'none') =>
   page.call('Input.dispatchMouseEvent', { type, x, y, button, clickCount: button === 'none' ? 0 : 1 })
 
@@ -673,6 +692,31 @@ const SCENES = [
       await sleep(500)
     },
     clip: { x: 277, y: 420, width: 823, height: 380 }
+  },
+  {
+    // The viewer with pictures beside it (#312): stepped through, zoomed with the wheel.
+    name: 'discord-lightbox',
+    setup: async (p) => {
+      await discord(false)(p)
+      await stageLightbox(p)
+      const c = await centre(p, '.media-embed-wrap', '')
+      await p.evaluate(`document.querySelectorAll('.media-embed-wrap img')[1].click()`)
+      await sleep(900)
+    }
+  },
+  {
+    name: 'discord-lightbox-zoomed',
+    setup: async (p) => {
+      await discord(false)(p)
+      await stageLightbox(p)
+      await p.evaluate(`document.querySelectorAll('.media-embed-wrap img')[1].click()`)
+      await sleep(800)
+      for (let i = 0; i < 6; i++) {
+        await p.call('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 760, y: 330, deltaX: 0, deltaY: -120 })
+        await sleep(60)
+      }
+      await sleep(400)
+    }
   },
   {
     // Three lines typed with Shift+Enter (#305).

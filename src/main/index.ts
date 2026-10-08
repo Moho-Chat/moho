@@ -6,6 +6,7 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  ClipboardItem,
   dialog,
   globalShortcut,
   ipcMain,
@@ -29,7 +30,7 @@ import { readCapped, pictureNamedIn } from './imagepage'
 import { DEEP_LINK_SCHEMES, isDeepLink } from '../shared/deeplink'
 import { allowPickedFile, allowRoot, installMediaHandler, registerMediaScheme } from './media-protocol'
 import { installScreenShare } from './screenshare'
-import { defaultDownloadDir, saveMedia } from './downloads'
+import { defaultDownloadDir, readMedia, saveMedia } from './downloads'
 import type { Buffer as ChatBuffer } from '../shared/wire'
 import { log } from './log'
 import { applyPolicy, applyTunnel } from './tunnel'
@@ -851,6 +852,31 @@ function wireIpc(): void {
   // has no business writing anything else onto the system clipboard.
   ipcMain.handle(IPC.writeClipboardText, (_e, text: string) => {
     if (typeof text === 'string' && text.length > 0) clipboard.writeText(text)
+  })
+
+  // A picture on the clipboard, for pasting into another app. Taken from the
+  // page's own pixels when it could read them (that also covers formats the
+  // clipboard does not take as they are, such as WebP), and otherwise from
+  // wherever the picture lives.
+  ipcMain.handle(IPC.copyImage, async (_e, source: string, dataUrl?: string) => {
+    try {
+      const img =
+        typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')
+          ? nativeImage.createFromDataURL(dataUrl)
+          : nativeImage.createFromBuffer(
+              Buffer.from(
+                await readMedia(String(source), async (url) => {
+                  const res = await net.fetch(url)
+                  return { ok: res.ok, status: res.status, bytes: async () => new Uint8Array(await res.arrayBuffer()) }
+                })
+              )
+            )
+      if (img.isEmpty()) return { error: "this kind of picture can't be copied" }
+      await clipboard.write([new ClipboardItem({ 'image/png': new Blob([img.toPNG()], { type: 'image/png' }) })])
+      return {}
+    } catch (e) {
+      return { error: (e as Error).message }
+    }
   })
 
   ipcMain.handle(IPC.restartDaemon, () => nobilis.restart())

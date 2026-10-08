@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
-import { Lightbox } from './Lightbox'
+import { Lightbox, type LightboxSource } from './Lightbox'
+import { registerMedia } from '../lib/gallery'
 import { VoiceMessage } from './VoiceMessage'
 import { LottieSticker, lottieStickerId } from './LottieSticker'
 import { fullImageFor, knownFullImage } from '../lib/fullimage'
@@ -145,6 +146,30 @@ export function MediaEmbed({
   const openTarget = attachment?.url || item?.full || item?.page || fullSrc
 
   const open = (): void => void window.moho.openExternal(openTarget)
+
+  /** What the viewer shows for this one: also what it shows when stepped to from another. */
+  const viewerSource = (): LightboxSource =>
+    kind === 'video'
+      ? { kind: 'video', src: media(fullSrc), externalUrl: openTarget, filename: attachment?.filename, loop, from }
+      : {
+          kind: 'image',
+          src: media(expandedSrc),
+          externalUrl: openTarget,
+          filename: attachment?.filename,
+          width: attachment?.width,
+          height: attachment?.height,
+          from
+        }
+  // Part of the conversation's gallery for as long as it is on screen, so the
+  // arrows in the viewer reach it from its neighbours.
+  const wrapRef = useRef<HTMLSpanElement>(null)
+  const viewerRef = useRef(viewerSource)
+  viewerRef.current = viewerSource
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el || (kind !== 'image' && kind !== 'video')) return
+    return registerMedia(el, () => viewerRef.current())
+  }, [kind])
 
   /**
    * The size the picture is going to be, decided before it arrives.
@@ -316,7 +341,7 @@ export function MediaEmbed({
     }
 
     return (
-      <span className="media-embed-wrap" style={ratio}>
+      <span ref={wrapRef} className="media-embed-wrap" style={ratio}>
         <img
           className="media-embed"
           style={ratio}
@@ -349,15 +374,8 @@ export function MediaEmbed({
         )}
         {expanded && (
           <Lightbox
-            source={{
-              kind: 'image',
-              src: media(expandedSrc),
-              externalUrl: openTarget,
-              filename: attachment?.filename,
-              width: attachment?.width,
-              height: attachment?.height,
-              from
-            }}
+            source={viewerSource()}
+            anchor={wrapRef.current}
             onClose={() => setExpanded(false)}
           />
         )}
@@ -373,7 +391,7 @@ export function MediaEmbed({
     // and handling the failure is the honest test.
     return (
       <>
-        <span className="media-embed-wrap video" style={ratio}>
+        <span ref={wrapRef} className="media-embed-wrap video" style={ratio}>
           <video
             className="media-embed"
             style={ratio}
@@ -397,14 +415,8 @@ export function MediaEmbed({
         </span>
         {expanded && (
           <Lightbox
-            source={{
-              kind: 'video',
-              src: media(fullSrc),
-              externalUrl: openTarget,
-              filename: attachment?.filename,
-              loop,
-              from
-            }}
+            source={viewerSource()}
+            anchor={wrapRef.current}
             onClose={() => setExpanded(false)}
           />
         )}

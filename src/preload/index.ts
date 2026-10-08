@@ -156,6 +156,12 @@ const api = {
   importGroupIcon: (groupId: string): Promise<{ path?: string; error?: string }> =>
     ipcRenderer.invoke(IPC.importGroupIcon, groupId),
   defaultDownloadDir: (): Promise<string> => ipcRenderer.invoke(IPC.defaultDownloadDir),
+  /**
+   * Puts a picture on the system clipboard: from its pixels where the page
+   * could read them, otherwise from where it lives.
+   */
+  copyImage: (source: string, dataUrl?: string): Promise<{ error?: string }> =>
+    ipcRenderer.invoke(IPC.copyImage, source, dataUrl),
   downloadMedia: (source: string, filename?: string): Promise<{ path?: string; error?: string }> =>
     ipcRenderer.invoke(IPC.downloadMedia, source, filename),
   readClipboardImage: (): Promise<string | null> => ipcRenderer.invoke(IPC.readClipboardImage),
