@@ -44,14 +44,54 @@
      than as an alarm - which a warm colour here would. */
   --notice: #40e0d0;
   --notice-tint: rgba(64, 224, 208, 0.1);
-  --surface-hover: rgba(66, 71, 78, 0.08);
-  --surface-pressed: rgba(66, 71, 78, 0.12);
-  --surface-selected: rgba(66, 71, 78, 0.15);
+  /* A pointer over something, pressing it, and the one that is chosen.
+     Light laid over whatever surface is underneath rather than a colour of
+     their own, so they read the same on the sidebar, the list and a menu.
+     They used to be the surface-variant grey at 8% - three levels of
+     brightness on the sidebar, which is to say not visible. */
+  --surface-hover: rgba(255, 255, 255, 0.05);
+  --surface-pressed: rgba(255, 255, 255, 0.07);
+  --surface-selected: rgba(255, 255, 255, 0.09);
 
   --error: #f2b8b5;
   --warning: #ff9800;
   --info: #2196f3;
   --success: #4caf50;
+
+  /* Red that means red: something destroyed, a mention waiting, a call
+     being refused. --error is the pale pink for text that went wrong, which
+     is not a colour anything can be filled with. */
+  --danger: #da373c;
+  --danger-hover: #a12828;
+  /* Red as text or an outline on a dark surface, where the fill red is too
+     dim to read. */
+  --danger-text: #f23f43;
+  --mention: var(--danger);
+  /* A message that names you: amber, so it is never mistaken for the blue
+     of selection, of a jump target or of your own reaction. */
+  --mention-row: rgba(250, 168, 26, 0.08);
+  --mention-edge: #f0b232;
+  /* Someone talking, and something live. */
+  --speaking: #23a55a;
+  --live: #3ba55d;
+  --go: #248046;
+  --go-hover: #1a6334;
+
+  /* Text on a coloured fill or over a picture, where the theme's own text
+     colour would vanish. */
+  --on-accent: #ffffff;
+  /* Behind video and pictures: black, whatever the theme. */
+  --media-backdrop: #000000;
+  /* What is behind a dialog, and the darker one behind a picture. */
+  --scrim: rgba(0, 0, 0, 0.6);
+  --scrim-strong: rgba(0, 0, 0, 0.85);
+  /* A control laid over a picture or a video. */
+  --overlay-control: rgba(255, 255, 255, 0.12);
+  --outline-hover: rgba(140, 145, 153, 0.35);
+
+  /* Timestamps, reply previews, system lines: there, but quieter than
+     anything anybody said. Labels keep the brighter --surface-variant-text. */
+  --text-muted: #949ba4;
 
   /*
    * Bubble mode. Green for what you said, blue for what everyone else did.
@@ -80,10 +120,20 @@
   --spacing-l: 16px;
   --spacing-xl: 24px;
 
+  /* Text. Picture-sized glyphs (an emoji shown large, a code to copy) and
+     miniatures (the chips inside a folder tile) keep their own sizes. */
+  --font-size-xxs: 10px;
+  --font-size-xs: 11px;
   --font-size-small: 12px;
+  --font-size-compact: 13px;
   --font-size-medium: 14px;
   --font-size-large: 16px;
   --font-size-xlarge: 20px;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
 
   --icon-size: 24px;
   --icon-size-small: 16px;
@@ -91,6 +141,37 @@
 
   --corner-radius: 12px;
   --corner-radius-small: 8px;
+  --radius-xs: 4px;
+  --radius-pill: 999px;
+  --radius-bubble: 18px;
+
+  /* How long things take to move. Fast for anything under the pointer,
+     the middle one for something opening, slow for a fill or a fade that
+     should be noticed. */
+  --motion-fast: 120ms;
+  --motion: 200ms;
+  --motion-slow: 400ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Elevation: a chip or tooltip, a menu or popover, a dialog - and the one
+     that casts upwards, for things that open above what opened them. */
+  --shadow-1: 0 2px 10px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.5);
+  --shadow-3: 0 16px 48px rgba(0, 0, 0, 0.55);
+  --shadow-up: 0 -6px 24px rgba(0, 0, 0, 0.4);
+
+  /* What sits above what, lowest first, in one place. Numbers inside a
+     component (1, 2, 3...) stack its own parts and are left where they are. */
+  --z-raised: 40;
+  --z-popover: 60;
+  --z-dialog: 60;
+  --z-notice: 70;
+  --z-lightbox: 200;
+  --z-menu: 1000;
+  --z-picker: 1500;
+  --z-sheet: 1600;
+  --z-toast: 2000;
+  --z-call: 2100;
 
   --font-family: 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'Fira Code', ui-monospace, 'SF Mono', Menlo, monospace;
@@ -205,11 +286,11 @@ a:hover {
 
 ::-webkit-scrollbar-thumb {
   background: var(--outline-strong);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(140, 145, 153, 0.35);
+  background: var(--outline-hover);
 }
 
 /* --- Shared primitives ------------------------------------------------ */
@@ -238,12 +319,12 @@ a:hover {
 }
 
 .icon-button:hover {
-  background: var(--primary-hover-light);
+  background: var(--surface-hover);
   color: var(--surface-text);
 }
 
 .icon-button:active {
-  background: var(--primary-pressed);
+  background: var(--surface-pressed);
 }
 
 .icon-button[disabled] {
@@ -277,7 +358,7 @@ a:hover {
   border-radius: var(--corner-radius-small);
   background: var(--primary);
   color: var(--primary-text);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .button:hover {
@@ -312,4 +393,29 @@ a:hover {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* --- Focus and motion, everywhere ------------------------------------ */
+
+/* A ring for whoever is using the keyboard, and nobody else: a click does
+   not draw one. Text fields mark focus with their border instead. */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.text-field:focus-visible,
+[contenteditable]:focus-visible {
+  outline: none;
+}
+
+/* Asked for less motion: nothing slides, fades or grows. Animations that
+   mean "still working" keep their own reduced versions, next to them. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0s !important;
+    scroll-behavior: auto !important;
+  }
 }

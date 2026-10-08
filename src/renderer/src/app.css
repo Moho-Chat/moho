@@ -1245,7 +1245,7 @@ button.video-tile {
   flex-direction: column;
   gap: 2px;
   padding-bottom: var(--spacing-xs);
-  border-bottom: 1px solid var(--outline-low);
+  border-bottom: 1px solid var(--outline-light);
 }
 
 .search-filter {
@@ -1285,7 +1285,7 @@ button.video-tile {
   justify-content: center;
   gap: var(--spacing-s);
   padding: var(--spacing-s) var(--spacing-m);
-  color: var(--surface-text-muted);
+  color: var(--text-muted);
   font-size: var(--font-size-small);
 }
 
@@ -3746,7 +3746,7 @@ img.smilie {
   height: 34px;
   border: none;
   border-radius: 50%;
-  color: var(--on-primary);
+  color: var(--primary-text);
   background: var(--primary);
   cursor: pointer;
 }
@@ -3830,7 +3830,7 @@ img.smilie {
 /* Marked as changed-from-default, so a message left at double speed does not
    quietly stay that way unnoticed. */
 .voice-speed.changed {
-  color: var(--on-primary);
+  color: var(--primary-text);
   background: var(--primary);
 }
 
@@ -5809,7 +5809,7 @@ video.lightbox-media {
   gap: 2px;
   flex: none;
   padding: 4px 2px;
-  border-bottom: 1px solid var(--outline-variant);
+  border-bottom: 1px solid var(--outline-medium);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -5870,7 +5870,7 @@ video.lightbox-media {
 .kick-points {
   position: relative;
   flex: none;
-  border-top: 1px solid var(--outline-variant);
+  border-top: 1px solid var(--outline-medium);
 }
 
 .kick-points-plaque {
@@ -6002,10 +6002,10 @@ video.lightbox-media {
 
 .export-range input[type='datetime-local'] {
   padding: 4px 6px;
-  border: 1px solid var(--outline-variant);
+  border: 1px solid var(--outline-medium);
   border-radius: 6px;
   background: var(--surface-container-lowest);
-  color: var(--on-surface);
+  color: var(--surface-text);
   font: inherit;
 }
 
@@ -6958,7 +6958,7 @@ video.lightbox-media {
   align-items: center;
   gap: var(--spacing-s);
   padding: var(--spacing-xs) var(--spacing-xxs);
-  border-bottom: 1px solid var(--outline-faint, var(--outline-medium));
+  border-bottom: 1px solid var(--outline-light, var(--outline-medium));
 }
 
 .space-room:last-child {
@@ -7571,7 +7571,7 @@ video.lightbox-media {
   border: 0;
   border-radius: var(--corner-radius-small);
   background: transparent;
-  color: var(--on-surface-variant, inherit);
+  color: var(--surface-variant-text, inherit);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
@@ -7583,7 +7583,7 @@ video.lightbox-media {
 
 .emoji-tab.active {
   background: var(--surface-container-highest);
-  color: var(--on-surface, inherit);
+  color: var(--surface-text, inherit);
 }
 
 .emoji-search {
@@ -7594,7 +7594,7 @@ video.lightbox-media {
   padding: 6px 10px;
   border-radius: var(--corner-radius-small);
   background: var(--surface-container-lowest, rgba(0, 0, 0, 0.25));
-  color: var(--on-surface-variant, inherit);
+  color: var(--surface-variant-text, inherit);
 }
 
 .emoji-search input {
@@ -7603,7 +7603,7 @@ video.lightbox-media {
   border: 0;
   outline: none;
   background: transparent;
-  color: var(--on-surface, inherit);
+  color: var(--surface-text, inherit);
   font: inherit;
 }
 
@@ -7611,7 +7611,7 @@ video.lightbox-media {
   display: flex;
   flex: 1;
   min-height: 0;
-  border-top: 1px solid var(--outline-variant);
+  border-top: 1px solid var(--outline-medium);
 }
 
 .emoji-body .emoji-scroll {
@@ -7649,7 +7649,7 @@ video.lightbox-media {
   border: 0;
   border-radius: 50%;
   background: transparent;
-  color: var(--on-surface-variant, inherit);
+  color: var(--surface-variant-text, inherit);
   cursor: pointer;
   overflow: hidden;
   transition: border-radius 0.12s;
@@ -7674,7 +7674,7 @@ video.lightbox-media {
   flex: none;
   min-height: 48px;
   padding: 6px 12px;
-  border-top: 1px solid var(--outline-variant);
+  border-top: 1px solid var(--outline-medium);
   background: var(--surface-container, rgba(0, 0, 0, 0.15));
 }
 
@@ -7858,7 +7858,7 @@ video.lightbox-media {
 
 .bufferlist-events:hover {
   background: var(--surface-container-highest);
-  color: var(--on-surface, inherit);
+  color: var(--surface-text, inherit);
 }
 
 /* The events pane and the create panel: Discord's dark rounded sheet. */
@@ -7916,7 +7916,7 @@ video.lightbox-media {
 }
 
 .event-card {
-  border: 1px solid var(--outline-variant, var(--outline-medium));
+  border: 1px solid var(--outline-medium, var(--outline-medium));
   border-radius: var(--corner-radius);
   background: var(--surface-container);
   overflow: hidden;
@@ -7960,7 +7960,7 @@ video.lightbox-media {
   padding: 2px 8px;
   border-radius: 10px;
   background: var(--surface-container-highest);
-  color: var(--on-surface, inherit);
+  color: var(--surface-text, inherit);
   font-variant-numeric: tabular-nums;
 }
 
@@ -7978,7 +7978,7 @@ video.lightbox-media {
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  border-top: 1px solid var(--outline-variant, var(--outline-medium));
+  border-top: 1px solid var(--outline-medium, var(--outline-medium));
 }
 
 .event-card-where {
@@ -7996,7 +7996,7 @@ video.lightbox-media {
   border: 0;
   border-radius: var(--corner-radius-small);
   background: var(--surface-container-highest);
-  color: var(--on-surface, inherit);
+  color: var(--surface-text, inherit);
   font: inherit;
   font-weight: 500;
   cursor: pointer;
@@ -8096,7 +8096,7 @@ video.lightbox-media {
   align-items: center;
   gap: 8px;
   padding: 12px 20px;
-  border-top: 1px solid var(--outline-variant, var(--outline-medium));
+  border-top: 1px solid var(--outline-medium, var(--outline-medium));
   background: var(--surface-container);
 }
 
@@ -8167,7 +8167,7 @@ video.lightbox-media {
   flex-direction: column;
   gap: 8px;
   padding: 14px 20px 18px;
-  border-top: 1px solid var(--outline-variant, var(--outline-medium));
+  border-top: 1px solid var(--outline-medium, var(--outline-medium));
   background: var(--surface-container);
 }
 
@@ -8189,7 +8189,7 @@ video.lightbox-media {
   border: 0;
   outline: none;
   background: transparent;
-  color: var(--on-surface, inherit);
+  color: var(--surface-text, inherit);
   font: inherit;
 }
 
@@ -8227,7 +8227,7 @@ video.lightbox-media {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--on-surface, inherit);
+  color: var(--surface-text, inherit);
   font: inherit;
   font-size: 16px;
   font-weight: 700;
@@ -8260,7 +8260,7 @@ video.lightbox-media {
 
 .live-event-join:disabled {
   background: var(--surface-container-highest);
-  color: var(--on-surface-variant, inherit);
+  color: var(--surface-variant-text, inherit);
   cursor: default;
 }
 
@@ -8462,7 +8462,7 @@ video.lightbox-media {
   flex: none;
   border-radius: 50%;
   background: var(--primary);
-  color: var(--on-primary, #fff);
+  color: var(--primary-text, #fff);
 }
 
 /* --- formatting in the message box ------------------------------------- */
@@ -8527,7 +8527,7 @@ video.lightbox-media {
 
 .format-button:hover {
   background: var(--surface-container-highest, var(--outline-medium));
-  color: var(--on-surface, inherit);
+  color: var(--surface-text, inherit);
 }
 
 .format-colours {
