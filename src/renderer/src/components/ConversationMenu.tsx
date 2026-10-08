@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { HeaderTopic } from './HeaderTopic'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { ExportDialog } from './ExportDialog'
 import { ReasonPrompt } from './ReasonPrompt'
@@ -143,7 +144,7 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
     <>
       <button
         type="button"
-        className={classes('header-nameplate', menu && 'open')}
+        className={classes('header-nameplate', menu && 'open', buffer.topic && 'with-topic')}
         title={`${name} — options`}
         aria-haspopup="menu"
         onClick={(e) => open(e)}
@@ -159,6 +160,8 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
         ) : null}
         <span className="main-header-title ellipsis">{name}</span>
       </button>
+
+      {buffer.topic && <HeaderTopic topic={buffer.topic} />}
 
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={entries} onClose={close} />}
 

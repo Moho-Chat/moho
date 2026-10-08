@@ -878,6 +878,35 @@ const SCENES = [
     clip: { x: 0, y: 700, width: 330, height: 100 }
   },
   {
+    // The header row across the three columns, with the channel's topic in it (#289).
+    name: 'discord-header-topic',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(`(() => {
+        const s = window.__mohoShots.state()
+        window.__mohoShots.patch({ buffers: s.buffers.map((b) => b.id === s.activeBufferId ? { ...b, topic: 'General chatter for the shop. Fair dates and pattern swaps are pinned. Be kind. https://example.org/rules' } : b) })
+        return true
+      })()`)
+      await sleep(500)
+    },
+    clip: { x: 0, y: 44, width: 1280, height: 70 }
+  },
+  {
+    name: 'discord-header-topic-open',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(`(() => {
+        const s = window.__mohoShots.state()
+        window.__mohoShots.patch({ buffers: s.buffers.map((b) => b.id === s.activeBufferId ? { ...b, topic: 'General chatter for the shop.\\nFair dates and pattern swaps are pinned.\\nBe kind. https://example.org/rules' } : b) })
+        return true
+      })()`)
+      await sleep(400)
+      await p.evaluate(click('.header-topic'))
+      await sleep(500)
+    },
+    clip: { x: 277, y: 44, width: 823, height: 260 }
+  },
+  {
     name: 'discord-media-grid',
     setup: async (p) => {
       await discord(false)(p)

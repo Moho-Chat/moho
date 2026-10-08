@@ -178,6 +178,9 @@
 
   /* Fixed chrome dimensions, from the original layout. */
   --titlebar-height: 44px;
+  /* One height for the row at the top of every column, so the divider under
+     them is one line across the window. */
+  --header-height: 48px;
   --rail-width: 56px;
   --sidebar-width: 220px;
   --nicklist-width: 180px;

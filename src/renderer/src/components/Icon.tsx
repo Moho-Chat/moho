@@ -46,7 +46,8 @@ export function IconButton({
   disabled,
   onClick,
   className,
-  style
+  style,
+  fill
 }: ButtonProps): JSX.Element {
   return (
     <button
@@ -58,7 +59,8 @@ export function IconButton({
       onClick={onClick}
       style={style}
     >
-      <Icon name={name} size={size} color={color} />
+      {/* A toggle that is on is drawn filled as well as tinted, so it reads as on without the colour. */}
+      <Icon name={name} size={size} color={color} fill={fill ?? /(^| )active( |$)/.test(className ?? '')} />
     </button>
   )
 }

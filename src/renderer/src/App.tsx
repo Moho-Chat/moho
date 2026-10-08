@@ -221,8 +221,9 @@ export default function App(): JSX.Element {
 
             {activePanel === '' && !onMentionsPage && !peeking && buffer?.kind === 'channel' && (
               <IconButton
-                name={userListFolded ? 'group' : 'group_off'}
+                name="group"
                 title={userListFolded ? 'Show members' : 'Hide members'}
+                className={userListFolded ? undefined : 'active'}
                 onClick={() => setUserListFolded(!userListFolded)}
               />
             )}

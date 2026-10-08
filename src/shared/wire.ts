@@ -94,6 +94,8 @@ export interface Buffer {
   name: string
   lastActivityTs: number
   avatarUrl?: string
+  /** What the conversation says it is for, where the service has such a thing. */
+  topic?: string
   /** Matrix only - absent, not false, for protocols with no encryption concept. */
   encrypted?: boolean
   /**

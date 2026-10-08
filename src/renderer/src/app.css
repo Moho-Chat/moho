@@ -117,7 +117,10 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  padding: var(--spacing-xs);
+  height: var(--header-height);
+  box-sizing: border-box;
+  padding: 0 var(--spacing-s);
+  border-bottom: 1px solid var(--outline-medium);
   flex: none;
   /* Both of these, and for different failures: without the first the row
      lays itself out at the width its contents want and pushes them over the
@@ -189,7 +192,8 @@
      be smaller. */
   min-height: 0;
   overflow-y: auto;
-  padding: var(--spacing-xs) 0;
+  /* No room above: the server's name is the first of the header row across the window. */
+  padding: 0 0 var(--spacing-xs);
 }
 
 .bufferlist-empty {
@@ -2285,7 +2289,10 @@ img.composer-emoji {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  padding: var(--spacing-xs) var(--spacing-xs) var(--spacing-xs) var(--spacing-s);
+  height: var(--header-height);
+  box-sizing: border-box;
+  padding: 0 var(--spacing-xs) 0 var(--spacing-s);
+  border-bottom: 1px solid var(--outline-medium);
   flex: none;
 }
 
@@ -5094,7 +5101,11 @@ video.lightbox-media {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  padding: var(--spacing-s) var(--spacing-s) var(--spacing-xs) var(--spacing-m);
+  height: var(--header-height);
+  box-sizing: border-box;
+  padding: 0 var(--spacing-s) 0 var(--spacing-m);
+  border-bottom: 1px solid var(--outline-medium);
+  flex: none;
 }
 
 .group-title-name {
@@ -9781,4 +9792,44 @@ video.lightbox-media {
 
 .media-embed-wrap.spoilered:hover .spoiler-pill {
   background: var(--surface-container-highest);
+}
+
+
+/* --- the topic, beside the name --------------------------------------------- */
+.header-nameplate.with-topic {
+  flex: 0 1 auto;
+  max-width: 45%;
+}
+
+.header-topic {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  height: 24px;
+  margin-left: var(--spacing-xs);
+  padding: 0 var(--spacing-s);
+  border: 0;
+  border-left: 1px solid var(--outline-medium);
+  border-radius: 0 var(--corner-radius-small) var(--corner-radius-small) 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-small);
+  text-align: left;
+  transition: background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
+}
+
+.header-topic:hover,
+.header-topic[aria-expanded='true'] {
+  background: var(--surface-hover);
+  color: var(--surface-text);
+}
+
+/* The whole of it: as long as it is, wrapped, and selectable. */
+.header-topic-full {
+  max-height: 50vh;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  user-select: text;
 }
