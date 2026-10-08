@@ -136,7 +136,8 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
           x={menu.x}
           y={menu.y}
           entries={STATUSES.map((s) => ({
-            label: s.id === status ? `${s.label} ✓` : s.label,
+            label: s.label,
+            checked: s.id === status,
             icon: s.glyph,
             // Signing out is the one entry here that loses something - the
             // connection, and with it anything unsent - so it is marked as the

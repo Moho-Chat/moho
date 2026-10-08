@@ -955,7 +955,7 @@ function FolderSettings({
  */
 function RailMenu(): JSX.Element {
   const store = useStore()
-  const { menu, open, close } = useContextMenu()
+  const { menu, openFrom, close } = useContextMenu()
   const transfers = useChat((s) => s.transfers)
   // What is going on behind whatever is on screen. Exports count alongside
   // files because they are the same thing to somebody who started one and
@@ -984,8 +984,9 @@ function RailMenu(): JSX.Element {
         title={busy > 0 ? `Accounts and settings - ${busyLabel}` : 'Accounts and settings'}
         aria-label="Accounts and settings"
         // Opened by left click, unlike the tiles above it - it is a menu
-        // button, not a thing being acted upon.
-        onClick={open}
+        // button, not a thing being acted upon - and beside the button, not
+        // wherever within it the pointer happened to land.
+        onClick={(e) => openFrom(e.currentTarget)}
       >
         <span className="rail-face">
           <Icon name="settings" size={20} />

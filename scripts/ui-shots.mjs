@@ -193,6 +193,14 @@ const pressKey = async (page, key, code, modifiers = 0) => {
   }
 }
 
+/** A real left click on the centre of an element, as a person's pointer would make. */
+const realClick = async (page, selector) => {
+  const at = await page.evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return null; const r = el.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } })()`)
+  if (!at) throw new Error(`nothing matches ${selector}`)
+  await mouse(page, 'mousePressed', at.x, at.y, 'left')
+  await mouse(page, 'mouseReleased', at.x, at.y, 'left')
+}
+
 const escape = async (page) => {
   for (const type of ['keyDown', 'keyUp']) {
     await page.call('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
@@ -602,6 +610,25 @@ const SCENES = [
       await sleep(600)
     },
     clip: { x: 760, y: 44, width: 520, height: 400 }
+  },
+  {
+    // The status menu (a real check mark) and the cog's menu beside its button (#317).
+    name: 'status-menu',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await realClick(p, '.user-identity-button')
+      await sleep(400)
+    },
+    clip: { x: 0, y: 500, width: 420, height: 300 }
+  },
+  {
+    name: 'cog-menu',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await realClick(p, '.rail-cog')
+      await sleep(400)
+    },
+    clip: { x: 0, y: 600, width: 420, height: 200 }
   },
   // Motion, recorded rather than photographed.
   {

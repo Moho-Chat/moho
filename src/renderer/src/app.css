@@ -2263,6 +2263,9 @@ img.composer-emoji {
 /* --- context menu ----------------------------------------------------- */
 
 .context-menu {
+  outline: none;
+  transform-origin: top left;
+  animation: menu-in var(--motion-fast) var(--ease);
   position: fixed;
   z-index: var(--z-menu);
   min-width: 170px;
@@ -2284,8 +2287,38 @@ img.composer-emoji {
   color: var(--surface-text);
 }
 
-.context-menu-item:hover {
+.context-menu-item:hover,
+.context-menu-item:focus-visible {
   background: var(--primary-hover-light);
+  outline: none;
+}
+
+.context-menu-label {
+  flex: 1;
+}
+
+.context-menu-shortcut {
+  margin-left: var(--spacing-l);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.context-menu-check {
+  color: var(--primary);
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .context-menu {
+    animation: none;
+  }
 }
 
 .context-menu-item.danger {

@@ -9,6 +9,10 @@ export interface MenuItem {
   danger?: boolean
   disabled?: boolean
   separator?: false
+  /** On or chosen: drawn with a tick, and read as such by a screen reader. */
+  checked?: boolean
+  /** The key that does this without the menu, said beside it: "Ctrl+K". */
+  shortcut?: string
   onClick: () => void
 }
 
@@ -63,6 +67,40 @@ export function ContextMenu({ x, y, entries, onClose }: Props): JSX.Element {
 
   useEscapeLayer(onClose)
 
+  // Opened from the keyboard or the mouse, it is the thing with focus, so the
+  // arrows work at once and closing it gives the focus back to where it was.
+  useEffect(() => {
+    const before = document.activeElement
+    ref.current?.focus({ preventScroll: true })
+    return () => {
+      if (before instanceof HTMLElement && document.contains(before)) before.focus({ preventScroll: true })
+    }
+  }, [])
+
+  /** The entries that can be moved onto, in order. */
+  const items = (): HTMLButtonElement[] =>
+    [...(ref.current?.querySelectorAll<HTMLButtonElement>('button.context-menu-item:not([disabled])') ?? [])]
+  const move = (to: 'next' | 'previous' | 'first' | 'last'): void => {
+    const list = items()
+    if (list.length === 0) return
+    const here = list.indexOf(document.activeElement as HTMLButtonElement)
+    const index =
+      to === 'first' ? 0 : to === 'last' ? list.length - 1 : to === 'next' ? (here + 1) % list.length : (here <= 0 ? list.length : here) - 1
+    list[index].focus()
+  }
+
+  useEffect(() => {
+    // A menu belongs to the place it was opened over: once that scrolls away,
+    // or the window is left, it has nothing to point at.
+    const away = (): void => onClose()
+    window.addEventListener('scroll', away, true)
+    window.addEventListener('blur', away)
+    return () => {
+      window.removeEventListener('scroll', away, true)
+      window.removeEventListener('blur', away)
+    }
+  }, [onClose])
+
   useEffect(() => {
     // Presses inside the menu must not dismiss it. This listener runs in the
     // capture phase (so a press anywhere else closes the menu even if that
@@ -88,7 +126,25 @@ export function ContextMenu({ x, y, entries, onClose }: Props): JSX.Element {
     <div
       ref={ref}
       className="context-menu"
+      role="menu"
+      tabIndex={-1}
       style={{ left: pos.x, top: pos.y }}
+      onKeyDown={(e) => {
+        const keys: Record<string, 'next' | 'previous' | 'first' | 'last'> = {
+          ArrowDown: 'next',
+          ArrowUp: 'previous',
+          Home: 'first',
+          End: 'last'
+        }
+        if (e.key in keys) {
+          e.preventDefault()
+          move(keys[e.key])
+        } else if (e.key === 'Tab') {
+          // Leaving the menu by Tab is closing it.
+          e.preventDefault()
+          onClose()
+        }
+      }}
     >
       {entries.map((entry, i) =>
         entry.separator ? (
@@ -113,6 +169,8 @@ export function ContextMenu({ x, y, entries, onClose }: Props): JSX.Element {
           <button
             key={i}
             type="button"
+            role={entry.checked !== undefined ? 'menuitemcheckbox' : 'menuitem'}
+            aria-checked={entry.checked}
             className={`context-menu-item${entry.danger ? ' danger' : ''}`}
             disabled={entry.disabled}
             onClick={() => {
@@ -121,7 +179,9 @@ export function ContextMenu({ x, y, entries, onClose }: Props): JSX.Element {
             }}
           >
             {entry.icon && <Icon name={entry.icon} size={16} />}
-            <span>{entry.label}</span>
+            <span className="context-menu-label">{entry.label}</span>
+            {entry.shortcut && <kbd className="context-menu-shortcut">{entry.shortcut}</kbd>}
+            {entry.checked && <Icon name="check" size={16} className="context-menu-check" />}
           </button>
         )
       )}
@@ -134,6 +194,8 @@ export function ContextMenu({ x, y, entries, onClose }: Props): JSX.Element {
 export function useContextMenu(): {
   menu: { x: number; y: number } | null
   open: (e: React.MouseEvent) => void
+  /** Opens it under an element rather than at the pointer: for a button that is a menu. */
+  openFrom: (el: HTMLElement) => void
   close: () => void
 } {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
@@ -143,6 +205,13 @@ export function useContextMenu(): {
       e.preventDefault()
       e.stopPropagation()
       setMenu({ x: e.clientX, y: e.clientY })
+    },
+    openFrom: (el: HTMLElement) => {
+      const r = el.getBoundingClientRect()
+      // To the side of a button in a column, below one in a row; the menu
+      // nudges itself back inside the window either way.
+      const side = r.width < 80 && r.left < 120
+      setMenu(side ? { x: r.right + 6, y: r.top } : { x: r.left, y: r.bottom + 4 })
     },
     close: () => setMenu(null)
   }
