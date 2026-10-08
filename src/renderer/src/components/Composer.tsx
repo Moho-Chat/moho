@@ -171,6 +171,11 @@ export function Composer(): JSX.Element | null {
   const smilies = useChat((s) => s.smilies)
   const bufferEmojiByBuffer = useChat((s) => s.bufferEmoji)
 
+  const replyPing = useChat((s) => s.replyPing)
+  // The message being answered, if it is on screen: for its author's face.
+  const repliedTo = useChat((s) =>
+    s.replyingTo?.id && buffer ? s.messagesByBuffer[buffer.id]?.find((m) => m.id === s.replyingTo?.id) : undefined
+  )
   const account = buffer && accounts.find((a) => a.id === buffer.accountId)
   const service = account?.service
   const tunnelAll = useChat((s) => s.tunnelAll)
@@ -197,6 +202,13 @@ export function Composer(): JSX.Element | null {
   // here rather than left as the one service where the button is dead.
   const supportsAttachments =
     service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc'
+
+  // Starting a reply puts the cursor in the box: the next thing anybody does
+  // is write the answer.
+  const replyingId = useChat((s) => s.replyingTo?.id ?? '')
+  useEffect(() => {
+    if (replyingId) inputRef.current?.focus()
+  }, [replyingId])
 
   // Refocus on buffer switch so typing works immediately after clicking a
   // channel, without a second click into the field.
@@ -734,11 +746,25 @@ export function Composer(): JSX.Element | null {
       {replyingTo && (
         <div className="composer-reply small">
           <Icon name="reply" size={14} />
-          <span className="ellipsis muted">
-            Replying to {replyingTo.from}
-            {replyingTo.body ? `: ${replyingTo.body}` : ''}
+          {repliedTo?.avatarUrl && <img className="reply-avatar" src={media(repliedTo.avatarUrl)} alt="" />}
+          <span className="ellipsis">
+            Replying to <strong>{replyingTo.from}</strong>
+            {replyingTo.body ? <span className="muted">{`: ${replyingTo.body}`}</span> : ''}
           </span>
-          <IconButton name="close" size={14} title="Cancel reply" onClick={() => store.cancelReply()} />
+          {/* Whether the one answered is told, as Discord's own bar has it.
+              Only there: nothing else here can say it. */}
+          {service === 'discord' && replyingTo.id && (
+            <button
+              type="button"
+              className={classes('reply-ping', replyPing && 'on')}
+              title={replyPing ? 'The author will be pinged. Click to answer without pinging them.' : 'The author will not be pinged. Click to ping them.'}
+              aria-pressed={replyPing}
+              onClick={() => store.toggleReplyPing()}
+            >
+              @ {replyPing ? 'ON' : 'OFF'}
+            </button>
+          )}
+          <IconButton name="close" size={14} title="Cancel reply (Esc)" onClick={() => store.cancelReply()} />
         </div>
       )}
 
@@ -865,6 +891,13 @@ export function Composer(): JSX.Element | null {
                 // Shift+Enter is a new line, on every service: what becomes of
                 // it on the way out is the daemon's business per protocol.
                 else document.execCommand('insertLineBreak')
+                return
+              }
+              // Escape puts a reply down - after the lists above, which took
+              // theirs first.
+              if (e.key === 'Escape' && replyingTo) {
+                e.preventDefault()
+                store.cancelReply()
                 return
               }
               // Up in an empty box opens your last message for editing, as in

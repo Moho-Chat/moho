@@ -1945,7 +1945,28 @@ button.video-tile {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  padding: var(--spacing-xs) var(--spacing-s) 0;
+  margin: var(--spacing-xs) var(--spacing-s) 0;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border-radius: var(--corner-radius-small) var(--corner-radius-small) 0 0;
+  background: var(--surface-container-high);
+  border-left: 3px solid var(--primary);
+}
+
+.reply-ping {
+  flex: none;
+  padding: 1px var(--spacing-s);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  font-weight: var(--weight-bold);
+  font-size: var(--font-size-xs);
+}
+
+.reply-ping.on {
+  color: var(--primary);
+}
+
+.reply-ping:hover {
+  background: var(--surface-hover);
 }
 
 .composer-reply .ellipsis {

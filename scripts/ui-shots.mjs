@@ -424,6 +424,21 @@ const SCENES = [
     clip: { x: 277, y: 260, width: 640, height: 90 }
   },
   {
+    // The reply bar (#307): its own surface, the author's face, the @ switch.
+    name: 'discord-reply-bar',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(`(() => {
+        const s = window.__mohoShots.state()
+        const msg = (s.messagesByBuffer[s.activeBufferId] || []).find((m) => m.body.includes('table'))
+        if (msg) window.__mohoShots.store.startReply(msg.id, msg.from, msg.body)
+        return true
+      })()`)
+      await sleep(400)
+    },
+    clip: { x: 277, y: 640, width: 1000, height: 160 }
+  },
+  {
     name: 'discord-name-hover',
     setup: async (p) => {
       await discord(false)(p)

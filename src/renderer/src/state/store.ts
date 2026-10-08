@@ -654,6 +654,8 @@ export interface ChatState {
    */
   profile: Profile | null
   replyingTo: { id: string; from: string; body: string } | null
+  /** Whether answering pings the author (Discord's "@ ON"): on for every new reply. */
+  replyPing: boolean
   /** The message being edited in place, if one is: at most one per window. */
   editingId: string
   toasts: Toast[]
@@ -750,6 +752,7 @@ const INITIAL: ChatState = {
   matrixInvites: {},
   profile: null,
   replyingTo: null,
+  replyPing: true,
   editingId: '',
   toasts: [],
   smilies: [],
@@ -4244,7 +4247,7 @@ export class ChatStore {
    */
   async sendMessage(bufferId: string, body: string, attachmentPath?: string | string[]): Promise<void> {
     // A fresh send takes its reply target from the composer, and consumes it.
-    const reply = this.state.replyingTo
+    const reply = this.state.replyingTo ? { ...this.state.replyingTo, ping: this.state.replyPing } : null
     this.set({ replyingTo: null })
     return this.dispatchSend(bufferId, body, reply, attachmentPath)
   }
@@ -4261,7 +4264,7 @@ export class ChatStore {
   private async dispatchSend(
     bufferId: string,
     body: string,
-    reply: { id: string; from: string; body: string; thread?: boolean } | null,
+    reply: { id: string; from: string; body: string; thread?: boolean; ping?: boolean } | null,
     attachment?: string | string[]
   ): Promise<void> {
     // One file, or several that go as one message.
@@ -4339,6 +4342,8 @@ export class ChatStore {
             }
           : {}),
         ...(replyToId ? { replyToId } : {}),
+        // Switched off for this reply: the author is not pinged.
+        ...(reply?.ping === false ? { replyPing: false } : {}),
         // Into the thread rather than at the message: the daemon needs to be
         // told which, because Matrix says them with the same field.
         ...(reply?.thread ? { thread: true } : {})
@@ -4629,7 +4634,11 @@ export class ChatStore {
   }
 
   startReply(id: string, from: string, body: string): void {
-    this.set({ replyingTo: { id, from, body } })
+    this.set({ replyingTo: { id, from, body }, replyPing: true })
+  }
+
+  toggleReplyPing(): void {
+    this.set({ replyPing: !this.state.replyPing })
   }
 
   /** Opens a message of yours for editing where it stands. */
