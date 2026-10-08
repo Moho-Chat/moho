@@ -439,6 +439,10 @@ function MessageRowBody({
   // Somebody else's name or picture opens who they are, as it does in the
   // clients this is measured against; your own and the system's have nothing
   // to open.
+  // Read when the menu opens: by the time an entry is clicked the window may
+  // have let go of the selection.
+  const selectedRef = useRef('')
+  const selected = selectedRef.current
   const canOpenProfile = !!message.from && !isSystem && !message.isOwn
   const openProfile = (): void => store.showProfile(bufferId, message.from, message.senderId)
   // Back to what this answers, bringing it into view first if it is a long
@@ -465,6 +469,15 @@ function MessageRowBody({
         ] as MenuEntry[])
       : []),
     { label: 'Reply', icon: 'reply', onClick: () => reply() },
+    // What was selected when the menu opened, first: right-clicking on
+    // highlighted text and finding no Copy is the one thing this menu must not
+    // do, having replaced the one the window would have given.
+    ...(selected
+      ? ([{ label: 'Copy', icon: 'content_copy', onClick: () => void window.moho.copyText(selected) }] as MenuEntry[])
+      : []),
+    ...(message.body && !isSystem
+      ? ([{ label: 'Copy text', icon: 'content_copy', onClick: () => void window.moho.copyText(message.body) }] as MenuEntry[])
+      : []),
     // Sending somebody else's message on. Only where the service has a real
     // forward: Discord's carries the original itself, and Matrix's sends its
     // content again, the same upload and formatting. Anywhere else it would
@@ -589,6 +602,15 @@ function MessageRowBody({
           }
         ] as MenuEntry[])
       : []),
+    ...(service === 'discord' && message.id && !isSystem
+      ? ([
+          {
+            label: 'Copy message link',
+            icon: 'link',
+            onClick: () => void store.copyDiscordMessageLink(bufferId, message.id)
+          }
+        ] as MenuEntry[])
+      : []),
     ...(service === 'discord'
       ? ([
           {
@@ -693,7 +715,10 @@ function MessageRowBody({
         // Where a picture in it came from, for fetching it again once its
         // cached copy has gone - see lib/mediarestore.
         data-buffer-id={bufferId}
-        onContextMenu={open}
+        onContextMenu={(e) => {
+          selectedRef.current = window.getSelection()?.toString().trim() ?? ''
+          open(e)
+        }}
       >
         {/* Bubbles carry their own time inside, which is the whole point of
             the shape - so the gutter that reserves 42px for it on every other

@@ -420,6 +420,25 @@ const SCENES = [
     },
     clip: { x: 277, y: 80, width: 640, height: 90 }
   },
+  {
+    // Right-click on highlighted text in a Discord message (#299).
+    name: 'discord-message-menu',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(`(() => {
+        const row = [...document.querySelectorAll('.message-row')].find((r) => r.innerText.includes('craft fair'))
+        const body = row.querySelector('.message-body')
+        const range = document.createRange(); range.selectNodeContents(body)
+        const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range)
+        return true
+      })()`)
+      const c = await centre(p, '.message-row', 'craft fair')
+      await mouse(p, 'mousePressed', c.x + 120, c.y, 'right')
+      await mouse(p, 'mouseReleased', c.x + 120, c.y, 'right')
+      await sleep(300)
+    },
+    clip: { x: 277, y: 80, width: 640, height: 420 }
+  },
   // Motion, recorded rather than photographed.
   {
     name: 'motion-hover-rows',

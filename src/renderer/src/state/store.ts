@@ -3951,6 +3951,17 @@ export class ChatStore {
    * Opens the real Discord message in a browser - the last resort when even
    * a refresh cannot produce a working link.
    */
+  /** A link to one message, on the clipboard - the same address Open in Discord goes to. */
+  async copyDiscordMessageLink(bufferId: string, messageId: string): Promise<void> {
+    try {
+      const { url } = await window.moho.rpc<{ url: string }>('getDiscordMessageLink', { bufferId, messageId })
+      void window.moho.copyText(url)
+      this.toast('info', 'Link copied')
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
+  }
+
   async openInDiscord(bufferId: string, messageId: string): Promise<void> {
     try {
       const { url } = await window.moho.rpc<{ url: string }>('getDiscordMessageLink', {
