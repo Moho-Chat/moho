@@ -2,7 +2,7 @@ import { useMediaUrl } from '../lib/route'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { bufferLink } from '../lib/bufferlink'
 import { Icon, IconButton, ServiceMark } from './Icon'
-import { ContextMenu, useContextMenu } from './ContextMenu'
+import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { bufferMenuEntries } from '../lib/buffermenu'
 import { UserFooter } from './UserFooter'
 import { VoiceChannels } from './VoiceChannels'
@@ -279,9 +279,9 @@ export function BufferList(): JSX.Element {
   }, [store, eventGuild?.accountId, eventGuild?.guildId])
   const openCategoryMenu = (e: React.MouseEvent, section: CategorySection): void => {
     e.preventDefault()
-    // Only a heading you made is yours to rename or remove; a server's
-    // category is theirs, and offering to rename it would be a lie.
-    if (!section.custom) return
+    // Every heading can be read through; only one you made is yours to rename
+    // or remove - a server's category is theirs, and offering to rename it
+    // would be a lie.
     setCatMenu({ x: e.clientX, y: e.clientY, section })
   }
 
@@ -572,7 +572,7 @@ export function BufferList(): JSX.Element {
                           title={
                             section.custom
                               ? 'Your heading — drop channels here, drag to reorder, right-click to rename or remove'
-                              : `${section.name} — drag to reorder`
+                              : `${section.name} — drag to reorder, right-click to mark as read`
                           }
                         >
                           <Icon name={folded ? 'chevron_right' : 'expand_more'} size={14} />
@@ -654,19 +654,30 @@ export function BufferList(): JSX.Element {
           y={catMenu.y}
           entries={[
             {
-              label: 'Rename',
-              icon: 'edit',
-              onClick: () =>
-                setNaming({ id: catMenu.section.key, name: catMenu.section.name ?? '' })
+              label: 'Mark as read',
+              icon: 'mark_chat_read',
+              disabled: !catMenu.section.buffers.some((b) => b.unread > 0 || b.highlight),
+              onClick: () => void store.markBuffersRead(catMenu.section.buffers.map((b) => b.id))
             },
-            {
-              label: 'Remove',
-              icon: 'delete',
-              danger: true,
-              // The channels stay; only the heading goes, and they fall back
-              // to wherever the service filed them.
-              onClick: () => writeCategories(myCategories.filter((c) => c.id !== catMenu.section.key))
-            }
+            ...(catMenu.section.custom
+              ? ([
+                  { separator: true },
+                  {
+                    label: 'Rename',
+                    icon: 'edit',
+                    onClick: () =>
+                      setNaming({ id: catMenu.section.key, name: catMenu.section.name ?? '' })
+                  },
+                  {
+                    label: 'Remove',
+                    icon: 'delete',
+                    danger: true,
+                    // The channels stay; only the heading goes, and they fall back
+                    // to wherever the service filed them.
+                    onClick: () => writeCategories(myCategories.filter((c) => c.id !== catMenu.section.key))
+                  }
+                ] as MenuEntry[])
+              : [])
           ]}
           onClose={() => setCatMenu(null)}
         />
@@ -872,6 +883,7 @@ function BufferRow({
   onDragEnd
 }: BufferRowProps): JSX.Element {
   const { menu, open, close } = useContextMenu()
+  const store = useStore()
   const account = accounts.find((a) => a.id === buffer.accountId)
   // A DM's picture comes off the service's CDN; through the route for a
   // strictly routed account (#257).
@@ -958,6 +970,7 @@ function BufferRow({
     onFile,
     onPopOut,
     onDock,
+    onMarkRead: () => void store.markBuffersRead([buffer.id]),
     onMarkUnread: account?.service === 'matrix' ? onMarkUnread : undefined,
     onTag: account?.service === 'matrix' ? onTag : undefined,
     markedUnread: buffer.markedUnread

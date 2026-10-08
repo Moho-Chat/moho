@@ -178,6 +178,9 @@ function isMerge(e: React.DragEvent): boolean {
 function RailTile(props: TileProps): JSX.Element {
   const { group, active, unread, highlight, draggable, dropTarget, customIcon, muted, lifted, mergeTarget } = props
   const { menu, open, close } = useContextMenu()
+  const store = useStore()
+  // What is waiting inside this server, for "Mark as read".
+  const waiting = useChat((s) => s.buffers).filter((b) => b.groupId === group.id && (b.unread > 0 || b.highlight))
   const service = serviceIcon(group.service)
   // Only a guild or space needs telling apart by service: its face is a
   // picture or initials that say nothing about where it came from. An account
@@ -250,6 +253,12 @@ function RailTile(props: TileProps): JSX.Element {
           x={menu.x}
           y={menu.y}
           entries={[
+            {
+              label: 'Mark as read',
+              icon: 'mark_chat_read',
+              disabled: waiting.length === 0,
+              onClick: () => void store.markBuffersRead(waiting.map((b) => b.id))
+            },
             {
               label: muted ? `Unmute ${group.name}` : `Mute ${group.name}`,
               icon: muted ? 'notifications_active' : 'notifications_off',

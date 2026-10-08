@@ -641,6 +641,16 @@ export function MessageList(): JSX.Element {
     scrollToBottom('smooth')
   }
 
+  // Escape, from anywhere in the window (lib/shortcuts.ts), is "I am done with
+  // this": read it and go to the end of it.
+  const jumpRef = useRef(jumpToPresent)
+  jumpRef.current = jumpToPresent
+  useEffect(() => {
+    const go = (): void => jumpRef.current()
+    window.addEventListener('moho:jump-to-present', go)
+    return () => window.removeEventListener('moho:jump-to-present', go)
+  }, [])
+
   // The divider marks the first message newer than the snapshot taken when the
   // buffer was opened; it deliberately doesn't move as more arrive.
   const dividerIndex = dividerTs > 0 ? messages.findIndex((m) => m.ts > dividerTs) : -1

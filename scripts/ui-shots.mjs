@@ -330,6 +330,35 @@ const SCENES = [
     setup: discord(true),
     clip: { x: 0, y: 480, width: 300, height: 320 }
   },
+  {
+    // Right-clicking a server's own category heading, which used to open nothing (#286).
+    name: 'discord-category-menu',
+    setup: async (p) => {
+      await discord(false)(p)
+      const c = await centre(p, '.category-head', 'ANIMALS')
+      if (c) {
+        await mouse(p, 'mousePressed', c.x, c.y, 'right')
+        await mouse(p, 'mouseReleased', c.x, c.y, 'right')
+      }
+      await sleep(300)
+    },
+    clip: { x: 0, y: 44, width: 420, height: 420 }
+  },
+  {
+    name: 'discord-server-menu',
+    setup: async (p) => {
+      await discord(false)(p)
+      const c = await centre(p, '.rail-tile', '')
+      const tile = await p.evaluate(`(() => { const el = document.querySelector('[title="Moho Dev"]'); if (!el) return null; const r = el.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } })()`)
+      const at = tile ?? c
+      if (at) {
+        await mouse(p, 'mousePressed', at.x, at.y, 'right')
+        await mouse(p, 'mouseReleased', at.x, at.y, 'right')
+      }
+      await sleep(300)
+    },
+    clip: { x: 0, y: 44, width: 420, height: 300 }
+  },
   // Motion, recorded rather than photographed.
   {
     name: 'motion-hover-rows',

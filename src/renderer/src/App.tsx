@@ -37,8 +37,10 @@ import { bufferDisplayName } from './lib/util'
 import type { BufferEntry } from './state/store'
 import { loadLocalEmotes, recoverMissingEmotes } from './lib/emotecache'
 import { restoreMissingMedia } from './lib/mediarestore'
+import { useShortcuts } from './lib/shortcuts'
 
 export default function App(): JSX.Element {
+  useShortcuts()
   const store = useStore()
   const prefsReady = usePrefsReady()
   const [booted, setBooted] = useState(false)

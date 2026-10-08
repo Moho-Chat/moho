@@ -94,6 +94,7 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
       onFile: (categoryId) => setAssignment(buffer.id, categoryId),
       onPopOut: () => store.popOut(buffer.id),
       onDock: () => store.dock(buffer.id),
+      onMarkRead: () => void store.markBuffersRead([buffer.id]),
       onMarkUnread: account?.service === 'matrix' ? () => void store.markUnread(buffer.id) : undefined,
       onTag:
         account?.service === 'matrix'
