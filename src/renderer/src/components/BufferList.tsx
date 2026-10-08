@@ -971,6 +971,9 @@ function BufferRow({
           'buffer-row',
           active && 'active',
           buffer.highlight && 'highlight',
+          // Said by the name, not only by a number beside it: bold, and a bar
+          // at the edge. Not for a muted room, which asked not to be told.
+          ((buffer.unread > 0 && !muted) || (buffer.markedUnread && !muted)) && 'unread',
           lifted && 'lifted',
           link && 'unlinked'
         )}

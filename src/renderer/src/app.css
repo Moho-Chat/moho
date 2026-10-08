@@ -272,22 +272,65 @@
   opacity: 0.6;
 }
 
-.unread-badge {
-  flex: none;
+/* One badge, everywhere a count or a state sits on something: the channel
+   list, the rail's tiles and corners, the mentions button and the on-air
+   mark. Two sizes - the usual 18px and the 15px one that has to fit a
+   button's corner - and one escalation: a count is grey, and a mention is
+   red with white text. Red because that is what all three of the clients
+   this one is measured against use for "somebody said your name", and
+   because the blue of selection and links is already everywhere. */
+.unread-badge,
+.rail-count,
+.rail-downloads,
+.live-badge,
+.mentions-count {
+  box-sizing: border-box;
   min-width: 18px;
+  height: 18px;
   padding: 0 5px;
   border-radius: var(--radius-pill);
   background: var(--surface-container-highest);
   color: var(--surface-text);
   font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
   line-height: 18px;
   text-align: center;
 }
 
-.unread-badge.highlight {
-  background: var(--primary);
-  color: var(--primary-text);
+.unread-badge {
+  flex: none;
+}
+
+.unread-badge.highlight,
+.rail-count.highlight,
+.rail-service.highlight,
+.mentions-count {
+  background: var(--mention);
+  color: var(--on-accent);
+}
+
+/* An unread channel is read as one before its number is: its name goes bold
+   and full-strength, and a short bar stands at the row's left edge. */
+.buffer-row.unread {
+  position: relative;
+}
+
+.buffer-row.unread .buffer-name {
+  color: var(--surface-text);
   font-weight: var(--weight-semibold);
+}
+
+.buffer-row.unread:not(.active)::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: 50%;
+  width: 4px;
+  height: 8px;
+  margin-top: -4px;
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  background: var(--surface-text);
 }
 
 
@@ -662,8 +705,6 @@
    sit - one mark for one fact. */
 .live-badge {
   flex: none;
-  padding: 0 5px;
-  border-radius: var(--radius-pill);
   /* The same solid red as the hang-up button rather than --error, which is
      a pale pink for text and reads as decorative when used as a fill. */
   background: var(--danger);
@@ -671,8 +712,6 @@
   font-size: 9px;
   font-weight: var(--weight-bold);
   letter-spacing: 0.05em;
-  line-height: 18px;
-  text-align: center;
 }
 
 
@@ -2348,14 +2387,10 @@ img.composer-emoji {
   right: -3px;
   pointer-events: none;
   min-width: 15px;
+  height: 15px;
   padding: 0 3px;
-  border-radius: var(--radius-pill);
-  background: var(--primary);
-  color: var(--primary-text);
   font-size: var(--font-size-xxs);
-  font-weight: var(--weight-semibold);
   line-height: 15px;
-  text-align: center;
 }
 
 .mentions-panel {
@@ -4301,32 +4336,14 @@ video.lightbox-media {
   position: absolute;
   right: -2px;
   bottom: -2px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-container-highest);
-  color: var(--surface-text);
   border: 2px solid var(--surface-container-lowest);
-  font-size: var(--font-size-xs);
-  font-weight: var(--weight-semibold);
   line-height: 14px;
-  text-align: center;
 }
 
-/* Someone said your name. Same escalation the channel rows use, so the two
-   agree about what counts as worth interrupting for. */
-.rail-count.highlight {
-  background: var(--primary);
-  color: var(--primary-text);
-}
-
-
-/* A waiting mention is worth more than a quiet service label. */
-.rail-service.highlight {
-  background: var(--primary);
-  color: var(--primary-text);
-}
+/* Someone said your name: red, from the shared badge rule - the same
+   escalation the channel rows use, so the two agree about what is worth
+   interrupting for. A waiting mention is worth more than a quiet service
+   label, so the tile's service mark turns red too. */
 
 /* The selected rail entry, naming what the channel list below belongs to. */
 .group-title {
@@ -5632,16 +5649,12 @@ video.lightbox-media {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 17px;
-  height: 17px;
-  padding: 0 4px;
-  border-radius: var(--radius-pill);
+  /* Blue, not red: it is progress, not an alarm. */
   background: var(--primary);
   color: var(--primary-text);
   border: 2px solid var(--surface-container-lowest);
   font-size: var(--font-size-xxs);
-  font-weight: var(--weight-semibold);
-  font-variant-numeric: tabular-nums;
+  line-height: 14px;
 }
 
 /* An export running behind whatever is on screen. A slow pulse rather than a
