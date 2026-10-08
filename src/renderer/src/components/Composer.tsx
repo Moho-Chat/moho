@@ -4,6 +4,7 @@ import { applyFormat } from '../lib/composeFormatDom'
 import { useMediaUrl } from '../lib/route'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
+import { ContextMenu, type MenuEntry } from './ContextMenu'
 import torMark from '../assets/tor.svg'
 import { PollComposer } from './PollComposer'
 import { Avatar } from './Avatar'
@@ -203,7 +204,9 @@ export function Composer(): JSX.Element | null {
   const [roles, setRoles] = useState<{ id: string; name: string; colour?: string }[]>([])
   const emojiButtonRef = useRef<HTMLButtonElement>(null)
   const stickerButtonRef = useRef<HTMLButtonElement>(null)
-  const placeButtonRef = useRef<HTMLButtonElement>(null)
+  const plusButtonRef = useRef<HTMLButtonElement>(null)
+  /** The "+" menu, where it opened. */
+  const [plusMenu, setPlusMenu] = useState<{ x: number; y: number } | null>(null)
 
   const smilies = useChat((s) => s.smilies)
   const bufferEmojiByBuffer = useChat((s) => s.bufferEmoji)
@@ -424,6 +427,35 @@ export function Composer(): JSX.Element | null {
     files.forEach((f) => stage(f.path, f.file))
     inputRef.current?.focus()
   }
+
+  const pickAndStage = (): void => void window.moho.pickFile().then((p) => p && stage(p))
+  /**
+   * What the "+" holds. A file everywhere it can go; and on Matrix the things
+   * that are a message of their own kind rather than text - a place, a poll.
+   * With nothing but the file, the button is that and skips the menu.
+   */
+  const plusEntries: MenuEntry[] = [
+    {
+      label: supportsAttachments ? 'Upload a file' : "Upload a file (not available here)",
+      icon: 'upload_file',
+      disabled: !supportsAttachments,
+      onClick: pickAndStage
+    },
+    ...(service === 'matrix'
+      ? ([
+          {
+            label: 'Send a location',
+            icon: 'location_on',
+            onClick: () => {
+              setPickerOpen(false)
+              setStickerPicker(false)
+              setPlaceOpen(true)
+            }
+          },
+          { label: 'Start a poll', icon: 'ballot', onClick: () => setPolling(true) }
+        ] as MenuEntry[])
+      : [])
+  ]
 
   const submit = (): void => {
     // The text as this service will read it: formatting in the box becomes
@@ -963,6 +995,29 @@ export function Composer(): JSX.Element | null {
       )}
 
       <div className="composer-row">
+       <div className="composer-box">
+        {/* Everything that is not typed goes through here, inside the box on
+            the left as in Discord. Where there is only the one thing - a
+            file - it is that thing, without a menu in between. */}
+        <button
+          ref={plusButtonRef}
+          type="button"
+          className="icon-button composer-plus"
+          title={plusEntries.length > 1 ? 'Add to the message' : supportsAttachments ? 'Attach a file' : "Attachments aren't supported for this service"}
+          aria-haspopup={plusEntries.length > 1 ? 'menu' : undefined}
+          disabled={plusEntries.length <= 1 && !supportsAttachments}
+          onClick={(e) => {
+            if (plusEntries.length > 1) {
+              const r = e.currentTarget.getBoundingClientRect()
+              setPlusMenu({ x: r.left, y: r.top - 6 })
+            } else {
+              pickAndStage()
+            }
+          }}
+        >
+          <Icon name="add_circle" size={22} fill />
+        </button>
+
         {/* Where this conversation's traffic goes: through Tor, the account
             being routed or everything being. Beside the lock rather than
             instead of it - a Matrix room can be both encrypted and routed,
@@ -981,12 +1036,13 @@ export function Composer(): JSX.Element | null {
             </span>
           ))}
         {service === 'matrix' && (
-          <Icon
-            name={buffer.encrypted ? 'lock' : 'lock_open'}
-            size={16}
-            color={buffer.encrypted ? 'var(--primary)' : 'var(--surface-variant-text)'}
-            style={{ margin: '0 2px' }}
-          />
+          <span className="composer-lock" title={buffer.encrypted ? 'Encrypted' : 'Not encrypted'}>
+            <Icon
+              name={buffer.encrypted ? 'lock' : 'lock_open'}
+              size={16}
+              color={buffer.encrypted ? 'var(--primary)' : 'var(--surface-variant-text)'}
+            />
+          </span>
         )}
 
         <div className="composer-input-wrap">
@@ -1185,53 +1241,29 @@ export function Composer(): JSX.Element | null {
           </button>
         )}
 
-        {/* Beside the sticker button for the same reason it is beside the
-            emoji one: a location is the message rather than something typed
-            into it. Matrix only, which is the one service here that carries
-            a place as its own kind of message. */}
-        {service === 'matrix' && (
-          <button
-            ref={placeButtonRef}
-            type="button"
-            className="icon-button"
-            title="Send a location"
-            onClick={() => {
-              setPickerOpen(false)
-              setStickerPicker(false)
-              setPlaceOpen(!placeOpen)
-            }}
-          >
-            <Icon name="location_on" size={18} />
-          </button>
-        )}
-
         {/* Saying it rather than typing it. The two services that have voice
             messages at all: Discord's flag and base64 waveform, and Matrix's
             MSC3245 marker with integers. The daemon speaks both from one
             recording, so this is the same button either way. */}
         {(service === 'discord' || service === 'matrix') && <VoiceRecorder bufferId={buffer.id} />}
 
-        {/* Only Matrix, and only because it is the only service whose polls
-            this client can start: Kick's are the streamer's to make and
-            Discord's are read here. */}
-        {service === 'matrix' && (
-          <IconButton name="ballot" title="Start a poll" onClick={() => setPolling(true)} />
+        {/* Sending is the one thing the box does that its own Enter does not
+            say, so it is only drawn when there is something to send. */}
+        {(text.trim() || staged.length > 0) && (
+          <button type="button" className="icon-button composer-send" title="Send (Enter)" onClick={submit}>
+            <Icon name="send" size={20} fill />
+          </button>
         )}
-
-        <IconButton
-          name="add"
-          title={
-            supportsAttachments ? 'Attach a file' : "Attachments aren't supported for this service"
-          }
-          disabled={!supportsAttachments}
-          onClick={() => void window.moho.pickFile().then((p) => p && stage(p))}
-        />
-        <IconButton name="send" title="Send" onClick={submit} />
+       </div>
       </div>
+
+      {plusMenu && (
+        <ContextMenu x={plusMenu.x} y={plusMenu.y} above entries={plusEntries} onClose={() => setPlusMenu(null)} />
+      )}
 
       {placeOpen && (
         <PlaceField
-          anchor={placeButtonRef.current}
+          anchor={plusButtonRef.current}
           onClose={() => setPlaceOpen(false)}
           onSend={(place, label) => {
             setPlaceOpen(false)

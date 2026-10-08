@@ -43,6 +43,8 @@ interface Props {
   x: number
   y: number
   entries: MenuEntry[]
+  /** `y` is the menu's bottom edge rather than its top: for a button at the foot of the window. */
+  above?: boolean
   onClose: () => void
 }
 
@@ -51,7 +53,7 @@ interface Props {
  * or clipping ancestor, then nudged back inside the viewport once its real
  * size is known.
  */
-export function ContextMenu({ x, y, entries, onClose }: Props): JSX.Element {
+export function ContextMenu({ x, y, entries, above, onClose }: Props): JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ x, y })
 
@@ -63,11 +65,12 @@ export function ContextMenu({ x, y, entries, onClose }: Props): JSX.Element {
     // smaller than it will be - which parked the menu that far off the edge.
     const width = el.offsetWidth
     const height = el.offsetHeight
+    const top = above ? y - height : y
     setPos({
       x: Math.max(4, Math.min(x, window.innerWidth - width - 4)),
-      y: Math.max(4, Math.min(y, window.innerHeight - height - 4))
+      y: Math.max(4, Math.min(top, window.innerHeight - height - 4))
     })
-  }, [x, y, entries.length])
+  }, [x, y, above, entries.length])
 
   useEscapeLayer(onClose)
 
@@ -129,7 +132,7 @@ export function ContextMenu({ x, y, entries, onClose }: Props): JSX.Element {
   return createPortal(
     <div
       ref={ref}
-      className="context-menu"
+      className={above ? 'context-menu above' : 'context-menu'}
       role="menu"
       tabIndex={-1}
       style={{ left: pos.x, top: pos.y }}

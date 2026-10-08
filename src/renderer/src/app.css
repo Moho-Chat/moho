@@ -2110,6 +2110,75 @@ button.video-tile {
   padding: var(--spacing-s);
 }
 
+.context-menu.above {
+  transform-origin: bottom left;
+}
+
+/* One rounded box holding the "+", the typing and the buttons, as in Discord;
+   the typing itself has no border of its own. Buttons sit at the foot of it, so
+   they stay with the last line as the box grows. */
+.composer-box {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 2px var(--spacing-xs);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  transition: border-color var(--motion-fast) var(--ease);
+}
+
+.composer-box:focus-within {
+  border-color: var(--primary);
+}
+
+.composer-box .composer-input {
+  padding: 5px var(--spacing-xs);
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.composer-box .composer-placeholder {
+  left: var(--spacing-xs);
+  right: var(--spacing-xs);
+}
+
+.composer-box > .icon-button,
+.composer-box > .voice-recorder,
+.composer-lock,
+.composer-box > .composer-tor {
+  height: 32px;
+}
+
+.composer-lock,
+.composer-box > .composer-tor {
+  display: inline-flex;
+  align-items: center;
+}
+
+.composer-plus {
+  color: var(--surface-variant-text);
+}
+
+.composer-plus:hover {
+  color: var(--surface-text);
+}
+
+.composer-send {
+  color: var(--primary);
+  animation: composer-send-in var(--motion-fast) var(--ease);
+}
+
+@keyframes composer-send-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+
 /* The box is an editable div rather than an input so an emoji can sit in it as
    a picture. That costs the native placeholder, so one is drawn over the top -
    hence the wrapper, which exists only to position it. */

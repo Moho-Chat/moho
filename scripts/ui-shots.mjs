@@ -371,6 +371,24 @@ const SCENES = [
     clip: { x: 277, y: 560, width: 823, height: 240 }
   },
   {
+    // The "+" with more than a file in it (#306): Matrix's place and poll live here now.
+    name: 'matrix-plus-menu',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await p.evaluate(`(() => {
+        const s = window.__mohoShots.state()
+        window.__mohoShots.patch({ accounts: s.accounts.map((a) => ({ ...a, service: 'matrix' })) })
+        return true
+      })()`)
+      await sleep(400)
+      await p.evaluate(`document.querySelector('.composer-input').focus()`)
+      await p.call('Input.insertText', { text: 'with a place and a poll under the plus' })
+      await p.evaluate(click('.composer-plus'))
+      await sleep(500)
+    },
+    clip: { x: 277, y: 520, width: 823, height: 280 }
+  },
+  {
     // Walked with the arrow keys, with the skin tones open (#313).
     name: 'emoji-picker-keys',
     setup: async (p) => {
