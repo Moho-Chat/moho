@@ -2756,16 +2756,77 @@ img.composer-emoji {
   border-radius: var(--corner-radius);
   background: var(--surface-container-highest);
   border: 1px solid var(--outline-medium);
+  border-left-width: 3px;
   box-shadow: var(--shadow-2);
   font-size: var(--font-size-small);
+  animation: toast-in var(--motion) var(--ease);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+/* The kind is said by the edge and the icon, not by recolouring the words. */
+.toast.info {
+  border-left-color: var(--primary);
+}
+
+.toast.success {
+  border-left-color: var(--success);
 }
 
 .toast.error {
-  color: var(--error);
+  border-left-color: var(--danger);
 }
 
-.toast span {
+.toast.error > .icon {
+  color: var(--danger-text);
+}
+
+.toast.success > .icon {
+  color: var(--success);
+}
+
+.toast.info > .icon {
+  color: var(--primary);
+}
+
+.toast.leaving {
+  opacity: 0;
+  transform: translateX(24px);
+}
+
+.toast-text {
   flex: 1;
+  min-width: 0;
+}
+
+.toast-count {
+  margin-left: var(--spacing-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.toast-action {
+  flex: none;
+  padding: 2px var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+}
+
+.toast-action:hover {
+  background: var(--primary-hover-light);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
 }
 
 /* --- rich message content --------------------------------------------- */

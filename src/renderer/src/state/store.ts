@@ -21,6 +21,7 @@ import type {
   VoicePrefs,
   VoiceSession
 } from '../../../shared/wire'
+import { addToast, type ToastAction, type ToastItem } from '../lib/toasts'
 import { buildSmilieIndex, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
 import { runExport } from '../lib/exporter'
@@ -674,11 +675,7 @@ export interface ChatState {
   matrixLoginStatus: string
 }
 
-export interface Toast {
-  id: number
-  kind: 'info' | 'error'
-  text: string
-}
+export type Toast = ToastItem
 
 const INITIAL: ChatState = {
   newRelease: null,
@@ -3960,7 +3957,7 @@ export class ChatStore {
     try {
       const { url } = await window.moho.rpc<{ url: string }>('getDiscordMessageLink', { bufferId, messageId })
       void window.moho.copyText(url)
-      this.toast('info', 'Link copied')
+      this.toast('success', 'Link copied')
     } catch (e) {
       this.toast('error', (e as Error).message)
     }
@@ -4757,12 +4754,13 @@ export class ChatStore {
       })
   }
 
-  toast(kind: 'info' | 'error', text: string): void {
-    const id = ++this.toastSeq
-    this.set({ toasts: [...this.state.toasts, { id, kind, text }] })
-    setTimeout(() => {
-      this.set({ toasts: this.state.toasts.filter((t) => t.id !== id) })
-    }, 6000)
+  /**
+   * Says something happened. How long it stays, and going away when the
+   * pointer is not on it, is the stack's own business (components/Toasts.tsx):
+   * a toast that vanished while being read was the old behaviour.
+   */
+  toast(kind: 'info' | 'success' | 'error', text: string, action?: ToastAction): void {
+    this.set({ toasts: addToast(this.state.toasts, { id: ++this.toastSeq, kind, text, action }) })
   }
 
   dismissToast(id: number): void {

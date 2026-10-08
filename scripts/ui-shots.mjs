@@ -321,7 +321,7 @@ const SCENES = [
     name: 'toasts',
     setup: async (p) => {
       await openChannel(p, '#general')
-      await p.evaluate(`window.__mohoShots.store.toast('info', 'Copied to the clipboard'), window.__mohoShots.store.toast('error', "Couldn't send: the connection dropped")`)
+      await p.evaluate(`(() => { const t = window.__mohoShots.store; t.toast('info', 'Copied to the clipboard'); t.toast('success', 'Link copied'); t.toast('error', "Couldn't send: the connection dropped"); t.toast('error', "Couldn't send: the connection dropped"); t.toast('error', "Couldn't send: the connection dropped"); return true })()`)
       await sleep(300)
     }
   },
