@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { ConfirmButton } from '../ConfirmButton'
 import {
   ChoiceSetting,
   DirectorySetting,
@@ -941,15 +942,14 @@ function TorSettings(): JSX.Element {
           >
             Regenerate circuit
           </button>
-          <button
-            type="button"
-            className="button subtle"
-            onClick={() =>
+          <ConfirmButton
+            label="Restart Tor from scratch"
+            question="Drop every Tor connection and start again?"
+            confirmLabel="Restart Tor"
+            onConfirm={() =>
               call('restartTorFromScratch', {}, 'Restarting Tor from scratch - this can take a minute…')
             }
-          >
-            Restart Tor from scratch
-          </button>
+          />
         </div>
       </SettingsSection>
     </>
@@ -1173,16 +1173,15 @@ function AboutSettings(): JSX.Element {
             {linkUp ? 'connected' : 'not connected'}
           </span>
         </div>
-        <button
-          type="button"
-          className="button subtle"
-          onClick={() => {
+        <ConfirmButton
+          label="Restart daemon"
+          question="Disconnect everything and restart nobilis?"
+          confirmLabel="Restart"
+          onConfirm={() => {
             void window.moho.restartDaemon()
             store.toast('info', 'Restarting nobilis\u2026')
           }}
-        >
-          Restart daemon
-        </button>
+        />
         {status && !status.available && (
           <p className="small" style={{ color: 'var(--warning)' }}>
             The nobilis binary wasn&apos;t found. Run <code>cargo build --release</code>, or start

@@ -2488,11 +2488,12 @@ img.composer-emoji {
   outline-offset: -10px;
 }
 
-/* The one button in the app that destroys something. Not --error, which is a
-   pale text colour and reads as decorative when used as a fill. */
-.button.danger {
-  background: var(--danger);
-  color: var(--on-accent);
+/* Asking again, in place of the button that was pressed. */
+.confirm-button {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
 }
 
 /* --- mentions ---------------------------------------------------------- */

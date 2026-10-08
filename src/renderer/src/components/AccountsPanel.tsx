@@ -488,7 +488,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
                 >
                   <Icon name="delete" size={16} /> Remove
                 </button>
-                <button type="button" className="button" autoFocus onClick={() => setConfirmingRemove(false)}>
+                <button type="button" className="button subtle" autoFocus onClick={() => setConfirmingRemove(false)}>
                   Keep it
                 </button>
               </div>

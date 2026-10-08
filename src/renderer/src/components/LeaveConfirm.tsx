@@ -50,7 +50,7 @@ export function LeaveConfirm(props: {
         </div>
         <p className="small">{detail}</p>
         <div className="leave-confirm-actions">
-          <button type="button" className="button" onClick={onCancel} autoFocus>
+          <button type="button" className="button subtle" onClick={onCancel} autoFocus>
             Cancel
           </button>
           <button

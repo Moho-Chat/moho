@@ -569,6 +569,18 @@ const SCENES = [
     },
     clip: { x: 0, y: 380, width: 280, height: 260 }
   },
+  {
+    // Restarting Tor asks first (#316).
+    name: 'settings-tor-confirm',
+    setup: async (p) => {
+      await p.evaluate(`window.__mohoShots.store.setActivePanel('settings')`)
+      await sleep(300)
+      await p.evaluate(click('.settings-rail-item', 'Tor'))
+      await sleep(300)
+      await p.evaluate(click('button', 'Restart Tor from scratch'))
+      await sleep(300)
+    }
+  },
   // Motion, recorded rather than photographed.
   {
     name: 'motion-hover-rows',

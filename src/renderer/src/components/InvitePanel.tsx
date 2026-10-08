@@ -44,7 +44,7 @@ export function InvitePanel({ groupId }: { groupId: string }): JSX.Element | nul
         <button type="button" className="button primary" onClick={() => answer(true)}>
           Accept
         </button>
-        <button type="button" className="button danger" onClick={() => answer(false)}>
+        <button type="button" className="button subtle" onClick={() => answer(false)}>
           Decline
         </button>
       </div>

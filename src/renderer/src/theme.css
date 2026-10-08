@@ -376,9 +376,10 @@ a:hover {
 }
 
 .button.danger {
-  background: transparent;
-  color: var(--error);
-  border: 1px solid var(--outline-medium);
+  /* The one button that destroys something: filled red, white text. Not
+     --error, a pale pink for text that went wrong, which cannot be a fill. */
+  background: var(--danger);
+  color: var(--on-accent);
 }
 
 .muted {

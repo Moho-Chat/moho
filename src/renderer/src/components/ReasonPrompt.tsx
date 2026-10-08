@@ -74,7 +74,7 @@ export function ReasonPrompt({
           }}
         />
         <div className="reason-prompt-actions">
-          <button type="button" className="button" onClick={onCancel}>
+          <button type="button" className="button subtle" onClick={onCancel}>
             Cancel
           </button>
           <button
