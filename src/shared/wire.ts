@@ -618,6 +618,8 @@ export interface Member {
    * split into online and offline.
    */
   status?: string
+  /** Their picture, where the service has one in its member list. */
+  avatarUrl?: string
 }
 
 export interface Protocol {

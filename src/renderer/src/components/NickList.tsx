@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Avatar } from './Avatar'
 import { Icon, IconButton } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { useActiveBuffer, useChat, useIdSetPref, useStore } from '../state/hooks'
@@ -639,9 +640,22 @@ function MemberRow({
         type="button"
         className={classes('nick-row', member.away && 'away', blocked && 'blocked')}
         onContextMenu={open}
-        onClick={onMention}
+        // Who they are is the click, as in Discord, Slack and Element;
+        // mentioning is Shift+click and the menu's own entry.
+        onClick={(e) => (onProfile && !e.shiftKey ? onProfile() : onMention())}
         title={memberTitle(member)}
       >
+        {/* A face and a dot, where the service has presence to report. The
+            others - IRC, Sneedchat, Kick - are lists of names, and a column
+            of initials on those would be decoration. */}
+        {member.status !== undefined && (
+          <Avatar
+            name={member.nick}
+            url={member.avatarUrl}
+            size={24}
+            status={member.status}
+          />
+        )}
         {/* IRC's rank is one character and sits in a fixed slot before the
             name. Kick's is a word - "moderator", "subscriber" - which
             overflowed that eight-pixel slot and painted straight over the

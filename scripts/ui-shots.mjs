@@ -124,7 +124,7 @@ const DISCORD = `(() => {
     }),
     m('m7', 'Clarence', 'that is exactly what I needed, thank you', 18)
   ]
-  const members = (who) => who.map(([nick, status]) => ({ nick, userId: nick, status, away: status !== 'online' }))
+  const members = (who) => who.map(([nick, status]) => ({ nick, userId: nick, status, away: status === 'offline' }))
   shots.patch({
     accounts: [...s.accounts.filter((a) => a.id !== acc), {
       id: acc, service: 'discord', displayName: 'Salastil', state: 'connected', autojoin: '',
@@ -138,7 +138,7 @@ const DISCORD = `(() => {
     buffers: [...s.buffers.filter((b) => b.accountId !== acc), ...buffers,
       { id: acc + '|d1', accountId: acc, kind: 'channel', name: 'Moho Dev/#general', lastActivityTs: now, groupId: g2, unread: 2, highlight: true }],
     messagesByBuffer: { ...s.messagesByBuffer, [general]: messages },
-    presenceByBuffer: { ...s.presenceByBuffer, [general]: members([['Gaunt King', 'online'], ['Clarence', 'idle'], ['Wren', 'dnd'], ['Salastil', 'online'], ['Old Friend', 'offline']]) },
+    presenceByBuffer: { ...s.presenceByBuffer, [general]: members([['Gaunt King', 'online'], ['Clarence', 'idle'], ['Wren', 'dnd'], ['Salastil', 'online'], ['Old Friend', 'offline'], ['Quiet One', 'offline']]) },
     activeGroupId: g1,
     activeBufferId: general
   })
@@ -547,6 +547,12 @@ const SCENES = [
       await sleep(300)
     },
     clip: { x: 1020, y: 0, width: 260, height: 44 }
+  },
+  {
+    // The member list with presence (#288).
+    name: 'discord-members',
+    setup: async (p) => { await discord(false)(p) },
+    clip: { x: 1100, y: 44, width: 180, height: 300 }
   },
   // Motion, recorded rather than photographed.
   {
