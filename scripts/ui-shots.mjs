@@ -646,6 +646,35 @@ const SCENES = [
     clip: { x: 0, y: 600, width: 420, height: 200 }
   },
   {
+    // The lists that open over the box while a name or an emoji is typed (#309).
+    name: 'discord-autocomplete-mention',
+    setup: async (p) => {
+      await discord(false)(p)
+      const face = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#e0a43a"/><circle cx="16" cy="13" r="6" fill="#fff"/><rect x="6" y="21" width="20" height="12" rx="6" fill="#fff"/></svg>')
+      await p.evaluate(`(() => {
+        const s = window.__mohoShots.state()
+        const id = s.activeBufferId
+        const m = (nick, extra = {}) => ({ nick, userId: nick, status: 'online', ...extra })
+        window.__mohoShots.patch({ presenceByBuffer: { ...s.presenceByBuffer, [id]: [m('Clarence', { avatarUrl: ${JSON.stringify(face)} }), m('Cora'), m('Gaunt King'), m('Wren')] } })
+        return true
+      })()`)
+      await p.evaluate(`document.querySelector('.composer-input').focus()`)
+      await p.call('Input.insertText', { text: 'thanks @c' })
+      await sleep(500)
+    },
+    clip: { x: 277, y: 420, width: 823, height: 380 }
+  },
+  {
+    name: 'discord-autocomplete-emoji',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(`document.querySelector('.composer-input').focus()`)
+      await p.call('Input.insertText', { text: 'that was :fi' })
+      await sleep(500)
+    },
+    clip: { x: 277, y: 420, width: 823, height: 380 }
+  },
+  {
     // Three lines typed with Shift+Enter (#305).
     name: 'composer-multiline',
     setup: async (p) => {

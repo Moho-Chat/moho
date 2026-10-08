@@ -18,7 +18,7 @@ import { useEscapeLayer } from '../lib/layers'
  * the categories that come up constantly in chat. Each entry carries search
  * keywords, since "fire" only finds 🔥 if something says so.
  */
-const COMMON_EMOJI: { emoji: string; name: string }[] = [
+export const COMMON_EMOJI: { emoji: string; name: string }[] = [
   { emoji: '😀', name: 'grinning happy' },
   { emoji: '😂', name: 'joy laughing tears' },
   { emoji: '😅', name: 'sweat smile nervous' },
@@ -65,7 +65,7 @@ const COMMON_EMOJI: { emoji: string; name: string }[] = [
  * draw the picture still shows something readable; Discord's is the other way
  * round and flags animation. Neither is negotiable - the server parses it.
  */
-function emojiToken(e: CustomEmoji): string {
+export function emojiToken(e: CustomEmoji): string {
   if (e.url) return `[emote:${e.id}:${e.name}]`
   return `<${e.animated ? 'a' : ''}:${e.name}:${e.id}>`
 }

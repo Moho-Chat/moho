@@ -7,7 +7,7 @@ import { Icon, IconButton, MaskIcon } from './Icon'
 import torMark from '../assets/tor.svg'
 import { PollComposer } from './PollComposer'
 import { Avatar } from './Avatar'
-import { EmojiPicker, type StickerEntry } from './EmojiPicker'
+import { COMMON_EMOJI, emojiToken, EmojiPicker, type StickerEntry } from './EmojiPicker'
 import { PlaceField } from './PlaceField'
 import { VoiceRecorder } from './VoiceRecorder'
 import { useActiveBuffer, useChat, useStore } from '../state/hooks'
@@ -21,6 +21,7 @@ import {
   rankMentions,
   type MentionTarget
 } from '../lib/mentions'
+import { rankShortcodes, shortcodeQuery, unicodeTargets, type ShortcodeTarget } from '../lib/shortcodes'
 
 interface StagedAttachment {
   id: number
@@ -144,6 +145,8 @@ export function Composer(): JSX.Element | null {
   const cycle = useRef<{ last: Completion; attempt: number } | null>(null)
   /** The "@..." being typed, and which suggestion is selected. */
   const [mention, setMention] = useState<{ query: string; index: number } | null>(null)
+  /** The ":..." being typed, the same way. */
+  const [shortcode, setShortcode] = useState<{ query: string; index: number } | null>(null)
   /**
    * The slash commands this channel offers, while one is being typed.
    *
@@ -275,9 +278,9 @@ export function Composer(): JSX.Element | null {
   const mentionTargets = useMemo((): MentionTarget[] => {
     const members: MentionTarget[] = (roster ?? []).map((m) => ({
       name: m.nick,
-      detail: m.userId && m.userId !== m.nick ? undefined : undefined,
       kind: 'member' as const,
-      userId: m.userId
+      userId: m.userId,
+      avatarUrl: m.avatarUrl
     }))
     const roleTargets: MentionTarget[] = roles.map((r) => ({
       name: r.name,
@@ -296,6 +299,28 @@ export function Composer(): JSX.Element | null {
   const suggestions = useMemo(
     () => (mention ? rankMentions(mentionTargets, mention.query) : []),
     [mention, mentionTargets]
+  )
+
+  /**
+   * Everything a ":word" can become here: the common Unicode set, this
+   * channel's own emoji (a server's, or a Kick channel's) and, on Sneedchat,
+   * its smilies - the same places the picker draws from.
+   */
+  const bufferEmoji = bufferEmojiByBuffer[buffer?.id ?? ''] || []
+  const shortcodeTargets = useMemo((): ShortcodeTarget[] => {
+    const own: ShortcodeTarget[] = bufferEmoji.map((e) => ({ name: e.name, aliases: [], token: emojiToken(e) }))
+    const sneed: ShortcodeTarget[] =
+      service === 'sneedchat'
+        ? smilies.flatMap((s) => {
+            const [first, ...rest] = s.aliases ?? []
+            return first ? [{ name: first.replace(/^:|:$/g, ''), aliases: rest.map((a) => a.replace(/^:|:$/g, '')), token: first }] : []
+          })
+        : []
+    return [...own, ...sneed, ...unicodeTargets(COMMON_EMOJI)]
+  }, [bufferEmoji, smilies, service])
+  const shortcodes = useMemo(
+    () => (shortcode ? rankShortcodes(shortcodeTargets, shortcode.query) : []),
+    [shortcode, shortcodeTargets]
   )
 
   // What has been typed as a command, if anything: a slash at the very start
@@ -546,11 +571,14 @@ export function Composer(): JSX.Element | null {
     const node = selection?.anchorNode
     if (!selection || !node || node.nodeType !== Node.TEXT_NODE) {
       setMention(null)
+      setShortcode(null)
       return
     }
     const before = (node.textContent ?? '').slice(0, selection.anchorOffset)
     const query = mentionQuery(before)
     setMention(query === null ? null : { query, index: 0 })
+    const code = shortcodeQuery(before)
+    setShortcode(code === null ? null : { query: code, index: 0 })
   }
 
   /**
@@ -587,6 +615,45 @@ export function Composer(): JSX.Element | null {
     selection.addRange(range)
 
     setMention(null)
+    if (inputRef.current) setText(composerText(inputRef.current))
+  }
+
+  /**
+   * Puts a chosen emoji in the box in place of the ":word" that was typed,
+   * as its picture where there is one - as the picker's own choice would be.
+   */
+  const takeShortcode = (target: ShortcodeTarget): void => {
+    const selection = window.getSelection()
+    const node = selection?.anchorNode
+    if (!selection || !node || node.nodeType !== Node.TEXT_NODE || !shortcode) return
+    const offset = selection.anchorOffset
+    const start = offset - shortcode.query.length - 1
+    if (start < 0) return
+
+    const preview = emojiPreview(target.token, service === 'sneedchat' ? smilies : [])
+    let inserted: Node
+    if (preview) {
+      const img = document.createElement('img')
+      img.className = 'composer-emoji'
+      img.src = media(preview.src)
+      img.alt = preview.label
+      img.title = preview.label
+      img.dataset.token = target.token
+      inserted = img
+    } else {
+      inserted = document.createTextNode(target.token)
+    }
+    const range = document.createRange()
+    range.setStart(node, start)
+    range.setEnd(node, offset)
+    range.deleteContents()
+    range.insertNode(inserted)
+    range.setStartAfter(inserted)
+    range.collapse(true)
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    setShortcode(null)
     if (inputRef.current) setText(composerText(inputRef.current))
   }
 
@@ -666,7 +733,7 @@ export function Composer(): JSX.Element | null {
           as a bug until the line above says what was searched for. */}
       {commands.length > 0 && (
         <div className="command-picker" role="listbox" aria-label="Run a command">
-          <div className="command-picker-head small muted">
+          <div className="picker-head small muted">
             Commands matching /{typedCommand}
           </div>
           {commands.map((c, i) => (
@@ -700,6 +767,7 @@ export function Composer(): JSX.Element | null {
 
       {mention && suggestions.length > 0 && (
         <div className="mention-picker" role="listbox" aria-label="Tag somebody">
+          <div className="picker-head small muted">Members matching @{mention.query}</div>
           {suggestions.map((target, i) => (
             <button
               key={`${target.kind}:${target.name}`}
@@ -716,7 +784,7 @@ export function Composer(): JSX.Element | null {
               onMouseEnter={() => setMention({ ...mention, index: i })}
             >
               {target.kind === 'member' ? (
-                <Avatar name={target.name} size={20} />
+                <Avatar name={target.name} url={target.avatarUrl} size={24} accountId={account?.id} />
               ) : (
                 <span className="mention-glyph" style={target.colour ? { color: target.colour } : undefined}>
                   <Icon name={target.kind === 'role' ? 'group' : 'campaign'} size={16} />
@@ -728,6 +796,34 @@ export function Composer(): JSX.Element | null {
               {target.detail && <span className="small muted ellipsis mention-detail">{target.detail}</span>}
             </button>
           ))}
+        </div>
+      )}
+
+      {shortcode && shortcodes.length > 0 && (
+        <div className="shortcode-picker" role="listbox" aria-label="Pick an emoji">
+          <div className="picker-head small muted">Emoji matching :{shortcode.query}</div>
+          {shortcodes.map((target, i) => {
+            const preview = emojiPreview(target.token, service === 'sneedchat' ? smilies : [])
+            return (
+              <button
+                key={`${target.token}:${target.name}`}
+                type="button"
+                role="option"
+                aria-selected={i === shortcode.index}
+                className={classes('shortcode-option', i === shortcode.index && 'active')}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  takeShortcode(target)
+                }}
+                onMouseEnter={() => setShortcode({ ...shortcode, index: i })}
+              >
+                <span className="shortcode-glyph">
+                  {preview ? <img src={media(preview.src)} alt="" /> : target.glyph}
+                </span>
+                <span className="ellipsis">:{target.name}:</span>
+              </button>
+            )
+          })}
         </div>
       )}
 
@@ -864,6 +960,24 @@ export function Composer(): JSX.Element | null {
                 if (e.key === 'Escape') {
                   e.preventDefault()
                   setCommands([])
+                  return
+                }
+              }
+              if (shortcode && shortcodes.length > 0) {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  const step = e.key === 'ArrowDown' ? 1 : shortcodes.length - 1
+                  setShortcode({ ...shortcode, index: (shortcode.index + step) % shortcodes.length })
+                  return
+                }
+                if (e.key === 'Enter' || e.key === 'Tab') {
+                  e.preventDefault()
+                  takeShortcode(shortcodes[shortcode.index])
+                  return
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setShortcode(null)
                   return
                 }
               }

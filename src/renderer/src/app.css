@@ -795,26 +795,30 @@
  * one line of name and arguments over a line of explanation, so the eye runs
  * down the names rather than reading each row.
  */
-.command-picker {
+.command-picker,
+.mention-picker,
+.shortcode-picker {
   display: flex;
   flex-direction: column;
   max-height: 320px;
   overflow-y: auto;
-  margin: 0 var(--spacing-s) var(--spacing-xs);
+  margin: 0 var(--spacing-m) var(--spacing-xs);
   padding: var(--spacing-xs);
   border: 1px solid var(--outline-medium);
   border-radius: var(--corner-radius);
-  background: var(--surface-container);
-  box-shadow: var(--shadow-2);
+  background: var(--surface-container-high);
+  box-shadow: var(--shadow-up);
 }
 
-.command-picker-head {
+.picker-head {
   padding: var(--spacing-xs) var(--spacing-s);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
-.command-option {
+.command-option,
+.mention-option,
+.shortcode-option {
   display: flex;
   align-items: center;
   gap: var(--spacing-s);
@@ -828,8 +832,27 @@
 }
 
 .command-option.active,
-.command-option:hover {
-  background: var(--surface-container-highest);
+.command-option:hover,
+.mention-option.active,
+.shortcode-option.active {
+  background: var(--surface-selected);
+}
+
+.shortcode-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.shortcode-glyph img {
+  max-width: 24px;
+  max-height: 24px;
+  object-fit: contain;
 }
 
 .command-glyph {
@@ -7251,34 +7274,6 @@ video.lightbox-media {
 /* --- tagging someone -----------------------------------------------------
    Above the box, which is the only place it can go without covering what is
    being typed - and where every other client puts it. */
-.mention-picker {
-  display: flex;
-  flex-direction: column;
-  max-height: 15rem;
-  overflow-y: auto;
-  margin: 0 var(--spacing-m);
-  border: 1px solid var(--outline-medium);
-  border-radius: var(--corner-radius);
-  background: var(--surface-container-high);
-  box-shadow: var(--shadow-up);
-}
-
-.mention-option {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-s);
-  padding: var(--spacing-xs) var(--spacing-s);
-  background: none;
-  border: none;
-  color: var(--surface-text);
-  text-align: left;
-}
-
-/* One highlight for both the keyboard and the mouse: the arrows move it and
-   the pointer moves it, so there is never a second, competing selection. */
-.mention-option.active {
-  background: var(--primary-hover-light);
-}
 
 .mention-glyph {
   display: flex;
