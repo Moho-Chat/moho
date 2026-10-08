@@ -819,6 +819,24 @@ const SCENES = [
     clip: { x: 277, y: 420, width: 823, height: 380 }
   },
   {
+    // Pins for Discord (#311): the banner over the log, and the count in the header.
+    name: 'discord-pinned-banner',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(`(() => {
+        const shots = window.__mohoShots
+        const s = shots.state()
+        const id = s.activeBufferId
+        const list = s.messagesByBuffer[id] || []
+        const pick = ['craft fair', 'amigurumi', 'I can man'].map((t) => list.find((m) => m.body.includes(t))).filter(Boolean)
+        shots.patch({ pinnedRows: { ...s.pinnedRows, [id]: pick }, pinnedMessages: { ...s.pinnedMessages, [id]: pick.map((m) => m.id) } })
+        return true
+      })()`)
+      await sleep(600)
+    },
+    clip: { x: 277, y: 44, width: 823, height: 260 }
+  },
+  {
     name: 'discord-media-grid',
     setup: async (p) => {
       await discord(false)(p)

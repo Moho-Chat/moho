@@ -473,6 +473,49 @@
 /* Wraps rather than scrolls, and is capped: a pinned wall of text must not
    push the conversation off the screen, which is the one way this feature
    could be worse than not having it. */
+.pinned-banner {
+  align-items: center;
+}
+
+.pinned-banner .pinned-mark {
+  margin-top: 0;
+}
+
+/* The line is the way to the message: one row, and the whole of it a button. */
+.pinned-banner-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px var(--spacing-xs);
+  border-radius: var(--corner-radius-small);
+  text-align: left;
+  color: var(--surface-text);
+  transition: background var(--motion-fast) var(--ease);
+}
+
+.pinned-banner-body:hover {
+  background: var(--surface-hover);
+}
+
+/* A count on the corner of a header button. */
+.header-count {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 14px;
+  padding: 0 3px;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+  color: var(--on-accent);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  line-height: 14px;
+  text-align: center;
+  pointer-events: none;
+}
+
 .pinned-body {
   flex: 1 1 auto;
   min-width: 0;
@@ -5678,6 +5721,7 @@ video.lightbox-media {
 }
 
 .header-anchor {
+  position: relative;
   display: inline-flex;
 }
 

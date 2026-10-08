@@ -539,6 +539,12 @@ export interface ChatState {
   /** Which messages each Matrix room has pinned, newest last. */
   /** Which messages a conversation has pinned, where the service says so. */
   pinnedMessages: Record<string, string[]>
+  /**
+   * The pinned messages themselves, once somebody has asked for them. The ids
+   * above say that something is pinned; these say what, for the banner over
+   * the log and for the list in the header, which are the same answer.
+   */
+  pinnedRows: Record<string, Message[]>
   /** Friends and pending requests per Discord account, as they change. */
   discordFriends: Record<string, DiscordFriend[]>
   /**
@@ -727,6 +733,7 @@ const INITIAL: ChatState = {
   pinnedByBuffer: {},
   reviewCard: null,
   pinnedMessages: {},
+  pinnedRows: {},
   discordFriends: {},
   ringingCall: null,
   callMinimized: false,
@@ -2362,8 +2369,27 @@ export class ChatStore {
   setPinned(bufferId: string, messageId: string, pinned: boolean): void {
     void window.moho
       .rpc('setPinned', { bufferId, messageId, pinned })
-      .then(() => this.toast('info', pinned ? 'Pinned' : 'Unpinned'))
+      .then(() => {
+        this.toast('info', pinned ? 'Pinned' : 'Unpinned')
+        // The banner and the header's count are of what is pinned now.
+        void this.loadPins(bufferId).catch(() => {})
+      })
       .catch((e: Error) => this.toast('error', e.message))
+  }
+
+  /**
+   * What a conversation has pinned, newest first as the service gives it.
+   * Kept, so the banner over the log and the list in the header share one
+   * answer rather than each asking.
+   */
+  async loadPins(bufferId: string): Promise<Message[]> {
+    const answer = await window.moho.rpc<{ pinned: Message[] }>('listPinned', { bufferId })
+    const rows = answer.pinned ?? []
+    this.set({
+      pinnedRows: { ...this.state.pinnedRows, [bufferId]: rows },
+      pinnedMessages: { ...this.state.pinnedMessages, [bufferId]: rows.map((m) => m.id) }
+    })
+    return rows
   }
 
   /**
@@ -3345,6 +3371,8 @@ export class ChatStore {
             [data.bufferId as string]: (data.pinned as string[]) || []
           }
         })
+        // The pins changed under rows already read: read them again.
+        if (this.state.pinnedRows[data.bufferId as string]) void this.loadPins(data.bufferId as string).catch(() => {})
         break
 
       case 'pinnedMessage': {
