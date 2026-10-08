@@ -201,7 +201,7 @@ const escape = async (page) => {
 }
 
 const openChannel = async (page, name) => {
-  await page.evaluate(click('[title*="localhost"]'))
+  await page.evaluate(click('nav[aria-label=Servers] [aria-label*="localhost"]'))
   await sleep(200)
   await page.evaluate(click('.buffer-row', name))
   await sleep(500)
@@ -209,7 +209,12 @@ const openChannel = async (page, name) => {
 
 const setMode = async (page, mode) => {
   await page.evaluate(`window.moho.prefs.set('display.messageMode', ${JSON.stringify(mode)})`)
-  await sleep(400)
+  // The window reads its preferences once and hears only about other
+  // windows' changes, so a reload is what makes this one see its own.
+  await page.call('Page.reload')
+  await until(page, 'window.__mohoShots && document.querySelector("nav[aria-label=Servers] [aria-label]")', 'the window after a reload')
+  await page.call('Emulation.setDeviceMetricsOverride', { ...SIZE, deviceScaleFactor: 1, mobile: false })
+  await sleep(600)
 }
 
 /**

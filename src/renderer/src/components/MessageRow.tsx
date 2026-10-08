@@ -80,6 +80,17 @@ function badgeLabel(badge: MessageBadge): string {
 }
 
 /** A handful of one-click reactions on the hover toolbar. */
+/** What a line that is not speech is marked with, by the daemon's word for it. */
+const SYSTEM_MARKS: Record<string, string> = {
+  join: 'login',
+  part: 'logout',
+  quit: 'logout',
+  kick: 'person_remove',
+  nick: 'badge',
+  topic: 'sell',
+  mode: 'shield'
+}
+
 const DEFAULT_REACTIONS = ['👍', '❤️', '😂', '🔥']
 
 /**
@@ -754,7 +765,7 @@ function MessageRowBody({
         {/* Bubbles carry their own time inside, which is the whole point of
             the shape - so the gutter that reserves 42px for it on every other
             row would be 42px of nothing. */}
-        {!bubbles && (
+        {mode === 'classic' && (
           <span className="message-time small muted" title={formatFullTime(message.ts)}>
             {grouped ? '' : timeLabel}
           </span>
@@ -768,12 +779,28 @@ function MessageRowBody({
             client, where a group's text all shares one left edge. Wrapped
             lines never showed it because they wrap inside message-content,
             which was already in the right place. */}
+        {/* A join, a part, a topic change: not somebody speaking, so no face -
+            but a small mark in the picture's own column, so the line's text
+            starts where every other line's does instead of at the edge. */}
+        {mode === 'comfy' && isSystem && (
+          <span className="message-avatar system-mark" aria-hidden>
+            <Icon name={SYSTEM_MARKS[message.kind] ?? 'info'} size={16} />
+          </span>
+        )}
         {comfy && !isSystem && (
           <span
             className={classes('message-avatar', canOpenProfile && !grouped && 'clickable')}
             onClick={canOpenProfile && !grouped ? openProfile : undefined}
             title={canOpenProfile && !grouped ? `Profile of ${message.from}` : undefined}
           >
+            {/* A follow-up line has no name line to carry its time, so the
+                time waits in the gutter where the picture would be, and shows
+                when the pointer is on the line. */}
+            {mode === 'comfy' && grouped && (
+              <span className="gutter-time" title={formatFullTime(message.ts)}>
+                {formatTime(message.ts)}
+              </span>
+            )}
             {!grouped &&
               (message.avatarUrl ? (
                 <img
@@ -816,6 +843,13 @@ function MessageRowBody({
               >
                 {message.isAction ? `* ${message.from}` : message.from}
               </span>
+              {/* The time on the name's own line, as Discord does it, in the
+                  full form the tooltip also carries. */}
+              {mode === 'comfy' && (
+                <span className="message-stamp" title={formatFullTime(message.ts)}>
+                  {timeLabel}
+                </span>
+              )}
               {message.badges?.map((badge) => (
                 <span
                   key={badge.type}

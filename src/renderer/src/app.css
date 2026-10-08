@@ -1335,8 +1335,14 @@ button.video-tile {
 }
 
 .message-row.highlight {
-  background: var(--primary-hover-light);
-  box-shadow: inset 2px 0 0 var(--primary);
+  /* Amber, not the blue of selection and of a jump target, so a message that
+     names you is never mistaken for one that was only clicked. */
+  background: var(--mention-row);
+  box-shadow: inset 2px 0 0 var(--mention-edge);
+}
+
+.message-row.highlight:hover {
+  background: rgba(250, 168, 26, 0.13);
 }
 
 /* Only what was said is dimmed, not the whole row: an upload's progress and
@@ -1503,6 +1509,81 @@ button.video-tile {
 
 .message-row.comfy.grouped {
   padding-top: 0;
+}
+
+/* Comfy, in Discord's shape: a 40px picture, the name with its time beside it,
+   and air above each new speaker so a run of messages reads as one thing and
+   the next person starts a new one. Bubbles keep their own, smaller picture. */
+.message-row.comfy:not(.bubbles) {
+  --avatar: 40px;
+  gap: var(--spacing-m);
+}
+
+.message-row.comfy:not(.bubbles):not(.grouped):not(.system) {
+  margin-top: var(--spacing-l);
+}
+
+/* The first line of the log, or the first under a date or "New" line, has
+   something above it already. */
+.message-row.comfy:not(.bubbles):first-child,
+.date-divider ~ .message-row.comfy:not(.bubbles),
+.new-divider ~ .message-row.comfy:not(.bubbles) {
+  margin-top: 0;
+}
+
+.message-row.comfy:not(.bubbles) .message-avatar {
+  position: relative;
+  width: var(--avatar);
+  height: var(--avatar);
+  /* The name sits level with the top of the picture, not below it. */
+  margin-top: 2px;
+}
+
+.message-row.comfy:not(.bubbles).grouped .message-avatar {
+  height: 0;
+  margin-top: 0;
+}
+
+.message-row.comfy:not(.bubbles) .message-avatar img,
+.message-row.comfy:not(.bubbles) .avatar-fallback {
+  width: var(--avatar);
+  height: var(--avatar);
+  font-size: var(--font-size-large);
+}
+
+.message-row.comfy:not(.bubbles) .system-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0;
+  height: auto;
+  color: var(--text-muted);
+}
+
+/* The time of a follow-up line, in the picture's column, on hover. */
+.gutter-time {
+  position: absolute;
+  top: 3px;
+  right: 0;
+  width: var(--avatar, 40px);
+  text-align: center;
+  font-size: var(--font-size-xxs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity var(--motion-fast) ease;
+}
+
+.message-row:hover .gutter-time {
+  opacity: 1;
+}
+
+.message-stamp {
+  margin-left: var(--spacing-s);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-regular);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
 }
 
 /* --- bubbles ------------------------------------------------------------
@@ -1759,23 +1840,27 @@ button.video-tile {
   align-items: center;
   gap: var(--spacing-s);
   margin: var(--spacing-s) var(--spacing-m);
-  color: var(--error);
-  font-size: var(--font-size-xs);
-  font-weight: var(--weight-semibold);
+  font-size: var(--font-size-xxs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-.new-divider::before,
-.new-divider::after {
+/* A red rule with its marker at the right-hand end, as Discord draws it. */
+.new-divider::before {
   content: '';
   flex: 1;
   height: 1px;
-  background: var(--error);
-  opacity: 0.5;
+  background: var(--danger);
+  opacity: 0.6;
 }
 
-.new-divider::before {
-  flex: 0 0 var(--spacing-s);
+.new-divider > span {
+  order: 2;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--danger);
+  color: var(--on-accent);
 }
 
 .jump-to-present {
@@ -3405,10 +3490,13 @@ img.smilie {
   padding-left: 1.4em;
 }
 
+/* One quote, one code block and one inline code, whichever way the markup
+   reached the line: these used to be two looks each, the second lighter, in a
+   different font and with no background behind inline code. */
 .message-body blockquote {
   margin: var(--spacing-xxs) 0;
-  padding-left: var(--spacing-s);
-  border-left: 2px solid var(--outline-medium);
+  padding: 2px 0 2px var(--spacing-s);
+  border-left: 3px solid var(--outline-strong);
   color: var(--surface-variant-text);
 }
 
@@ -3416,14 +3504,23 @@ img.smilie {
   margin: var(--spacing-xxs) 0;
   padding: var(--spacing-s);
   border-radius: var(--corner-radius-small);
-  background: var(--surface-variant);
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--outline-medium);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
   overflow-x: auto;
   white-space: pre;
 }
 
 .message-body code {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 0.9em;
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+.message-body :not(pre) > code {
+  background: var(--surface-container-highest);
+  border-radius: 3px;
+  padding: 0 3px;
 }
 
 /* The "X is typing" line. Always one line tall, empty or not: a row that
