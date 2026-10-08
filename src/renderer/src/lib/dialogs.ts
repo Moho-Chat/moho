@@ -32,7 +32,13 @@ function adopt(el: HTMLElement): void {
   // has already put focus where it wants it.
   setTimeout(() => {
     if (!el.isConnected || el.contains(document.activeElement)) return
-    const target = el.querySelector<HTMLElement>('[data-autofocus]') ?? focusables(el)[0]
+    // Its marked field, else the first place to type - a dialog that asks for
+    // something wants it typed, and the close button is not that - else the
+    // first control.
+    const target =
+      el.querySelector<HTMLElement>('[data-autofocus]') ??
+      el.querySelector<HTMLElement>('textarea:not([disabled]), input:not([disabled]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"])') ??
+      focusables(el)[0]
     if (target) target.focus({ preventScroll: true })
     else {
       el.tabIndex = -1

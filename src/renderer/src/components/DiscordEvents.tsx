@@ -128,7 +128,7 @@ export function EventsPane(): JSX.Element | null {
 
   const n = events?.length ?? 0
   return createPortal(
-    <div className="lightbox-backdrop" onClick={() => store.closeEvents()}>
+    <div className="modal-scrim" onClick={() => store.closeEvents()}>
       <div className="events-pane" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Events">
         <div className="events-pane-head">
           <Icon name="calendar_month" size={22} />
@@ -337,7 +337,7 @@ export function EventCreatePanel(): JSX.Element | null {
   )
 
   return createPortal(
-    <div className="lightbox-backdrop" onClick={() => store.closeEventCreate()}>
+    <div className="modal-scrim" onClick={() => store.closeEventCreate()}>
       <div className="events-pane event-create" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Create an event">
         <div className="events-pane-head">
           <Icon name="calendar_add_on" size={22} />
@@ -532,7 +532,7 @@ function ShareEvent({
   }
 
   return (
-    <div className="lightbox-backdrop share-event-backdrop" onClick={onClose}>
+    <div className="modal-scrim share-event-backdrop" onClick={onClose}>
       <div className="events-pane share-event" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Invite friends to event">
         <div className="share-event-head">
           <div>

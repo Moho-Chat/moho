@@ -907,6 +907,35 @@ const SCENES = [
     clip: { x: 277, y: 44, width: 823, height: 260 }
   },
   {
+    // The shared dialog frame (#315): the screen picker had no way out but a click outside it.
+    name: 'dialog-screen-picker',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(`(() => {
+        const thumb = (a, b, l) => 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><defs><linearGradient id="g"><stop offset="0" stop-color="' + a + '"/><stop offset="1" stop-color="' + b + '"/></linearGradient></defs><rect width="320" height="180" fill="url(#g)"/><text x="160" y="100" font-size="28" font-family="sans-serif" fill="#fff" text-anchor="middle">' + l + '</text></svg>')
+        window.__mohoShots.patch({ screenSources: [
+          { id: 's1', name: 'Entire screen', thumbnail: thumb('#2b5876', '#4e4376', 'screen') },
+          { id: 's2', name: 'moho', thumbnail: thumb('#e0a43a', '#b0457a', 'moho') },
+          { id: 's3', name: 'Pattern notes - Firefox', thumbnail: thumb('#3ae0a4', '#1f6f5a', 'browser') }
+        ] })
+        return true
+      })()`)
+      await sleep(600)
+    }
+  },
+  {
+    name: 'dialog-poll',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await p.evaluate(`(() => { const s = window.__mohoShots.state(); window.__mohoShots.patch({ accounts: s.accounts.map((a) => ({ ...a, service: 'matrix' })) }); return true })()`)
+      await sleep(400)
+      await p.evaluate(click('.composer-plus'))
+      await sleep(300)
+      await p.evaluate(click('.context-menu-item', 'poll'))
+      await sleep(600)
+    }
+  },
+  {
     name: 'discord-media-grid',
     setup: async (p) => {
       await discord(false)(p)

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useEscapeLayer } from '../lib/layers'
-import { Icon, IconButton } from './Icon'
+import { Icon } from './Icon'
+import { Modal } from './Modal'
 import { useStore } from '../state/hooks'
 
 interface SpaceRoom {
@@ -70,7 +70,6 @@ export function SpaceRooms({
   useEffect(() => {
     load('')
   }, [groupId])
-  useEscapeLayer(onClose)
 
   const join = (room: SpaceRoom): void => {
     setJoining((was) => ({ ...was, [room.roomId]: true }))
@@ -84,12 +83,7 @@ export function SpaceRooms({
   }
 
   return (
-    <div className="modal-scrim" onClick={onClose}>
-      <div className="modal space-rooms" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <h2 className="modal-title ellipsis">{title}</h2>
-          <IconButton name="close" size={18} title="Close" onClick={onClose} />
-        </div>
+    <Modal title={title} icon="workspaces" className="modal space-rooms" onClose={onClose}>
 
         {error && <p className="small error-text">{error}</p>}
         {!error && !busy && rooms.length === 0 && (
@@ -139,7 +133,6 @@ export function SpaceRooms({
           </button>
         )}
         {busy && rooms.length === 0 && <p className="small muted">Reading the space…</p>}
-      </div>
-    </div>
+    </Modal>
   )
 }

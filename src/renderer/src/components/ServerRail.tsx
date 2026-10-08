@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ContextMenu, useContextMenu } from './ContextMenu'
 import { railConnecting } from '../lib/bufferlink'
-import { Icon, IconButton, MaskIcon } from './Icon'
+import { Icon, MaskIcon } from './Icon'
+import { Modal } from './Modal'
 import { Avatar } from './Avatar'
 import { LeaveConfirm } from './LeaveConfirm'
 import { ircNetworkFor } from '../lib/networks'
@@ -892,12 +893,7 @@ function FolderSettings({
   const [colour, setColour] = useState(folder.colour)
 
   return (
-    <div className="modal-scrim" onClick={onClose}>
-      <div className="modal folder-settings" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <h2>Folder Settings</h2>
-          <IconButton name="close" title="Close" onClick={onClose} />
-        </div>
+    <Modal title="Folder Settings" icon="folder" className="modal folder-settings" onClose={onClose}>
 
         <label className="folder-field">
           <span className="small muted">Folder Name</span>
@@ -943,8 +939,7 @@ function FolderSettings({
         <button type="button" className="button primary" onClick={() => onSave(name.trim() || folder.name, colour)}>
           Done
         </button>
-      </div>
-    </div>
+    </Modal>
   )
 }
 

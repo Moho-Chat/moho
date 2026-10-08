@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useEscapeLayer } from '../lib/layers'
-import { createPortal } from 'react-dom'
-import { Icon } from './Icon'
+import { Modal } from './Modal'
 import { useChat, useStore } from '../state/hooks'
 
 /**
@@ -35,8 +33,6 @@ export function DiscordModal(): JSX.Element | null {
     first.current?.focus()
   }, [modal])
 
-  useEscapeLayer(() => store.closeDiscordModal(), !!modal)
-
   if (!modal) return null
 
   // What the bot said it needs. Checked here so the button says so before it
@@ -55,13 +51,8 @@ export function DiscordModal(): JSX.Element | null {
     void store.submitDiscordModal(values)
   }
 
-  return createPortal(
-    <div className="lightbox-backdrop" onClick={() => store.closeDiscordModal()}>
-      <div className="discord-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className="discord-modal-head">
-          <Icon name="edit_note" size={18} />
-          <span>{modal.title}</span>
-        </div>
+  return (
+    <Modal title={modal.title} icon="edit_note" className="discord-modal" onClose={() => store.closeDiscordModal()}>
 
         {modal.fields.map((field, i) => {
           const value = values[field.customId] ?? ''
@@ -109,8 +100,6 @@ export function DiscordModal(): JSX.Element | null {
             {sending ? 'Sending…' : 'Send'}
           </button>
         </div>
-      </div>
-    </div>,
-    document.body
+    </Modal>
   )
 }

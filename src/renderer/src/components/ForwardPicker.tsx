@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useEscapeLayer } from '../lib/layers'
-import { createPortal } from 'react-dom'
-import { Icon } from './Icon'
+import { Modal } from './Modal'
 import { Avatar } from './Avatar'
 import { useChat, useStore } from '../state/hooks'
 import { bufferDisplayName } from '../lib/util'
@@ -39,7 +37,6 @@ export function ForwardPicker({
   useEffect(() => {
     box.current?.focus()
   }, [])
-  useEscapeLayer(onClose)
 
   const source = buffers.find((b) => b.id === bufferId)
   const choices = useMemo(() => {
@@ -65,13 +62,8 @@ export function ForwardPicker({
       })
   }
 
-  return createPortal(
-    <div className="lightbox-backdrop" onClick={onClose}>
-      <div className="forward-picker" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className="discord-modal-head">
-          <Icon name="forward" size={18} />
-          <span>Send this on</span>
-        </div>
+  return (
+    <Modal title="Send this on" icon="forward" className="forward-picker" onClose={onClose}>
         <input
           ref={box}
           className="text-field"
@@ -103,9 +95,7 @@ export function ForwardPicker({
             <p className="small muted emoji-empty">No conversation here by that name.</p>
           )}
         </div>
-      </div>
-    </div>,
-    document.body
+    </Modal>
   )
 }
 

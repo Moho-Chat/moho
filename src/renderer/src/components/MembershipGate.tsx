@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Icon } from './Icon'
+import { Modal } from './Modal'
 import { useChat, useStore } from '../state/hooks'
 import type { BufferEntry } from '../state/store'
 
@@ -72,14 +73,7 @@ export function MembershipGate({ buffer }: { buffer: BufferEntry }): JSX.Element
       </div>
 
       {rules && (
-        <div className="lightbox-backdrop" onClick={() => setRules(null)}>
-          <div
-            className="membership-rules"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
-            <div className="membership-rules-head">{group.name}</div>
+        <Modal title={group.name} icon="gavel" className="membership-rules" onClose={() => setRules(null)}>
             {rules.description && <p className="small">{rules.description}</p>}
             {terms?.label && <p className="small">{terms.label}</p>}
             {terms?.description && <p className="small muted">{terms.description}</p>}
@@ -96,8 +90,7 @@ export function MembershipGate({ buffer }: { buffer: BufferEntry }): JSX.Element
                 Agree and continue
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </>
   )
