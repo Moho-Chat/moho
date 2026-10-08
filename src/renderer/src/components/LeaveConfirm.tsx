@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useEscapeLayer } from '../lib/layers'
 import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
 
@@ -33,13 +34,7 @@ export function LeaveConfirm(props: {
     return () => clearTimeout(t)
   }, [left])
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onCancel])
+  useEscapeLayer(onCancel)
 
   return createPortal(
     <div className="lightbox-backdrop" onClick={onCancel}>

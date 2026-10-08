@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { useStore } from '../state/hooks'
+import { useEscapeLayer } from '../lib/layers'
 
 /**
  * Channel points, and what the streamer will trade them for.
@@ -100,19 +101,16 @@ export function KickPoints({ bufferId }: { bufferId: string }): JSX.Element | nu
   // over a conversation it is not about.
   useEffect(() => setOpen(false), [bufferId])
 
+  useEscapeLayer(() => setOpen(false), open)
+
   useEffect(() => {
     if (!open) return
     const away = (e: MouseEvent): void => {
       if (!box.current?.contains(e.target as Node)) setOpen(false)
     }
-    const key = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setOpen(false)
-    }
     document.addEventListener('mousedown', away)
-    window.addEventListener('keydown', key)
     return () => {
       document.removeEventListener('mousedown', away)
-      window.removeEventListener('keydown', key)
     }
   }, [open])
 

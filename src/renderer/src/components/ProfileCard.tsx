@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEscapeLayer } from '../lib/layers'
 import { createPortal } from 'react-dom'
 import { Avatar } from './Avatar'
 import { Icon, IconButton } from './Icon'
@@ -23,13 +23,7 @@ export function ProfileCard(): JSX.Element | null {
   const profile = useChat((s) => s.profile)
   const store = useStore()
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') store.closeProfile()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [store])
+  useEscapeLayer(() => store.closeProfile(), !!profile)
 
   if (!profile) return null
 

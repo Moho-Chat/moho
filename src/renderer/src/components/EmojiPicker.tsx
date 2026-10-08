@@ -6,6 +6,7 @@ import { discordEmojiUrl, emojiPreview, type SmilieEntry } from '../lib/format'
 import { drawableEmoteUrl, onLocalEmotes } from '../lib/emotecache'
 import { LottieSticker } from './LottieSticker'
 import type { CustomEmoji } from '../../../shared/wire'
+import { useEscapeLayer } from '../lib/layers'
 
 /**
  * Emoji insertion popup: a search box, then a small curated set of common
@@ -306,10 +307,9 @@ export function EmojiPicker({
     }
   }, [anchor])
 
+  useEscapeLayer(onClose)
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
     // Same capture-phase hazard as ContextMenu: dismissing on any mousedown
     // would unmount the cell before its click could land, so a press inside
     // the picker never selected anything. The anchor is excluded too, so the
@@ -321,12 +321,8 @@ export function EmojiPicker({
       if (anchor?.contains(target)) return
       onClose()
     }
-    window.addEventListener('keydown', onKey)
     window.addEventListener('mousedown', onMouseDown, true)
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      window.removeEventListener('mousedown', onMouseDown, true)
-    }
+    return () => window.removeEventListener('mousedown', onMouseDown, true)
   }, [onClose, anchor])
 
   const q = query.trim().toLowerCase()

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useEscapeLayer } from '../lib/layers'
 import { Icon, IconButton } from './Icon'
 import { useStore } from '../state/hooks'
 
@@ -68,12 +69,8 @@ export function SpaceRooms({
 
   useEffect(() => {
     load('')
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
   }, [groupId])
+  useEscapeLayer(onClose)
 
   const join = (room: SpaceRoom): void => {
     setJoining((was) => ({ ...was, [room.roomId]: true }))

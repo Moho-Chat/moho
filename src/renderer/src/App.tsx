@@ -38,10 +38,16 @@ import type { BufferEntry } from './state/store'
 import { loadLocalEmotes, recoverMissingEmotes } from './lib/emotecache'
 import { restoreMissingMedia } from './lib/mediarestore'
 import { useShortcuts } from './lib/shortcuts'
+import { useEscapeLayer } from './lib/layers'
 import { QuickSwitcher } from './components/QuickSwitcher'
 
 export default function App(): JSX.Element {
   useShortcuts()
+  // The full-page panels - Settings, Accounts, Downloads, Join - go away on
+  // Escape like everything else that opens over the window, but underneath
+  // whatever opened on top of them.
+  const panelOpen = useChat((s) => s.activePanel !== '')
+  useEscapeLayer(() => store.setActivePanel(''), panelOpen)
   const store = useStore()
   const prefsReady = usePrefsReady()
   const [booted, setBooted] = useState(false)

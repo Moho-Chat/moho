@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
+import { useEscapeLayer } from '../lib/layers'
 
 export interface MenuItem {
   label: string
@@ -60,6 +61,8 @@ export function ContextMenu({ x, y, entries, onClose }: Props): JSX.Element {
     })
   }, [x, y, entries.length])
 
+  useEscapeLayer(onClose)
+
   useEffect(() => {
     // Presses inside the menu must not dismiss it. This listener runs in the
     // capture phase (so a press anywhere else closes the menu even if that
@@ -73,16 +76,11 @@ export function ContextMenu({ x, y, entries, onClose }: Props): JSX.Element {
       onClose()
     }
     const onResize = (): void => onClose()
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
     window.addEventListener('mousedown', onMouseDown, true)
     window.addEventListener('resize', onResize)
-    window.addEventListener('keydown', onKey)
     return () => {
       window.removeEventListener('mousedown', onMouseDown, true)
       window.removeEventListener('resize', onResize)
-      window.removeEventListener('keydown', onKey)
     }
   }, [onClose])
 

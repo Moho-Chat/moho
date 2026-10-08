@@ -8,6 +8,7 @@ import { cameraKey, streamKey } from '../lib/framefeed'
 import type { VideoQuality } from '../lib/discordscreen'
 import { usePref } from '../state/hooks'
 import type { VoiceMember, VoiceSession } from '../../../shared/wire'
+import { useEscapeLayer } from '../lib/layers'
 
 /** How often to ask who is talking. */
 const POLL_MS = 300
@@ -416,10 +417,9 @@ function GoLiveChooser({
       .catch(() => setLimits({ maxHeight: 720, maxFramerate: 30, source: false }))
   }, [accountId])
 
+  useEscapeLayer(onClose)
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
     // A press anywhere else is a change of mind. Except on the button that
     // opened this, which closes it by itself and would otherwise reopen it.
     const onDown = (e: MouseEvent): void => {
@@ -427,12 +427,8 @@ function GoLiveChooser({
       if (box.current?.contains(target) || target.closest('.stage-button')) return
       onClose()
     }
-    window.addEventListener('keydown', onKey)
     window.addEventListener('mousedown', onDown)
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      window.removeEventListener('mousedown', onDown)
-    }
+    return () => window.removeEventListener('mousedown', onDown)
   }, [onClose])
 
   const heights = HEIGHTS.filter((h) => (h === 'source' ? !!limits?.source : h <= (limits?.maxHeight ?? 720)))
@@ -496,21 +492,15 @@ function volumeBadge(volume: number | undefined): string | undefined {
  */
 function StagePanel({ onClose, label, children }: { onClose: () => void; label: string; children: React.ReactNode }): JSX.Element {
   const box = useRef<HTMLDivElement>(null)
+  useEscapeLayer(onClose)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
     const onDown = (e: MouseEvent): void => {
       const target = e.target as HTMLElement
       if (box.current?.contains(target) || target.closest('.stage-button')) return
       onClose()
     }
-    window.addEventListener('keydown', onKey)
     window.addEventListener('mousedown', onDown)
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      window.removeEventListener('mousedown', onDown)
-    }
+    return () => window.removeEventListener('mousedown', onDown)
   }, [onClose])
   return (
     <div className="stage-panel" ref={box} role="dialog" aria-label={label}>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useEscapeLayer } from '../lib/layers'
 import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
 
@@ -40,12 +41,8 @@ export function ReasonPrompt({
 
   useEffect(() => {
     box.current?.focus()
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onCancel])
+  }, [])
+  useEscapeLayer(onCancel)
 
   const ready = optional || reason.trim().length > 0
 

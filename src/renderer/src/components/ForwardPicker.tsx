@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEscapeLayer } from '../lib/layers'
 import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
 import { Avatar } from './Avatar'
@@ -37,12 +38,8 @@ export function ForwardPicker({
 
   useEffect(() => {
     box.current?.focus()
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [])
+  useEscapeLayer(onClose)
 
   const source = buffers.find((b) => b.id === bufferId)
   const choices = useMemo(() => {

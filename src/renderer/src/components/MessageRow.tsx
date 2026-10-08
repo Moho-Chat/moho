@@ -51,6 +51,7 @@ import {
   isWhisper,
   nickColor
 } from '../lib/util'
+import { useEscapeLayer } from '../lib/layers'
 
 /**
  * A badge, short enough to sit beside a name.
@@ -280,21 +281,16 @@ function ReaderList({
     })
   }, [at])
 
+  useEscapeLayer(onClose)
+
   useEffect(() => {
     const away = (e: MouseEvent): void => {
       if (!box.current?.contains(e.target as Node)) onClose()
     }
-    const key = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
     // Capturing, so a click anywhere closes this before that click does
     // anything else - including on another message's faces.
     window.addEventListener('mousedown', away, true)
-    window.addEventListener('keydown', key)
-    return () => {
-      window.removeEventListener('mousedown', away, true)
-      window.removeEventListener('keydown', key)
-    }
+    return () => window.removeEventListener('mousedown', away, true)
   }, [onClose])
 
   const shown = readers.slice(0, MAX_READER_NAMES)

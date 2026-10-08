@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useEscapeLayer } from '../lib/layers'
 import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
 import { canReachBack, type ExportRange } from '../lib/exporter'
@@ -57,13 +58,7 @@ export function ExportDialog({
   const [to, setTo] = useState(() => localNow())
   const [media, setMedia] = useState(true)
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onCancel])
+  useEscapeLayer(onCancel)
 
   // A datetime-local value is already local wall-clock time, so `new Date` on
   // it means what was typed. Seconds are not offered, so the start is taken at

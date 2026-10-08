@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useEscapeLayer } from '../lib/layers'
 import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
 import { useChat, useStore } from '../state/hooks'
@@ -34,13 +35,7 @@ export function DiscordModal(): JSX.Element | null {
     first.current?.focus()
   }, [modal])
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') store.closeDiscordModal()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [store])
+  useEscapeLayer(() => store.closeDiscordModal(), !!modal)
 
   if (!modal) return null
 

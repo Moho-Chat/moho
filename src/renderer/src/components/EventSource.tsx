@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useEscapeLayer } from '../lib/layers'
 import { createPortal } from 'react-dom'
 import { Icon, IconButton } from './Icon'
 import { useStore } from '../state/hooks'
@@ -48,13 +49,7 @@ export function EventSource({
 
   // Escape closes it, the same as every other dialog here. A panel of JSON is
   // exactly the thing somebody opens by accident and wants gone.
-  useEffect(() => {
-    const key = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', key)
-    return () => window.removeEventListener('keydown', key)
-  }, [onClose])
+  useEscapeLayer(onClose)
 
   const copy = (value: unknown): void => {
     void window.moho.copyText(JSON.stringify(value, null, 2))

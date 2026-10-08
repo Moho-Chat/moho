@@ -1,4 +1,5 @@
 import { useMediaUrl } from '../lib/route'
+import { useEscapeLayer } from '../lib/layers'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon, IconButton } from './Icon'
@@ -89,14 +90,7 @@ export function EventsPane(): JSX.Element | null {
     if (count !== undefined) load()
   }, [count, load])
 
-  useEffect(() => {
-    if (!pane) return
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape' && !menu && !sharing) store.closeEvents()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [pane, menu, sharing, store])
+  useEscapeLayer(() => store.closeEvents(), !!pane && !menu && !sharing)
 
   if (!pane) return null
 
@@ -276,14 +270,7 @@ export function EventCreatePanel(): JSX.Element | null {
       .catch(() => setChannels([]))
   }, [target])
 
-  useEffect(() => {
-    if (!target) return
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') store.closeEventCreate()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [target, store])
+  useEscapeLayer(() => store.closeEventCreate(), !!target)
 
   if (!target) return null
 
@@ -489,13 +476,7 @@ function ShareEvent({
       .catch(() => setTargets([]))
   }, [accountId, event.guildId, event.id])
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  useEscapeLayer(onClose)
 
   const q = query.trim().toLowerCase()
   const shown = (targets ?? []).filter(

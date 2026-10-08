@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { store } from '../state/store'
 import { OPEN_SWITCHER } from '../components/QuickSwitcher'
+import { hasLayer } from './layers'
 
 /** Anything that opens over the window and has its own use for Escape. */
 const LAYERS =
@@ -30,7 +31,7 @@ export function useShortcuts(): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape' || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return
-      if (typing(e.target) || document.querySelector(LAYERS)) return
+      if (typing(e.target) || hasLayer() || document.querySelector(LAYERS)) return
       const state = store.getSnapshot()
       if (state.activePanel !== '') return
 

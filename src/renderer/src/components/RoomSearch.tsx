@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEscapeLayer } from '../lib/layers'
 import { ReasonPrompt } from './ReasonPrompt'
 import { createPortal } from 'react-dom'
 import { Avatar } from './Avatar'
@@ -123,13 +124,7 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
   // for what they are actually looking at now.
   const generation = useRef(0)
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  useEscapeLayer(onClose)
 
   const servers = extraServers
 

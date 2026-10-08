@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useEscapeLayer } from '../lib/layers'
 import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
 import { useActiveBuffer, useStore } from '../state/hooks'
@@ -115,14 +116,7 @@ export function FileDrop(): JSX.Element | null {
     }
   }, [])
 
-  useEffect(() => {
-    if (!dropped) return
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setDropped(null)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [dropped])
+  useEscapeLayer(() => setDropped(null), !!dropped)
 
   const send = (): void => {
     if (!buffer || !dropped) return

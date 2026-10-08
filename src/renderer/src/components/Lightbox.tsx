@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
+import { useEscapeLayer } from '../lib/layers'
 import { createPortal } from 'react-dom'
 import { IconButton } from './Icon'
 
@@ -40,13 +41,7 @@ export function Lightbox({ source, onClose }: Props): JSX.Element {
   const [saved, setSaved] = useState('')
   const dragging = useRef<{ x: number; y: number } | null>(null)
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  useEscapeLayer(onClose)
 
   // Zooming a picture that is already smaller than the window would only
   // blur it, so the control is offered only when there is detail to reveal.
