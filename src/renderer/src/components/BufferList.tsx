@@ -580,7 +580,7 @@ export function BufferList(): JSX.Element {
                               : `${section.name} — drag to reorder, right-click to mark as read`
                           }
                         >
-                          <Icon name={folded ? 'chevron_right' : 'expand_more'} size={14} />
+                          <Icon name="expand_more" size={14} className={classes('fold-chevron', folded && 'folded')} />
                           <span className="ellipsis">{section.name}</span>
                           {folded && section.buffers.length > 0 && (() => {
                             // What is waiting in what is folded away, which is

@@ -9186,3 +9186,116 @@ video.lightbox-media {
   background: var(--primary-hover);
   color: var(--primary);
 }
+
+
+/* --- motion ------------------------------------------------------------ */
+
+/* A pointer arriving on something fades it in rather than snapping it, on the
+   one set of durations; leaving fades it out. */
+.buffer-row,
+.nick-row,
+.icon-button,
+.toolbar-button,
+.context-menu-item,
+.settings-rail-item,
+.user-identity-button,
+.user-audio-button,
+.reaction-pill,
+.category-head,
+.voice-channel-row,
+.header-nameplate {
+  transition:
+    background-color var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    opacity var(--motion-fast) ease;
+}
+
+/* The fold arrow turns instead of being swapped for a different one. */
+.fold-chevron {
+  transition: transform var(--motion-fast) ease;
+}
+
+.fold-chevron.folded {
+  transform: rotate(-90deg);
+}
+
+/* A message that has just been said arrives. */
+.message-row.fresh {
+  animation: message-in var(--motion) var(--ease);
+}
+
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Things that open over the window grow out of where they are. */
+.header-popover,
+.emoji-picker,
+.profile-card,
+.reason-prompt,
+.leave-confirm,
+.switcher,
+.stage-panel {
+  animation: overlay-in var(--motion) var(--ease);
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+.modal-scrim,
+.lightbox-backdrop {
+  animation: scrim-in var(--motion) ease;
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.jump-to-present {
+  animation: slide-up var(--motion) var(--ease);
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* A reaction added lands with a small pop. */
+.reaction-pill.pop {
+  animation: reaction-pop var(--motion) var(--ease);
+}
+
+@keyframes reaction-pop {
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message-row.fresh,
+  .header-popover,
+  .emoji-picker,
+  .profile-card,
+  .reason-prompt,
+  .leave-confirm,
+  .switcher,
+  .stage-panel,
+  .modal-scrim,
+  .lightbox-backdrop,
+  .jump-to-present,
+  .reaction-pill.pop {
+    animation: none;
+  }
+}

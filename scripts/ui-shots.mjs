@@ -661,6 +661,43 @@ const SCENES = [
     }
   },
   {
+    name: 'motion-fold',
+    video: 2600,
+    setup: async (p) => { await discord(false)(p) },
+    act: async (p) => {
+      await sleep(300)
+      await p.evaluate(click('.category-head', 'ANIMALS'))
+      await sleep(900)
+      await p.evaluate(click('.category-head', 'ANIMALS'))
+      await sleep(700)
+    }
+  },
+  {
+    // A message arriving, and a reaction landing (#283).
+    name: 'motion-message-and-reaction',
+    video: 2800,
+    setup: async (p) => { await discord(false)(p) },
+    act: async (p) => {
+      await sleep(400)
+      await p.evaluate(`(() => {
+        const s = window.__mohoShots.state()
+        const id = 'discord:shots|c3'
+        const now = Math.floor(Date.now() / 1000)
+        const list = s.messagesByBuffer[id]
+        window.__mohoShots.patch({ messagesByBuffer: { ...s.messagesByBuffer, [id]: [...list, { id: 'live1', bufferId: id, from: 'Clarence', body: 'this one just arrived', ts: now, isAction: false, isHighlight: false, kind: 'chat', isOwn: false, senderId: 'Clarence' }] } })
+        return true
+      })()`)
+      await sleep(1000)
+      await p.evaluate(`(() => {
+        const s = window.__mohoShots.state()
+        const id = 'discord:shots|c3'
+        window.__mohoShots.patch({ messagesByBuffer: { ...s.messagesByBuffer, [id]: s.messagesByBuffer[id].map((m) => m.id === 'm1' ? { ...m, reactions: m.reactions.map((r) => r.emoji === '👍' ? { ...r, count: r.count + 1 } : r) } : m) } })
+        return true
+      })()`)
+      await sleep(900)
+    }
+  },
+  {
     name: 'motion-toast',
     video: 2000,
     setup: async (p) => { await openChannel(p, '#general') },

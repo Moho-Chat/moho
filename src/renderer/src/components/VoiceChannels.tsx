@@ -44,7 +44,7 @@ export function VoiceChannels({ group }: { group: RailGroup }): JSX.Element | nu
         onClick={() => toggleFolded(foldKey)}
         title={isFolded(foldKey) ? 'Show voice channels' : 'Hide voice channels'}
       >
-        <Icon name={isFolded(foldKey) ? 'chevron_right' : 'expand_more'} size={14} />
+        <Icon name="expand_more" size={14} className={classes('fold-chevron', isFolded(foldKey) && 'folded')} />
         <span>Voice</span>
       </button>
 

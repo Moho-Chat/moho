@@ -490,6 +490,24 @@ function MessageRowBody({
     })
   }
 
+  // Said a moment ago, as this row is first drawn: it arrives rather than
+  // appears. History being scrolled into view is old and stays still.
+  const fresh = useRef(Math.floor(Date.now() / 1000) - message.ts < 3).current
+
+  // Reactions that are new, or have gone up, since this row last drew: they
+  // land with a pop. Nothing pops on the first drawing - a row scrolled into
+  // view full of reactions has not just been reacted to.
+  const seenReactions = useRef<Record<string, number> | null>(null)
+  const popped = new Set<string>()
+  if (seenReactions.current) {
+    for (const r of message.reactions ?? []) {
+      if ((seenReactions.current[r.emoji] ?? 0) < r.count) popped.add(r.emoji)
+    }
+  }
+  useEffect(() => {
+    seenReactions.current = Object.fromEntries((message.reactions ?? []).map((r) => [r.emoji, r.count]))
+  }, [message.reactions])
+
   const entries: MenuEntry[] = [
     // First, above what to do about the message: the question a right click
     // on somebody's line usually asks is who they are, and finding them in a
@@ -738,6 +756,7 @@ function MessageRowBody({
           isSystem && 'system',
           reward && 'reward',
           grouped && 'grouped',
+          fresh && 'fresh',
           comfy && 'comfy',
           bubbles && 'bubbles',
           own && 'own',
@@ -1160,7 +1179,7 @@ function MessageRowBody({
                 <button
                   key={r.emoji}
                   type="button"
-                  className={classes('reaction-pill', r.me && 'mine')}
+                  className={classes('reaction-pill', r.me && 'mine', popped.has(r.emoji) && 'pop')}
                   onClick={() => void store.toggleReaction(bufferId, message.id, r.emoji, !r.me)}
                   title={r.emoji}
                 >
