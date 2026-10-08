@@ -5189,7 +5189,7 @@ video.lightbox-media {
 .voice-panel-head {
   display: flex;
   align-items: center;
-  gap: var(--spacing-s);
+  gap: var(--spacing-xxs);
 }
 
 .voice-panel-state {
@@ -5198,39 +5198,54 @@ video.lightbox-media {
   gap: var(--spacing-s);
   flex: 1;
   min-width: 0;
+  white-space: nowrap;
   color: var(--success);
   font-weight: var(--weight-semibold);
   font-size: var(--font-size-small);
 }
 
-/* Rising bars, so a glance says whether the microphone is hearing anything
-   rather than only that a connection exists. */
-.voice-level {
-  display: flex;
-  align-items: flex-end;
-  gap: 2px;
-  height: 12px;
-  flex: none;
-}
-
-.voice-level-bar {
-  width: 3px;
-  background: var(--outline);
-  border-radius: 1px;
-}
-
-.voice-level-bar:nth-child(1) {
+/* What the microphone is hearing, as a bar along the panel: full width so it
+   cannot be mistaken for a connection indicator, which is what three little
+   rising strokes beside the title looked like. It fills as somebody speaks. */
+.voice-panel .voice-level {
   height: 4px;
-}
-.voice-level-bar:nth-child(2) {
-  height: 8px;
-}
-.voice-level-bar:nth-child(3) {
-  height: 12px;
+  margin: var(--spacing-xs) 0 var(--spacing-xs);
+  border-radius: var(--radius-pill);
+  background: var(--surface-container-highest);
+  overflow: hidden;
 }
 
-.voice-level-bar.lit {
-  background: var(--success);
+.voice-panel .voice-level-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--speaking);
+  transition: width 140ms linear;
+}
+
+.voice-panel .voice-level.hot .voice-level-fill {
+  background: var(--warning);
+}
+
+/* The round trip to the voice server, next to the title it qualifies. */
+.voice-ping {
+  margin-left: auto;
+  padding-right: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-regular);
+  font-variant-numeric: tabular-nums;
+}
+
+.voice-ping.good {
+  color: var(--success);
+}
+
+.voice-ping.fair {
+  color: var(--warning);
+}
+
+.voice-ping.poor {
+  color: var(--danger-text);
 }
 
 .voice-panel-where {
@@ -8662,4 +8677,10 @@ video.lightbox-media {
   .titlebar-search {
     display: none;
   }
+}
+
+/* A toggle that is on: sharing a screen, for one. */
+.icon-button.active {
+  background: var(--primary-hover);
+  color: var(--primary);
 }

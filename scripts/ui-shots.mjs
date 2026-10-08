@@ -334,7 +334,12 @@ const SCENES = [
   { name: 'discord-guild', setup: discord(false) },
   {
     name: 'discord-voice-panel',
-    setup: discord(true),
+    setup: async (p) => {
+      await discord(true)(p)
+      // Somebody speaking, and a healthy connection.
+      await p.evaluate(`window.__shotsLevels = { micPeak: 0.05, rttMs: 42 }, true`)
+      await sleep(500)
+    },
     clip: { x: 0, y: 480, width: 300, height: 320 }
   },
   {
@@ -384,6 +389,15 @@ const SCENES = [
       await p.call('Input.insertText', { text: 'gen' })
       await sleep(400)
     }
+  },
+  {
+    name: 'discord-voice-panel-poor',
+    setup: async (p) => {
+      await discord(true)(p)
+      await p.evaluate(`window.__shotsLevels = { micPeak: 0.13, rttMs: 210 }, true`)
+      await sleep(500)
+    },
+    clip: { x: 0, y: 480, width: 300, height: 320 }
   },
   // Motion, recorded rather than photographed.
   {
