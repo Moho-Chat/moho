@@ -749,7 +749,8 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: var(--spacing-s) 0 var(--spacing-m);
+  /* Room above the first line for the toolbar that hangs over its top edge. */
+  padding: var(--spacing-m) 0 var(--spacing-m);
   /* The browser's own anchoring adjusts scrollTop when content above the view
      changes size, which is a reasonable thing for a document and the wrong
      thing here: this list keeps its own position deliberately, and two of
@@ -2917,7 +2918,13 @@ img.smilie {
   position: absolute;
   top: -10px;
   right: calc(var(--spacing-m) + var(--read-gutter, 0px));
-  display: none;
+  display: flex;
+  /* Not display:none, which cannot fade and, worse, takes its buttons out of
+     the tab order: it is there and see-through until the row is pointed at or
+     has focus in it. */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast) ease;
   gap: 1px;
   padding: 2px;
   border-radius: var(--corner-radius-small);
@@ -2938,8 +2945,10 @@ img.smilie {
   --read-gutter: 62px;
 }
 
-.message-row:hover .hover-toolbar {
-  display: flex;
+.message-row:hover .hover-toolbar,
+.message-row:focus-within .hover-toolbar {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .toolbar-button {

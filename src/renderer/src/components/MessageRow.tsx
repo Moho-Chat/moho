@@ -7,7 +7,7 @@ import { EventSource } from './EventSource'
 import { ForwardPicker } from './ForwardPicker'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { MediaEmbed } from './MediaEmbed'
-import { EmojiPicker } from './EmojiPicker'
+import { EmojiPicker, readRecent } from './EmojiPicker'
 import { UploadMeter } from './UploadMeter'
 import { RichText } from '../lib/richtext'
 import { useChat, usePref, useStore } from '../state/hooks'
@@ -79,7 +79,17 @@ function badgeLabel(badge: MessageBadge): string {
 }
 
 /** A handful of one-click reactions on the hover toolbar. */
-const QUICK_REACTIONS = ['👍', '❤️', '😂', '🔥']
+const DEFAULT_REACTIONS = ['👍', '❤️', '😂', '🔥']
+
+/**
+ * The four faces on the hover toolbar: what this account has reacted with
+ * lately, topped up with the usual ones. Plain emoji only - a custom one
+ * belongs to a server and may not be sendable from wherever the toolbar is.
+ */
+function quickReactions(accountId?: string): string[] {
+  const recent = readRecent(accountId).filter((e) => !e.startsWith('<') && !e.startsWith(':'))
+  return [...new Set([...recent, ...DEFAULT_REACTIONS])].slice(0, 4)
+}
 
 export type MessageMode = 'classic' | 'comfy' | 'bubbles'
 
@@ -352,6 +362,12 @@ function MessageRowBody({
   const canEditDelete =
     !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix')
   const canReact = service === 'discord' || service === 'matrix'
+  // Read again after the picker has been used, which is when it changes.
+  const quick = useMemo(
+    () => quickReactions(store.accountFor(bufferId)?.id),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bufferId, pickerOpen]
+  )
   const pinned = shared.pinned.includes(message.id)
   const isSystem = !isChatKind(message.kind)
   // Said to you rather than to the room. Drawn differently on purpose: the
@@ -1125,10 +1141,14 @@ function MessageRowBody({
             one" but "where has everybody got to". */}
         {readers && readers.length > 0 && <ReadMarkers readers={readers} />}
 
-        {/* Hover toolbar: quick reactions, add-reaction, reply, more. */}
+        {/* Hover toolbar: quick reactions, add-reaction, reply, edit, copy,
+            more. Not on a line that is not a message - a join, a notice - or
+            one that has not been sent: there is nothing yet to react to or
+            answer. */}
+        {!isSystem && !message.pending && !message.failed && (
         <div className="hover-toolbar">
           {canReact &&
-            QUICK_REACTIONS.map((emoji) => (
+            quick.map((emoji) => (
               <button
                 key={emoji}
                 type="button"
@@ -1153,10 +1173,34 @@ function MessageRowBody({
           <button type="button" className="toolbar-button" title="Reply" onClick={reply}>
             <Icon name="reply" size={15} />
           </button>
+          {canEditDelete && (
+            <button
+              type="button"
+              className="toolbar-button"
+              title="Edit"
+              onClick={() => {
+                setDraft(message.body)
+                setEditing(true)
+              }}
+            >
+              <Icon name="edit" size={15} />
+            </button>
+          )}
+          {message.body && (
+            <button
+              type="button"
+              className="toolbar-button"
+              title="Copy text"
+              onClick={() => void window.moho.copyText(message.body)}
+            >
+              <Icon name="content_copy" size={15} />
+            </button>
+          )}
           <button type="button" className="toolbar-button" title="More" onClick={open}>
             <Icon name="more_horiz" size={15} />
           </button>
         </div>
+        )}
       </div>
 
       {pickerOpen && (

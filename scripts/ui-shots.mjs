@@ -439,6 +439,17 @@ const SCENES = [
     },
     clip: { x: 277, y: 80, width: 640, height: 420 }
   },
+  {
+    // The pointer over your own message: Edit and Copy join the toolbar (#298).
+    name: 'discord-hover-toolbar',
+    setup: async (p) => {
+      await discord(false)(p)
+      const c = await centre(p, '.message-row', 'man the table for an hour after lunch')
+      if (c) await mouse(p, 'mouseMoved', c.x + 100, c.y + 8)
+      await sleep(400)
+    },
+    clip: { x: 277, y: 200, width: 823, height: 120 }
+  },
   // Motion, recorded rather than photographed.
   {
     name: 'motion-hover-rows',

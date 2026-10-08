@@ -111,7 +111,7 @@ function stickerKey(s: StickerEntry): string {
   return s.id ?? s.mxc ?? s.name
 }
 
-function readRecent(accountId?: string): string[] {
+export function readRecent(accountId?: string): string[] {
   try {
     const stored = JSON.parse(localStorage.getItem(recentKey(accountId)) || '[]')
     return Array.isArray(stored) ? stored : []
