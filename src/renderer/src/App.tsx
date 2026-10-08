@@ -22,7 +22,7 @@ import { JoinPanel } from './components/JoinPanel'
 import { PeekBar, PeekView } from './components/PeekView'
 import { Toasts } from './components/Toasts'
 import { IncomingCallPanel } from './components/IncomingCallPanel'
-import { CallAudio, CallStage, IncomingMatrixCall, ScreenPicker } from './components/CallStage'
+import { CallAudio, CallStage, ScreenPicker } from './components/CallStage'
 import { CallWindowHost } from './components/stage/CallWindowHost'
 import { StreamStage, StreamWindowHost } from './components/StreamStage'
 import { EventCreatePanel, EventsPane } from './components/DiscordEvents'
@@ -298,7 +298,6 @@ export default function App(): JSX.Element {
       <IncomingCallPanel />
       {/* A Matrix call rings here too, but is answered by this window rather
           than by the daemon - the media is the window's. */}
-      <IncomingMatrixCall />
       <ScreenPicker />
       {/* A form a Discord bot asked for. Over everything, because it is the
           answer to something just pressed and it expires. */}

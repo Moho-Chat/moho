@@ -947,6 +947,23 @@ const SCENES = [
     }
   },
   {
+    // Two calls at once, one from each service (#325): stacked, in one style.
+    name: 'incoming-calls',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(`(() => {
+        const s = window.__mohoShots.state()
+        window.__mohoShots.patch({
+          incomingCalls: [{ bufferId: 'discord:shots|c3', accountId: 'discord:shots' }],
+          ringingCall: { accountId: 'discord:shots', bufferId: 'discord:shots|c8', callId: 'x1', from: 'Wren', video: true, offerSdp: '', expires: Date.now() + 60000 }
+        })
+        return true
+      })()`)
+      await sleep(600)
+    },
+    clip: { x: 0, y: 560, width: 460, height: 240 }
+  },
+  {
     name: 'discord-media-grid',
     setup: async (p) => {
       await discord(false)(p)
