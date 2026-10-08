@@ -771,6 +771,17 @@ const SCENES = [
     clip: { x: 760, y: 44, width: 520, height: 400 }
   },
   {
+    // The thread's reply box is the room's own (#310): emoji, names, files.
+    name: 'discord-thread-composer',
+    setup: async (p) => {
+      await SCENES.find((x) => x.name === 'discord-thread').setup(p)
+      await p.evaluate(`document.querySelector('.thread-pane .composer-input')?.focus()`)
+      await p.call('Input.insertText', { text: 'count me in :fi' })
+      await sleep(500)
+    },
+    clip: { x: 760, y: 44, width: 520, height: 756 }
+  },
+  {
     // The status menu (a real check mark) and the cog's menu beside its button (#317).
     name: 'status-menu',
     setup: async (p) => {

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { MessageRow, useRowContext } from './MessageRow'
 import { isGrouped } from './MessageList'
 import { IconButton } from './Icon'
+import { Composer } from './Composer'
 import { useChat, usePref, useStore } from '../state/hooks'
 import type { ChatMessage } from '../state/store'
 
@@ -28,9 +29,6 @@ export function ThreadPanel(): JSX.Element | null {
   const store = useStore()
   // Before the early return below, as every hook here has to be.
   const shared = useRowContext(thread?.bufferId ?? '')
-  const [draft, setDraft] = useState('')
-  const inputRef = useRef<HTMLTextAreaElement>(null)
-
   // From the account, as the room does, not by splitting its id.
   const service = thread ? store.accountFor(thread.bufferId)?.service : undefined
   const body = useRef<HTMLDivElement>(null)
@@ -56,13 +54,6 @@ export function ThreadPanel(): JSX.Element | null {
   }, [thread?.rootId, count])
 
   if (!thread) return null
-
-  const send = (): void => {
-    const body = draft.trim()
-    if (!body) return
-    setDraft('')
-    void store.sendToThread(body)
-  }
 
   return (
     <div className="thread-pane">
@@ -104,25 +95,11 @@ export function ThreadPanel(): JSX.Element | null {
         )}
       </div>
 
-      {/* Its own box, not the room's. Typing here answers the thread, and the
-          room's composer still answers the room - which is the whole reason
+      {/* The room's own box, answering the thread: emoji, names, files and
+          formatting all work here. Typing in it answers the thread, and the
+          room's box still answers the room - which is the whole reason
           somebody opens one of these. */}
-      <div className="thread-composer">
-        <textarea
-          ref={inputRef}
-          rows={1}
-          value={draft}
-          placeholder="Reply in thread"
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              send()
-            }
-          }}
-        />
-        <IconButton name="send" title="Send" onClick={send} />
-      </div>
+      <Composer thread />
     </div>
   )
 }

@@ -107,11 +107,23 @@ interface TypedCommand {
   command?: { options?: { name: string; type?: number; required?: boolean }[] }
 }
 
-export function Composer(): JSX.Element | null {
+/**
+ * The message box. In a thread panel it is the same box answering the thread
+ * rather than the room: it takes the open thread's conversation, sends through
+ * the thread, and leaves alone what belongs to the room's own box - the
+ * keyboard listeners for typing anywhere, files dropped on the window, a reply
+ * in progress and the things that are a message of their own kind.
+ */
+export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Element | null {
   const store = useStore()
-  const buffer = useActiveBuffer()
-  const replyingTo = useChat((s) => s.replyingTo)
-  const whisperingTo = useChat((s) => s.whisperingTo)
+  const activeBuffer = useActiveBuffer()
+  const threadBufferId = useChat((s) => s.openThread?.bufferId)
+  const allBuffers = useChat((s) => s.buffers)
+  const buffer = thread ? (allBuffers.find((b) => b.id === threadBufferId) ?? null) : activeBuffer
+  const storedReply = useChat((s) => s.replyingTo)
+  const storedWhisper = useChat((s) => s.whisperingTo)
+  const replyingTo = thread ? null : storedReply
+  const whisperingTo = thread ? null : storedWhisper
   const accounts = useChat((s) => s.accounts)
   const [text, setText] = useState('')
   const [staged, setStaged] = useState<StagedAttachment[]>([])
@@ -128,10 +140,12 @@ export function Composer(): JSX.Element | null {
    */
   const takeFiles = useRef<(files: StagedFile[]) => void>(() => {})
   useEffect(() => {
+    // Files dropped on the window go to the room's box, not to this one.
+    if (thread) return
     const onStage = (e: Event): void => takeFiles.current((e as CustomEvent<StagedFile[]>).detail)
     window.addEventListener(STAGE_FILES, onStage)
     return () => window.removeEventListener(STAGE_FILES, onStage)
-  }, [])
+  }, [thread])
   // The pictures made for the tray are held for as long as it is, and let go
   // of when a card leaves it or the box is gone.
   const previews = useRef(new Set<string>())
@@ -253,8 +267,13 @@ export function Composer(): JSX.Element | null {
   // Refocus on buffer switch so typing works immediately after clicking a
   // channel, without a second click into the field.
   useEffect(() => {
-    inputRef.current?.focus()
-  }, [buffer?.id])
+    if (!thread) inputRef.current?.focus()
+  }, [buffer?.id, thread])
+  // And a thread opened is a thread to answer.
+  const threadRoot = useChat((s) => s.openThread?.rootId)
+  useEffect(() => {
+    if (thread && threadRoot) inputRef.current?.focus()
+  }, [thread, threadRoot])
 
   // Typing anywhere in an active window goes into the box, as it does in
   // every other chat client: no click first. Only when nothing else is being
@@ -262,6 +281,8 @@ export function Composer(): JSX.Element | null {
   // a picture being looked at - and never with a shortcut key held, which is
   // the app's own to answer.
   useEffect(() => {
+    // The room's box alone listens: two would both take the same key.
+    if (thread) return
     const free = (): boolean => {
       const active = document.activeElement
       if (active instanceof HTMLElement) {
@@ -306,7 +327,7 @@ export function Composer(): JSX.Element | null {
       document.removeEventListener('paste', onPaste)
       window.removeEventListener('focus', onWindowFocus)
     }
-  }, [])
+  }, [thread])
 
   /**
    * Everything that can be tagged here: the people in the conversation, the
@@ -441,7 +462,7 @@ export function Composer(): JSX.Element | null {
       disabled: !supportsAttachments,
       onClick: pickAndStage
     },
-    ...(service === 'matrix'
+    ...(service === 'matrix' && !thread
       ? ([
           {
             label: 'Send a location',
@@ -456,6 +477,10 @@ export function Composer(): JSX.Element | null {
         ] as MenuEntry[])
       : [])
   ]
+
+  /** Sends to where this box answers: the room, or the thread it is the panel's. */
+  const post = (body: string, attachment?: string | string[], spoilers?: string[]): Promise<void> =>
+    thread ? store.sendToThread(body, attachment, spoilers) : store.sendMessage(buffer.id, body, attachment, spoilers)
 
   const submit = (): void => {
     // The text as this service will read it: formatting in the box becomes
@@ -493,8 +518,7 @@ export function Composer(): JSX.Element | null {
         // one upload to watch. Past ten, the next ten make the next message.
         for (let i = 0; i < staged.length; i += 10) {
           const batch = staged.slice(i, i + 10)
-          void store.sendMessage(
-            buffer.id,
+          void post(
             i === 0 ? body : '',
             batch.map((att) => att.path),
             batch.filter((att) => att.spoiler).map((att) => att.path)
@@ -502,12 +526,12 @@ export function Composer(): JSX.Element | null {
         }
       } else {
         staged.forEach((att, i) => {
-          void store.sendMessage(buffer.id, i === 0 ? body : '', att.path)
+          void post(i === 0 ? body : '', att.path)
         })
       }
       setStaged([])
     } else {
-      void store.sendMessage(buffer.id, body)
+      void post(body)
     }
     if (inputRef.current) inputRef.current.replaceChildren()
     setText('')
@@ -1056,7 +1080,7 @@ export function Composer(): JSX.Element | null {
             suppressContentEditableWarning
             role="textbox"
             aria-multiline="true"
-            aria-label={`Message ${bufferDisplayName(buffer.name)}`}
+            aria-label={thread ? 'Reply in thread' : `Message ${bufferDisplayName(buffer.name)}`}
             onInput={(e) => {
               setText(composerText(e.currentTarget))
               noteTyping()
@@ -1146,6 +1170,7 @@ export function Composer(): JSX.Element | null {
               // Up in an empty box opens your last message for editing, as in
               // Discord and Element: the quickest way to fix a typo.
               if (
+                !thread &&
                 e.key === 'ArrowUp' &&
                 !e.shiftKey &&
                 !e.ctrlKey &&
@@ -1201,7 +1226,7 @@ export function Composer(): JSX.Element | null {
           />
           {!text.trim() && (
             <span className="composer-placeholder muted">
-              Message {bufferDisplayName(buffer.name)}
+              {thread ? 'Reply in thread' : `Message ${bufferDisplayName(buffer.name)}`}
             </span>
           )}
         </div>
@@ -1224,7 +1249,7 @@ export function Composer(): JSX.Element | null {
             gesture: an emoji goes into the line being written and a sticker
             is the message. Only where the service has them: Matrix, where a
             pack supplies them, and Discord, where each guild has its own. */}
-        {(service === 'matrix' || service === 'discord') && (
+        {!thread && (service === 'matrix' || service === 'discord') && (
           <button
             ref={stickerButtonRef}
             type="button"
@@ -1245,7 +1270,7 @@ export function Composer(): JSX.Element | null {
             messages at all: Discord's flag and base64 waveform, and Matrix's
             MSC3245 marker with integers. The daemon speaks both from one
             recording, so this is the same button either way. */}
-        {(service === 'discord' || service === 'matrix') && <VoiceRecorder bufferId={buffer.id} />}
+        {!thread && (service === 'discord' || service === 'matrix') && <VoiceRecorder bufferId={buffer.id} />}
 
         {/* Sending is the one thing the box does that its own Enter does not
             say, so it is only drawn when there is something to send. */}

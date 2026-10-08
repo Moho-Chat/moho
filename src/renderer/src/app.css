@@ -7149,26 +7149,6 @@ video.lightbox-media {
   text-align: center;
 }
 
-.thread-composer {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-s);
-  border-top: 1px solid var(--outline-light);
-}
-
-.thread-composer textarea {
-  flex: 1;
-  resize: none;
-  max-height: 8em;
-  padding: var(--spacing-s);
-  border: 1px solid var(--outline-medium);
-  border-radius: var(--corner-radius);
-  background: var(--surface-container-high);
-  color: var(--surface-text);
-  font: inherit;
-}
-
 /* The way in, from the message a thread grew out of. Quiet until pointed at:
    a busy room has one of these on every few messages, and a row of buttons
    competing with the text would make the room harder to read than the

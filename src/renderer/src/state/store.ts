@@ -2208,16 +2208,22 @@ export class ChatStore {
   }
 
   /** Says something into a thread, rather than into the room around it. */
-  async sendToThread(body: string): Promise<void> {
+  async sendToThread(body: string, attachment?: string | string[], spoilers?: string[]): Promise<void> {
     const open = this.state.openThread
-    if (!open || !body.trim()) return
+    if (!open || (!body.trim() && !attachment)) return
     const root = open.messages.find((m) => m.id === open.rootId)
-    await this.dispatchSend(open.bufferId, body, {
-      id: open.rootId,
-      from: root?.from ?? '',
-      body: root?.body ?? '',
-      thread: true
-    })
+    await this.dispatchSend(
+      open.bufferId,
+      body,
+      {
+        id: open.rootId,
+        from: root?.from ?? '',
+        body: root?.body ?? '',
+        thread: true
+      },
+      attachment,
+      spoilers
+    )
   }
 
   /**
