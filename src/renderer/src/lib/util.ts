@@ -349,6 +349,21 @@ export function startsNewDay(messages: { ts: number }[], i: number): boolean {
   return true
 }
 
+/**
+ * The same, short enough for a column: "now", "8m", "3h", "Yest", then the
+ * date ("Mar 3"). The exact time is in the row's tooltip. A column wide enough
+ * for "Yesterday at 2:02 PM" is 100px of margin on every line; one that is not
+ * made that label overflow into the avatar.
+ */
+export function formatRelativeShort(ts: number, now = Date.now()): string {
+  const secs = Math.max(0, Math.floor(now / 1000) - ts)
+  if (secs < 60) return 'now'
+  if (secs < 3600) return `${Math.floor(secs / 60)}m`
+  if (secs < 23 * 3600) return `${Math.floor(secs / 3600)}h`
+  if (secs < 47 * 3600) return 'Yest'
+  return new Date(ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' })
+}
+
 export function classes(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(' ')
 }

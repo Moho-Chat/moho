@@ -863,6 +863,24 @@ export function Composer(): JSX.Element | null {
                 if (!e.shiftKey) submit()
                 return
               }
+              // Up in an empty box opens your last message for editing, as in
+              // Discord and Element: the quickest way to fix a typo.
+              if (
+                e.key === 'ArrowUp' &&
+                !e.shiftKey &&
+                !e.ctrlKey &&
+                !e.altKey &&
+                !e.metaKey &&
+                !text &&
+                (service === 'discord' || service === 'sneedchat' || service === 'matrix')
+              ) {
+                const last = store.lastEditableOwn(buffer.id)
+                if (last) {
+                  e.preventDefault()
+                  store.startEdit(last)
+                  return
+                }
+              }
               // The browser would make its own bold and italic here, in markup
               // this service may not have. Taken over: the same keys, applied
               // as the formats this service carries, and nothing where it has

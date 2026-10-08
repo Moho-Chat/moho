@@ -11,6 +11,7 @@ import { EmojiPicker, readRecent } from './EmojiPicker'
 import { UploadMeter } from './UploadMeter'
 import { RichText } from '../lib/richtext'
 import { useChat, usePref, useStore } from '../state/hooks'
+import { useTick } from '../lib/clock'
 import { useSniffedTypes, sniffUrl } from '../lib/sniff'
 import { useMediaUrl, useStrictRoute } from '../lib/route'
 import type { ChatMessage } from '../state/store'
@@ -41,7 +42,7 @@ import {
 import {
   classes,
   formatFullTime,
-  formatRelativeTime,
+  formatRelativeShort,
   formatTime,
   hasDirectMessages,
   isChatKind,
@@ -334,8 +335,19 @@ function MessageRowBody({
   // message changes.
   const replyId = message.replyTo && !message.replyTo.thread && !message.replyTo.forwarded ? message.replyTo.id : ''
   const original = useChat((s) => (replyId ? s.messagesByBuffer[bufferId]?.find((m) => m.id === replyId) : undefined))
-  const [editing, setEditing] = useState(false)
+  // Which message is open for editing is the window's, not each row's, so
+  // Up arrow in the message box can open the last one.
+  const editing = useChat((s) => s.editingId === message.id)
+  const setEditing = (on: boolean): void => (on ? store.startEdit(message.id) : store.stopEdit())
+  /** Saving an empty edit is asking to delete it, which is asked about first. */
+  const [askDelete, setAskDelete] = useState(false)
   const [draft, setDraft] = useState(message.body)
+  // Opened from elsewhere - Up arrow in the message box - the field starts
+  // with what the message says now.
+  useEffect(() => {
+    if (editing) setDraft(message.body)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing])
   const [revealed, setRevealed] = useState<Record<number, boolean>>({})
   const [pickerOpen, setPickerOpen] = useState(false)
   /** Writing the reason for a report, before it is sent. */
@@ -672,7 +684,10 @@ function MessageRowBody({
     store.startReply(message.id, message.from, message.body)
   }
 
-  const timeLabel = relativeTimestamps ? formatRelativeTime(message.ts) : formatTime(message.ts)
+  // Aged on a timer shared by every row, so "now" becomes "3m" without the
+  // list being redrawn.
+  const tick = useTick(relativeTimestamps)
+  const timeLabel = relativeTimestamps ? formatRelativeShort(message.ts, tick || Date.now()) : formatTime(message.ts)
 
   /**
    * Which unfurled link belongs to which rich embed.
@@ -898,20 +913,68 @@ function MessageRowBody({
             ))}
 
           {editing ? (
-            <input
-              className="text-field"
-              autoFocus
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') setEditing(false)
-                if (e.key === 'Enter') {
-                  void store.editMessage(bufferId, message.id, draft)
-                  setEditing(false)
-                }
-              }}
-              onBlur={() => setEditing(false)}
-            />
+            <div className="message-editor">
+              <textarea
+                className="text-field message-edit-field"
+                autoFocus
+                rows={Math.min(8, Math.max(1, draft.split('\n').length))}
+                value={draft}
+                onFocus={(e) => e.currentTarget.setSelectionRange(draft.length, draft.length)}
+                onChange={(e) => {
+                  setDraft(e.target.value)
+                  setAskDelete(false)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    setAskDelete(false)
+                    setEditing(false)
+                  } else if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    if (!draft.trim()) {
+                      setAskDelete(true)
+                      return
+                    }
+                    if (draft !== message.body) void store.editMessage(bufferId, message.id, draft)
+                    setEditing(false)
+                  }
+                }}
+              />
+              {askDelete ? (
+                <div className="message-edit-hint small">
+                  <span>Nothing left. Delete the message instead?</span>
+                  <button
+                    type="button"
+                    className="link-button danger-text"
+                    onClick={() => {
+                      void store.deleteMessage(bufferId, message.id)
+                      setAskDelete(false)
+                      setEditing(false)
+                    }}
+                  >
+                    Delete
+                  </button>
+                  <button type="button" className="link-button" onClick={() => setAskDelete(false)}>
+                    Keep editing
+                  </button>
+                </div>
+              ) : (
+                <div className="message-edit-hint small muted">
+                  escape to <button type="button" className="link-button" onClick={() => setEditing(false)}>cancel</button> · enter to{' '}
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => {
+                      if (!draft.trim()) return setAskDelete(true)
+                      if (draft !== message.body) void store.editMessage(bufferId, message.id, draft)
+                      setEditing(false)
+                    }}
+                  >
+                    save
+                  </button>
+                </div>
+              )}
+            </div>
           ) : (
             parts.html && (
               <span className="message-body selectable">
@@ -1101,14 +1164,19 @@ function MessageRowBody({
           )}
 
           {message.failed && (
-            <button
-              type="button"
-              className="send-failed small"
-              onClick={() => store.retrySend(message.id)}
-              title={message.errorText}
-            >
-              <Icon name="error" size={13} /> Failed to send — retry
-            </button>
+            <div className="send-failed-actions small">
+              <button
+                type="button"
+                className="send-failed small"
+                onClick={() => store.retrySend(message.id)}
+                title={message.errorText}
+              >
+                <Icon name="error" size={13} /> Failed to send — retry
+              </button>
+              <button type="button" className="send-discard small" onClick={() => store.discardFailed(message.id)}>
+                <Icon name="delete" size={13} /> Delete
+              </button>
+            </div>
           )}
 
           {/* Inside the bubble, at its foot. On a phone the time is part of

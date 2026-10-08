@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMediaUrl } from '../lib/route'
 import { nickColor } from '../lib/util'
-import { presenceColor, presenceLabel } from '../lib/presence'
+import { presenceClass, presenceLabel } from '../lib/presence'
 
 /**
  * Somebody's face, with a fallback for the many people who have no picture.
@@ -61,11 +61,7 @@ export function Avatar({
         </span>
       )}
       {status && (
-        <span
-          className="presence-dot"
-          style={{ background: presenceColor(status) }}
-          title={presenceLabel(status)}
-        />
+        <span className={`presence-dot ${presenceClass(status)}`} title={presenceLabel(status)} />
       )}
     </span>
   )

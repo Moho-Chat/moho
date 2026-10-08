@@ -22,7 +22,7 @@ import type {
   VoiceSession
 } from '../../../shared/wire'
 import { buildSmilieIndex, type SmilieEntry, type SmilieIndex } from '../lib/format'
-import { bufferDisplayName, isImageFile, resolveMediaUrl } from '../lib/util'
+import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
 import { runExport } from '../lib/exporter'
 import { DM_GROUP_ID, isDirectMessage } from '../lib/groups'
 import { ircNetworkFor } from '../lib/networks'
@@ -653,6 +653,8 @@ export interface ChatState {
    */
   profile: Profile | null
   replyingTo: { id: string; from: string; body: string } | null
+  /** The message being edited in place, if one is: at most one per window. */
+  editingId: string
   toasts: Toast[]
 
   /** Sneedchat's site-wide smiley table, fetched once and memoised. */
@@ -751,6 +753,7 @@ const INITIAL: ChatState = {
   matrixInvites: {},
   profile: null,
   replyingTo: null,
+  editingId: '',
   toasts: [],
   smilies: [],
   smilieIndex: null,
@@ -3816,6 +3819,7 @@ export class ChatStore {
       activePanel: '',
       peek: null,
       replyingTo: null,
+      editingId: '',
       buffers: this.state.buffers.map((b) =>
         b.id === bufferId ? { ...b, unread: 0, highlight: false } : b
       )
@@ -4442,6 +4446,19 @@ export class ChatStore {
     }
   }
 
+  /**
+   * Gives up on a message that failed to send: it goes from the log and from
+   * the books, and nothing is sent. Without this a failure stayed on screen,
+   * with a retry button beside it, until the window was closed.
+   */
+  discardFailed(clientId: string): void {
+    const info = this.pendingSends.get(clientId)
+    if (!info || info.inFlight) return
+    this.pendingSends.delete(clientId)
+    const list = this.state.messagesByBuffer[info.bufferId] || []
+    this.setMessages(info.bufferId, list.filter((m) => m.id !== clientId))
+  }
+
   retrySend(clientId: string): void {
     const info = this.pendingSends.get(clientId)
     if (!info) return
@@ -4611,6 +4628,29 @@ export class ChatStore {
 
   startReply(id: string, from: string, body: string): void {
     this.set({ replyingTo: { id, from, body } })
+  }
+
+  /** Opens a message of yours for editing where it stands. */
+  startEdit(id: string): void {
+    this.set({ editingId: id })
+  }
+
+  stopEdit(): void {
+    if (this.state.editingId) this.set({ editingId: '' })
+  }
+
+  /**
+   * Your last message in a conversation that can still be edited, or '' -
+   * what Up arrow in an empty box reaches for. Only chat lines with text, and
+   * not ones still being sent.
+   */
+  lastEditableOwn(bufferId: string): string {
+    const list = this.state.messagesByBuffer[bufferId] || []
+    for (let i = list.length - 1; i >= 0; i--) {
+      const m = list[i]
+      if (m.isOwn && !m.pending && !m.failed && isChatKind(m.kind) && m.body.trim() && !m.id.startsWith('pending-')) return m.id
+    }
+    return ''
   }
 
   cancelReply(): void {

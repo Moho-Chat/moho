@@ -478,6 +478,32 @@ const SCENES = [
     },
     clip: { x: 0, y: 44, width: 280, height: 360 }
   },
+  // One account in each state the dots can show: the plaque's dot and the server header's (#277).
+  ...[
+    ['dnd', 'connected', 'dnd'],
+    ['idle', 'connected', 'idle'],
+    ['connecting', 'connecting', 'online'],
+    ['offline', 'disconnected', 'online']
+  ].flatMap(([name, state, status]) => [
+    {
+      name: `presence-${name}-footer`,
+      setup: async (p) => {
+        await discord(false)(p)
+        await p.evaluate(`window.__mohoShots.patch({ accounts: window.__mohoShots.state().accounts.map((a) => a.id === 'discord:shots' ? { ...a, state: '${state}', status: '${status}' } : a) })`)
+        await sleep(400)
+      },
+      clip: { x: 0, y: 740, width: 280, height: 60 }
+    },
+    {
+      name: `presence-${name}-header`,
+      setup: async (p) => {
+        await discord(false)(p)
+        await p.evaluate(`window.__mohoShots.patch({ accounts: window.__mohoShots.state().accounts.map((a) => a.id === 'discord:shots' ? { ...a, state: '${state}', status: '${status}' } : a) })`)
+        await sleep(400)
+      },
+      clip: { x: 56, y: 48, width: 224, height: 36 }
+    }
+  ]),
   // Motion, recorded rather than photographed.
   {
     name: 'motion-hover-rows',

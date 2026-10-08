@@ -197,8 +197,8 @@
 }
 
 .connection-dot {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex: none;
   margin-left: auto;
@@ -1339,7 +1339,13 @@ button.video-tile {
   box-shadow: inset 2px 0 0 var(--primary);
 }
 
-.message-row.pending {
+/* Only what was said is dimmed, not the whole row: an upload's progress and
+   the face beside it are still what they were, and dimming a row as a unit
+   made the one thing that says it is working the faintest thing on it. */
+.message-row.pending .message-body,
+.message-row.pending .message-byline,
+.message-row.pending .media-row,
+.message-row.pending .reply-preview {
   opacity: 0.55;
 }
 
@@ -1406,6 +1412,54 @@ button.video-tile {
    pending dimming rather than picking up the error colour. */
 .message-row.pending .upload-meter {
   opacity: 1;
+}
+
+.message-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  width: 100%;
+  max-width: 720px;
+}
+
+.message-edit-field {
+  resize: none;
+  font: inherit;
+  user-select: text;
+}
+
+.message-edit-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+.link-button.danger-text {
+  color: var(--danger-text);
+}
+
+.send-failed-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-m);
+  margin-top: 2px;
+}
+
+.send-failed-actions .send-failed {
+  margin-top: 0;
+}
+
+/* Not sending it after all. Quieter than retry, which is the likelier want. */
+.send-discard {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  color: var(--surface-variant-text);
+}
+
+.send-discard:hover {
+  color: var(--surface-text);
+  text-decoration: underline;
 }
 
 .message-row.system .message-body {
@@ -3602,7 +3656,7 @@ img.smilie {
 }
 
 .status-dot.dnd {
-  background: var(--error);
+  background: var(--danger);
 }
 
 /* --- matrix account tools ---------------------------------------------- */
@@ -4907,10 +4961,50 @@ video.lightbox-media {
   position: absolute;
   right: -2px;
   bottom: -2px;
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  border: 2px solid var(--surface-container-low);
+  /* The ring is the colour of whatever is behind, so the dot reads as cut out
+     of the picture - the sidebar's, by default. */
+  border: 2px solid var(--ring, var(--surface-container));
+}
+
+/* One look for a state, wherever it is drawn: the avatar's dot, the server
+   header's connection dot, and the dots in the join dialogs. */
+.presence-online {
+  background: var(--success);
+}
+
+.presence-idle {
+  background: var(--warning);
+}
+
+.presence-dnd {
+  background: var(--danger);
+}
+
+/* Away and gone are a ring with nothing in it, as Discord draws them - which
+   a solid grey could not be told from a picture that failed to load. */
+.presence-offline {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--outline);
+}
+
+.presence-connecting {
+  background: var(--outline);
+  animation: presence-wait 1.2s ease-in-out infinite;
+}
+
+@keyframes presence-wait {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .presence-connecting {
+    animation: none;
+  }
 }
 
 .header-face .presence-dot {

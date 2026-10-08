@@ -4,6 +4,7 @@ import {
   classes,
   fileNameOf,
   formatRelativeTime,
+  formatRelativeShort,
   dayLabel,
   dayOf,
   startsNewDay,
@@ -120,5 +121,20 @@ describe('date lines', () => {
     const list = [{ ts: noon(2026, 10, 7) }, { ts: 0 }, { ts: noon(2026, 10, 7) + 30 }]
     expect(startsNewDay(list, 1)).toBe(false)
     expect(startsNewDay(list, 2)).toBe(false)
+  })
+})
+
+describe('relative times for a column', () => {
+  const now = new Date(2026, 9, 8, 15).getTime()
+  const ago = (s: number): number => Math.floor(now / 1000) - s
+
+  it('stays short enough for a narrow column', () => {
+    expect(formatRelativeShort(ago(10), now)).toBe('now')
+    expect(formatRelativeShort(ago(8 * 60), now)).toBe('8m')
+    expect(formatRelativeShort(ago(5 * 3600), now)).toBe('5h')
+    expect(formatRelativeShort(ago(30 * 3600), now)).toBe('Yest')
+    for (const s of [5, 600, 20000, 100000, 900000, 40000000]) {
+      expect(formatRelativeShort(ago(s), now).length).toBeLessThanOrEqual(6)
+    }
   })
 })

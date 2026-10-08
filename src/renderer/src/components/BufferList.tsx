@@ -7,6 +7,7 @@ import { bufferMenuEntries } from '../lib/buffermenu'
 import { UserFooter } from './UserFooter'
 import { VoiceChannels } from './VoiceChannels'
 import { VoicePanel } from './VoicePanel'
+import { presenceClass, presenceLabel } from '../lib/presence'
 import { useChat, useIdSetPref, useMapPref, usePref, useStore } from '../state/hooks'
 import {
   dmGroup,
@@ -812,13 +813,9 @@ export function dmStatus(
  * is nothing to leave and this only hides it.
  */
 function ConnectionDot({ state }: { state: string }): JSX.Element {
-  const color =
-    state === 'connected'
-      ? 'var(--success)'
-      : state === 'connecting'
-        ? 'var(--warning)'
-        : 'var(--outline)'
-  return <span className="connection-dot" style={{ background: color }} title={state} />
+  // The same dot as a person's, because it says the same kind of thing: here,
+  // being reached, or not.
+  return <span className={`connection-dot ${presenceClass(state)}`} title={presenceLabel(state)} />
 }
 
 interface BufferRowProps {
