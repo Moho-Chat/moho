@@ -1,7 +1,5 @@
 import { useState } from 'react'
-import { useEscapeLayer } from '../lib/layers'
-import { createPortal } from 'react-dom'
-import { Icon } from './Icon'
+import { Modal } from './Modal'
 import { canReachBack, type ExportRange } from '../lib/exporter'
 
 /**
@@ -58,7 +56,6 @@ export function ExportDialog({
   const [to, setTo] = useState(() => localNow())
   const [media, setMedia] = useState(true)
 
-  useEscapeLayer(onCancel)
 
   // A datetime-local value is already local wall-clock time, so `new Date` on
   // it means what was typed. Seconds are not offered, so the start is taken at
@@ -73,13 +70,8 @@ export function ExportDialog({
   const wouldReachBack = !everything && !!oldestHeld && since > 0 && since < oldestHeld
   const shortfall = wouldReachBack && !canReachBack(service)
 
-  return createPortal(
-    <div className="lightbox-backdrop" onClick={onCancel}>
-      <div className="reason-prompt" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className="reason-prompt-head">
-          <Icon name="download" size={18} />
-          <span>Export {title}</span>
-        </div>
+  return (
+    <Modal title={`Export ${title}`} icon="download" onClose={onCancel} className="reason-prompt">
         <p className="small muted">
           Written as a folder of HTML, the way it looks here, into your downloads.
         </p>
@@ -169,8 +161,6 @@ export function ExportDialog({
             Export
           </button>
         </div>
-      </div>
-    </div>,
-    document.body
+    </Modal>
   )
 }

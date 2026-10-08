@@ -5768,7 +5768,12 @@ video.lightbox-media {
 
 .modal-scrim {
   position: fixed;
-  inset: 0;
+  /* Below the title bar, which is a drag region the compositor resolves
+     before the page: painted over it, the bar would be dead to the mouse. */
+  top: var(--titlebar-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: var(--z-dialog);
   display: flex;
   align-items: center;
@@ -9298,4 +9303,23 @@ video.lightbox-media {
   .reaction-pill.pop {
     animation: none;
   }
+}
+
+
+/* --- the shared dialog frame -------------------------------------------- */
+
+.dialog {
+  margin: auto;
+}
+
+.dialog-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  font-weight: var(--weight-medium);
+}
+
+.dialog-title {
+  flex: 1;
+  min-width: 0;
 }

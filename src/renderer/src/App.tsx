@@ -39,10 +39,12 @@ import { loadLocalEmotes, recoverMissingEmotes } from './lib/emotecache'
 import { restoreMissingMedia } from './lib/mediarestore'
 import { useShortcuts } from './lib/shortcuts'
 import { useEscapeLayer } from './lib/layers'
+import { installDialogFocus } from './lib/dialogs'
 import { QuickSwitcher } from './components/QuickSwitcher'
 
 export default function App(): JSX.Element {
   useShortcuts()
+  useEffect(() => installDialogFocus(), [])
   // The full-page panels - Settings, Accounts, Downloads, Join - go away on
   // Escape like everything else that opens over the window, but underneath
   // whatever opened on top of them.
