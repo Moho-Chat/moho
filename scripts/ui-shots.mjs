@@ -630,6 +630,27 @@ const SCENES = [
     },
     clip: { x: 0, y: 600, width: 420, height: 200 }
   },
+  {
+    // Three lines typed with Shift+Enter (#305).
+    name: 'composer-multiline',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await p.evaluate(`document.querySelector('.composer-input').focus()`)
+      const enter = async (mods) => {
+        for (const type of ['keyDown', 'keyUp']) {
+          await p.call('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, modifiers: mods, ...(type === 'keyDown' ? { text: '\r' } : {}) })
+        }
+        await sleep(120)
+      }
+      await p.call('Input.insertText', { text: 'Agenda for tonight:' })
+      await enter(8)
+      await p.call('Input.insertText', { text: '1. release notes' })
+      await enter(8)
+      await p.call('Input.insertText', { text: '2. the open issues' })
+      await sleep(300)
+    },
+    clip: { x: 277, y: 560, width: 823, height: 240 }
+  },
   // Motion, recorded rather than photographed.
   {
     name: 'motion-hover-rows',

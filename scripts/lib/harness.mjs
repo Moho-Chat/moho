@@ -30,7 +30,7 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
  * carry when it was said (`at(date)` builds the tag), which is how history
  * from other days reaches the client.
  */
-export function fakeIrc({ people = [], caps = [], onJoin } = {}) {
+export function fakeIrc({ people = [], caps = [], onJoin, onLine } = {}) {
   const server = net.createServer((socket) => {
     let nick = 'checker'
     let negotiating = false
@@ -50,6 +50,7 @@ export function fakeIrc({ people = [], caps = [], onJoin } = {}) {
       while ((at = buffered.indexOf('\n')) >= 0) {
         const line = buffered.slice(0, at).replace(/\r$/, '')
         buffered = buffered.slice(at + 1)
+        onLine?.(line)
         const [command, ...args] = line.split(' ')
         switch (command.toUpperCase()) {
           case 'CAP':

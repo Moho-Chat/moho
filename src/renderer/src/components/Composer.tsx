@@ -435,9 +435,10 @@ export function Composer(): JSX.Element | null {
 
     // Pasting into an editable div would otherwise bring the clipboard's own
     // markup with it - fonts, colours, whole tables. Only the text is wanted.
-    // Newlines flattened for the same reason Enter does not make one, and
-    // because an input silently did this to a multi-line paste anyway.
-    const pasted = e.clipboardData.getData('text/plain').replace(/\s*\n\s*/g, ' ')
+    // Line breaks kept: they are the person's, and what becomes of them is the
+    // service's - a newline on Discord and Matrix, a batch or separate lines on
+    // IRC, a space on Kick. Only the carriage returns a paste brings are tidied.
+    const pasted = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n')
     if (pasted) {
       // Deprecated, and still the only way to insert at the caret while
       // keeping the box's own undo history intact. Chromium is the only
@@ -811,11 +812,11 @@ export function Composer(): JSX.Element | null {
               noteMention()
             }}
             onKeyDown={(e) => {
-              // Enter sends and Shift+Enter does nothing, which is what the
-              // input this replaced did. An editable div would happily take a
-              // second line, but a newline reaching IRC is a malformed
-              // PRIVMSG - nothing between here and the socket splits one - so
-              // multi-line is a separate change with its own thinking to do.
+              // Enter sends and Shift+Enter makes a new line. What a line break
+              // becomes on the way out is the daemon's to decide per service -
+              // IRC cannot carry one in a PRIVMSG, so it goes as a multiline
+              // batch where the network has them and as separate lines where
+              // it does not.
               // While the mention list is up it owns the keys somebody is
               // already using to drive it - a list you steer with the arrows
               // and take with Enter is one nobody has to be taught.
@@ -861,6 +862,9 @@ export function Composer(): JSX.Element | null {
               if (e.key === 'Enter') {
                 e.preventDefault()
                 if (!e.shiftKey) submit()
+                // Shift+Enter is a new line, on every service: what becomes of
+                // it on the way out is the daemon's business per protocol.
+                else document.execCommand('insertLineBreak')
                 return
               }
               // Up in an empty box opens your last message for editing, as in
