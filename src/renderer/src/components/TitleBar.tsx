@@ -61,11 +61,11 @@ export function TitleBar({ title }: { title?: string } = {}): JSX.Element {
       <div className="titlebar-controls">
         <IconButton name="remove" title="Minimize" onClick={() => void window.moho.window.minimize()} />
         <IconButton
-          name={maximized ? 'fullscreen_exit' : 'fullscreen'}
+          name={maximized ? 'filter_none' : 'crop_square'}
           title={maximized ? 'Restore' : 'Maximize'}
           onClick={() => void window.moho.window.toggleMaximize().then(setMaximized)}
         />
-        <IconButton name="close" title="Close" onClick={() => void window.moho.window.close()} />
+        <IconButton name="close" title="Close" className="titlebar-close" onClick={() => void window.moho.window.close()} />
       </div>
     </div>
   )

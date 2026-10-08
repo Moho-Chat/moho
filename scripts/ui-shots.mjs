@@ -504,6 +504,50 @@ const SCENES = [
       clip: { x: 56, y: 48, width: 224, height: 36 }
     }
   ]),
+  {
+    // The rail: mention counts on server tiles and the "+" tile (#285).
+    name: 'rail-tiles',
+    setup: async (p) => { await discord(false)(p) },
+    clip: { x: 0, y: 44, width: 280, height: 360 }
+  },
+  {
+    name: 'rail-tooltip',
+    setup: async (p) => {
+      await discord(false)(p)
+      const tile = await p.evaluate(`(() => { const el = document.querySelector('[aria-label="Moho Dev"]'); const r = el.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } })()`)
+      await mouse(p, 'mouseMoved', tile.x, tile.y)
+      await sleep(400)
+    },
+    clip: { x: 0, y: 44, width: 280, height: 160 }
+  },
+  {
+    // Both servers filed in a folder, closed: it should still say something is waiting.
+    name: 'rail-folder-closed',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(`window.moho.prefs.set('railFolders', [{ id: 'f1', name: 'Mine', colour: '', members: ['discord:shots|guild:1', 'discord:shots|guild:2'] }])`)
+      await sleep(300)
+      await p.call('Page.reload')
+      await until(p, 'window.__mohoShots && document.querySelector(".buffer-row")', 'the window after a reload')
+      await p.call('Emulation.setDeviceMetricsOverride', { ...SIZE, deviceScaleFactor: 1, mobile: false })
+      await sleep(500)
+      await p.evaluate(DISCORD)
+      await sleep(900)
+    },
+    clip: { x: 0, y: 44, width: 280, height: 360 }
+  },
+  {
+    // The pointer over the close button (#291): red, and the maximise glyph.
+    name: 'titlebar-close-hover',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      const c = await centre(p, '.titlebar-controls button', '')
+      const close = await p.evaluate(`(() => { const b = [...document.querySelectorAll('.titlebar-controls button')].at(-1); const r = b.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } })()`)
+      await mouse(p, 'mouseMoved', close.x, close.y)
+      await sleep(300)
+    },
+    clip: { x: 1020, y: 0, width: 260, height: 44 }
+  },
   // Motion, recorded rather than photographed.
   {
     name: 'motion-hover-rows',

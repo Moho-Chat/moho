@@ -4411,6 +4411,47 @@ video.lightbox-media {
   opacity: 1;
 }
 
+.rail-tile:hover .rail-pill:not(.active):not(.unread) {
+  height: 20px;
+  opacity: 1;
+}
+
+.rail-tile:hover .rail-pill.unread {
+  height: 20px;
+}
+
+/* The name flyout: instant, in the app's own style, to the right of the tile. */
+.rail-add .rail-face {
+  background: transparent;
+  border: 1px dashed var(--outline-strong);
+  color: var(--success);
+}
+
+.rail-add:hover .rail-face {
+  background: var(--success);
+  border-color: var(--success);
+  color: var(--on-accent);
+}
+
+.rail-tip {
+  position: fixed;
+  z-index: var(--z-menu);
+  transform: translateY(-50%);
+  max-width: 260px;
+  padding: 6px var(--spacing-m);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--outline-medium);
+  box-shadow: var(--shadow-1);
+  color: var(--surface-text);
+  font-size: var(--font-size-medium);
+  font-weight: var(--weight-semibold);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .rail-pill.unread {
   height: 8px;
   opacity: 1;
@@ -8844,6 +8885,11 @@ video.lightbox-media {
 }
 
 /* The title bar's way in, in the middle of what is otherwise an empty bar. */
+.icon-button.titlebar-close:hover {
+  background: var(--danger);
+  color: var(--on-accent);
+}
+
 .titlebar-search {
   position: absolute;
   left: 50%;
