@@ -318,6 +318,12 @@ function MessageRowBody({
   const strictRoute = useStrictRoute()
   const store = useStore()
   const { menu, open, close } = useContextMenu()
+  // The message this one answers, if it is on screen to be asked: its name
+  // colour and picture are the author's, and are not in the reply's own
+  // preview. The object itself, so the row only re-renders when that one
+  // message changes.
+  const replyId = message.replyTo && !message.replyTo.thread && !message.replyTo.forwarded ? message.replyTo.id : ''
+  const original = useChat((s) => (replyId ? s.messagesByBuffer[bufferId]?.find((m) => m.id === replyId) : undefined))
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.body)
   const [revealed, setRevealed] = useState<Record<number, boolean>>({})
@@ -429,6 +435,21 @@ function MessageRowBody({
       quoteBlocks
     }
   }, [message.body, message.html, contentSniffing, sniffed, revealed, isSneedchat, smilieIndex, channels, service, ircColours, strictRoute])
+
+  // Somebody else's name or picture opens who they are, as it does in the
+  // clients this is measured against; your own and the system's have nothing
+  // to open.
+  const canOpenProfile = !!message.from && !isSystem && !message.isOwn
+  const openProfile = (): void => store.showProfile(bufferId, message.from, message.senderId)
+  // Back to what this answers, bringing it into view first if it is a long
+  // way up - and saying so if it is gone, rather than doing nothing.
+  const jumpToReply = (): void => {
+    if (!replyId) return
+    void store.jumpToMessage(bufferId, replyId).then((found) => {
+      if (found) store.setJumpTarget(replyId)
+      else store.toast('info', "Couldn't find the message this answers")
+    })
+  }
 
   const entries: MenuEntry[] = [
     // First, above what to do about the message: the question a right click
@@ -692,7 +713,11 @@ function MessageRowBody({
             lines never showed it because they wrap inside message-content,
             which was already in the right place. */}
         {comfy && !isSystem && (
-          <span className="message-avatar">
+          <span
+            className={classes('message-avatar', canOpenProfile && !grouped && 'clickable')}
+            onClick={canOpenProfile && !grouped ? openProfile : undefined}
+            title={canOpenProfile && !grouped ? `Profile of ${message.from}` : undefined}
+          >
             {!grouped &&
               (message.avatarUrl ? (
                 <img
@@ -726,7 +751,13 @@ function MessageRowBody({
               byline, so they live in it. */}
           {!grouped && !isSystem && !own && (
             <span className="message-byline">
-              <span className="message-from" style={{ color: message.senderColor || nickColor(message.from) }}>
+              <span
+                className={classes('message-from', canOpenProfile && 'clickable')}
+                style={{ color: message.senderColor || nickColor(message.from) }}
+                onClick={canOpenProfile ? openProfile : undefined}
+                role={canOpenProfile ? 'button' : undefined}
+                title={canOpenProfile ? `Profile of ${message.from}` : undefined}
+              >
                 {message.isAction ? `* ${message.from}` : message.from}
               </span>
               {message.badges?.map((badge) => (
@@ -786,7 +817,14 @@ function MessageRowBody({
                 {message.replyTo.body && <span className="ellipsis">{message.replyTo.body}</span>}
               </button>
             ) : (
-              <div className="reply-preview small muted">
+              <div
+                className={classes('reply-preview small muted', replyId && 'reply-jump')}
+                onClick={replyId ? jumpToReply : undefined}
+                role={replyId ? 'button' : undefined}
+                tabIndex={replyId ? 0 : undefined}
+                onKeyDown={replyId ? (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), jumpToReply()) : undefined}
+                title={replyId ? 'Go to the message' : undefined}
+              >
                 {/* A forward is not a reply and does not get the reply's
                     arrow: it is somebody else's message arriving, which is a
                     different thing from an answer to one. Its own word for
@@ -799,10 +837,17 @@ function MessageRowBody({
                   }
                   size={13}
                 />
+                {/* The author's own picture where the original is on screen, the
+                    way Discord draws a reply. */}
+                {original?.avatarUrl && (
+                  <img className="reply-avatar" src={media(original.avatarUrl)} alt="" loading="lazy" />
+                )}
                 <span
                   className="reply-from"
                   style={
-                    message.replyTo.forwarded ? undefined : { color: nickColor(message.replyTo.from) }
+                    message.replyTo.forwarded
+                      ? undefined
+                      : { color: original?.senderColor || nickColor(message.replyTo.from) }
                   }
                 >
                   {message.replyTo.from}

@@ -1319,6 +1319,9 @@ button.video-tile {
   align-items: baseline;
   gap: var(--spacing-s);
   padding: 1px var(--spacing-m);
+  /* So a highlight - a jump target, a hover - fades both ways. It used to
+     fade in and snap off. */
+  transition: background var(--motion-slow) ease;
 }
 
 .message-row:hover {
@@ -1631,6 +1634,36 @@ button.video-tile {
 .reply-from {
   font-weight: var(--weight-semibold);
   flex: none;
+}
+
+.reply-avatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+}
+
+/* A reply that can be followed: the whole line is the way to the original. */
+.reply-jump {
+  cursor: pointer;
+}
+
+.reply-jump:hover {
+  opacity: 1;
+}
+
+.reply-jump:hover .ellipsis {
+  text-decoration: underline;
+}
+
+.message-from.clickable,
+.message-avatar.clickable {
+  cursor: pointer;
+}
+
+.message-from.clickable:hover {
+  text-decoration: underline;
 }
 
 .send-failed {

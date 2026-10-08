@@ -399,6 +399,27 @@ const SCENES = [
     },
     clip: { x: 0, y: 480, width: 300, height: 320 }
   },
+  {
+    // The pointer over a reply (#296) and over a name (#297): both are links now.
+    name: 'discord-reply-hover',
+    setup: async (p) => {
+      await discord(false)(p)
+      const c = await centre(p, '.reply-preview', 'man the table')
+      if (c) await mouse(p, 'mouseMoved', c.x, c.y)
+      await sleep(300)
+    },
+    clip: { x: 277, y: 260, width: 640, height: 90 }
+  },
+  {
+    name: 'discord-name-hover',
+    setup: async (p) => {
+      await discord(false)(p)
+      const c = await centre(p, '.message-from', 'Gaunt King')
+      if (c) await mouse(p, 'mouseMoved', c.x - 20, c.y)
+      await sleep(300)
+    },
+    clip: { x: 277, y: 80, width: 640, height: 90 }
+  },
   // Motion, recorded rather than photographed.
   {
     name: 'motion-hover-rows',
