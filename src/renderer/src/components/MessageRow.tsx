@@ -1051,7 +1051,15 @@ function MessageRowBody({
                   onOpenChannel={(id) => void store.selectBuffer(id, true)}
                   onOpenLink={(url) => store.followDeepLink(url)}
                 />
-                {message.edited && <span className="edited-tag small muted"> (edited)</span>}
+                {message.edited && (
+                  <span
+                    className="edited-tag small muted"
+                    title={message.editedTs ? `Edited ${formatFullTime(message.editedTs)}` : 'Edited'}
+                  >
+                    {' '}
+                    (edited)
+                  </span>
+                )}
               </span>
             )
           )}

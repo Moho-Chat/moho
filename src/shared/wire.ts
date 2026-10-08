@@ -507,6 +507,8 @@ export interface Message {
   kind: string
   replyTo?: ReplyPreview
   edited?: boolean
+  /** When the edit was seen, in Unix seconds; absent for one that was already there. */
+  editedTs?: number
   reactions?: Reaction[]
   isOwn?: boolean
   avatarUrl?: string

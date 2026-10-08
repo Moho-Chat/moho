@@ -3090,6 +3090,7 @@ export class ChatStore {
           // only - no body, no embeds - so those must not be blanked out.
           body: data.body ?? m.body,
           edited: m.edited || !!data.edited,
+          editedTs: data.editedTs ?? m.editedTs,
           embeds: data.embeds ?? m.embeds ?? [],
           attachments: data.attachments ?? m.attachments
         }))
