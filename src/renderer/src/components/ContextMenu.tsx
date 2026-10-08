@@ -58,10 +58,14 @@ export function ContextMenu({ x, y, entries, onClose }: Props): JSX.Element {
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
-    const rect = el.getBoundingClientRect()
+    // The layout size, not getBoundingClientRect: that is the size as drawn,
+    // and while the entry animation is scaling the menu it is a few pixels
+    // smaller than it will be - which parked the menu that far off the edge.
+    const width = el.offsetWidth
+    const height = el.offsetHeight
     setPos({
-      x: Math.max(4, Math.min(x, window.innerWidth - rect.width - 4)),
-      y: Math.max(4, Math.min(y, window.innerHeight - rect.height - 4))
+      x: Math.max(4, Math.min(x, window.innerWidth - width - 4)),
+      y: Math.max(4, Math.min(y, window.innerHeight - height - 4))
     })
   }, [x, y, entries.length])
 
