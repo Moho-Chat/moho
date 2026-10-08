@@ -1,11 +1,41 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePref } from '../../state/hooks'
+import { Icon } from '../Icon'
+import { Switch } from '../Switch'
 
 /**
  * The setting primitives the original frontend's PluginSettings provided,
  * rebuilt against the local preference store. Each writes through on change,
  * so there's no save button anywhere in Settings.
  */
+
+/**
+ * A brief tick beside a field that saves when it is left, so leaving it says
+ * that it took. Anything that writes on blur or Enter has no button to say so.
+ */
+export function useSavedFlash(): [boolean, () => void] {
+  const [shown, setShown] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current)
+  }, [])
+  return [
+    shown,
+    () => {
+      setShown(true)
+      if (timer.current) clearTimeout(timer.current)
+      timer.current = setTimeout(() => setShown(false), 1400)
+    }
+  ]
+}
+
+export function SavedMark({ shown }: { shown: boolean }): JSX.Element {
+  return (
+    <span className={`saved-mark${shown ? ' shown' : ''}`} aria-live="polite" title="Saved">
+      {shown && <Icon name="check" size={16} />}
+    </span>
+  )
+}
 
 export function SettingsSection({
   title,
@@ -38,18 +68,13 @@ export function ToggleSetting({
 }): JSX.Element {
   const [value, setValue] = usePref<boolean>(settingKey, defaultValue)
   return (
-    <label className="setting-row">
+    <div className="setting-row">
       <div className="setting-text">
         <div>{label}</div>
         {description && <div className="small muted">{description}</div>}
       </div>
-      <input
-        type="checkbox"
-        className="setting-toggle"
-        checked={value}
-        onChange={(e) => setValue(e.target.checked)}
-      />
-    </label>
+      <Switch checked={value} onChange={setValue} label={label} />
+    </div>
   )
 }
 
@@ -71,6 +96,12 @@ export function StringSetting({
   // file; committed on blur or Enter.
   const [draft, setDraft] = useState(value)
   useEffect(() => setDraft(value), [value])
+  const [saved, flash] = useSavedFlash()
+  const save = (): void => {
+    if (draft === value) return
+    setValue(draft)
+    flash()
+  }
 
   return (
     <div className="setting-row">
@@ -78,13 +109,14 @@ export function StringSetting({
         <div>{label}</div>
         {description && <div className="small muted">{description}</div>}
       </div>
+      <SavedMark shown={saved} />
       <input
         className="text-field setting-input"
         value={draft}
         placeholder={placeholder}
         onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => draft !== value && setValue(draft)}
-        onKeyDown={(e) => e.key === 'Enter' && setValue(draft)}
+        onBlur={save}
+        onKeyDown={(e) => e.key === 'Enter' && save()}
       />
     </div>
   )

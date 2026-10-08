@@ -17,7 +17,6 @@ import { ProfileCard } from './components/ProfileCard'
 import { ConversationTools } from './components/ConversationTools'
 import { AccountsPanel } from './components/AccountsPanel'
 import { SettingsPanel } from './components/settings/SettingsPanel'
-import { DownloadsPanel } from './components/DownloadsPanel'
 import { JoinPanel } from './components/JoinPanel'
 import { PeekBar, PeekView } from './components/PeekView'
 import { Toasts } from './components/Toasts'
@@ -151,12 +150,8 @@ export default function App(): JSX.Element {
   const headerTitle =
     peeking
       ? `Looking · ${peek?.name || peek?.alias || ''}`
-      : activePanel === 'accounts'
-      ? 'Accounts'
-      : activePanel === 'settings'
+      : activePanel === 'accounts' || activePanel === 'settings' || activePanel === 'downloads'
         ? 'Settings'
-        : activePanel === 'downloads'
-        ? 'Downloads'
         : activePanel === 'join'
         ? `Join · ${joinAccount?.displayName ?? ''}`
         : onMentionsPage
@@ -365,13 +360,15 @@ function Body({
   activeGroupId: string
   peeking: boolean
 }): JSX.Element {
-  if (activePanel === 'settings') return <SettingsPanel />
-  // Above the no-accounts case below: a finished download is still worth
-  // looking at on a machine whose accounts have since been removed.
-  if (activePanel === 'downloads') return <DownloadsPanel />
+  // Settings, with Accounts and Downloads as pages of it. Above the
+  // no-accounts case below: a finished download is still worth looking at on
+  // a machine whose accounts have since been removed.
+  if (activePanel === 'settings' || activePanel === 'accounts' || activePanel === 'downloads') {
+    return <SettingsPanel page={activePanel} />
+  }
   // With no accounts at all, the accounts panel is the only useful thing to
   // show - there is nothing to chat in yet.
-  if (activePanel === 'accounts' || !hasAccounts) return <AccountsPanel />
+  if (!hasAccounts) return <AccountsPanel />
   if (activePanel === 'join') return <JoinPanel />
   // A room being looked into: the pane's own view, with nothing to type into.
   if (peeking) return <PeekView />

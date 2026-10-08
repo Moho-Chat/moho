@@ -487,6 +487,18 @@ const SCENES = [
       await sleep(400)
     }
   },
+  {
+    // Searching across every page (#319).
+    name: 'settings-search',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await p.evaluate(`window.__mohoShots.store.setActivePanel('settings')`)
+      await sleep(400)
+      await p.evaluate(`document.querySelector('.settings-search-input').focus()`)
+      await p.call('Input.insertText', { text: 'timestamp' })
+      await sleep(500)
+    }
+  },
   { name: 'settings-accounts', setup: async (p) => { await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`); await sleep(400) } },
   { name: 'discord-guild', setup: discord(false) },
   {

@@ -950,7 +950,6 @@ function FolderSettings({
  */
 function RailMenu(): JSX.Element {
   const store = useStore()
-  const { menu, openFrom, close } = useContextMenu()
   const transfers = useChat((s) => s.transfers)
   // What is going on behind whatever is on screen. Exports count alongside
   // files because they are the same thing to somebody who started one and
@@ -976,12 +975,10 @@ function RailMenu(): JSX.Element {
       <button
         type="button"
         className="rail-tile rail-cog"
-        title={busy > 0 ? `Accounts and settings - ${busyLabel}` : 'Accounts and settings'}
-        aria-label="Accounts and settings"
-        // Opened by left click, unlike the tiles above it - it is a menu
-        // button, not a thing being acted upon - and beside the button, not
-        // wherever within it the pointer happened to land.
-        onClick={(e) => openFrom(e.currentTarget)}
+        title={busy > 0 ? `Settings - ${busyLabel}` : 'Settings'}
+        aria-label="Settings"
+        // Straight to Settings, where Accounts and Downloads are pages of it.
+        onClick={() => store.setActivePanel('settings')}
       >
         <span className="rail-face">
           <Icon name="settings" size={20} />
@@ -993,21 +990,6 @@ function RailMenu(): JSX.Element {
           <span className={exporting > 0 ? 'rail-downloads exporting' : 'rail-downloads'}>{busy}</span>
         )}
       </button>
-      {menu && (
-        <ContextMenu
-          x={menu.x}
-          y={menu.y}
-          entries={[
-            { label: 'Accounts', icon: 'manage_accounts', onClick: () => store.setActivePanel('accounts') },
-            // Between the two: it is about the app rather than about a server,
-            // which is what this menu is for, and it is the one entry here
-            // that can be busy while you are looking at something else.
-            { label: 'Downloads', icon: 'download', onClick: () => store.setActivePanel('downloads') },
-            { label: 'Settings', icon: 'settings', onClick: () => store.setActivePanel('settings') }
-          ]}
-          onClose={close}
-        />
-      )}
     </>
   )
 }

@@ -1,4 +1,5 @@
 import { useMediaUrl } from '../lib/route'
+import { SwitchRow } from './Switch'
 import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
 import { ContextMenu } from './ContextMenu'
@@ -353,35 +354,25 @@ function CreateMatrixRoom({ account }: { account: Account }): JSX.Element {
         onChange={(e) => setTopic(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && create()}
       />
-      <label className="checkbox-row">
-        <input type="checkbox" checked={isSpace} onChange={(e) => setIsSpace(e.target.checked)} />
-        <span>
-          Make it a space
-          <span className="small muted"> — a container for other rooms rather than a place to talk</span>
-        </span>
-      </label>
-      <label className="checkbox-row">
-        <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
-        <span>
-          Anyone can find and join it
-          <span className="small muted"> — otherwise it is invite only</span>
-        </span>
-      </label>
-      <label className="checkbox-row">
-        <input
-          type="checkbox"
-          checked={encrypted}
-          disabled={isPublic}
-          onChange={(e) => setEncrypted(e.target.checked)}
-        />
-        <span>
-          Encrypt it
-          <span className="small muted">
-            {' '}
-            — cannot be turned off later, so a room that might need it should have it from the start
-          </span>
-        </span>
-      </label>
+      <SwitchRow
+        title="Make it a space"
+        description="A container for other rooms rather than a place to talk"
+        checked={isSpace}
+        onChange={setIsSpace}
+      />
+      <SwitchRow
+        title="Anyone can find and join it"
+        description="Otherwise it is invite only"
+        checked={isPublic}
+        onChange={setIsPublic}
+      />
+      <SwitchRow
+        title="Encrypt it"
+        description="Cannot be turned off later, so a room that might need it should have it from the start"
+        checked={encrypted}
+        disabled={isPublic}
+        onChange={setEncrypted}
+      />
       <div className="field-row">
         <button type="button" className="button primary" disabled={busy || !name.trim()} onClick={create}>
           {busy ? 'Creating…' : 'Create'}

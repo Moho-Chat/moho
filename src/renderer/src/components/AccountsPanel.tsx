@@ -1,4 +1,5 @@
 import { useMediaUrl } from '../lib/route'
+import { SwitchRow } from './Switch'
 import { useEffect, useState } from 'react'
 import { Icon, IconButton, ServiceMark } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
@@ -548,20 +549,12 @@ function IrcSasl({
 
   return (
     <div className="sasl-block">
-      <label className="checkbox-row">
-        <input
-          type="checkbox"
-          checked={account.saslEnabled}
-          onChange={(e) => apply({ enabled: e.target.checked })}
-        />
-        <span>
-          Authenticate with SASL
-          <span className="small muted">
-            {' '}
-            — identifies during connection, before any channel is joined
-          </span>
-        </span>
-      </label>
+      <SwitchRow
+        title="Authenticate with SASL"
+        description="Identifies during connection, before any channel is joined"
+        checked={account.saslEnabled}
+        onChange={(on) => apply({ enabled: on })}
+      />
 
       {account.saslEnabled && (
         <>
@@ -634,47 +627,26 @@ function IrcSasl({
               allowance decides nothing, and offering it there would be a
               switch that appears to weaken something and does not. */}
           {!account.ssl && (
-            <label className="checkbox-row">
-              <input
-                type="checkbox"
-                checked={account.allowPlaintextSasl}
-                onChange={(e) => {
-                  setAllowPlaintext(e.target.checked)
-                  apply({ allowPlaintextSasl: e.target.checked })
-                }}
-              />
-              <span>
-                Send SASL credentials over this unencrypted connection
-                <span className="small muted">
-                  {' '}
-                  — SASL PLAIN is the password with base64 round it, not encryption. Without
-                  this, connecting is refused rather than done quietly in the clear.
-                </span>
-              </span>
-            </label>
+            <SwitchRow
+              title="Send SASL credentials over this unencrypted connection"
+              description="SASL PLAIN is the password with base64 round it, not encryption. Without this, connecting is refused rather than done quietly in the clear."
+              checked={account.allowPlaintextSasl}
+              onChange={(on) => {
+                setAllowPlaintext(on)
+                apply({ allowPlaintextSasl: on })
+              }}
+            />
           )}
 
           {/* The live login is tried first and needs no setting: this is only
               the last resort, for a server that refuses it, and it costs a
               moment out of every channel - hence off unless asked for. */}
-          <label className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={account.reconnectForSasl}
-              onChange={(e) =>
-                call('setIrcReconnectForSasl', { accountId: account.id, enabled: e.target.checked })
-              }
-            />
-            <span>
-              Reconnect to log in when services come back
-              <span className="small muted">
-                {' '}
-                — if the network's services were down when moho connected, it logs in as soon as
-                they return. A few servers only accept that login while connecting; this lets moho
-                reconnect for them, which briefly drops you from your channels.
-              </span>
-            </span>
-          </label>
+          <SwitchRow
+            title="Reconnect to log in when services come back"
+            description="If the network's services were down when moho connected, it logs in as soon as they return. A few servers only accept that login while connecting; this lets moho reconnect for them, which briefly drops you from your channels."
+            checked={account.reconnectForSasl}
+            onChange={(on) => call('setIrcReconnectForSasl', { accountId: account.id, enabled: on })}
+          />
         </>
       )}
     </div>
@@ -859,7 +831,7 @@ function IrcForm({ onDone }: { onDone: () => void }): JSX.Element {
           for both would be asking somebody to type their password twice. */}
       <div className="field">
         <span className="small muted">Sign in</span>
-        <div className="field-row">
+        <div className="setting-segmented" role="radiogroup" aria-label="Sign in">
           {(
             [
               ['none', 'No account'],
@@ -867,15 +839,16 @@ function IrcForm({ onDone }: { onDone: () => void }): JSX.Element {
               ['nickserv', 'NickServ']
             ] as const
           ).map(([value, label]) => (
-            <label key={value} className="checkbox-row">
-              <input
-                type="radio"
-                name="irc-auth"
-                checked={auth === value}
-                onChange={() => setAuth(value)}
-              />
-              <span>{label}</span>
-            </label>
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={auth === value}
+              className={auth === value ? 'active' : undefined}
+              onClick={() => setAuth(value)}
+            >
+              {label}
+            </button>
           ))}
         </div>
         {auth !== 'none' && (
@@ -900,10 +873,7 @@ function IrcForm({ onDone }: { onDone: () => void }): JSX.Element {
       </div>
 
       {!chosen && (
-        <label className="checkbox-row">
-          <input type="checkbox" checked={ssl} onChange={(e) => setSsl(e.target.checked)} />
-          <span>Use TLS</span>
-        </label>
+        <SwitchRow title="Use TLS" checked={ssl} onChange={setSsl} />
       )}
       <TorSwitch service="irc" on={useTor} onChange={setUseTor} />
       <button type="button" className="button" disabled={busy || !nick || !host} onClick={() => void submit()}>

@@ -1,15 +1,20 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ConfirmButton } from '../ConfirmButton'
+import { Switch } from '../Switch'
 import {
   ChoiceSetting,
   DirectorySetting,
+  SavedMark,
   SettingsSection,
   SelectionSetting,
   StringSetting,
-  ToggleSetting
+  ToggleSetting,
+  useSavedFlash
 } from './controls'
 import { useChat, usePref, useStore } from '../../state/hooks'
 import { Icon } from '../Icon'
+import { AccountsPanel } from '../AccountsPanel'
+import { DownloadsPanel } from '../DownloadsPanel'
 import { humanBytes } from '../../lib/util'
 import { TunnelAllSwitch, useNetSettings } from './Tunnel'
 import type { Account, DccPrefs } from '../../../../shared/wire'
@@ -27,6 +32,7 @@ function GlobalHighlightKeywords(): JSX.Element {
   const store = useStore()
   const [words, setWords] = useState('')
   const [saved, setSaved] = useState('')
+  const [flashed, flash] = useSavedFlash()
 
   useEffect(() => {
     void window.moho
@@ -51,6 +57,7 @@ function GlobalHighlightKeywords(): JSX.Element {
         const text = (answer.global || []).join(', ')
         setWords(text)
         setSaved(text)
+        flash()
       })
       .catch((e: Error) => store.toast('error', e.message))
   }
@@ -64,6 +71,7 @@ function GlobalHighlightKeywords(): JSX.Element {
           that arrive after you add them.
         </div>
       </div>
+      <SavedMark shown={flashed} />
       <input
         className="text-field setting-input"
         value={words}
@@ -101,15 +109,20 @@ function GlobalHighlightKeywords(): JSX.Element {
  * not so is worse than no entry, and this rule would have hidden them both
  * regardless.
  */
-const CATEGORIES: { id: string; label: string; service?: Account['service'] }[] = [
-  { id: 'general', label: 'General' },
-  { id: 'irc', label: 'IRC', service: 'irc' },
-  { id: 'sneedchat', label: 'Sneedchat', service: 'sneedchat' },
-  { id: 'tor', label: 'Tor' },
-  { id: 'discord', label: 'Discord', service: 'discord' },
-  { id: 'matrix', label: 'Matrix', service: 'matrix' },
-  { id: 'kick', label: 'Kick', service: 'kick' },
-  { id: 'about', label: 'About' }
+const CATEGORIES: { id: string; label: string; group: string; icon?: string; service?: Account['service'] }[] = [
+  // You: the two things that are about you rather than about the app.
+  { id: 'accounts', label: 'Accounts', group: 'You', icon: 'manage_accounts' },
+  { id: 'downloads', label: 'Downloads', group: 'You', icon: 'download' },
+  // The app itself.
+  { id: 'general', label: 'General', group: 'App' },
+  // One page per network, each only while there is an account on it.
+  { id: 'irc', label: 'IRC', group: 'Networks', service: 'irc' },
+  { id: 'sneedchat', label: 'Sneedchat', group: 'Networks', service: 'sneedchat' },
+  { id: 'tor', label: 'Tor', group: 'Networks' },
+  { id: 'discord', label: 'Discord', group: 'Networks', service: 'discord' },
+  { id: 'matrix', label: 'Matrix', group: 'Networks', service: 'matrix' },
+  { id: 'kick', label: 'Kick', group: 'Networks', service: 'kick' },
+  { id: 'about', label: 'About', group: 'About' }
 ]
 
 /**
@@ -199,9 +212,49 @@ interface UploadHost {
   notFor?: string[]
 }
 
-export function SettingsPanel(): JSX.Element {
+/** The page for one category of settings. Accounts and Downloads are whole pages of their own, shown in the same frame. */
+function Page({ id }: { id: string }): JSX.Element | null {
+  switch (id) {
+    case 'general':
+      return <GeneralSettings />
+    case 'irc':
+      return <IrcSettings />
+    case 'sneedchat':
+      return <SneedchatSettings />
+    case 'tor':
+      return <TorSettings />
+    case 'matrix':
+      return (
+        <>
+          <MatrixSettings />
+          <MatrixReceiptSettings />
+        </>
+      )
+    case 'discord':
+      return <DiscordSettings />
+    case 'kick':
+      return <KickSettings />
+    case 'about':
+      return <AboutSettings />
+    default:
+      return null
+  }
+}
+
+/**
+ * Settings, with Accounts and Downloads as pages of it rather than as separate
+ * things behind a menu: one place to go, one click from the rail's cog.
+ *
+ * `page` is which of the three the window is showing (accounts and downloads
+ * have their own panel names, which other parts of the app open directly); the
+ * rest are pages within 'settings'.
+ */
+export function SettingsPanel({ page = 'settings' }: { page?: 'settings' | 'accounts' | 'downloads' }): JSX.Element {
+  const store = useStore()
   const [selected, setSelected] = useState('general')
+  const [query, setQuery] = useState('')
   const accounts = useChat((s) => s.accounts)
+  const content = useRef<HTMLDivElement>(null)
 
   const shown = useMemo(() => {
     const have = new Set(accounts.map((a) => a.service))
@@ -215,40 +268,109 @@ export function SettingsPanel(): JSX.Element {
     if (!shown.some((c) => c.id === selected)) setSelected('general')
   }, [shown, selected])
 
+  const current = page === 'settings' ? selected : page
+  const q = query.trim().toLowerCase()
+  // Searching looks across every page that is made of settings, which it does
+  // by showing them all and hiding the rows that do not match.
+  const searching = q !== '' && page === 'settings'
+  const searchable = shown.filter((c) => c.id !== 'accounts' && c.id !== 'downloads')
+
+  useEffect(() => {
+    const root = content.current
+    if (!root) return
+    const rows = root.querySelectorAll<HTMLElement>('.setting-row, .switch-row')
+    for (const row of rows) row.hidden = searching && !(row.textContent ?? '').toLowerCase().includes(q)
+    for (const section of root.querySelectorAll<HTMLElement>('.settings-section')) {
+      const title = section.querySelector('.settings-section-title')?.textContent?.toLowerCase() ?? ''
+      const any = [...section.querySelectorAll<HTMLElement>('.setting-row, .switch-row')].some((r) => !r.hidden)
+      section.hidden = searching && !any && !title.includes(q)
+    }
+    for (const group of root.querySelectorAll<HTMLElement>('[data-settings-page]')) {
+      group.hidden = searching && ![...group.querySelectorAll<HTMLElement>('.settings-section')].some((s) => !s.hidden)
+    }
+  })
+
+  const go = (id: string): void => {
+    setQuery('')
+    if (id === 'accounts' || id === 'downloads') {
+      store.setActivePanel(id)
+      return
+    }
+    setSelected(id)
+    store.setActivePanel('settings')
+  }
+
+  const groups = [...new Set(shown.map((c) => c.group))]
+
   return (
     <div className="settings">
       <div className="settings-rail">
-        {shown.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            className={`settings-rail-item${selected === c.id ? ' active' : ''}`}
-            onClick={() => setSelected(c.id)}
-          >
-            {c.label}
-          </button>
+        <label className="settings-search">
+          <Icon name="search" size={16} />
+          <input
+            className="settings-search-input"
+            placeholder="Search"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              if (page !== 'settings') store.setActivePanel('settings')
+            }}
+          />
+          {query && (
+            <button type="button" className="icon-button" title="Clear" onClick={() => setQuery('')}>
+              <Icon name="close" size={14} />
+            </button>
+          )}
+        </label>
+        {groups.map((group) => (
+          <div key={group} className="settings-rail-group">
+            {group !== 'About' && <div className="settings-rail-heading small muted">{group}</div>}
+            {shown
+              .filter((c) => c.group === group)
+              .map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`settings-rail-item${!searching && current === c.id ? ' active' : ''}`}
+                  onClick={() => go(c.id)}
+                >
+                  {c.label}
+                </button>
+              ))}
+          </div>
         ))}
       </div>
 
       <div className="divider-v" />
 
-      <div className="settings-content">
-        {selected === 'general' && <GeneralSettings />}
-        {selected === 'irc' && <IrcSettings />}
-        {selected === 'sneedchat' && <SneedchatSettings />}
-        {selected === 'tor' && <TorSettings />}
-        {selected === 'matrix' && (
-          <>
-            <MatrixSettings />
-            <MatrixReceiptSettings />
-          </>
-        )}
-        {selected === 'discord' && <DiscordSettings />}
-        {selected === 'kick' && <KickSettings />}
-        {selected === 'about' && <AboutSettings />}
+      <div
+        ref={content}
+        className={`settings-content${page !== 'settings' ? ' bare' : ''}`}
+      >
+        {page === 'accounts' && <AccountsPanel />}
+        {page === 'downloads' && <DownloadsPanel />}
+        {page === 'settings' &&
+          (searching ? (
+            <>
+              {searchable.map((c) => (
+                <div key={c.id} data-settings-page={c.id}>
+                  <h3 className="settings-page-title">{c.label}</h3>
+                  <Page id={c.id} />
+                </div>
+              ))}
+              <NoMatches />
+            </>
+          ) : (
+            <Page id={selected} />
+          ))}
       </div>
     </div>
   )
+}
+
+/** Said only when the search found nothing: every page is hidden and the pane would be blank. */
+function NoMatches(): JSX.Element {
+  return <p className="settings-no-matches small muted">Nothing here matches.</p>
 }
 
 /**
@@ -306,7 +428,7 @@ function VoiceSettings(): JSX.Element {
       {/* What a Discord call's microphone goes through before it is sent -
           the processing a Matrix call gets from the browser. The call's
           volume is on the call itself, not here. */}
-      <label className="setting-row">
+      <div className="setting-row">
         <div className="setting-text">
           <div>Echo cancellation</div>
           <div className="small muted">
@@ -314,25 +436,23 @@ function VoiceSettings(): JSX.Element {
             sent back into itself. Off only makes sense with headphones.
           </div>
         </div>
-        <input
-          type="checkbox"
-          className="setting-toggle"
+        <Switch
           checked={voice.echoCancellation ?? true}
-          onChange={(e) => void store.setVoiceProcessing({ echoCancellation: e.target.checked })}
+          label="Echo cancellation"
+          onChange={(on) => void store.setVoiceProcessing({ echoCancellation: on })}
         />
-      </label>
-      <label className="setting-row">
+      </div>
+      <div className="setting-row">
         <div className="setting-text">
           <div>Noise suppression</div>
           <div className="small muted">Takes steady background noise - a fan, a hum - out of your microphone.</div>
         </div>
-        <input
-          type="checkbox"
-          className="setting-toggle"
+        <Switch
           checked={voice.noiseSuppression ?? true}
-          onChange={(e) => void store.setVoiceProcessing({ noiseSuppression: e.target.checked })}
+          label="Noise suppression"
+          onChange={(on) => void store.setVoiceProcessing({ noiseSuppression: on })}
         />
-      </label>
+      </div>
     </SettingsSection>
   )
 }
@@ -761,13 +881,7 @@ function TransferSettings(): JSX.Element {
             all. The size and count limits still apply.
           </div>
         </div>
-        <div className="setting-actions">
-          <input
-            type="checkbox"
-            checked={prefs?.autoAccept ?? false}
-            onChange={(e) => save({ autoAccept: e.target.checked })}
-          />
-        </div>
+        <Switch checked={prefs?.autoAccept ?? false} label="Accept files automatically" onChange={(on) => save({ autoAccept: on })} />
       </div>
     </SettingsSection>
   )
@@ -894,15 +1008,10 @@ function TorSettings(): JSX.Element {
         title="Tor"
         description="Used by every account whose Tor switch is on, and by everything when all traffic is sent through it. Embedded runs Tor inside moho with no setup; an external SOCKS5 proxy uses a Tor daemon, Tor Browser, or a proxy you host yourself."
       >
-        <label className="setting-row">
+        <div className="setting-row">
           <div className="setting-text">Use an external SOCKS5 proxy instead of embedded Tor</div>
-          <input
-            type="checkbox"
-            className="setting-toggle"
-            checked={useProxy}
-            onChange={(e) => setUseProxy(e.target.checked)}
-          />
-        </label>
+          <Switch checked={useProxy} label="Use an external SOCKS5 proxy" onChange={setUseProxy} />
+        </div>
         {useProxy && (
           <input
             className="text-field"

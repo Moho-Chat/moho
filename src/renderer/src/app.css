@@ -3678,7 +3678,7 @@ img.smilie {
 
 .setting-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--spacing-m);
   padding: var(--spacing-s) 0;
   border-bottom: 1px solid var(--outline-medium);
@@ -9812,4 +9812,92 @@ video.lightbox-media {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   user-select: text;
+}
+
+
+/* A tick that appears beside a field the moment it saves, and goes. Its place
+   is kept so the field does not move when it comes. */
+.saved-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 18px;
+  color: var(--success);
+  opacity: 0;
+  transition: opacity var(--motion) var(--ease);
+}
+
+.saved-mark.shown {
+  opacity: 1;
+}
+
+
+/* --- settings: grouped rail, search, pages -------------------------------- */
+.settings [hidden] {
+  display: none !important;
+}
+
+.settings-search {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-s);
+  padding: 0 var(--spacing-s);
+  height: 32px;
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-lowest, rgba(0, 0, 0, 0.25));
+  color: var(--surface-variant-text);
+  transition: border-color var(--motion-fast) var(--ease);
+}
+
+.settings-search:focus-within {
+  border-color: var(--primary);
+}
+
+.settings-search-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--surface-text);
+}
+
+.settings-rail-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  margin-bottom: var(--spacing-s);
+}
+
+.settings-rail-heading {
+  padding: var(--spacing-xs) var(--spacing-s) 0;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Accounts and Downloads bring their own padding and scrolling. */
+.settings-content.bare {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-page-title {
+  margin: var(--spacing-m) 0 var(--spacing-xs);
+  font-size: var(--font-size-large);
+  font-weight: var(--weight-semibold);
+}
+
+.settings-no-matches {
+  display: none;
+}
+
+.settings-content:not(:has([data-settings-page]:not([hidden]))) .settings-no-matches {
+  display: block;
 }
