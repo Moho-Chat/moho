@@ -25,7 +25,7 @@ export function registerMedia<T>(el: HTMLElement, source: Source<T>): () => void
 export function galleryAround<T>(el: HTMLElement | null): { items: Source<T>[]; index: number } | null {
   if (!el) return null
   // The same list only: a thread panel beside the log is another conversation.
-  const scope = el.closest('.message-list, .thread-panel') ?? document.body
+  const scope = el.closest('.messagelist, .thread-pane') ?? document.body
   const inScope = [...registered.keys()].filter((e) => e.isConnected && scope.contains(e))
   inScope.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
   const index = inScope.indexOf(el)

@@ -417,6 +417,12 @@ function MessageRowBody({
   const own = bubbles && !isSystem && !!message.isOwn
 
   const attachments = message.attachments ?? []
+  // The ones that go in a grid, and the ones that stay in the row, each with
+  // its place in the message so its key stays the same whichever it is.
+  const indexed = attachments.map((att, i) => ({ att, i }))
+  const gridable = indexed.filter(({ att }) => att.kind === 'image' || att.kind === 'video')
+  const tiled = gridable.length >= 2 ? gridable : []
+  const rowed = gridable.length >= 2 ? indexed.filter((x) => !gridable.includes(x)) : indexed
 
   // The extraction passes each walk the same normalised body independently,
   // matching how the original structured this - one do-everything function
@@ -1124,11 +1130,35 @@ function MessageRowBody({
             </div>
           ))}
 
-          {(attachments.length > 0 || embedMedia.loose.length > 0) && (
+          {/* Pictures and videos that came together are laid out together:
+              two side by side, three with the first tall, four in a square,
+              as Discord and Element have them. One alone, or files that are
+              not pictures, keep the row they always had. */}
+          {tiled.length >= 2 && (
+            <div className={`media-grid n${Math.min(tiled.length, 6)}`}>
+              {tiled.map(({ att, i }) => (
+                <MediaEmbed
+                  key={`att-${i}-${att.path || att.url || att.filename}`}
+                  attachment={att}
+                  tile
+                  autoplay={mediaAutoplay}
+                  loop={mediaLoop}
+                  bufferId={bufferId}
+                  messageId={message.id}
+                  from={message.from}
+                  onOpenInDiscord={(b, m) => void store.openInDiscord(b, m)}
+                  onRefresh={(b, m) => store.refreshAttachments(b, m)}
+                  onStale={(b, m) => store.resignWhenIdle(b, m)}
+                />
+              ))}
+            </div>
+          )}
+
+          {(rowed.length > 0 || embedMedia.loose.length > 0) && (
             <div className="media-row">
               {/* Files nobilis described: mimetype and dimensions known up
                   front, so these lay out without waiting on bytes. */}
-              {attachments.map((att, i) => (
+              {rowed.map(({ att, i }) => (
                 <MediaEmbed
                   key={`att-${i}-${att.path || att.url || att.filename}`}
                   attachment={att}

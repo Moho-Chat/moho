@@ -5,7 +5,7 @@ import { galleryAround, registerMedia, stepIndex } from './gallery'
 describe('gallery', () => {
   it('lists what is registered in page order, whatever order it registered in', () => {
     const list = document.createElement('div')
-    list.className = 'message-list'
+    list.className = 'messagelist'
     const [a, b, c] = ['a', 'b', 'c'].map(() => list.appendChild(document.createElement('span')))
     document.body.appendChild(list)
     const offs = [registerMedia(c, () => 'c'), registerMedia(a, () => 'a'), registerMedia(b, () => 'b')]
@@ -19,9 +19,9 @@ describe('gallery', () => {
 
   it('keeps another conversation out of it', () => {
     const one = document.createElement('div')
-    one.className = 'message-list'
+    one.className = 'messagelist'
     const two = document.createElement('div')
-    two.className = 'thread-panel'
+    two.className = 'thread-pane'
     const x = one.appendChild(document.createElement('span'))
     const y = two.appendChild(document.createElement('span'))
     document.body.append(one, two)

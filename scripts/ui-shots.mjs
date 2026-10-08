@@ -173,6 +173,27 @@ const discord = (inCall) => async (page) => {
 
 // --- scenes ------------------------------------------------------------------
 
+/** Messages with several pictures, one of them a spoiler (#304): two, three and four, then a lone spoiler. */
+const stageGrids = async (page) => {
+  await page.evaluate(`(() => {
+    const shots = window.__mohoShots
+    const s = shots.state()
+    const id = s.activeBufferId
+    const now = Math.floor(Date.now() / 1000)
+    const pic = (a, b, label) => 'data:image/svg+xml;utf8,' + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + a + '"/><stop offset="1" stop-color="' + b + '"/></linearGradient></defs><rect width="1200" height="800" fill="url(#g)"/><circle cx="600" cy="400" r="220" fill="none" stroke="#fff" stroke-width="12" stroke-dasharray="36 22"/><text x="600" y="430" font-size="96" font-family="sans-serif" fill="#fff" text-anchor="middle">' + label + '</text></svg>')
+    const att = (name, a, b, label) => ({ kind: 'image', filename: name, width: 1200, height: 800, url: pic(a, b, label) })
+    const colours = [['#e0a43a', '#b0457a', 'owl'], ['#3a8fe0', '#4a2f9a', 'squares'], ['#3ae0a4', '#1f6f5a', 'blanket'], ['#e05a3a', '#7a2f2f', 'scarf']]
+    const msg = (i, from, body, n, spoilerAt) => ({
+      id: 'grid' + i, bufferId: id, from, senderId: from, body, ts: now - (8 - i) * 30, isAction: false, isHighlight: false, kind: 'chat', isOwn: false,
+      attachments: colours.slice(0, n).map(([a, b, l], k) => att((k === spoilerAt ? 'SPOILER_' : '') + l + '.svg', a, b, l))
+    })
+    shots.patch({ messagesByBuffer: { ...s.messagesByBuffer, [id]: [...(s.messagesByBuffer[id] || []), msg(1, 'Wren', 'two from the fair', 2, -1), msg(2, 'Clarence', 'three more, the last one is a spoiler', 3, 2), msg(3, 'Wren', 'and four', 4, -1), msg(4, 'Clarence', 'just one, and a spoiler', 1, 0)] } })
+    return true
+  })()`)
+  await sleep(900)
+}
+
 /** Three pictures posted in a row, drawn as SVG so nothing is fetched. */
 const stageLightbox = async (page) => {
   await page.evaluate(`(() => {
@@ -796,6 +817,24 @@ const SCENES = [
       await sleep(500)
     },
     clip: { x: 277, y: 420, width: 823, height: 380 }
+  },
+  {
+    name: 'discord-media-grid',
+    setup: async (p) => {
+      await discord(false)(p)
+      await stageGrids(p)
+      await p.evaluate(`document.querySelectorAll('.media-grid')[0]?.scrollIntoView({ block: 'start' })`)
+      await sleep(500)
+    }
+  },
+  {
+    name: 'discord-media-grid-more',
+    setup: async (p) => {
+      await discord(false)(p)
+      await stageGrids(p)
+      await p.evaluate(`document.querySelector('.messagelist-scroll').scrollTop = 1e9`)
+      await sleep(500)
+    }
   },
   {
     // The viewer with pictures beside it (#312): stepped through, zoomed with the wheel.
