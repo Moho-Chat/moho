@@ -4915,8 +4915,11 @@ video.lightbox-media {
   display: flex;
   align-items: center;
   gap: var(--spacing-s);
-  width: 100%;
-  padding: var(--spacing-xxs) var(--spacing-s);
+  /* Shaped like a text channel's row, so the list reads as one list. */
+  width: calc(100% - var(--spacing-s));
+  margin: 1px var(--spacing-xs);
+  padding: 5px var(--spacing-s);
+  border-radius: var(--corner-radius-small);
   color: var(--surface-variant-text);
 }
 
@@ -4957,11 +4960,22 @@ video.lightbox-media {
   color: var(--surface-variant-text);
 }
 
-.voice-member-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+.voice-member-face {
+  display: flex;
   flex: none;
+  border-radius: 50%;
+  /* Room for the ring, so a speaking member does not move the list. */
+  box-shadow: 0 0 0 2px transparent;
+  transition: box-shadow var(--motion-fast) ease;
+}
+
+.voice-member.speaking .voice-member-face {
+  box-shadow: 0 0 0 2px var(--speaking);
+}
+
+.voice-state {
+  display: flex;
+  color: var(--text-muted);
 }
 
 .voice-you {

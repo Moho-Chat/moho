@@ -554,6 +554,16 @@ const SCENES = [
     setup: async (p) => { await discord(false)(p) },
     clip: { x: 1100, y: 44, width: 180, height: 300 }
   },
+  {
+    // The voice channels: faces, muted and deafened marks, who is speaking, in the call (#293).
+    name: 'discord-voice-list',
+    setup: async (p) => {
+      await discord(true)(p)
+      await p.evaluate(`window.__mohoShots.patch({ voiceChannels: window.__mohoShots.state().voiceChannels.map((c) => c.id === 'v1' ? { ...c, members: [{ userId: 'Salastil', nick: 'Salastil', isSelf: true }, { userId: 'Clarence', nick: 'Clarence', isSelf: false, muted: true }, { userId: 'Wren', nick: 'Wren', isSelf: false, streaming: true }, { userId: 'Fern', nick: 'Fern', isSelf: false, deafened: true }] } : c) }), window.__shotsSpeakers = ['Wren'], true`)
+      await sleep(600)
+    },
+    clip: { x: 0, y: 380, width: 280, height: 260 }
+  },
   // Motion, recorded rather than photographed.
   {
     name: 'motion-hover-rows',
