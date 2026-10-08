@@ -849,6 +849,35 @@ const SCENES = [
     clip: { x: 277, y: 60, width: 640, height: 260 }
   },
   {
+    // The footer (#290): muted and deafened are red, and the status is a popout with its own colours,
+    // a custom status and "apply to all".
+    name: 'discord-footer-muted',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(`(() => { const s = window.__mohoShots.state(); window.__mohoShots.patch({ voicePrefs: { ...s.voicePrefs, micMuted: true, deafened: true } }); return true })()`)
+      await sleep(500)
+    },
+    clip: { x: 0, y: 700, width: 330, height: 100 }
+  },
+  {
+    name: 'discord-status-popout',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(click('.user-identity-button'))
+      await sleep(600)
+    },
+    clip: { x: 0, y: 380, width: 340, height: 420 }
+  },
+  {
+    // On a service with no voice the footer keeps its shape: the buttons are there, greyed.
+    name: 'irc-footer',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await sleep(300)
+    },
+    clip: { x: 0, y: 700, width: 330, height: 100 }
+  },
+  {
     name: 'discord-media-grid',
     setup: async (p) => {
       await discord(false)(p)

@@ -72,7 +72,8 @@ const SCENARIOS = [
   { name: 'channel list menu, opened in the corner', open: rightClickInCorner('.buffer-row', '#ui') },
   { name: 'message menu, opened in the corner', open: rightClickInCorner('.message-row', 'line 12') },
   { name: 'member menu, opened in the corner', open: rightClickInCorner('.nick-row', 'alice') },
-  { name: 'mentions inbox', open: click('button[title="Mentions"]') }
+  { name: 'mentions inbox', open: click('button[title="Mentions"]') },
+  { name: 'status popout', open: click('.user-identity-button') }
 ]
 
 async function closePopups(page) {

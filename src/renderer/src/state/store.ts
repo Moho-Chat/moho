@@ -2079,12 +2079,13 @@ export class ChatStore {
    */
   async setPresence(
     accountId: string,
-    status: 'online' | 'idle' | 'dnd' | 'invisible' | 'offline'
+    status: 'online' | 'idle' | 'dnd' | 'invisible' | 'offline',
+    statusText?: string
   ): Promise<void> {
     if (status === 'offline') return this.setAccountConnected(accountId, false)
 
     const state = this.state.accounts.find((a) => a.id === accountId)?.state
-    await this.setAccountStatus(accountId, status)
+    await this.setAccountStatus(accountId, status, statusText)
     if (state === 'connected') return
 
     // An attempt already running is stopped before starting another. Without
@@ -2095,12 +2096,23 @@ export class ChatStore {
     await this.setAccountConnected(accountId, true)
   }
 
+  /**
+   * One status for every account that is signed in: for somebody who is
+   * stepping away from all of them at once. An account that is signed out is
+   * left alone - choosing a status is not a request to connect it.
+   */
+  async setStatusEverywhere(status: 'online' | 'idle' | 'dnd' | 'invisible', statusText?: string): Promise<void> {
+    const connected = this.state.accounts.filter((a) => a.state === 'connected')
+    await Promise.all(connected.map((a) => this.setAccountStatus(a.id, status, a.service === 'discord' || a.service === 'matrix' ? statusText : undefined)))
+  }
+
   async setAccountStatus(
     accountId: string,
-    status: 'online' | 'idle' | 'dnd' | 'invisible'
+    status: 'online' | 'idle' | 'dnd' | 'invisible',
+    statusText?: string
   ): Promise<void> {
     try {
-      await window.moho.rpc('setAccountStatus', { accountId, status })
+      await window.moho.rpc('setAccountStatus', { accountId, status, ...(statusText !== undefined ? { statusText } : {}) })
       await this.refreshAccounts()
     } catch (e) {
       this.toast('error', `Couldn't set status: ${(e as Error).message}`)

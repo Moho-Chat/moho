@@ -10,6 +10,8 @@ export interface Account {
    * `state`, which is whether the connection is up.
    */
   status?: string
+  /** What it says beside the status, where the service has a place for that. */
+  statusText?: string
   state: string
   autojoin: string
   hasNickservPassword: boolean

@@ -6277,6 +6277,107 @@ video.lightbox-media {
   color: var(--surface-text);
 }
 
+/* Muted and deafened are the state to see at a glance, so they are red, as in
+   Discord: the glyph changes too, but a slash is easy to miss at 18px. */
+.user-audio-button.muted {
+  color: var(--danger-text);
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+}
+
+.user-audio-button.muted:hover {
+  background: color-mix(in srgb, var(--danger) 30%, transparent);
+  color: var(--danger-text);
+}
+
+.user-audio-button:disabled {
+  opacity: 0.38;
+  pointer-events: none;
+}
+
+/* --- the status popout ---------------------------------------------------- */
+.status-popout {
+  position: fixed;
+  z-index: var(--z-popover);
+  width: 280px;
+  padding: var(--spacing-xs);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: var(--shadow-up);
+  transform-origin: bottom left;
+  animation: menu-in var(--motion-fast) var(--ease);
+}
+
+.status-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  color: var(--surface-text);
+  text-align: left;
+}
+
+.status-choice:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.status-choice.current {
+  background: var(--surface-selected);
+}
+
+.status-choice:disabled {
+  opacity: 0.38;
+}
+
+.status-choice.danger {
+  color: var(--danger-text);
+}
+
+.status-choice-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.status-check {
+  flex: none;
+  color: var(--primary);
+}
+
+/* The dot, at the size it is in a menu rather than on a corner of a face. */
+.status-dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.status-rule {
+  height: 1px;
+  margin: var(--spacing-xs) 0;
+  background: var(--outline-medium);
+}
+
+.status-say {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  padding: var(--spacing-xs) var(--spacing-s);
+}
+
+.status-say-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.status-all {
+  padding: var(--spacing-xs) var(--spacing-s);
+}
+
 
 
 
@@ -9564,6 +9665,7 @@ video.lightbox-media {
   .modal-scrim,
   .lightbox-backdrop,
   .jump-to-present,
+  .status-popout,
   .reaction-tip,
   .reaction-pill.pop {
     animation: none;
