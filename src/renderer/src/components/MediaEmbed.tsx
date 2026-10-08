@@ -6,6 +6,7 @@ import { VoiceMessage } from './VoiceMessage'
 import { LottieSticker, lottieStickerId } from './LottieSticker'
 import { fullImageFor, knownFullImage } from '../lib/fullimage'
 import { useMediaUrl, useStrictRoute } from '../lib/route'
+import { humanSize } from '../lib/util'
 import type { MediaItem } from '../lib/format'
 import type { Attachment } from '../../../shared/wire'
 
@@ -63,11 +64,6 @@ function linkExpired(url: string): boolean {
   return Date.now() / 1000 >= parseInt(ex, 16)
 }
 
-function humanSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
 
 /**
  * The shape an unmeasured picture is given to sit in.

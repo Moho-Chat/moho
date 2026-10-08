@@ -98,6 +98,8 @@ export interface ChatMessage extends Message {
   pendingReplyTo?: string
   /** The staged file or files, kept for the same reason as the body. */
   pendingAttachment?: string | string[]
+  /** Which of those go as spoilers. */
+  pendingSpoilers?: string[]
   /**
    * Where the attachment's upload has got to, while one is running.
    *
@@ -4245,11 +4247,16 @@ export class ChatStore {
    * either the real "message" event echoes it back (reconcileOwnEcho) or the
    * timeout sweep gives up on it.
    */
-  async sendMessage(bufferId: string, body: string, attachmentPath?: string | string[]): Promise<void> {
+  async sendMessage(
+    bufferId: string,
+    body: string,
+    attachmentPath?: string | string[],
+    spoilers?: string[]
+  ): Promise<void> {
     // A fresh send takes its reply target from the composer, and consumes it.
     const reply = this.state.replyingTo ? { ...this.state.replyingTo, ping: this.state.replyPing } : null
     this.set({ replyingTo: null })
-    return this.dispatchSend(bufferId, body, reply, attachmentPath)
+    return this.dispatchSend(bufferId, body, reply, attachmentPath, spoilers)
   }
 
   /**
@@ -4265,7 +4272,8 @@ export class ChatStore {
     bufferId: string,
     body: string,
     reply: { id: string; from: string; body: string; thread?: boolean; ping?: boolean } | null,
-    attachment?: string | string[]
+    attachment?: string | string[],
+    spoilers?: string[]
   ): Promise<void> {
     // One file, or several that go as one message.
     const paths = attachment === undefined ? [] : Array.isArray(attachment) ? attachment : [attachment]
@@ -4302,6 +4310,7 @@ export class ChatStore {
       pendingBody: body,
       pendingReplyTo: replyToId,
       pendingAttachment: attachment,
+      ...(spoilers?.length ? { pendingSpoilers: spoilers } : {}),
       ...(reply ? { replyTo: reply } : {})
     }
     // Warn before the message rather than after it. On IRC a message to
@@ -4338,6 +4347,8 @@ export class ChatStore {
               // Several files that make one message; the daemon reads this
               // where the service can carry them together.
               ...(paths.length > 1 ? { attachmentPaths: paths } : {}),
+              // Sent under a name that makes Discord hide them.
+              ...(spoilers?.length ? { spoilerPaths: spoilers } : {}),
               uploadHost: await uploadHost(account?.service, attachmentPath)
             }
           : {}),
@@ -4490,7 +4501,8 @@ export class ChatStore {
       info.bufferId,
       echo.pendingBody || echo.body,
       echo.replyTo ?? null,
-      echo.pendingAttachment
+      echo.pendingAttachment,
+      echo.pendingSpoilers
     )
   }
 

@@ -300,6 +300,77 @@ const SCENES = [
   },
   { name: 'emoji-picker', setup: async (p) => { await openChannel(p, '#general'); await p.evaluate(click('button[title="Emoji"]')); await sleep(400) } },
   {
+    // Files in the tray: a card each with name and size, one marked a spoiler (#308).
+    name: 'discord-tray',
+    setup: async (p) => {
+      await discord(false)(p)
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'moho-tray-'))
+      const make = (name, bytes) => { const f = path.join(dir, name); fs.writeFileSync(f, Buffer.alloc(bytes, 1)); return f }
+      const files = [make('finished-amigurumi-owl.png', 482_000), make('pattern-notes.pdf', 1_900_000), make('workshop-clip.mp4', 12_400_000), make('granny-square-closeup.jpg', 233_000)]
+      await p.evaluate(`(async () => {
+        const art = (a, b, label) => new Promise((resolve) => {
+          const c = document.createElement('canvas'); c.width = 320; c.height = 200
+          const g = c.getContext('2d'); const grad = g.createLinearGradient(0, 0, 320, 200); grad.addColorStop(0, a); grad.addColorStop(1, b)
+          g.fillStyle = grad; g.fillRect(0, 0, 320, 200); g.fillStyle = '#fff'; g.font = '28px sans-serif'; g.textAlign = 'center'; g.fillText(label, 160, 108)
+          c.toBlob((blob) => resolve(blob))
+        })
+        const owl = await art('#e0a43a', '#b0457a', 'owl')
+        const squares = await art('#3a8fe0', '#4a2f9a', 'squares')
+        const mk = (blob, name) => new File([blob], name, { type: 'image/png' })
+        window.dispatchEvent(new CustomEvent('moho:stage-files', { detail: [
+          { path: ${JSON.stringify(files[0])}, file: mk(owl, 'owl.png') },
+          { path: ${JSON.stringify(files[1])} },
+          { path: ${JSON.stringify(files[2])} },
+          { path: ${JSON.stringify(files[3])}, file: mk(squares, 'squares.png') }
+        ] }))
+      })()`)
+      await sleep(700)
+      // The last one hidden, and the pointer over the first.
+      await p.evaluate(`document.querySelectorAll('.staged-card')[3].querySelector('.staged-action[title="Mark as spoiler"]').click()`)
+      const c = await centre(p, '.staged-card', 'owl')
+      if (c) await mouse(p, 'mouseMoved', c.x, c.y)
+      await sleep(400)
+    },
+    clip: { x: 277, y: 560, width: 823, height: 240 }
+  },
+  {
+    // A file dropped on the window (#308): the old build asked first and sent it on its own;
+    // the new one puts it in the tray.
+    name: 'discord-drop',
+    setup: async (p) => {
+      await discord(false)(p)
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'moho-drop-'))
+      const file = path.join(dir, 'finished-amigurumi-owl.png')
+      execFileSync('convert', ['-size', '480x300', 'gradient:#e0a43a-#b0457a', file])
+      const drag = (type) => p.call('Input.dispatchDragEvent', { type, x: 600, y: 300, data: { items: [], files: [file], dragOperationsMask: 1 } })
+      await drag('dragEnter')
+      await drag('dragOver')
+      await sleep(300)
+      await drag('drop')
+      await sleep(800)
+    }
+  },
+  {
+    // Only for the "before" half of #308: the old tray, drawn from the markup it had, since
+    // nothing in the old build could put a file there without a dialog or the clipboard.
+    name: 'discord-tray-before',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(`(() => {
+        const mk = (a, b) => { const c = document.createElement('canvas'); c.width = 144; c.height = 144; const g = c.getContext('2d'); const grad = g.createLinearGradient(0, 0, 144, 144); grad.addColorStop(0, a); grad.addColorStop(1, b); g.fillStyle = grad; g.fillRect(0, 0, 144, 144); return c.toDataURL() }
+        const tile = (inner) => '<div class="staged-thumb">' + inner + '<button type="button" class="staged-remove" title="Remove"><span class="icon" style="font-size:13px;width:13px;height:13px;color:var(--error)">close</span></button></div>'
+        const html = '<div class="composer-attachments">' +
+          tile('<img src="' + mk('#e0a43a', '#b0457a') + '">') +
+          tile('<div class="staged-file"><span class="icon">description</span><span class="small ellipsis">pattern-notes.pdf</span></div>') +
+          tile('<div class="staged-file"><span class="icon">description</span><span class="small ellipsis">workshop-clip.mp4</span></div>') +
+          tile('<img src="' + mk('#3a8fe0', '#4a2f9a') + '">') + '</div>'
+        document.querySelector('.composer-row').insertAdjacentHTML('beforebegin', html)
+      })()`)
+      await sleep(400)
+    },
+    clip: { x: 277, y: 560, width: 823, height: 240 }
+  },
+  {
     // Walked with the arrow keys, with the skin tones open (#313).
     name: 'emoji-picker-keys',
     setup: async (p) => {

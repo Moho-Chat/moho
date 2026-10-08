@@ -879,6 +879,15 @@ function wireIpc(): void {
     }
   })
 
+  ipcMain.handle(IPC.fileSize, async (_e, file: string) => {
+    try {
+      const st = await fsp.stat(String(file))
+      return st.isFile() ? st.size : null
+    } catch {
+      return null
+    }
+  })
+
   ipcMain.handle(IPC.restartDaemon, () => nobilis.restart())
   ipcMain.handle(IPC.daemonStatus, () => ({
     binaryPath: nobilis.binaryPath,

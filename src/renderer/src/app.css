@@ -2003,47 +2003,104 @@ button.video-tile {
   padding: var(--spacing-xs) var(--spacing-s) 0;
 }
 
-.staged-thumb {
+.staged-card {
   position: relative;
-  width: 72px;
-  height: 72px;
-  border-radius: var(--corner-radius-small);
+  display: flex;
+  flex-direction: column;
+  width: 140px;
+  border-radius: var(--corner-radius);
   background: var(--surface-container-high);
+  overflow: hidden;
+  transition: background var(--motion-fast) var(--ease);
+}
+
+.staged-preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 96px;
+  background: var(--surface-container-lowest, rgba(0, 0, 0, 0.25));
+  color: var(--surface-variant-text);
   overflow: hidden;
 }
 
-.staged-thumb img {
+.staged-preview img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.staged-file {
+/* Hidden behind a spoiler: blurred until it is sent, as it will be seen. */
+.staged-card.is-spoiler .staged-preview img {
+  filter: blur(14px);
+  transform: scale(1.2);
+}
+
+.staged-spoiler-pill {
+  position: absolute;
+  padding: 2px var(--spacing-s);
+  border-radius: var(--radius-pill);
+  background: var(--scrim-strong);
+  color: var(--on-accent);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+}
+
+.staged-meta {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: var(--spacing-xs);
-  color: var(--surface-variant-text);
-  text-align: center;
+  min-width: 0;
+  padding: var(--spacing-xs) var(--spacing-s);
 }
 
-.staged-file .ellipsis {
-  max-width: 100%;
+.staged-name {
+  font-size: var(--font-size-small);
 }
 
-.staged-remove {
+.staged-actions {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
+  top: var(--spacing-xs);
+  right: var(--spacing-xs);
+  display: flex;
+  gap: 2px;
+}
+
+/* Each one fades, rather than the pair: a spoiler mark stays in view while
+   the rest wait for the pointer. */
+.staged-action:not(.on) {
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+
+.staged-card:hover .staged-action,
+.staged-card:focus-within .staged-action {
+  opacity: 1;
+}
+
+.staged-action {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(50, 53, 58, 0.9);
+  width: 26px;
+  height: 26px;
+  border-radius: var(--corner-radius-small);
+  background: var(--scrim-strong);
+  color: var(--on-accent);
+}
+
+.staged-action:hover {
+  background: var(--surface-container-highest);
+}
+
+.staged-action.on {
+  background: var(--primary);
+}
+
+.staged-action.danger:hover {
+  background: var(--danger);
+  color: var(--on-accent);
 }
 
 .composer-row {
@@ -2522,72 +2579,6 @@ img.composer-emoji {
   justify-content: flex-end;
   gap: var(--spacing-s);
   padding-top: var(--spacing-s);
-}
-
-/* Confirming a dropped file, on the shape LeaveConfirm already uses. */
-.drop-confirm {
-  max-width: 460px;
-  padding: var(--spacing-l);
-  border-radius: var(--corner-radius);
-  background: var(--surface-container-high);
-  border: 1px solid var(--outline-medium);
-  box-shadow: var(--shadow-2);
-}
-
-.drop-confirm-head {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-s);
-  font-size: var(--font-size-large);
-  font-weight: var(--weight-semibold);
-  margin-bottom: var(--spacing-m);
-}
-
-.drop-confirm p {
-  color: var(--surface-variant-text);
-  margin: var(--spacing-m) 0 var(--spacing-l);
-}
-
-.drop-confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--spacing-s);
-}
-
-/* Wraps and scrolls rather than growing: several files at once should not
-   push the buttons off the bottom of the window. */
-.drop-preview {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-s);
-  max-height: 40vh;
-  overflow-y: auto;
-}
-
-.drop-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--spacing-xxs);
-  width: 96px;
-}
-
-.drop-item img,
-.drop-item-file {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 96px;
-  height: 96px;
-  border-radius: var(--corner-radius-small);
-  background: var(--surface-variant);
-  /* Contain, not cover: this is being shown so somebody can tell which file
-     it is, and a crop can hide exactly the part that would say. */
-  object-fit: contain;
-}
-
-.drop-item .small {
-  max-width: 96px;
 }
 
 /* Shown while a file is over the window, so it is clear the app will take it

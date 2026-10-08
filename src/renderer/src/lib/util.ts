@@ -375,3 +375,15 @@ export function humanBytes(bytes: number): string {
   if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`
   return `${bytes} B`
 }
+
+/** A size as it is read: "812 B", "11.7 KB", "3.4 MB". */
+export function humanSize(bytes: number): string {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let size = bytes
+  let unit = 0
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024
+    unit += 1
+  }
+  return unit === 0 ? `${bytes} B` : `${size.toFixed(1)} ${units[unit]}`
+}

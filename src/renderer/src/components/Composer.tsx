@@ -12,7 +12,7 @@ import { PlaceField } from './PlaceField'
 import { VoiceRecorder } from './VoiceRecorder'
 import { useActiveBuffer, useChat, useStore } from '../state/hooks'
 import { emojiPreview } from '../lib/format'
-import { bufferDisplayName, classes, fileNameOf, isImageFile, resolveMediaUrl } from '../lib/util'
+import { bufferDisplayName, classes, fileNameOf, humanSize, isImageFile, resolveMediaUrl } from '../lib/util'
 import { completeNick, cyclePrefix, type Completion } from '../lib/completion'
 import {
   mentionInsert,
@@ -21,6 +21,7 @@ import {
   rankMentions,
   type MentionTarget
 } from '../lib/mentions'
+import { STAGE_FILES, type StagedFile } from '../lib/staging'
 import { withTone } from '../lib/skintone'
 import { usePref } from '../state/hooks'
 import { rankShortcodes, shortcodeQuery, unicodeTargets, type ShortcodeTarget } from '../lib/shortcodes'
@@ -30,6 +31,12 @@ interface StagedAttachment {
   path: string
   name: string
   isImage: boolean
+  /** A picture of it where the path cannot be shown: made from the dropped file. */
+  preview?: string
+  /** In bytes, once it has been asked. */
+  size?: number | null
+  /** Sent hidden behind a spoiler: Discord only. */
+  spoiler: boolean
 }
 
 /**
@@ -113,6 +120,31 @@ export function Composer(): JSX.Element | null {
   /** The account's sticker packs, fetched when the picker is first opened. */
   const [stickers, setStickers] = useState<StickerEntry[]>([])
   const [stickerPicker, setStickerPicker] = useState(false)
+  /**
+   * What to do with files dropped on the window: they land in the tray, to be
+   * looked over and sent with the next message rather than going out on the
+   * spot. Set further down, where the box's own staging is.
+   */
+  const takeFiles = useRef<(files: StagedFile[]) => void>(() => {})
+  useEffect(() => {
+    const onStage = (e: Event): void => takeFiles.current((e as CustomEvent<StagedFile[]>).detail)
+    window.addEventListener(STAGE_FILES, onStage)
+    return () => window.removeEventListener(STAGE_FILES, onStage)
+  }, [])
+  // The pictures made for the tray are held for as long as it is, and let go
+  // of when a card leaves it or the box is gone.
+  const previews = useRef(new Set<string>())
+  useEffect(() => {
+    const kept = new Set(staged.map((a) => a.preview).filter((p): p is string => !!p))
+    for (const url of staged.map((a) => a.preview)) if (url) previews.current.add(url)
+    for (const url of [...previews.current]) {
+      if (!kept.has(url)) {
+        URL.revokeObjectURL(url)
+        previews.current.delete(url)
+      }
+    }
+  }, [staged])
+  useEffect(() => () => previews.current.forEach((url) => URL.revokeObjectURL(url)), [])
   /** The little form for sending a place, which is a field rather than a map. */
   const [placeOpen, setPlaceOpen] = useState(false)
   const seqRef = useRef(0)
@@ -375,9 +407,22 @@ export function Composer(): JSX.Element | null {
     void window.moho.rpc('sendTyping', { bufferId: buffer.id }).catch(() => {})
   }
 
-  const stage = (path: string): void => {
+  const stage = (path: string, file?: File): void => {
     const name = fileNameOf(path)
-    setStaged((s) => [...s, { id: ++seqRef.current, path, name, isImage: isImageFile(name) }])
+    const id = ++seqRef.current
+    const isImage = isImageFile(name)
+    const preview = file && isImage ? URL.createObjectURL(file) : undefined
+    setStaged((s) => [...s, { id, path, name, isImage, spoiler: false, preview }])
+    // Its size is the main process's to read; the card says it when it comes.
+    void window.moho.fileSize(path).then((size) => setStaged((s) => s.map((a) => (a.id === id ? { ...a, size } : a))))
+  }
+  takeFiles.current = (files) => {
+    if (!supportsAttachments) {
+      store.toast('info', "Files can't be sent in this conversation")
+      return
+    }
+    files.forEach((f) => stage(f.path, f.file))
+    inputRef.current?.focus()
   }
 
   const submit = (): void => {
@@ -415,10 +460,12 @@ export function Composer(): JSX.Element | null {
         // own client makes of several chosen at once: one post, one caption,
         // one upload to watch. Past ten, the next ten make the next message.
         for (let i = 0; i < staged.length; i += 10) {
+          const batch = staged.slice(i, i + 10)
           void store.sendMessage(
             buffer.id,
             i === 0 ? body : '',
-            staged.slice(i, i + 10).map((att) => att.path)
+            batch.map((att) => att.path),
+            batch.filter((att) => att.spoiler).map((att) => att.path)
           )
         }
       } else {
@@ -872,23 +919,44 @@ export function Composer(): JSX.Element | null {
       {staged.length > 0 && (
         <div className="composer-attachments">
           {staged.map((att) => (
-            <div key={att.id} className="staged-thumb" title={att.name}>
-              {att.isImage ? (
-                <img src={resolveMediaUrl(att.path)} alt={att.name} />
-              ) : (
-                <div className="staged-file">
-                  <Icon name="description" size={22} />
-                  <span className="small ellipsis">{att.name}</span>
-                </div>
-              )}
-              <button
-                type="button"
-                className="staged-remove"
-                title="Remove"
-                onClick={() => setStaged((s) => s.filter((x) => x.id !== att.id))}
-              >
-                <Icon name="close" size={13} color="var(--error)" />
-              </button>
+            <div key={att.id} className={classes('staged-card', att.spoiler && 'is-spoiler')}>
+              <div className="staged-preview">
+                {att.isImage ? (
+                  <img src={att.preview ?? resolveMediaUrl(att.path)} alt="" />
+                ) : (
+                  <Icon name="description" size={32} />
+                )}
+                {att.spoiler && <span className="staged-spoiler-pill">SPOILER</span>}
+              </div>
+              <div className="staged-meta">
+                <span className="staged-name ellipsis" title={att.name}>
+                  {att.name}
+                </span>
+                {typeof att.size === 'number' && <span className="small muted">{humanSize(att.size)}</span>}
+              </div>
+              {/* On the card's corner, and there only while it is pointed at
+                  or focused - they would be a dozen buttons otherwise. */}
+              <div className="staged-actions">
+                {service === 'discord' && (
+                  <button
+                    type="button"
+                    className={classes('staged-action', att.spoiler && 'on')}
+                    title={att.spoiler ? 'Not a spoiler' : 'Mark as spoiler'}
+                    aria-pressed={att.spoiler}
+                    onClick={() => setStaged((s) => s.map((x) => (x.id === att.id ? { ...x, spoiler: !x.spoiler } : x)))}
+                  >
+                    <Icon name={att.spoiler ? 'visibility_off' : 'visibility'} size={16} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="staged-action danger"
+                  title="Remove"
+                  onClick={() => setStaged((s) => s.filter((x) => x.id !== att.id))}
+                >
+                  <Icon name="delete" size={16} />
+                </button>
+              </div>
             </div>
           ))}
         </div>

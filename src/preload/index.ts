@@ -160,6 +160,8 @@ const api = {
    * Puts a picture on the system clipboard: from its pixels where the page
    * could read them, otherwise from where it lives.
    */
+  /** How big a file is, for the tray it is staged in; null for what cannot be read. */
+  fileSize: (path: string): Promise<number | null> => ipcRenderer.invoke(IPC.fileSize, path),
   copyImage: (source: string, dataUrl?: string): Promise<{ error?: string }> =>
     ipcRenderer.invoke(IPC.copyImage, source, dataUrl),
   downloadMedia: (source: string, filename?: string): Promise<{ path?: string; error?: string }> =>
