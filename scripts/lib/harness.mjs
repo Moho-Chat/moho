@@ -251,6 +251,23 @@ export async function launchApp({ env = {} } = {}) {
     } catch {
       /* already gone */
     }
+    // Whatever a crash left behind that is still pointed at this run's
+    // directory: Chromium's helpers can outlive the group they were started
+    // in, and a harness that leaves windows and daemons running is worse than
+    // one that fails.
+    for (const entry of fs.readdirSync('/proc')) {
+      if (!/^\d+$/.test(entry)) continue
+      try {
+        if (Number(entry) === process.pid) continue
+        const cmd = fs.readFileSync(`/proc/${entry}/cmdline`, 'utf8')
+        // The daemon is started by the app with only the environment to say
+        // whose it is.
+        const env = cmd.includes(scratch) ? '' : fs.readFileSync(`/proc/${entry}/environ`, 'utf8')
+        if (cmd.includes(scratch) || env.includes(`XDG_RUNTIME_DIR=${scratch}`)) process.kill(Number(entry), 'SIGKILL')
+      } catch {
+        /* gone, or not ours to read */
+      }
+    }
     fs.rmSync(scratch, { recursive: true, force: true })
   }
 

@@ -3824,9 +3824,14 @@ export class ChatStore {
     if (dividerTs === undefined && buffer.unread > 0) {
       const list = this.state.messagesByBuffer[bufferId] || []
       const firstUnread = list.length >= buffer.unread ? list[list.length - buffer.unread] : list[0]
+      // Not enough of the conversation is loaded to count back from its end -
+      // a buffer opened for the first time since a restart is still in the
+      // daemon's store - so the line goes where reading stopped, which is the
+      // time it was last marked read.
+      const stoppedAt = list.length < buffer.unread ? this.state.lastReadTs?.[bufferId] : undefined
       patch.dividerTsByBuffer = {
         ...this.state.dividerTsByBuffer,
-        [bufferId]: firstUnread ? firstUnread.ts - 1 : 0
+        [bufferId]: stoppedAt ?? (firstUnread ? firstUnread.ts - 1 : 0)
       }
     }
     this.set(patch)

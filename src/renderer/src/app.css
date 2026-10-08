@@ -1863,6 +1863,55 @@ button.video-tile {
   color: var(--on-accent);
 }
 
+/* Across the top of the log while there is more unread above than is showing:
+   how much, since when, and a way to be done with it - Discord's blue strip. */
+.unread-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-m);
+  padding: 4px var(--spacing-m);
+  background: var(--primary);
+  color: var(--primary-text);
+  font-size: var(--font-size-small);
+  font-weight: var(--weight-semibold);
+  box-shadow: var(--shadow-1);
+  animation: unread-bar-in var(--motion) var(--ease);
+}
+
+.unread-bar button {
+  color: inherit;
+  font-weight: inherit;
+}
+
+.unread-bar-text:hover,
+.unread-bar-read:hover {
+  text-decoration: underline;
+}
+
+.unread-bar-read {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+@keyframes unread-bar-in {
+  from {
+    transform: translateY(-100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .unread-bar {
+    animation: none;
+  }
+}
+
 .jump-to-present {
   position: absolute;
   left: var(--spacing-m);
