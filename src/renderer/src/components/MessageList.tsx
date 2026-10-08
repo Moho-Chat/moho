@@ -9,7 +9,7 @@ import { StreamStage } from './StreamStage'
 import { ServiceBanner } from './ServiceBanner'
 import { RouteAccount, useStrictRoute } from '../lib/route'
 import { useChat, usePref, useStore } from '../state/hooks'
-import { bufferDisplayName, isChatKind } from '../lib/util'
+import { bufferDisplayName, dayLabel, isChatKind, startsNewDay } from '../lib/util'
 import type { ChannelIndex } from '../lib/format'
 import type { ChatMessage } from '../state/store'
 
@@ -714,6 +714,14 @@ export function MessageList(): JSX.Element {
             const i = start + offset
             return (
             <div key={msg.id}>
+              {/* A new day, said once, where it begins - and on the first
+                  line drawn, so the top of the screen is never a time of day
+                  with no day. */}
+              {(startsNewDay(messages, i) || (offset === 0 && msg.ts > 0)) && (
+                <div className="date-divider" role="separator">
+                  <span>{dayLabel(msg.ts)}</span>
+                </div>
+              )}
               {i === dividerIndex && (
                 <div className="new-divider">
                   <span>New</span>

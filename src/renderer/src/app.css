@@ -1641,6 +1641,26 @@ button.video-tile {
   margin-top: 2px;
 }
 
+/* A new day. Centred on a rule, quieter than the "New" marker below it, so
+   the two can sit one over the other without competing. */
+.date-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-m);
+  margin: var(--spacing-m) var(--spacing-l) var(--spacing-xs);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.date-divider::before,
+.date-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--outline-strong);
+}
+
 .new-divider {
   display: flex;
   align-items: center;

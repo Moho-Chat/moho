@@ -316,6 +316,39 @@ export function formatRelativeTime(ts: number, now = Date.now()): string {
   return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} at ${time}`
 }
 
+/** The calendar day a time falls on, in this person's own time zone, as a comparable number. */
+export function dayOf(ts: number): number {
+  const d = new Date(ts * 1000)
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate()
+}
+
+/**
+ * What a date line says: "Today", "Yesterday", or the date in full. The year
+ * is always there - a conversation can be years deep, and "March 3" alone
+ * would be a guess.
+ */
+export function dayLabel(ts: number, now = Date.now()): string {
+  const day = dayOf(ts)
+  if (day === dayOf(Math.floor(now / 1000))) return 'Today'
+  if (day === dayOf(Math.floor(now / 1000) - 86400)) return 'Yesterday'
+  return new Date(ts * 1000).toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric' })
+}
+
+/**
+ * Whether a date line belongs before message `i`: the first one there is, and
+ * wherever the day changes. Messages with no usable time (a local notice) are
+ * left out of it, neither starting a day nor ending one.
+ */
+export function startsNewDay(messages: { ts: number }[], i: number): boolean {
+  const ts = messages[i]?.ts
+  if (!ts || ts <= 0) return false
+  for (let j = i - 1; j >= 0; j--) {
+    const before = messages[j].ts
+    if (before > 0) return dayOf(before) !== dayOf(ts)
+  }
+  return true
+}
+
 export function classes(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(' ')
 }
