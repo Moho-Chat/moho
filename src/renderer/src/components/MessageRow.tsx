@@ -891,7 +891,10 @@ function MessageRowBody({
               the thread it is in. The second is a button, because a thread is
               somewhere you can go - unless this is already the thread, where
               it would only reopen what is on screen. */}
+          {/* Inside the thread itself, "in thread" above every reply says what
+              the panel's title already says. */}
           {message.replyTo &&
+            !(inThread && message.replyTo.thread) &&
             (message.replyTo.thread && !inThread ? (
               <button
                 type="button"

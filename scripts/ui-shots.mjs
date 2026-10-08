@@ -581,6 +581,28 @@ const SCENES = [
       await sleep(300)
     }
   },
+  {
+    // A thread beside the room: grouped replies, the plural, the display settings (#269).
+    name: 'discord-thread',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(`(() => {
+        const s = window.__mohoShots.state()
+        const bufferId = 'discord:shots|c3'
+        const now = Math.floor(Date.now() / 1000)
+        const m = (id, from, body, mins, replyTo) => ({ id, bufferId, from, body, ts: now - mins * 60, isAction: false, isHighlight: false, kind: 'chat', isOwn: false, senderId: from, ...(replyTo ? { replyTo } : {}) })
+        const thread = { id: 'm1', from: 'Gaunt King', body: '', thread: true }
+        window.__mohoShots.patch({ openThread: { bufferId, rootId: 'm1', loading: false, messages: [
+          m('m1', 'Gaunt King', 'anyone else going to the craft fair this weekend?', 50),
+          m('t1', 'Clarence', 'yes! bringing the new amigurumi batch', 48, thread),
+          m('t2', 'Clarence', 'and the felt kits', 47, thread)
+        ] } })
+        return true
+      })()`)
+      await sleep(600)
+    },
+    clip: { x: 760, y: 44, width: 520, height: 400 }
+  },
   // Motion, recorded rather than photographed.
   {
     name: 'motion-hover-rows',

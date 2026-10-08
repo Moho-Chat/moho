@@ -853,7 +853,7 @@ function HistoryGap({ loading, onFill }: { loading: boolean; onFill: () => void 
   )
 }
 
-function isGrouped(messages: ChatMessage[], index: number): boolean {
+export function isGrouped(messages: ChatMessage[], index: number): boolean {
   if (index === 0) return false
   const prev = messages[index - 1]
   const cur = messages[index]

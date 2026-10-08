@@ -1,5 +1,6 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { MessageRow, useRowContext } from './MessageRow'
+import { isGrouped } from './MessageList'
 import { IconButton } from './Icon'
 import { useChat, usePref, useStore } from '../state/hooks'
 import type { ChatMessage } from '../state/store'
@@ -20,16 +21,19 @@ import type { ChatMessage } from '../state/store'
 export function ThreadPanel(): JSX.Element | null {
   const thread = useChat((s) => s.openThread)
   const messagesByBuffer = useChat((s) => s.messagesByBuffer)
-  const buffers = useChat((s) => s.buffers)
-  const [comfy] = usePref<'classic' | 'comfy' | 'bubbles'>('ui.messageMode', 'comfy')
-  const [relativeTimestamps] = usePref<boolean>('ui.relativeTimestamps', false)
+  // The same two settings the room itself reads (display.*): this panel used
+  // to ask for `ui.*`, which nothing writes, so it ignored both.
+  const [comfy] = usePref<'classic' | 'comfy' | 'bubbles'>('display.messageMode', 'comfy')
+  const [relativeTimestamps] = usePref<boolean>('display.relativeTimestamps', false)
   const store = useStore()
   // Before the early return below, as every hook here has to be.
   const shared = useRowContext(thread?.bufferId ?? '')
   const [draft, setDraft] = useState('')
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  const service = buffers.find((b) => b.id === thread?.bufferId)?.id.split(':')[0]
+  // From the account, as the room does, not by splitting its id.
+  const service = thread ? store.accountFor(thread.bufferId)?.service : undefined
+  const body = useRef<HTMLDivElement>(null)
 
   const messages = useMemo((): ChatMessage[] => {
     if (!thread) return []
@@ -44,6 +48,13 @@ export function ThreadPanel(): JSX.Element | null {
     return [...byId.values()].sort((a, b) => a.ts - b.ts)
   }, [thread, messagesByBuffer])
 
+  // Opened on, and following, the newest reply: a thread is read from its end.
+  const count = messages.length
+  useEffect(() => {
+    const el = body.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [thread?.rootId, count])
+
   if (!thread) return null
 
   const send = (): void => {
@@ -57,18 +68,22 @@ export function ThreadPanel(): JSX.Element | null {
     <div className="thread-pane">
       <div className="thread-header">
         <span className="thread-title ellipsis">Thread</span>
-        <span className="small muted">{Math.max(0, messages.length - 1)} replies</span>
+        <span className="small muted">
+          {Math.max(0, messages.length - 1) === 1 ? '1 reply' : `${Math.max(0, messages.length - 1)} replies`}
+        </span>
         <IconButton name="close" title="Close thread" onClick={() => store.closeThreadPanel()} />
       </div>
 
-      <div className="thread-body">
+      <div className="thread-body" ref={body}>
         {messages.map((msg, i) => (
           <MessageRow
             key={msg.id}
             message={msg}
             bufferId={thread.bufferId}
             service={service}
-            grouped={false}
+            // One author's run reads as one, as it does in the room - but the
+            // thread's first message stands on its own.
+            grouped={comfy !== 'classic' && i > 1 && isGrouped(messages, i)}
             mode={comfy === 'bubbles' ? 'comfy' : comfy}
             lastInRun={i === messages.length - 1}
             relativeTimestamps={relativeTimestamps}
