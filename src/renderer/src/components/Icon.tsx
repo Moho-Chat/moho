@@ -20,7 +20,10 @@ export function Icon({ name, size = 20, color, fill, className, style }: Props):
         width: size,
         height: size,
         color,
-        ...(fill ? { fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24" } : {}),
+        // The glyph is drawn for its size: the font's optical-size axis runs
+        // 20-48, and small ones are given a little more weight, or they read
+        // as hairlines next to text.
+        fontVariationSettings: `'FILL' ${fill ? 1 : 0}, 'wght' ${size <= 14 ? 500 : 400}, 'GRAD' 0, 'opsz' ${Math.min(48, Math.max(20, size))}`,
         ...style
       }}
     >

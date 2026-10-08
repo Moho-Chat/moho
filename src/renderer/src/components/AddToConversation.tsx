@@ -158,7 +158,7 @@ export function AddToConversation({ buffer }: { buffer: BufferEntry }): JSX.Elem
                   </span>
                 )}
                 <span className="ellipsis">{f.globalName || f.username}</span>
-                <span className={`presence-dot ${f.status || 'offline'}`} />
+                <span className={`status-dot ${f.status || 'offline'}`} />
               </button>
             ))}
 

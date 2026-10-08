@@ -886,7 +886,7 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
           )}
           <span className="ellipsis">{f.globalName || f.username}</span>
           <span className="small muted ellipsis">{f.username}</span>
-          <span className={`presence-dot ${f.status || 'offline'}`} />
+          <span className={`status-dot ${f.status || 'offline'}`} />
         </button>
       ))}
 

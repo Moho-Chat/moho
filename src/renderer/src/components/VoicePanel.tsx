@@ -57,9 +57,9 @@ export function VoicePanel(): JSX.Element | null {
     <div className="voice-panel">
       <div className="voice-panel-head">
         <span className="voice-panel-state">
-          <span className="voice-meter" aria-hidden>
+          <span className="voice-level" aria-hidden>
             {[0, 1, 2].map((i) => (
-              <span key={i} className={`voice-meter-bar${i < bars ? ' lit' : ''}`} />
+              <span key={i} className={`voice-level-bar${i < bars ? ' lit' : ''}`} />
             ))}
           </span>
           Voice Connected

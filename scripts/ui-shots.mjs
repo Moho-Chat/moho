@@ -272,6 +272,40 @@ const SCENES = [
     }
   },
   {
+    // The date fields appear only with "A range" chosen; they are what had no border colour (#268).
+    name: 'modal-export-range',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await p.evaluate(click('.header-nameplate'))
+      await sleep(300)
+      await p.evaluate(click('.context-menu-item', 'Export'))
+      await sleep(500)
+      await p.evaluate(`[...document.querySelectorAll('.reason-prompt label')].find((l) => l.innerText.includes('A range'))?.click()`)
+      await sleep(400)
+    }
+  },
+  {
+    // The pointer over a channel and over a member: how visible a hover is.
+    name: 'irc-hover-rows',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      const c = await centre(p, '.buffer-row', 'dev')
+      if (c) await mouse(p, 'mouseMoved', c.x, c.y)
+      await sleep(300)
+    },
+    clip: { x: 0, y: 44, width: 420, height: 300 }
+  },
+  {
+    name: 'irc-hover-member',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      const c = await centre(p, '.nick-row', 'carol')
+      if (c) await mouse(p, 'mouseMoved', c.x, c.y)
+      await sleep(300)
+    },
+    clip: { x: 860, y: 44, width: 420, height: 300 }
+  },
+  {
     name: 'toasts',
     setup: async (p) => {
       await openChannel(p, '#general')
