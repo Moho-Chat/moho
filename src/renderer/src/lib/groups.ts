@@ -263,7 +263,9 @@ export function isMutedBuffer(
 /**
  * The buffers whose unread should reach a rail tile: what the pane below it
  * would actually list. A hidden buffer has no row to click through to, and a
- * muted one deliberately does not ask for attention.
+ * muted one deliberately does not ask for attention - except to say that
+ * somebody used its owner's name, which muting a place has never meant not
+ * wanting to hear (the clients this one is measured against all keep that).
  */
 export function countsTowardRail(
   buffer: BufferEntry,
@@ -271,7 +273,7 @@ export function countsTowardRail(
   hidden: string[],
   mutedGroups: string[] = []
 ): boolean {
-  return !hidden.includes(buffer.id) && !isMutedBuffer(buffer, muted, mutedGroups)
+  return !hidden.includes(buffer.id) && (buffer.highlight || !isMutedBuffer(buffer, muted, mutedGroups))
 }
 
 

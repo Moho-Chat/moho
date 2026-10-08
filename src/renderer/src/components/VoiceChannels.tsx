@@ -45,22 +45,27 @@ export function VoiceChannels({ group }: { group: RailGroup }): JSX.Element | nu
           : (c.members ?? [])
         return (
           <div key={c.id} className={`voice-channel${here ? ' active' : ''}`}>
-            <button
-              type="button"
-              className="voice-channel-row"
-              title={here ? `Connected to ${c.name}` : c.stage ? `Listen to ${c.name}` : `Join ${c.name}`}
-              onClick={() => (here ? void store.leaveVoice(group.accountId) : void store.joinVoice(group.accountId, guild, c.id))}
-            >
-              <Icon name={c.stage ? 'podium' : 'volume_up'} size={16} />
-              <span className="ellipsis">{c.name}</span>
-              {/* A limit only means something once it is close to being hit. */}
-              {c.userLimit > 0 && members.length >= c.userLimit - 1 && (
-                <span className="small muted voice-limit">
-                  {members.length}/{c.userLimit}
-                </span>
-              )}
+            {/* The row and the way out of it are siblings: a button inside a
+                button is not valid, and the click that meant "disconnect"
+                also reached the row's own handler. */}
+            <div className="voice-channel-row">
+              <button
+                type="button"
+                className="voice-channel-main"
+                title={here ? `Connected to ${c.name}` : c.stage ? `Listen to ${c.name}` : `Join ${c.name}`}
+                onClick={() => (here ? void store.leaveVoice(group.accountId) : void store.joinVoice(group.accountId, guild, c.id))}
+              >
+                <Icon name={c.stage ? 'podium' : 'volume_up'} size={16} />
+                <span className="ellipsis">{c.name}</span>
+                {/* A limit only means something once it is close to being hit. */}
+                {c.userLimit > 0 && members.length >= c.userLimit - 1 && (
+                  <span className="small muted voice-limit">
+                    {members.length}/{c.userLimit}
+                  </span>
+                )}
+              </button>
               {here && <IconButton name="call_end" size={16} title="Disconnect" onClick={() => void store.leaveVoice(group.accountId)} />}
-            </button>
+            </div>
             {/* What a live stage is about. A stage with no topic is not on. */}
             {c.stage && c.topic && <div className="voice-stage-topic small muted ellipsis">{c.topic}</div>}
 

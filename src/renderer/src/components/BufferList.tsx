@@ -293,6 +293,10 @@ export function BufferList(): JSX.Element {
       muted={isEffectivelyMuted(b)}
       pinned={isPinned(b.id)}
       accounts={accounts}
+      // The pinned page gathers rooms from every service, so each says which
+      // one it is from - `#general` on Discord and on IRC look the same
+      // otherwise. A conversation with a person keeps their face instead.
+      showServiceIcon={isPinnedPage && b.kind !== 'dm'}
       // Already on the page being shown; keep the rail where it is. A room
       // still being joined has nothing behind it to select - it exists in
       // this window only - so the row is there to be seen rather than opened.
@@ -577,18 +581,39 @@ export function BufferList(): JSX.Element {
                         >
                           <Icon name={folded ? 'chevron_right' : 'expand_more'} size={14} />
                           <span className="ellipsis">{section.name}</span>
-                          {folded && section.buffers.length > 0 && (
-                            <span className="muted category-count">{section.buffers.length}</span>
-                          )}
+                          {folded && section.buffers.length > 0 && (() => {
+                            // What is waiting in what is folded away, which is
+                            // the thing worth knowing about a closed heading;
+                            // how many channels it has is the fallback.
+                            const waiting = section.buffers.filter((b) => b.unread > 0 && (!isEffectivelyMuted(b) || b.highlight))
+                            const unread = waiting.reduce((n, b) => n + b.unread, 0)
+                            return unread > 0 ? (
+                              <span
+                                className={classes('unread-badge category-count', waiting.some((b) => b.highlight) && 'highlight')}
+                                title={`${unread} unread in ${waiting.length} ${waiting.length === 1 ? 'channel' : 'channels'}`}
+                              >
+                                {unread > 99 ? '99+' : unread}
+                              </span>
+                            ) : (
+                              <span className="muted category-count">{section.buffers.length}</span>
+                            )
+                          })()}
                         </button>
                         )
                       )}
 
                       {/* A collapsed heading still shows the channel you are
                           reading, or selecting it from elsewhere would appear
-                          to do nothing. */}
+                          to do nothing - and the ones with something waiting,
+                          or folding a category would hide exactly what the
+                          list is for. */}
                       {section.buffers
-                        .filter((b) => !folded || b.id === activeBufferId)
+                        .filter(
+                          (b) =>
+                            !folded ||
+                            b.id === activeBufferId ||
+                            (b.unread > 0 && (!isEffectivelyMuted(b) || b.highlight))
+                        )
                         .map((b) => renderRow(b))}
                       {section.custom && section.buffers.length === 0 && !folded && (
                         <div className="category-empty small muted">Drag a channel onto this heading</div>
@@ -986,7 +1011,8 @@ function BufferRow({
           buffer.highlight && 'highlight',
           // Said by the name, not only by a number beside it: bold, and a bar
           // at the edge. Not for a muted room, which asked not to be told.
-          ((buffer.unread > 0 && !muted) || (buffer.markedUnread && !muted)) && 'unread',
+          ((buffer.unread > 0 && (!muted || buffer.highlight)) || (buffer.markedUnread && !muted)) && 'unread',
+          muted && 'muted-row',
           lifted && 'lifted',
           link && 'unlinked'
         )}
@@ -1025,7 +1051,7 @@ function BufferRow({
             arrive is worse than either on its own. */}
         {live ? (
           <span className="live-badge">LIVE</span>
-        ) : buffer.unread > 0 && !muted ? (
+        ) : buffer.unread > 0 && (!muted || buffer.highlight) ? (
           <span className={classes('unread-badge', buffer.highlight && 'highlight')}>
             {buffer.unread > 99 ? '99+' : buffer.unread}
           </span>

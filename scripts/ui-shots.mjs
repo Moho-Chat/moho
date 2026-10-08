@@ -450,6 +450,34 @@ const SCENES = [
     },
     clip: { x: 277, y: 200, width: 823, height: 120 }
   },
+  {
+    // A folded category with unread channels in it, and muted channels (#275, #276).
+    name: 'discord-folded-muted',
+    setup: async (p) => {
+      await discord(false)(p)
+      // Muted through the window's own menu, as a person would: one quiet
+      // (shitpost), one with a mention in it (screenshots).
+      for (const name of ['shitpost', 'screenshots']) {
+        const c = await centre(p, '.buffer-row', name)
+        await mouse(p, 'mousePressed', c.x, c.y, 'right')
+        await mouse(p, 'mouseReleased', c.x, c.y, 'right')
+        await sleep(250)
+        await p.evaluate(click('.context-menu-item', 'Mute'))
+        await sleep(400)
+        // A preference change makes the window ask the daemon again, which
+        // knows of no such server; the staged state goes back in.
+        await p.evaluate(DISCORD)
+        await sleep(700)
+      }
+      await p.evaluate(click('.category-head', 'ANIMALS'))
+      await sleep(300)
+      await p.evaluate(click('.category-head', 'TEXT CHANNELS'))
+      await sleep(400)
+      await p.evaluate(DISCORD)
+      await sleep(700)
+    },
+    clip: { x: 0, y: 44, width: 280, height: 360 }
+  },
   // Motion, recorded rather than photographed.
   {
     name: 'motion-hover-rows',

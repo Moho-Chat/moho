@@ -1060,7 +1060,7 @@ export function Composer(): JSX.Element | null {
  * stopped, and a Matrix client that closes mid-sentence never sends its
  * cancel. Without this the line would sit there indefinitely.
  */
-function TypingLine({ bufferId }: { bufferId: string }): JSX.Element | null {
+function TypingLine({ bufferId }: { bufferId: string }): JSX.Element {
   const entry = useChat((s) => s.typingByBuffer[bufferId])
   const [, tick] = useState(0)
 
@@ -1072,7 +1072,12 @@ function TypingLine({ bufferId }: { bufferId: string }): JSX.Element | null {
     return () => clearTimeout(t)
   }, [entry])
 
-  if (!entry || entry.until <= Date.now() || entry.nicks.length === 0) return null
+  // Always drawn, empty or not: the strip keeps its height whether anybody is
+  // writing or not, so the log above it is not shoved up and down as people
+  // start and stop.
+  if (!entry || entry.until <= Date.now() || entry.nicks.length === 0) {
+    return <div className="composer-typing small muted" aria-live="polite" />
+  }
 
   const names = entry.nicks
   const who =
@@ -1083,8 +1088,13 @@ function TypingLine({ bufferId }: { bufferId: string }): JSX.Element | null {
         : `${names.length} people are typing`
 
   return (
-    <div className="composer-typing small muted ellipsis" aria-live="polite">
-      {who}…
+    <div className="composer-typing small muted" aria-live="polite">
+      <span className="typing-dots" aria-hidden>
+        <i />
+        <i />
+        <i />
+      </span>
+      <span className="ellipsis">{who}</span>
     </div>
   )
 }

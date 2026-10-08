@@ -268,6 +268,10 @@
   height: 24px;
 }
 
+.buffer-row.muted-row:not(.unread) {
+  opacity: 0.55;
+}
+
 .buffer-muted-icon {
   opacity: 0.6;
 }
@@ -342,7 +346,8 @@
 .verification-dialog {
   position: fixed;
   z-index: var(--z-notice);
-  right: var(--spacing-m);
+  left: 50%;
+  transform: translateX(-50%);
   bottom: var(--spacing-m);
   width: min(360px, calc(100vw - var(--spacing-m) * 2));
   display: flex;
@@ -2511,7 +2516,7 @@ img.composer-emoji {
   display: flex;
   flex-direction: column-reverse;
   gap: var(--spacing-s);
-  /* Above the toasts, which are the only other floating thing this low. */
+  /* Bottom left; see .toasts for where everything else floats. */
   z-index: var(--z-call);
   max-width: 360px;
 }
@@ -2589,9 +2594,13 @@ img.composer-emoji {
 }
 
 .toasts {
+  /* Top right, under the title bar. The bottom corners belong to what is
+     asked of you - a ringing call on the left, a file arriving on the right,
+     a verification in the middle - and a message that something happened
+     must not sit on top of any of them (or under it). */
   position: fixed;
   right: var(--spacing-m);
-  bottom: var(--spacing-m);
+  top: calc(var(--titlebar-height) + var(--spacing-m));
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
@@ -3363,11 +3372,57 @@ img.smilie {
   font-size: 0.9em;
 }
 
-/* The "X is typing" line. Reserves no height when empty: a row that
-   appears and disappears under the composer would shove the message list
-   up and down as people start and stop writing. */
+/* The "X is typing" line. Always one line tall, empty or not: a row that
+   appears and disappears under the composer shoves the message list up and
+   down as people start and stop writing, which is what it did. */
 .composer-typing {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-height: 20px;
   padding: 0 var(--spacing-s) var(--spacing-xxs);
+}
+
+.typing-dots {
+  display: inline-flex;
+  gap: 3px;
+  flex: none;
+}
+
+.typing-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--surface-variant-text);
+  animation: typing-bounce 1.2s ease-in-out infinite;
+}
+
+.typing-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.typing-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes typing-bounce {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typing-dots i {
+    animation: none;
+    opacity: 0.7;
+  }
 }
 
 .invite-list {
@@ -4767,10 +4822,21 @@ video.lightbox-media {
   gap: var(--spacing-s);
   width: 100%;
   padding: var(--spacing-xxs) var(--spacing-s);
+  color: var(--surface-variant-text);
+}
+
+/* What is clicked to join, filling the row up to the disconnect button. */
+.voice-channel-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
   background: none;
   border: none;
+  padding: 0;
   text-align: left;
-  color: var(--surface-variant-text);
+  color: inherit;
 }
 
 .voice-channel-row:hover {
@@ -5543,9 +5609,8 @@ video.lightbox-media {
 
 /* --- File transfers --------------------------------------------------- */
 
-/* Sits above the calls rather than beside them: both float bottom-left, and
-   two stacks in the same corner would overlap. A ringing call is the more
-   urgent of the two, so it keeps the corner. */
+/* Bottom right. A ringing call keeps the bottom left, a verification the
+   middle, and toasts the top right, so none of them can land on another. */
 .transfer-panel {
   position: fixed;
   right: var(--spacing-m);
