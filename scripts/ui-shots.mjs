@@ -299,6 +299,21 @@ const SCENES = [
     }
   },
   { name: 'emoji-picker', setup: async (p) => { await openChannel(p, '#general'); await p.evaluate(click('button[title="Emoji"]')); await sleep(400) } },
+  {
+    // Walked with the arrow keys, with the skin tones open (#313).
+    name: 'emoji-picker-keys',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await p.evaluate(click('button[title="Emoji"]'))
+      await sleep(400)
+      for (const [key, code, vk] of [['ArrowDown', 'ArrowDown', 40], ['ArrowRight', 'ArrowRight', 39], ['ArrowRight', 'ArrowRight', 39], ['ArrowDown', 'ArrowDown', 40]]) {
+        for (const type of ['keyDown', 'keyUp']) await p.call('Input.dispatchKeyEvent', { type, key, code, windowsVirtualKeyCode: vk })
+        await sleep(120)
+      }
+      await p.evaluate(`document.querySelector('.emoji-tone-button')?.click()`)
+      await sleep(400)
+    }
+  },
   { name: 'mentions-inbox', setup: async (p) => { await p.evaluate(click('button[title="Mentions"]')); await sleep(400) } },
   {
     name: 'modal-export',

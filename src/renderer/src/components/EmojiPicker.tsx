@@ -7,6 +7,8 @@ import { drawableEmoteUrl, onLocalEmotes } from '../lib/emotecache'
 import { LottieSticker } from './LottieSticker'
 import type { CustomEmoji } from '../../../shared/wire'
 import { useEscapeLayer } from '../lib/layers'
+import { TONE_NAMES, TONES, withTone } from '../lib/skintone'
+import { usePref } from '../state/hooks'
 
 /**
  * Emoji insertion popup: a search box, then a small curated set of common
@@ -36,6 +38,10 @@ export const COMMON_EMOJI: { emoji: string; name: string }[] = [
   { emoji: '👍', name: 'thumbs up yes approve' },
   { emoji: '👎', name: 'thumbs down no' },
   { emoji: '👏', name: 'clap applause' },
+  { emoji: '👋', name: 'wave hello bye' },
+  { emoji: '🙌', name: 'raised hands praise' },
+  { emoji: '👌', name: 'ok perfect' },
+  { emoji: '✌️', name: 'peace victory' },
   { emoji: '🙏', name: 'pray thanks please' },
   { emoji: '🤝', name: 'handshake deal' },
   { emoji: '💪', name: 'muscle strong' },
@@ -222,9 +228,25 @@ export function EmojiPicker({
   const [recentStickers, setRecentStickers] = useState<string[]>(() => readRecentStickers(accountId))
   /** What is under the pointer, for the line along the bottom. */
   const [hovered, setHovered] = useState<{ name: string; from?: string; src?: string; text?: string } | null>(null)
+  /** The line along the bottom, said for one cell: under the pointer or under the arrow keys. */
+  const describe = (cell: HTMLElement): void => {
+    const img = cell.querySelector('img')
+    const heading = cell.closest('.emoji-grid-window')?.previousElementSibling?.textContent ?? undefined
+    setHovered({
+      name: cell.dataset.name || cell.title,
+      from: heading,
+      src: img?.getAttribute('src') ?? undefined,
+      text: img || cell.querySelector('.lottie-sticker') ? undefined : cell.textContent ?? undefined
+    })
+  }
   /** The section the list is scrolled to, lit in the rail. */
   const [current, setCurrent] = useState<string>('')
   const [query, setQuery] = useState('')
+  // Which skin tone the hands are drawn in, kept across windows and sessions.
+  const [tone, setTone] = usePref<number>('emoji.skinTone', 0)
+  const [toneMenu, setToneMenu] = useState(false)
+  /** The cell the arrow keys are on: the search box keeps the focus. */
+  const keyed = useRef<HTMLElement | null>(null)
   const [pos, setPos] = useState({ left: 0, top: 0 })
   const [recent, setRecent] = useState<string[]>(() => readRecent(accountId))
   // Everything this account can send, wherever it came from. Asked of the
@@ -531,6 +553,82 @@ export function EmojiPicker({
   }
   useEffect(followScroll, [tab, q, rail.length])
 
+  const clearKeyed = (): void => {
+    keyed.current?.classList.remove('kbd')
+    keyed.current = null
+  }
+  // A new search is a new list: the cell that was keyed is not in it.
+  useEffect(clearKeyed, [q, tab])
+
+  /** Every cell that can be chosen, in reading order. */
+  const choosable = (): HTMLElement[] =>
+    [...(scroll.current?.querySelectorAll<HTMLElement>('.emoji-cell:not(:disabled)') ?? [])]
+  const key = (cell: HTMLElement): void => {
+    clearKeyed()
+    cell.classList.add('kbd')
+    keyed.current = cell
+    cell.scrollIntoView({ block: 'nearest' })
+    describe(cell)
+  }
+  /**
+   * Moves the arrow keys' place through the grid. Left and right go cell to
+   * cell; up and down go to the nearest cell in the row above or below, which
+   * is how a grid of unequal sections has to be walked - there is no common
+   * column count. Only the rows built are walked, so at the end of those it
+   * scrolls a little and tries once more, which builds the next.
+   */
+  const move = (dir: 'ArrowDown' | 'ArrowUp' | 'ArrowLeft' | 'ArrowRight', retry = true): void => {
+    const list = choosable()
+    if (list.length === 0) return
+    const here = keyed.current?.isConnected ? keyed.current : null
+    if (!here) {
+      if (dir === 'ArrowDown' || dir === 'ArrowRight') key(list[0])
+      return
+    }
+    const i = list.indexOf(here)
+    if (dir === 'ArrowRight' || dir === 'ArrowLeft') {
+      const next = list[i + (dir === 'ArrowRight' ? 1 : -1)]
+      if (next) key(next)
+      else if (dir === 'ArrowRight' && retry) {
+        scroll.current?.scrollBy({ top: 120 })
+        requestAnimationFrame(() => move(dir, false))
+      }
+      return
+    }
+    const r = here.getBoundingClientRect()
+    const cx = r.left + r.width / 2
+    const rects = list.map((el) => ({ el, r: el.getBoundingClientRect() }))
+    const beyond = rects.filter((x) => (dir === 'ArrowDown' ? x.r.top > r.top + 4 : x.r.top < r.top - 4))
+    if (beyond.length === 0) {
+      if (dir === 'ArrowUp') clearKeyed()
+      else if (retry) {
+        scroll.current?.scrollBy({ top: 120 })
+        requestAnimationFrame(() => move(dir, false))
+      }
+      return
+    }
+    // The nearest row in that direction, then the cell in it nearest across.
+    const rowTop = dir === 'ArrowDown' ? Math.min(...beyond.map((x) => x.r.top)) : Math.max(...beyond.map((x) => x.r.top))
+    const row = beyond.filter((x) => Math.abs(x.r.top - rowTop) < 4)
+    row.sort((a, b) => Math.abs(a.r.left + a.r.width / 2 - cx) - Math.abs(b.r.left + b.r.width / 2 - cx))
+    key(row[0].el)
+  }
+  const onSearchKey = (e: React.KeyboardEvent): void => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      move(e.key)
+    } else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && keyed.current?.isConnected) {
+      // Only once a cell is keyed: before that they are the caret's.
+      e.preventDefault()
+      move(e.key)
+    } else if (e.key === 'Enter') {
+      // The one keyed, or the top result when none is.
+      e.preventDefault()
+      const cell = keyed.current?.isConnected ? keyed.current : choosable()[0]
+      cell?.click()
+    }
+  }
+
   return createPortal(
     <div
       ref={ref}
@@ -566,7 +664,42 @@ export function EmojiPicker({
           placeholder={stickersOnly ? 'Find the perfect sticker' : 'Find the perfect emoji'}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={onSearchKey}
         />
+        {/* Which skin tone the hands come in. Only where there are hands. */}
+        {!stickersOnly && (
+          <span className="emoji-tone">
+            <button
+              type="button"
+              className="emoji-tone-button"
+              title={`Skin tone: ${TONE_NAMES[tone] ?? TONE_NAMES[0]}`}
+              aria-expanded={toneMenu}
+              onClick={() => setToneMenu((open) => !open)}
+            >
+              {TONES[tone] ?? TONES[0]}
+            </button>
+            {toneMenu && (
+              <span className="emoji-tone-menu" role="radiogroup" aria-label="Skin tone">
+                {TONES.map((glyph, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    role="radio"
+                    aria-checked={tone === i}
+                    className={`emoji-tone-choice${tone === i ? ' active' : ''}`}
+                    title={TONE_NAMES[i]}
+                    onClick={() => {
+                      setTone(i)
+                      setToneMenu(false)
+                    }}
+                  >
+                    {glyph}
+                  </button>
+                ))}
+              </span>
+            )}
+          </span>
+        )}
       </div>
 
       <div className="emoji-body">
@@ -596,15 +729,7 @@ export function EmojiPicker({
         // heading of the section it is in.
         onMouseOver={(e) => {
           const cell = (e.target as HTMLElement).closest('.emoji-cell') as HTMLElement | null
-          if (!cell) return
-          const img = cell.querySelector('img')
-          const heading = cell.closest('.emoji-grid-window')?.previousElementSibling?.textContent ?? undefined
-          setHovered({
-            name: cell.dataset.name || cell.title,
-            from: heading,
-            src: img?.getAttribute('src') ?? undefined,
-            text: img || cell.querySelector('.lottie-sticker') ? undefined : cell.textContent ?? undefined
-          })
+          if (cell) describe(cell)
         }}
       >
         <PickerScroll.Provider value={scroll}>
@@ -708,17 +833,14 @@ export function EmojiPicker({
 
         {!stickersOnly && unicode.length > 0 && (
           <Section title="Emoji" anchorRef={(el) => (sectionRefs.current.unicode = el)}>
-            {unicode.map((e) => (
-              <button
-                key={e.emoji}
-                type="button"
-                className="emoji-cell"
-                title={e.name}
-                onClick={() => pick(e.emoji)}
-              >
-                {e.emoji}
-              </button>
-            ))}
+            {unicode.map((e) => {
+              const shown = withTone(e.emoji, tone)
+              return (
+                <button key={e.emoji} type="button" className="emoji-cell" title={e.name} onClick={() => pick(shown)}>
+                  {shown}
+                </button>
+              )
+            })}
           </Section>
         )}
 
@@ -799,7 +921,9 @@ export function EmojiPicker({
             </span>
           </>
         ) : (
-          <span className="small muted">{stickersOnly ? 'Pick a sticker to send it' : 'Pick an emoji'}</span>
+          <span className="small muted">
+            {stickersOnly ? 'Pick a sticker to send it' : 'Pick an emoji'} · arrow keys to move, Enter to choose
+          </span>
         )}
       </div>
     </div>,

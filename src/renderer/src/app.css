@@ -3370,6 +3370,51 @@ img.smilie {
   background: var(--primary-hover-light);
 }
 
+/* Where the arrow keys are: the search box keeps the focus, so the cell is
+   marked rather than focused. */
+.emoji-cell.kbd {
+  background: var(--primary-hover-light);
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+/* The skin tone, at the end of the search row. */
+.emoji-tone {
+  position: relative;
+  flex: none;
+}
+
+.emoji-tone-button,
+.emoji-tone-choice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--corner-radius-small);
+  font-size: var(--font-size-large);
+  line-height: 1;
+}
+
+.emoji-tone-button:hover,
+.emoji-tone-choice:hover,
+.emoji-tone-choice.active {
+  background: var(--surface-selected);
+}
+
+.emoji-tone-menu {
+  position: absolute;
+  top: calc(100% + var(--spacing-xs));
+  right: 0;
+  z-index: 1;
+  display: flex;
+  gap: 2px;
+  padding: var(--spacing-xs);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: var(--shadow-2);
+}
+
 .emoji-cell img {
   max-width: 26px;
   max-height: 26px;

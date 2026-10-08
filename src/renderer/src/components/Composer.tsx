@@ -21,6 +21,8 @@ import {
   rankMentions,
   type MentionTarget
 } from '../lib/mentions'
+import { withTone } from '../lib/skintone'
+import { usePref } from '../state/hooks'
 import { rankShortcodes, shortcodeQuery, unicodeTargets, type ShortcodeTarget } from '../lib/shortcodes'
 
 interface StagedAttachment {
@@ -306,6 +308,7 @@ export function Composer(): JSX.Element | null {
    * channel's own emoji (a server's, or a Kick channel's) and, on Sneedchat,
    * its smilies - the same places the picker draws from.
    */
+  const [tone] = usePref<number>('emoji.skinTone', 0)
   const bufferEmoji = bufferEmojiByBuffer[buffer?.id ?? ''] || []
   const shortcodeTargets = useMemo((): ShortcodeTarget[] => {
     const own: ShortcodeTarget[] = bufferEmoji.map((e) => ({ name: e.name, aliases: [], token: emojiToken(e) }))
@@ -316,8 +319,10 @@ export function Composer(): JSX.Element | null {
             return first ? [{ name: first.replace(/^:|:$/g, ''), aliases: rest.map((a) => a.replace(/^:|:$/g, '')), token: first }] : []
           })
         : []
-    return [...own, ...sneed, ...unicodeTargets(COMMON_EMOJI)]
-  }, [bufferEmoji, smilies, service])
+    // The hands come in the tone chosen in the picker.
+    const common = unicodeTargets(COMMON_EMOJI.map((e) => ({ ...e, emoji: withTone(e.emoji, tone) })))
+    return [...own, ...sneed, ...common]
+  }, [bufferEmoji, smilies, service, tone])
   const shortcodes = useMemo(
     () => (shortcode ? rankShortcodes(shortcodeTargets, shortcode.query) : []),
     [shortcode, shortcodeTargets]
