@@ -3314,6 +3314,7 @@ img.smilie {
 }
 
 .reaction-pill {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--spacing-xxs);
@@ -3335,6 +3336,33 @@ img.smilie {
 
 .reaction-pill.add {
   color: var(--surface-variant-text);
+}
+
+/* The sentence over a reaction: who, and with what. Above the pill, and out of
+   the way of the pointer, which is on the pill. */
+.reaction-tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: var(--z-popover);
+  width: max-content;
+  max-width: 280px;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-highest);
+  box-shadow: var(--shadow-2);
+  color: var(--surface-text);
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+  animation: tip-in var(--motion-fast) var(--ease);
+}
+
+@keyframes tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
 }
 
 .reaction-emoji {
@@ -9536,6 +9564,7 @@ video.lightbox-media {
   .modal-scrim,
   .lightbox-backdrop,
   .jump-to-present,
+  .reaction-tip,
   .reaction-pill.pop {
     animation: none;
   }

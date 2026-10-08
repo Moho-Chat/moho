@@ -837,6 +837,18 @@ const SCENES = [
     clip: { x: 277, y: 44, width: 823, height: 260 }
   },
   {
+    // The sentence over a reaction (#303). Names come from the service on request; with the staged
+    // account there is none to ask, so this shows what is said before they arrive.
+    name: 'discord-reaction-tip',
+    setup: async (p) => {
+      await discord(false)(p)
+      const c = await centre(p, '.reaction-pill', '3')
+      if (c) await mouse(p, 'mouseMoved', c.x, c.y)
+      await sleep(600)
+    },
+    clip: { x: 277, y: 60, width: 640, height: 260 }
+  },
+  {
     name: 'discord-media-grid',
     setup: async (p) => {
       await discord(false)(p)

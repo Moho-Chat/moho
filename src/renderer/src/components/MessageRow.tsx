@@ -7,7 +7,8 @@ import { EventSource } from './EventSource'
 import { ForwardPicker } from './ForwardPicker'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { MediaEmbed } from './MediaEmbed'
-import { EmojiPicker, readRecent } from './EmojiPicker'
+import { COMMON_EMOJI, EmojiPicker, readRecent } from './EmojiPicker'
+import { reactionLabel, reactorsSentence } from '../lib/reactions'
 import { UploadMeter } from './UploadMeter'
 import { RichText } from '../lib/richtext'
 import { useChat, usePref, useStore } from '../state/hooks'
@@ -1206,16 +1207,13 @@ function MessageRowBody({
           {(message.reactions?.length ?? 0) > 0 && (
             <div className="reaction-row">
               {message.reactions!.map((r) => (
-                <button
+                <ReactionPill
                   key={r.emoji}
-                  type="button"
-                  className={classes('reaction-pill', r.me && 'mine', popped.has(r.emoji) && 'pop')}
-                  onClick={() => void store.toggleReaction(bufferId, message.id, r.emoji, !r.me)}
-                  title={r.emoji}
-                >
-                  <ReactionEmoji emoji={r.emoji} animated={r.animated} />
-                  <span className="small">{r.count}</span>
-                </button>
+                  reaction={r}
+                  bufferId={bufferId}
+                  messageId={message.id}
+                  popped={popped.has(r.emoji)}
+                />
               ))}
               {canReact && (
                 <button
@@ -1398,17 +1396,100 @@ function MessageRowBody({
   )
 }
 
+/** What the first word of an emoji's name is, for the ones the picker knows: what a reaction is called when it is not a custom one. */
+const UNICODE_NAMES: ReadonlyMap<string, string> = new Map(
+  COMMON_EMOJI.flatMap((e) => {
+    const name = e.name.split(/\s+/)[0]
+    // The picture form carries a selector some clients leave off.
+    return [[e.emoji, name] as const, [e.emoji.replace(/\uFE0F$/, ''), name] as const]
+  })
+)
+
+/** Who reacted, once asked, kept briefly so pointing at the same reaction twice is one question. */
+const reactorCache = new Map<string, { at: number; count: number; names: string[] }>()
+const REACTORS_KEPT_MS = 30_000
+
 /**
- * A Discord custom reaction; a plain Unicode reaction is just the character
- * itself.
- *
- * nobilis stores these wrapped as `<:name:id>` - the same shape a message body
- * carries - and only unwraps them at the point it calls Discord's reaction
- * endpoint. Matching only the bare `name:id` therefore matched nothing, and
- * every custom reaction on every message rendered as its literal token beside
- * the count.
+ * One reaction under a message, with the sentence Discord shows over it: who
+ * reacted, and with what. The names are asked for when the pointer has stayed
+ * a moment, not carried on every message - the services that can say do so only
+ * on request, and most reactions are never pointed at.
  */
-function ReactionEmoji({ emoji }: { emoji: string; animated?: boolean }): JSX.Element {
+function ReactionPill({
+  reaction: r,
+  bufferId,
+  messageId,
+  popped
+}: {
+  reaction: { emoji: string; count: number; me: boolean; animated?: boolean }
+  bufferId: string
+  messageId: string
+  popped: boolean
+}): JSX.Element {
+  const store = useStore()
+  const [tip, setTip] = useState(false)
+  const [names, setNames] = useState<string[]>([])
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const label = reactionLabel(r.emoji, UNICODE_NAMES)
+  const sentence = reactorsSentence(label, names, r.count)
+
+  const ask = (): void => {
+    const service = store.accountFor(bufferId)?.service
+    if (service !== 'discord' && service !== 'matrix') return
+    const key = `${bufferId}|${messageId}|${r.emoji}`
+    const kept = reactorCache.get(key)
+    if (kept && kept.count === r.count && Date.now() - kept.at < REACTORS_KEPT_MS) {
+      setNames(kept.names)
+      return
+    }
+    void window.moho
+      .rpc<{ users: { name: string }[] }>('listReactors', { bufferId, messageId, emoji: r.emoji })
+      .then((answer) => {
+        const list = (answer.users ?? []).map((u) => u.name)
+        reactorCache.set(key, { at: Date.now(), count: r.count, names: list })
+        setNames(list)
+      })
+      // An older daemon has no such question, and a refusal is not worth a
+      // toast over a tooltip: the count is still said.
+      .catch(() => {})
+  }
+
+  return (
+    <button
+      type="button"
+      className={classes('reaction-pill', r.me && 'mine', popped && 'pop')}
+      onClick={() => void store.toggleReaction(bufferId, messageId, r.emoji, !r.me)}
+      onMouseEnter={() => {
+        setTip(true)
+        timer.current = setTimeout(ask, 250)
+      }}
+      onMouseLeave={() => {
+        setTip(false)
+        if (timer.current) clearTimeout(timer.current)
+      }}
+      aria-label={sentence}
+    >
+      <ReactionEmoji emoji={r.emoji} />
+      <span className="small">{r.count}</span>
+      {tip && (
+        <span className="reaction-tip small" role="tooltip">
+          {sentence}
+        </span>
+      )}
+    </button>
+  )
+}
+
+/**
+ * A reaction's picture. Discord's custom emoji are fetched by id from its CDN
+ * as WebP, which is animated for the ones that move (`animated=true` in the
+ * address, so nothing has to be known about each one), and a Unicode emoji is
+ * just text.
+ *
+ * Without this branch every custom reaction was drawn as its literal token
+ * beside the count.
+ */
+function ReactionEmoji({ emoji }: { emoji: string }): JSX.Element {
   const media = useMediaUrl()
   const custom = emoji.match(/^<?a?:?([A-Za-z0-9_~]{2,32}):(\d+)>?$/)
   if (!custom) return <span>{emoji}</span>
