@@ -186,6 +186,13 @@ const centre = (page, selector, text = '') =>
     return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + Math.min(r.height / 2, 14)) }
   })()`)
 
+/** A key with modifiers held (CDP's bitmask: 1 alt, 2 ctrl, 4 meta, 8 shift). */
+const pressKey = async (page, key, code, modifiers = 0) => {
+  for (const type of ['keyDown', 'keyUp']) {
+    await page.call('Input.dispatchKeyEvent', { type, key, code, modifiers, windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0) })
+  }
+}
+
 const escape = async (page) => {
   for (const type of ['keyDown', 'keyUp']) {
     await page.call('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
@@ -358,6 +365,25 @@ const SCENES = [
       await sleep(300)
     },
     clip: { x: 0, y: 44, width: 420, height: 300 }
+  },
+  {
+    // Ctrl+K with nothing typed: what is waiting first (#287).
+    name: 'discord-switcher',
+    setup: async (p) => {
+      await discord(false)(p)
+      await pressKey(p, 'k', 'KeyK', 2)
+      await sleep(400)
+    }
+  },
+  {
+    name: 'discord-switcher-query',
+    setup: async (p) => {
+      await discord(false)(p)
+      await pressKey(p, 'k', 'KeyK', 2)
+      await sleep(300)
+      await p.call('Input.insertText', { text: 'gen' })
+      await sleep(400)
+    }
   },
   // Motion, recorded rather than photographed.
   {

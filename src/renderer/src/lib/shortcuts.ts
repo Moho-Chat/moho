@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { store } from '../state/store'
+import { OPEN_SWITCHER } from '../components/QuickSwitcher'
 
 /** Anything that opens over the window and has its own use for Escape. */
 const LAYERS =
@@ -50,7 +51,50 @@ export function useShortcuts(): void {
       if (open.unread > 0 || open.highlight) void store.markBuffersRead([open.id])
       window.dispatchEvent(new CustomEvent('moho:jump-to-present'))
     }
+    /**
+     * The channel list as it is drawn - collapsed categories left out, the
+     * order the person sees - which is what "next" has to mean. Read off the
+     * page rather than worked out again from the data.
+     */
+    const step = (direction: 1 | -1, unreadOnly: boolean): void => {
+      const rows = [...document.querySelectorAll<HTMLElement>('.buffer-row')]
+      if (rows.length === 0) return
+      const here = rows.findIndex((r) => r.classList.contains('active'))
+      for (let n = 1; n <= rows.length; n++) {
+        const row = rows[(((here < 0 ? (direction === 1 ? -1 : rows.length) : here) + direction * n) % rows.length + rows.length) % rows.length]
+        if (unreadOnly && !row.classList.contains('unread')) continue
+        row.click()
+        row.scrollIntoView({ block: 'nearest' })
+        return
+      }
+    }
+
+    const onCombo = (e: KeyboardEvent): void => {
+      if (e.defaultPrevented) return
+      const mod = e.ctrlKey || e.metaKey
+      // Jump to a conversation, from anywhere including the message box.
+      if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent(OPEN_SWITCHER))
+        return
+      }
+      if (mod && !e.altKey && !e.shiftKey && e.key === ',') {
+        e.preventDefault()
+        store.setActivePanel('settings')
+        return
+      }
+      // Previous and next channel, and previous and next with something waiting.
+      if (e.altKey && !mod && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        if (document.querySelector(LAYERS)) return
+        e.preventDefault()
+        step(e.key === 'ArrowDown' ? 1 : -1, e.shiftKey)
+      }
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', onCombo)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keydown', onCombo)
+    }
   }, [])
 }

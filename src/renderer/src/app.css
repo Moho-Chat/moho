@@ -8529,3 +8529,137 @@ video.lightbox-media {
 .reply-preview.muted {
   color: var(--text-muted);
 }
+
+/* --- the quick switcher -------------------------------------------------- */
+
+.switcher-scrim {
+  align-items: flex-start;
+  padding-top: 12vh;
+}
+
+.switcher {
+  width: min(560px, calc(100vw - 32px));
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline-medium);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+}
+
+.switcher-field {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-m) var(--spacing-l);
+  border-bottom: 1px solid var(--outline-medium);
+  color: var(--surface-variant-text);
+}
+
+.switcher-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  font-size: var(--font-size-large);
+  color: var(--surface-text);
+  user-select: text;
+}
+
+.switcher-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--spacing-xs);
+}
+
+.switcher-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  width: 100%;
+  padding: 6px var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  color: var(--surface-variant-text);
+  text-align: left;
+}
+
+.switcher-row.selected {
+  background: var(--primary-hover);
+  color: var(--surface-text);
+}
+
+.switcher-row.unread .switcher-title {
+  color: var(--surface-text);
+  font-weight: var(--weight-semibold);
+}
+
+.switcher-lead {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  flex: none;
+}
+
+.switcher-title {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.switcher-where {
+  flex: 1;
+  min-width: 0;
+}
+
+.switcher-empty {
+  padding: var(--spacing-l);
+  text-align: center;
+}
+
+.switcher-hint {
+  display: flex;
+  gap: var(--spacing-l);
+  padding: var(--spacing-s) var(--spacing-l);
+  border-top: 1px solid var(--outline-medium);
+}
+
+/* The title bar's way in, in the middle of what is otherwise an empty bar. */
+.titlebar-search {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  min-width: 220px;
+  padding: 4px var(--spacing-m);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--outline-medium);
+  color: var(--surface-variant-text);
+  font-size: var(--font-size-small);
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-search:hover {
+  background: var(--surface-container-low);
+  color: var(--surface-text);
+}
+
+.titlebar-search kbd {
+  margin-left: auto;
+  font: inherit;
+  font-size: var(--font-size-xs);
+  opacity: 0.7;
+}
+
+@media (max-width: 760px) {
+  .titlebar-search {
+    display: none;
+  }
+}

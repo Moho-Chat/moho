@@ -38,6 +38,7 @@ import type { BufferEntry } from './state/store'
 import { loadLocalEmotes, recoverMissingEmotes } from './lib/emotecache'
 import { restoreMissingMedia } from './lib/mediarestore'
 import { useShortcuts } from './lib/shortcuts'
+import { QuickSwitcher } from './components/QuickSwitcher'
 
 export default function App(): JSX.Element {
   useShortcuts()
@@ -316,6 +317,7 @@ export default function App(): JSX.Element {
       <TransferPanel />
       <FileDrop />
       <Toasts />
+      <QuickSwitcher />
       <EditMenu />
     </div>
   )
