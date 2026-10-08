@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { IPC, POPOUT_FLAG, type EditAction, type EditMenuRequest, type PopoutState, type ScreenSource } from '../shared/ipc'
+import { IPC, POPOUT_FLAG, UI_SHOTS_FLAG, type EditAction, type EditMenuRequest, type PopoutState, type ScreenSource } from '../shared/ipc'
 import type { NobilisEvent } from '../shared/wire'
 
 /**
@@ -182,6 +182,9 @@ const api = {
     ipcRenderer.invoke(IPC.markBufferRead, bufferId),
 
   /** Conversations in windows of their own. */
+  /** Whether the screenshot harness started this window - see UI_SHOTS_FLAG. */
+  uiShots: process.argv.includes(UI_SHOTS_FLAG),
+
   popout: {
     /** Set only in a popped-out window, naming the conversation it shows. */
     bufferId: popoutBufferId,

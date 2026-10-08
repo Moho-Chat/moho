@@ -23,7 +23,7 @@ import { NobilisProcess } from './nobilis-process'
 import { Prefs } from './prefs'
 import { Notifier } from './notifications'
 import { browserLogin, LOGIN_FLOWS } from './browser-login'
-import { EDIT_ACTIONS, IPC, POPOUT_FLAG, type EditAction, type EditMenuRequest, type PopoutState } from '../shared/ipc'
+import { EDIT_ACTIONS, IPC, POPOUT_FLAG, UI_SHOTS_FLAG, type EditAction, type EditMenuRequest, type PopoutState } from '../shared/ipc'
 import { clearnetLinks } from '../shared/clearnet'
 import { readCapped, pictureNamedIn } from './imagepage'
 import { DEEP_LINK_SCHEMES, isDeepLink } from '../shared/deeplink'
@@ -265,6 +265,9 @@ function wireEditMenu(win: BrowserWindow): void {
   })
 }
 
+/** The screenshot harness's flag, passed on to every window when it asked for it. */
+const shotsArguments = process.env.MOHO_UI_SHOTS === '1' ? [UI_SHOTS_FLAG] : []
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1100,
@@ -290,7 +293,8 @@ function createWindow(): void {
       // is allowed, and reads its popout flag from process.argv, which stays
       // readable. See the note in whenReady for the hosts that cannot honour
       // this.
-      sandbox: true
+      sandbox: true,
+      additionalArguments: shotsArguments
     }
   })
 
@@ -459,7 +463,7 @@ function openPopout(bufferId: string, title?: string): void {
       nodeIntegration: false,
       // As the main window - a popout draws the same conversations.
       sandbox: true,
-      additionalArguments: [`${POPOUT_FLAG}${bufferId}`]
+      additionalArguments: [`${POPOUT_FLAG}${bufferId}`, ...shotsArguments]
     }
   })
   popouts.set(bufferId, win)

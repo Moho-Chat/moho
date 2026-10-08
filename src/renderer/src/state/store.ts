@@ -1137,6 +1137,16 @@ export class ChatStore {
     return () => this.listeners.delete(listener)
   }
 
+  /**
+   * For the screenshot harness only (window.__mohoShots, installed in
+   * main.tsx when the window was started with UI_SHOTS_FLAG): puts state in
+   * place directly, as if the daemon had said it.
+   */
+  shotsPatch(patch: Partial<ChatState>): void {
+    if (!window.moho.uiShots) return
+    this.set(patch)
+  }
+
   private set(patch: Partial<ChatState>): void {
     this.state = { ...this.state, ...patch }
     for (const l of this.listeners) l()
