@@ -541,6 +541,28 @@ const SCENES = [
       await sleep(500)
     }
   },
+  {
+    // Join: which account it is for, first, and a button that says Join (#323).
+    name: 'join-picker',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(`window.__mohoShots.store.setActivePanel('join', 'discord:shots')`)
+      await sleep(600)
+    }
+  },
+  {
+    // An account card open: Remove lives in a danger zone at its foot (#323).
+    name: 'accounts-expanded',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`)
+      await sleep(500)
+      await p.evaluate(`document.querySelector('.account-card .icon-button[title="Settings"]')?.click()`)
+      await sleep(500)
+      await p.evaluate(`(document.querySelector('.settings .panel') || document.querySelector('.panel')).scrollTop = 1e6`)
+      await sleep(300)
+    }
+  },
   { name: 'settings-accounts', setup: async (p) => { await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`); await sleep(400) } },
   { name: 'discord-guild', setup: discord(false) },
   {

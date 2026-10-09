@@ -118,7 +118,9 @@ export function AccountsPanel(): JSX.Element {
                 key={service}
                 type="button"
                 className={`service-chip${adding === service ? ' active' : ''}`}
-                onClick={() => setAdding(adding === service ? null : service)}
+                // Choosing the one already open leaves it open: the chip is a
+                // choice among services, and the way out is the Cancel below.
+                onClick={() => setAdding(service)}
               >
                 <ServiceMark icon={icon} size={16} />
                 {nameFor(service)}
@@ -132,6 +134,11 @@ export function AccountsPanel(): JSX.Element {
         {adding === 'sneedchat' && <SneedChatForm />}
         {adding === 'matrix' && <MatrixForm />}
         {adding === 'kick' && <KickForm onDone={() => setAdding(null)} />}
+        {adding && (
+          <button type="button" className="button subtle small" onClick={() => setAdding(null)}>
+            Cancel
+          </button>
+        )}
       </div>
 
       <div className="panel-section">
@@ -154,7 +161,10 @@ export function AccountsPanel(): JSX.Element {
           // A service worth looking at even unasked: something in it is not
           // working, or is on its way to working.
           const troubled = mine.some((a) => TROUBLE_STATES.includes(a.state))
-          const shut = !(openGroups[service] ?? troubled)
+          // Open when there are few enough to see at once: a page that opens
+          // on a closed list makes the common case - one or two accounts -
+          // take clicks to reach what is there.
+          const shut = !(openGroups[service] ?? (troubled || accounts.length <= 4))
           return (
             <div key={service} className="account-group">
               <button
@@ -464,6 +474,8 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
           {/* Asked first, in place. Removing takes the saved sign-in, the
               history kept here and - for Matrix - this device's keys, and
               none of it comes back; it used to happen on the first click. */}
+          <div className="danger-zone">
+          <div className="danger-zone-title small">Danger zone</div>
           {confirmingRemove ? (
             <div className="remove-confirm" role="alertdialog" aria-label="Remove this account?">
               <span className="small">
@@ -499,6 +511,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
               <Icon name="delete" size={16} /> Remove account
             </button>
           )}
+          </div>
         </div>
       )}
     </div>

@@ -5,7 +5,7 @@ import { Icon } from './Icon'
 import { ContextMenu } from './ContextMenu'
 import { RoomSearch } from './RoomSearch'
 import { useChat, useStore } from '../state/hooks'
-import { classes } from '../lib/util'
+import { classes, serviceLabel } from '../lib/util'
 import type { Account, DiscordFriend } from '../../../shared/wire'
 
 /**
@@ -68,22 +68,53 @@ export function JoinPanel(): JSX.Element {
   const accountId = useChat((s) => s.joinPanelAccountId)
   const account = useChat((s) => s.accounts).find((a) => a.id === accountId)
 
+  const store = useStore()
+  const all = useChat((s) => s.accounts)
   if (!account) return <div className="panel muted">No account selected.</div>
 
-  switch (account.service) {
-    case 'irc':
-      return <IrcJoin account={account} />
-    case 'matrix':
-      return <MatrixJoin account={account} />
-    case 'discord':
-      return <DiscordJoin account={account} />
-    case 'kick':
-      return <KickJoin account={account} />
-    case 'sneedchat':
-      return <SneedchatRooms account={account} />
-    default:
-      return <div className="panel muted">Joining isn&apos;t supported for this service yet.</div>
-  }
+  const body = ((): JSX.Element => {
+    switch (account.service) {
+      case 'irc':
+        return <IrcJoin account={account} />
+      case 'matrix':
+        return <MatrixJoin account={account} />
+      case 'discord':
+        return <DiscordJoin account={account} />
+      case 'kick':
+        return <KickJoin account={account} />
+      case 'sneedchat':
+        return <SneedchatRooms account={account} />
+      default:
+        return <div className="panel muted">Joining isn&apos;t supported for this service yet.</div>
+    }
+  })()
+  const joinable = all.filter((a) => ['irc', 'matrix', 'discord', 'kick', 'sneedchat'].includes(a.service))
+
+  return (
+    <div className="join-frame">
+      {/* Which account this is for, first: it decides everything below it,
+          and was only ever the one selected in the footer. */}
+      {joinable.length > 1 && (
+        <div className="join-picker" role="radiogroup" aria-label="Join on">
+          <span className="small muted">Join on</span>
+          {joinable.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              role="radio"
+              aria-checked={a.id === account.id}
+              className={`service-chip${a.id === account.id ? ' active' : ''}`}
+              onClick={() => store.setActivePanel('join', a.id)}
+            >
+              {a.displayName || a.id}
+              <span className="small muted"> · {serviceLabel(a.service)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {body}
+    </div>
+  )
 }
 
 /** A labelled field that fires on Enter and clears itself. */
@@ -114,7 +145,7 @@ function SubmitField({
           onKeyDown={(e) => e.key === 'Enter' && submit()}
         />
         <button type="button" className="button" onClick={submit} disabled={!value.trim()}>
-          Go
+          Join
         </button>
       </div>
     </div>

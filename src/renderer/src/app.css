@@ -9976,3 +9976,37 @@ html[data-reduce-motion] *::after {
   border-color: var(--primary);
   color: var(--primary);
 }
+
+
+/* --- accounts and join ------------------------------------------------------ */
+.danger-zone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  margin-top: var(--spacing-m);
+  padding: var(--spacing-s) var(--spacing-m);
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  border-radius: var(--corner-radius);
+}
+
+.danger-zone-title {
+  color: var(--danger-text);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.join-frame {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.join-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-m) var(--spacing-m) 0;
+}
