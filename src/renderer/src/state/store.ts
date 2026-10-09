@@ -1202,15 +1202,17 @@ export class ChatStore {
   private reportTrayStatus(): void {
     const statuses: Record<string, string> = {}
     const connected = this.state.accounts.filter((a) => a.state === 'connected')
-    for (const a of connected) if (a.status) statuses[a.id] = a.status
+    // What was chosen, not what is shown: an account idle because its person is
+    // away is still online as far as the menu and the notifier are concerned.
+    for (const a of connected) if (a.status) statuses[a.id] = a.autoIdle ? 'online' : a.status
     const offered = ALL_STATUSES.filter((s) => connected.some((a) => supportsStatus(a.service, s)))
     const widest = [...connected].sort((a, b) => statusesFor(b.service).length - statusesFor(a.service).length)[0]
     // Invisible is what Discord calls it; where only Matrix has it, it is offline.
     const invisibleName = connected.some((a) => supportsStatus(a.service, 'invisible') && a.service !== 'matrix') ? 'Invisible' : 'Offline'
-    const report = JSON.stringify([statuses, offered, widest?.status ?? null, invisibleName])
+    const report = JSON.stringify([statuses, offered, (widest?.autoIdle ? 'online' : widest?.status) ?? null, invisibleName])
     if (report === this.lastTrayReport) return
     this.lastTrayReport = report
-    window.moho.setAccountStatuses(statuses, offered, widest?.status ?? null, invisibleName)
+    window.moho.setAccountStatuses(statuses, offered, (widest?.autoIdle ? 'online' : widest?.status) ?? null, invisibleName)
   }
 
   // --- lifecycle ------------------------------------------------------
@@ -3510,6 +3512,13 @@ export class ChatStore {
         this.set({ kickStreams: { ...this.state.kickStreams, [stream.bufferId]: stream } })
         break
       }
+
+      // Accounts shown as idle because their person stepped away, or back as
+      // online because they returned: nothing they chose changed, so the list
+      // is read again rather than patched.
+      case 'accountStatus':
+        void this.refreshAccounts()
+        break
 
       case 'presenceChange':
         this.set({

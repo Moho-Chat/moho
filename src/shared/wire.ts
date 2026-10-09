@@ -12,6 +12,11 @@ export interface Account {
   status?: string
   /** What it says beside the status, where the service has a place for that. */
   statusText?: string
+  /**
+   * Shown as idle because the person stepped away, not because they chose it:
+   * `status` then reads idle while what they chose is online.
+   */
+  autoIdle?: boolean
   state: string
   autojoin: string
   hasNickservPassword: boolean

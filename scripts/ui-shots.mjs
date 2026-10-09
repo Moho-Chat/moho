@@ -511,6 +511,19 @@ const SCENES = [
       await sleep(300)
     }
   },
+  {
+    name: 'settings-presence',
+    setup: async (p) => {
+      await p.evaluate(`window.__mohoShots.store.setActivePanel('settings')`)
+      await sleep(400)
+      await p.evaluate(`(() => {
+        const el = [...document.querySelectorAll('h1, h2, h3, h4, .settings-section-title')].find((e) => e.textContent.trim() === 'Presence')
+        el?.scrollIntoView({ block: 'start' })
+        return !!el
+      })()`)
+      await sleep(400)
+    }
+  },
   { name: 'settings-general', setup: async (p) => { await p.evaluate(`window.__mohoShots.store.setActivePanel('settings')`); await sleep(400) } },
   {
     name: 'settings-tor',

@@ -101,7 +101,14 @@ try {
 
   // With an IRC account connected - which has away and back, and no invisible -
   // the menu offers what IRC can be set to, and the daemon takes it.
-  const irc = await fakeIrc({ people: ['bob'], onJoin: (channel, _nick, send) => send(`:bob!b@h PRIVMSG ${channel} :hello there`) })
+  const aways = []
+  const irc = await fakeIrc({
+    people: ['bob'],
+    onJoin: (channel, _nick, send) => send(`:bob!b@h PRIVMSG ${channel} :hello there`),
+    onLine: (line) => {
+      if (/^AWAY/i.test(line)) aways.push(line)
+    }
+  })
   try {
     await openIrcChannel(page, { port: irc.address().port, nick: 'checker', channels: ['#lobby'], waitFor: 'hello there' })
     await until(main, 'globalThis.__mohoTray.menu().find((i) => i.label === "Status").submenu.length === 3', 'the menu to offer only IRC\'s statuses')
@@ -114,6 +121,41 @@ try {
     await tray('t.click(["Status", "Do not disturb"])')
     await until(page, 'window.moho.rpc("listAccounts", {}).then((a) => a.find((x) => x.id.startsWith("checker")).status === "dnd")', 'IRC to go to Do not disturb')
     check((await statusOf()) === 'dnd', 'Do not disturb from the tray sets it')
+
+    // Going idle when the person steps away, and only when they are online.
+    const shown = () => page.evaluate('window.moho.rpc("listAccounts", {}).then((a) => { const x = a.find((y) => y.id.startsWith("checker")); return { status: x.status, auto: !!x.autoIdle } })')
+    const waitFor = (expr, what) => until(page, `window.moho.rpc("listAccounts", {}).then((a) => { const x = a.find((y) => y.id.startsWith("checker")); return ${expr} })`, what)
+    await tray('t.click(["Status", "Online"])')
+    await waitFor('x.status === "online"', 'online again')
+    await tray('t.idle(true)')
+    await waitFor('x.status === "idle" && x.autoIdle === true', 'an online account to go idle when its person steps away')
+    check(true, 'stepping away turns an online account idle, as automatic')
+    await sleep(500)
+    check(aways.some((l) => /AWAY :?Idle/i.test(l)), 'and IRC is told it is away', JSON.stringify(aways))
+    await tray('t.idle(false)')
+    await waitFor('x.status === "online" && !x.autoIdle', 'it to come back')
+    check(aways.some((l) => /^AWAY\s*$/i.test(l)), 'coming back puts it right without anybody touching it', JSON.stringify(aways))
+
+    // What was chosen is never moved.
+    await tray('t.click(["Status", "Do not disturb"])')
+    await waitFor('x.status === "dnd"', 'Do not disturb')
+    await tray('t.idle(true)')
+    await sleep(800)
+    let now = await shown()
+    check(now.status === 'dnd' && !now.auto, 'Do not disturb is kept when they step away', JSON.stringify(now))
+    await tray('t.idle(false)')
+    await sleep(500)
+    now = await shown()
+    check(now.status === 'dnd', 'and when they come back', JSON.stringify(now))
+    await tray('t.click(["Status", "Idle"])')
+    await waitFor('x.status === "idle" && !x.autoIdle', 'a chosen Idle')
+    await tray('t.idle(true)')
+    await tray('t.idle(false)')
+    await sleep(500)
+    now = await shown()
+    check(now.status === 'idle' && !now.auto, 'a chosen Idle stays until Online is chosen', JSON.stringify(now))
+    await tray('t.click(["Status", "Online"])')
+    await waitFor('x.status === "online"', 'online again')
   } finally {
     irc.close()
   }
@@ -132,6 +174,14 @@ try {
   const stayed = await page.evaluate('window.__mohoShots.state().activeGroupId')
   check(stayed === '~mentions', 'a redrawn tray leaves the chosen server chosen', `${away} -> ${stayed}`)
   await tray('t.update({ unread: 0, dms: 0, mentions: 0 })')
+
+  // Using a window is heard by main - and only that it happened.
+  const heardBefore = await tray('t.lastActivity()')
+  await sleep(6000)
+  await page.call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 300, y: 300, button: 'none', clickCount: 0 })
+  await sleep(500)
+  const heardAfter = await tray('t.lastActivity()')
+  check(heardAfter > heardBefore, 'moving the pointer in a window is heard as being here', `${heardBefore} -> ${heardAfter}`)
 
   // Restart brings back moho and a daemon of its own.
   const before = daemons(scratchDir)
