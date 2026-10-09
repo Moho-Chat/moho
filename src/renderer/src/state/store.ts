@@ -3846,6 +3846,9 @@ export class ChatStore {
    * rail off the pinned and direct message pages onto whichever guild happened
    * to own the conversation, which is the opposite of what those pages are for.
    */
+  /** Conversations whose cards have been read again this run. */
+  private rereadEmbeds = new Set<string>()
+
   async selectBuffer(bufferId: string, followGroup = true): Promise<void> {
     if (!this.state.buffers.some((b) => b.id === bufferId)) return
     // A popped-out window is one conversation, and quietly replacing it would
@@ -3862,6 +3865,12 @@ export class ChatStore {
     // Snapshot the divider before clearing unread, so the "New messages" line
     // lands where the user actually left off rather than at the bottom.
     const buffer = this.state.buffers.find((b) => b.id === bufferId)!
+    // Discord's own notices: cards saved before the card reader knew their
+    // shape stay as saved, so the conversation is read again once a run.
+    if (buffer.readOnly?.includes('official Discord') && !this.rereadEmbeds.has(bufferId)) {
+      this.rereadEmbeds.add(bufferId)
+      void window.moho.rpc('rereadDiscordEmbeds', { bufferId }).catch(() => {})
+    }
     const leaving = this.state.activeBufferId
     const dividerTs = this.state.dividerTsByBuffer[bufferId]
     const patch: Partial<ChatState> = {
