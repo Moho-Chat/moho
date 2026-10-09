@@ -10010,3 +10010,74 @@ html[data-reduce-motion] *::after {
   gap: var(--spacing-xs);
   padding: var(--spacing-m) var(--spacing-m) 0;
 }
+
+
+/* --- the mentions page: filters, days, two lines, put away ------------------- */
+.mentions-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-s) var(--spacing-m);
+}
+
+.mentions-filters-gap {
+  flex: 1;
+}
+
+.mentions-none {
+  padding: var(--spacing-m);
+}
+
+.mention-entry {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  border-left: 3px solid transparent;
+  transition: background var(--motion-fast) var(--ease);
+}
+
+.mention-entry.unread {
+  border-left-color: var(--mention);
+}
+
+.mention-entry:hover {
+  background: var(--surface-hover);
+}
+
+.mention-open {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  text-align: left;
+}
+
+.mention-open[disabled] {
+  opacity: 0.55;
+}
+
+/* Two lines of what was said, then cut off: enough to know whether it is the
+   one, without the page being as long as the messages. */
+.mention-text-two {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.mention-dismiss {
+  position: absolute;
+  top: var(--spacing-xs);
+  right: var(--spacing-s);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+
+.mention-entry:hover .mention-dismiss,
+.mention-dismiss:focus-visible {
+  opacity: 1;
+}

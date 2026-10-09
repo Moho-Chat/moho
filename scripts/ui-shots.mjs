@@ -424,6 +424,29 @@ const SCENES = [
       await sleep(400)
     }
   },
+  {
+    // The mentions page (#314): filters, days, two lines, put away.
+    name: 'mentions-page',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(`(() => {
+        const now = Math.floor(Date.now() / 1000)
+        const m = (id, bufferId, from, body, ts) => ({ id, bufferId, from, senderId: from, body, ts, isAction: false, isHighlight: true, kind: 'chat', isOwn: false })
+        window.__mohoShots.patch({
+          mentions: [
+            m('x1', 'discord:shots|c3', 'Gaunt King', 'perfect - @Salastil you are a lifesaver, and could you also bring the felt kits on Saturday when you come by the fair? we are short on the small ones', now - 600),
+            m('x2', 'discord:shots|c5', 'Clarence', '@Salastil the new screenshots are up, can you check the colours before I post them?', now - 3 * 3600),
+            m('x3', 'discord:shots|c3', 'Wren', 'ping @Salastil', now - 30 * 3600),
+            m('x4', 'discord:shots|c8', 'Fern', '@Salastil did the cats channel get the new pinned rules?', now - 54 * 3600)
+          ],
+          lastReadTs: { 'discord:shots|c3': now - 2 * 3600, 'discord:shots|c5': now - 4 * 3600, 'discord:shots|c8': now }
+        })
+        window.__mohoShots.store.selectGroup && window.__mohoShots.store.selectGroup('~mentions')
+        return true
+      })()`)
+      await sleep(500)
+    }
+  },
   { name: 'mentions-inbox', setup: async (p) => { await p.evaluate(click('button[title="Mentions"]')); await sleep(400) } },
   {
     name: 'modal-export',
