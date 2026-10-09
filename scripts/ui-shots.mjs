@@ -1083,11 +1083,11 @@ const SCENES = [
         const s = shots.state()
         const id = s.activeBufferId
         const now = Math.floor(Date.now() / 1000)
-        const notice = (i, title, description, footer, fields) => ({ id: 'n' + i, bufferId: id, from: 'Discord', senderId: 'Discord', body: '', ts: now - (4 - i) * 600, isAction: false, isHighlight: false, kind: 'chat', isOwn: false,
-          embeds: [{ title, description, footer, fields, color: 14423100 }] })
+        const notice = (i, title, description, danger, cta, daysAgo) => ({ id: 'n' + i, bufferId: id, from: 'Discord', senderId: 'Discord', body: '', ts: now - daysAgo * 86400, isAction: false, isHighlight: false, kind: 'chat', isOwn: false,
+          embeds: [{ kind: 'notice', title, description, color: danger ? 0xda373c : 0x5865f2, icon: danger ? 'warning' : undefined, timestamp: new Date((now - daysAgo * 86400) * 1000).toISOString(), cta }] })
         shots.patch({
           buffers: s.buffers.map((b) => b.id === id ? { ...b, readOnly: 'This chat is reserved for official Discord notifications.' } : b),
-          messagesByBuffer: { ...s.messagesByBuffer, [id]: [notice(1, 'You broke Discord community guidelines', 'We have taken action that affects your account.', 'Learn more at discord.com/safety'), notice(2, 'We removed a violation from your account', 'We reviewed a violation regarding our policy and determined it does not violate our community guidelines.', undefined, [{ name: 'Reference', value: 'Case 4471' }])] }
+          messagesByBuffer: { ...s.messagesByBuffer, [id]: [notice(1, "You broke Discord's community guidelines", "We've taken action that affects your account.", true, { label: 'Learn more', url: 'https://support.discord.com/' }, 7), notice(2, 'We removed a violation from your account', 'We reviewed a violation regarding our policy and determined it does not violate our community guidelines. We have removed this violation from your account.', false, { label: 'Learn more', url: 'https://support.discord.com/' }, 7), notice(3, 'We confirmed your content broke our rules', 'At your request, we reviewed your content and confirmed it violates our community guidelines. This violation still affects your account until it expires.', false, { label: 'See details in Discord' }, 0)] }
         })
         return true
       })()`)

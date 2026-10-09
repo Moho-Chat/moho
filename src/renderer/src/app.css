@@ -10180,3 +10180,38 @@ html[data-reduce-motion] *::after {
   color: var(--surface-text);
   font-weight: var(--weight-semibold);
 }
+
+
+/* The platform's own notices to an account (Discord's safety messages): a
+   heading with a glyph, the words, and a bar along the foot that is the button. */
+.rich-embed.notice {
+  max-width: 520px;
+  overflow: hidden;
+}
+
+.notice-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.rich-embed-cta {
+  display: block;
+  width: calc(100% + var(--spacing-m) * 2);
+  margin: var(--spacing-s) calc(var(--spacing-m) * -1) calc(var(--spacing-s) * -1);
+  padding: var(--spacing-s) var(--spacing-m);
+  background: var(--surface-container-highest);
+  color: var(--link, var(--primary));
+  text-align: left;
+  font-weight: var(--weight-medium);
+}
+
+.rich-embed-cta.danger {
+  background: var(--danger);
+  color: var(--on-accent);
+}
+
+.rich-embed-cta:disabled {
+  cursor: default;
+  color: var(--surface-variant-text);
+}

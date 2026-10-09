@@ -468,6 +468,12 @@ export interface Embed {
   fields?: { name: string; value: string }[]
   /** The small line along the bottom. */
   footer?: string
+  /** A button along the bottom of the card. With no address it is drawn and goes nowhere. */
+  cta?: { label: string; url?: string }
+  /** "notice" for the platform's own notices to an account. */
+  kind?: string
+  /** A glyph for the heading. */
+  icon?: string
 }
 
 /**

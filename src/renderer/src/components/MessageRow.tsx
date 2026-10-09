@@ -43,6 +43,7 @@ import {
 import {
   classes,
   formatFullTime,
+  formatRelativeTime,
   formatRelativeShort,
   formatTime,
   hasDirectMessages,
@@ -1079,12 +1080,23 @@ function MessageRowBody({
           {(message.embeds || []).map((embed, i) => (
             <div
               key={`e${i}`}
-              className="rich-embed selectable"
+              className={classes('rich-embed selectable', embed.kind === 'notice' && 'notice')}
               style={{ borderLeftColor: embedColor(embed.color) || 'var(--outline-strong)' }}
             >
               {embed.provider && <div className="rich-embed-provider small muted">{embed.provider}</div>}
               {embed.author && <div className="rich-embed-author small">{embed.author}</div>}
-              {embed.title &&
+              {embed.title && embed.kind === 'notice' && (
+                <div className="rich-embed-title notice-title">
+                  <Icon name={embed.icon === 'warning' ? 'warning' : 'campaign'} size={16} color={embedColor(embed.color) || undefined} />
+                  {embed.title}
+                </div>
+              )}
+              {embed.kind === 'notice' && embed.timestamp && (
+                <div className="small muted" title={formatFullTime(Math.floor(Date.parse(embed.timestamp) / 1000))}>
+                  {formatRelativeTime(Math.floor(Date.parse(embed.timestamp) / 1000))}
+                </div>
+              )}
+              {embed.title && embed.kind !== 'notice' &&
                 (embed.url ? (
                   <a
                     className="rich-embed-title"
@@ -1120,6 +1132,16 @@ function MessageRowBody({
                 </div>
               )}
               {embed.footer && <div className="rich-embed-footer small muted">{embed.footer}</div>}
+              {embed.cta && (
+                <button
+                  type="button"
+                  className={classes('rich-embed-cta', embed.color === 0xda373c && 'danger')}
+                  disabled={!embed.cta.url}
+                  onClick={() => embed.cta?.url && void window.moho.openExternal(embed.cta.url)}
+                >
+                  {embed.cta.label}
+                </button>
+              )}
               {/* The picture the card is about, where the card brought one
                   of its own. A Matrix link preview is unfurled by the
                   homeserver and arrives as a file the daemon has already
