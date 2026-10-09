@@ -9,6 +9,7 @@ import {
   extractMedia,
   extractQuoteBlocks,
   formatMessage,
+  isForumUpload,
   isGifPage,
   hostnameOf,
   ircFormat,
@@ -284,5 +285,25 @@ describe('links to the pages GIFs are shared from', () => {
   it('still draws a direct file from those hosts, like any other', () => {
     const media = extractMedia('https://media.tenor.com/abc/cat.mp4 https://media.giphy.com/media/Z7wFi5b2VEAr6/giphy.gif', {})
     expect(media.map((m) => m.kind)).toEqual(['video', 'image'])
+  })
+})
+
+describe('the forum\'s own files', () => {
+  const picture = 'https://uploads.kiwifarms.st/data/attachments/9671/9671535-a2e5ae0d55aadd338162770b3fa79f97-alt.avif?hash=-d_TarFo41'
+
+  it('are known by where they are', () => {
+    expect(isForumUpload(picture)).toBe(true)
+    expect(isForumUpload('https://kiwifarms.st/data/video/9667/9667943-abc.mp4?hash=x')).toBe(true)
+    expect(isForumUpload('https://kiwifarms.st/threads/a-thread.123/')).toBe(false)
+    expect(isForumUpload('https://example.com/data/attachments/1/2-a.avif')).toBe(false)
+  })
+
+  it('are not loaded by the window, which would ask for them from the reader\'s own address', () => {
+    expect(extractMedia(`[img]${picture}[/img]`, {})).toEqual([])
+    expect(extractMedia(`look ${picture}`, { contentSniffing: true, onNeedSniff: () => { throw new Error('asked') } })).toEqual([])
+  })
+
+  it('leave other pictures and an AVIF anywhere else as they were', () => {
+    expect(extractMedia('https://i.ibb.co/JRkN8BFv/photo.avif', {}).map((m) => m.kind)).toEqual(['image'])
   })
 })
