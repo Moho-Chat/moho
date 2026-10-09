@@ -32,6 +32,8 @@ export interface BufferMenuInput {
   spaces?: BufferGroup[]
   onTogglePin: () => void
   onToggleMute: () => void
+  /** Takes off a mute the account itself holds, where the service lets it be taken off from here. */
+  onUnmuteAccount?: () => void
   /**
    * Filing the conversation on the account rather than in this window -
    * Matrix's room tags. Absent for every service that has no such idea, which
@@ -86,6 +88,7 @@ export function bufferMenuEntries({
   spaces,
   onTogglePin,
   onToggleMute,
+  onUnmuteAccount,
   onTag,
   onToggleAutojoin,
   onSpace,
@@ -204,16 +207,20 @@ export function bufferMenuEntries({
           }
         ] as MenuEntry[])
       : []),
-    // A mute made on the account itself is not this window's to undo, and an
-    // "Unmute" that quietly did nothing would be worse than no entry at all -
-    // so it says where the mute is, and where to go and take it off.
+    // A mute made on the account itself - Matrix keeps it on the server, as a
+    // push rule - is the account's to take off, and where the service lets it
+    // be taken off from here that is what this does. Where it does not, the
+    // entry says where the mute is rather than offering an "Unmute" that quietly
+    // did nothing.
     buffer.serverMuted
-      ? {
-          label: account ? `Muted on ${serviceLabel(account.service)}` : 'Muted on this account',
-          icon: 'notifications_off',
-          disabled: true,
-          onClick: () => {}
-        }
+      ? onUnmuteAccount
+        ? { label: 'Unmute', icon: 'notifications', onClick: onUnmuteAccount }
+        : {
+            label: account ? `Muted on ${serviceLabel(account.service)}` : 'Muted on this account',
+            icon: 'notifications_off',
+            disabled: true,
+            onClick: () => {}
+          }
       : { label: muted ? 'Unmute' : 'Mute', icon: muted ? 'notifications' : 'notifications_off', onClick: onToggleMute },
     { separator: true },
     // Filing is a drag onto the heading now, not an entry per heading. That

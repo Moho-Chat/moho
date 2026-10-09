@@ -313,6 +313,14 @@ export function BufferList(): JSX.Element {
             .catch((e: Error) => store.toast('error', e.message))
         }
       }}
+      onUnmuteAccount={
+        accounts.find((a) => a.id === b.accountId)?.service === 'matrix'
+          ? () =>
+              void window.moho
+                .rpc('setMatrixRoomMuted', { bufferId: b.id, muted: false })
+                .catch((e: Error) => store.toast('error', e.message))
+          : undefined
+      }
       onToggleAutojoin={
         b.kind === 'channel' && accounts.find((a) => a.id === b.accountId)?.service === 'irc'
           ? () => store.toggleAutojoin(b.accountId, bufferDisplayName(b.name))
@@ -829,6 +837,8 @@ interface BufferRowProps {
   onSelect: () => void
   onTogglePin: () => void
   onToggleMute: () => void
+  /** Matrix rooms muted on the account: take that mute off. */
+  onUnmuteAccount?: () => void
   /** IRC channels only: rejoin this on every connect, or stop doing so. */
   onToggleAutojoin?: () => void
   /** Kick channels only: watch the stream where streams are watched. */
@@ -878,6 +888,7 @@ function BufferRow({
   onSelect,
   onTogglePin,
   onToggleMute,
+  onUnmuteAccount,
   onToggleAutojoin,
   autojoins,
   onOpenInBrowser,
@@ -982,6 +993,7 @@ function BufferRow({
     spaces,
     onTogglePin,
     onToggleMute,
+    onUnmuteAccount,
     onToggleAutojoin,
     onSpace,
     onWatch,

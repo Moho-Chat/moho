@@ -4,6 +4,7 @@ import { Icon } from './Icon'
 import { Avatar } from './Avatar'
 import { useStore, useChat } from '../state/hooks'
 import { presenceLabel } from '../lib/presence'
+import { statusName } from '../lib/status'
 import { serviceLabel } from '../lib/util'
 import type { Account } from '../../../shared/wire'
 
@@ -34,8 +35,9 @@ export function effectiveStatus(account: Account): Status | 'connecting' {
   return (account.status as Status) || 'online'
 }
 
-function label(status: Status | 'connecting'): string {
-  return status === 'connecting' ? 'Connecting…' : presenceLabel(status)
+function label(status: Status | 'connecting', service: string): string {
+  if (status === 'connecting') return 'Connecting…'
+  return status === 'invisible' ? statusName(service, 'invisible') : presenceLabel(status)
 }
 
 export function UserFooter({ account }: { account?: Account }): JSX.Element {
@@ -71,12 +73,12 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
           aria-haspopup="menu"
           aria-expanded={open}
           onClick={() => setOpen(!open)}
-          title={detail ? `${name} — ${label(status)}\n${detail}` : `${name} — ${label(status)}`}
+          title={detail ? `${name} — ${label(status, account.service)}\n${detail}` : `${name} — ${label(status, account.service)}`}
         >
           <Avatar name={name} url={account.avatarUrl} size={28} status={status} accountId={account.id} />
           <span className="user-identity">
             <span className="ellipsis user-name">{name}</span>
-            <span className="ellipsis small muted">{watching ? 'Watching, signed out' : label(status)}</span>
+            <span className="ellipsis small muted">{watching ? 'Watching, signed out' : label(status, account.service)}</span>
           </span>
         </button>
 

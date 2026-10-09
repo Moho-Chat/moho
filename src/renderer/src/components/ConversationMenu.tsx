@@ -75,6 +75,13 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
             .catch((e: Error) => store.toast('error', e.message))
         }
       },
+      onUnmuteAccount:
+        account?.service === 'matrix'
+          ? () =>
+              void window.moho
+                .rpc('setMatrixRoomMuted', { bufferId: buffer.id, muted: false })
+                .catch((e: Error) => store.toast('error', e.message))
+          : undefined,
       onToggleAutojoin:
         buffer.kind === 'channel' && account?.service === 'irc'
           ? () => store.toggleAutojoin(buffer.accountId, name)

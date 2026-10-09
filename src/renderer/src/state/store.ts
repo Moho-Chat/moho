@@ -22,6 +22,7 @@ import type {
   VoiceSession
 } from '../../../shared/wire'
 import { addToast, type ToastAction, type ToastItem } from '../lib/toasts'
+import { ALL_STATUSES, statusesFor, supportsStatus } from '../lib/status'
 import { buildSmilieIndex, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
 import { runExport } from '../lib/exporter'
@@ -1179,6 +1180,31 @@ export class ChatStore {
   private set(patch: Partial<ChatState>): void {
     this.state = { ...this.state, ...patch }
     for (const l of this.listeners) l()
+    if (patch.accounts && !this.state.pinnedBufferId) this.reportTrayStatus()
+  }
+
+  /**
+   * Tells main what status each connected account is at, and which statuses
+   * any of them can be set to. The tray menu offers those and checks the one of
+   * the account with the most to choose from - Discord's rather than a
+   * service that has no idle to be at - and main stays quiet, with no popup and
+   * no sound, for an account that is on Do not disturb.
+   */
+  /** What main was last told, so an account list that changed in nothing that matters is not told again. */
+  private lastTrayReport = ''
+
+  private reportTrayStatus(): void {
+    const statuses: Record<string, string> = {}
+    const connected = this.state.accounts.filter((a) => a.state === 'connected')
+    for (const a of connected) if (a.status) statuses[a.id] = a.status
+    const offered = ALL_STATUSES.filter((s) => connected.some((a) => supportsStatus(a.service, s)))
+    const widest = [...connected].sort((a, b) => statusesFor(b.service).length - statusesFor(a.service).length)[0]
+    // Invisible is what Discord calls it; where only Matrix has it, it is offline.
+    const invisibleName = connected.some((a) => supportsStatus(a.service, 'invisible') && a.service !== 'matrix') ? 'Invisible' : 'Offline'
+    const report = JSON.stringify([statuses, offered, widest?.status ?? null, invisibleName])
+    if (report === this.lastTrayReport) return
+    this.lastTrayReport = report
+    window.moho.setAccountStatuses(statuses, offered, widest?.status ?? null, invisibleName)
   }
 
   // --- lifecycle ------------------------------------------------------
@@ -1244,8 +1270,14 @@ export class ChatStore {
     window.moho.onScreenPick(async (sources) => (await this.askForScreenSource(sources))?.id ?? null)
 
     window.moho.onLinkChange((up) => {
+      // Only the link coming up is news. Main says it again whenever the tray
+      // is redrawn, and taking each of those for a reconnection refreshed
+      // everything and put the pane back on the open conversation's server -
+      // which is how a Discord account retrying every few seconds kept pulling
+      // somebody off the IRC network they had just chosen.
+      const wasUp = this.state.linkUp
       this.set({ linkUp: up })
-      if (up) {
+      if (up && !wasUp) {
         void this.refreshAll()
         void this.refreshNetSettings()
       }
@@ -1256,6 +1288,11 @@ export class ChatStore {
     // window gets them instead; main routes them there.
     if (!this.state.pinnedBufferId) {
       window.moho.onActivateBuffer((id) => void this.selectBuffer(id))
+      // The tray's menu: Settings, and a status for every account.
+      window.moho.onTrayCommand((command, arg) => {
+        if (command === 'settings') this.setActivePanel('settings')
+        else if (arg === 'online' || arg === 'idle' || arg === 'dnd' || arg === 'invisible') void this.setStatusEverywhere(arg)
+      })
       window.moho.onDeepLink((url) => this.followDeepLink(url))
     }
 
@@ -1344,7 +1381,10 @@ export class ChatStore {
     ])
     // Not awaited: GitHub being slow is no reason to hold the window up.
     void this.checkForRelease()
-    if (this.state.activeBufferId) await this.selectBuffer(this.state.activeBufferId)
+    // The open conversation is read again, and subscribed to again, where it is.
+    // Not followed to its server: a refresh is not somebody choosing it, and
+    // the rail may have been moved to another since.
+    if (this.state.activeBufferId) await this.selectBuffer(this.state.activeBufferId, false)
   }
 
   /**
@@ -2119,7 +2159,9 @@ export class ChatStore {
    * left alone - choosing a status is not a request to connect it.
    */
   async setStatusEverywhere(status: 'online' | 'idle' | 'dnd' | 'invisible', statusText?: string): Promise<void> {
-    const connected = this.state.accounts.filter((a) => a.state === 'connected')
+    // Only the accounts of a service that has this status: an idle for the
+    // others is not asked of them, and they stay as they were.
+    const connected = this.state.accounts.filter((a) => a.state === 'connected' && supportsStatus(a.service, status))
     await Promise.all(connected.map((a) => this.setAccountStatus(a.id, status, a.service === 'discord' || a.service === 'matrix' ? statusText : undefined)))
   }
 

@@ -207,7 +207,7 @@ function moveAside(pid) {
  * The built app, against a scratch home, with a debugging port. Returns the
  * page and a `stop()` that takes everything down again.
  */
-export async function launchApp({ env = {} } = {}) {
+export async function launchApp({ env = {}, args = [] } = {}) {
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'moho-ui-'))
   const run = path.join(scratch, 'run')
   fs.mkdirSync(run, { mode: 0o700 })
@@ -216,7 +216,7 @@ export async function launchApp({ env = {} } = {}) {
   // A CI runner's kernel refuses Chromium's sandbox (Ubuntu 24.04 restricts
   // the unprivileged namespaces it needs); there it runs without, as an
   // ordinary Chromium in a container does.
-  const flags = [`--remote-debugging-port=${port}`, ...(process.env.CI ? ['--no-sandbox'] : [])]
+  const flags = [`--remote-debugging-port=${port}`, ...(process.env.CI ? ['--no-sandbox'] : []), ...args]
   const app = spawn(electronPath, [root, ...flags], {
     cwd: root,
     detached: true,

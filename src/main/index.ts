@@ -11,18 +11,21 @@ import {
   globalShortcut,
   ipcMain,
   nativeImage,
+  nativeTheme,
   net,
   session,
   Menu,
   screen,
   shell,
-  Tray
+  Tray,
+  type MenuItemConstructorOptions
 } from 'electron'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { defaultSocketPath, NobilisClient } from './nobilis-client'
 import { NobilisProcess } from './nobilis-process'
 import { Prefs } from './prefs'
 import { Notifier } from './notifications'
+import { NOTHING_WAITING, trayIconFile, trayMenu, trayTooltip, type TrayState, type TrayStatus } from './tray'
 import { browserLogin, LOGIN_FLOWS } from './browser-login'
 import { EDIT_ACTIONS, IPC, POPOUT_FLAG, UI_SHOTS_FLAG, type EditAction, type EditMenuRequest, type PopoutState } from '../shared/ipc'
 import { clearnetLinks } from '../shared/clearnet'
@@ -190,6 +193,51 @@ function sniffImage(head: Buffer): string | null {
 }
 
 /** Every window with a renderer in it, main and popped-out conversations alike. */
+/**
+ * Sets a preference and tells whoever holds a copy of it.
+ *
+ * `except` is the window that made the change, which already knows and has
+ * drawn it. The tray's own entries come through here too, so a setting flipped
+ * from the tray moves its switch in Settings.
+ */
+function applyPref(key: string, value: unknown, except?: Electron.WebContents): void {
+  prefs.set(key, value)
+  // The badge and the flash are decided from these as they stand.
+  if (key === 'notifications.badge' || key === 'notifications.flash') updateTray(lastTray)
+  // Every window keeps its own cache of these, so a setting changed in one
+  // is stale in the others until they are told. That is not cosmetic once
+  // there are several windows: muting a conversation, or switching the log
+  // to compact, would apply to whichever window happened to be asked.
+  for (const w of liveWindows()) {
+    if (w.webContents !== except) w.webContents.send(IPC.prefsChanged, key, value)
+  }
+  // Pins and mutes feed the tray/notification rules, which live here.
+  if (key === 'pinnedBuffers' || key === 'mutedBuffers') notifier.publish()
+  if (key === 'hotkey.toggle') applyHotkey(String(value))
+}
+
+/**
+ * Brings up a conversation: a click on its notification, or on the tray's
+ * "open" entry.
+ *
+ * If it has a window of its own, that window is what the click asked for.
+ * Raising the main one and switching it would move somebody away from whatever
+ * they were reading in order to show them a conversation that was already open
+ * on their screen.
+ */
+function openConversation(bufferId: string): void {
+  const popout = popouts.get(bufferId)
+  if (popout && !popout.isDestroyed()) {
+    if (popout.isMinimized()) popout.restore()
+    popout.show()
+    popout.focus()
+    return
+  }
+  mainWindow?.show()
+  mainWindow?.focus()
+  mainWindow?.webContents.send(IPC.activateBuffer, bufferId)
+}
+
 function liveWindows(): BrowserWindow[] {
   const all = mainWindow ? [mainWindow, ...popouts.values()] : [...popouts.values()]
   return all.filter((w) => !w.isDestroyed())
@@ -353,6 +401,9 @@ function createWindow(): void {
     pendingDeepLink = null
     mainWindow?.webContents.send(IPC.deepLink, url)
   })
+  // The tray's first action is to show or hide this window, and says which.
+  mainWindow.on('show', refreshTrayMenu)
+  mainWindow.on('hide', refreshTrayMenu)
   mainWindow.on('maximize', () => mainWindow?.webContents.send(IPC.maximizeChanged, true))
   mainWindow.on('unmaximize', () => mainWindow?.webContents.send(IPC.maximizeChanged, false))
   mainWindow.on('closed', () => {
@@ -562,61 +613,112 @@ function toggleWindow(): void {
   }
 }
 
-function trayIcon(hasAlert: boolean): Electron.NativeImage {
-  const file = resourcePath('icons', hasAlert ? 'tray-alert.png' : 'tray.png')
-  const img = nativeImage.createFromPath(file)
+function trayIcon(unread: number): Electron.NativeImage {
+  lastTrayIcon = trayIconFile(nativeTheme.shouldUseDarkColors, unread)
+  const img = nativeImage.createFromPath(resourcePath('icons', lastTrayIcon))
   // A missing icon file would otherwise produce an invisible tray entry the
   // user can never click; fall back to the app icon so the entry still exists.
   return img.isEmpty() ? nativeImage.createFromPath(resourcePath('icons', 'moho.png')) : img
 }
 
-function createTray(): void {
-  tray = new Tray(trayIcon(false))
-  tray.setToolTip('moho')
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: 'Show/hide', click: toggleWindow },
-      { label: 'Restart daemon', click: () => nobilis.restart() },
-      {
-        label: 'Stop daemon',
-        // Deliberately separate from Quit: stopping the daemon disconnects
-        // every account, which is worth asking for explicitly rather than
-        // making it a side effect of closing a window.
-        click: () => {
-          void stopDaemon()
-        }
+/** What the window last said each connected account's status is. */
+let accountStatus: Record<string, string> = {}
+/** The status the menu shows as checked, and the ones it offers: what the connected accounts can be set to. */
+let trayStatus: TrayStatus | null = null
+let trayOffered: TrayStatus[] = []
+let trayInvisibleName = 'Invisible'
+const isTrayStatus = (v: unknown): v is TrayStatus => v === 'online' || v === 'idle' || v === 'dnd' || v === 'invisible'
+
+/**
+ * Asks the window to do something, showing it first: the tray's entries that
+ * are about moho itself - settings, and a status set across every account -
+ * are the window's to carry out, since it is what holds the accounts.
+ */
+function tellWindow(command: 'settings' | 'status', arg?: string): void {
+  if (!mainWindow) createWindow()
+  if (command === 'settings') {
+    mainWindow?.show()
+    mainWindow?.focus()
+  }
+  mainWindow?.webContents.send(IPC.trayCommand, command, arg)
+}
+
+/**
+ * Starts moho again, daemon and all.
+ *
+ * Quitting already takes the daemon down cleanly - QUIT to every network, then
+ * gone - and the new process starts its own, so restarting is quit-and-relaunch.
+ * An AppImage has to be relaunched by the path it was started from: its
+ * executable is a temporary mount that disappears when it exits.
+ */
+function restartMoho(): void {
+  const appImage = process.env.APPIMAGE
+  app.relaunch(appImage ? { execPath: appImage, args: process.argv.slice(1) } : undefined)
+  app.quit()
+}
+
+/** What the tray last offered and showed, kept for the UI harness to read. */
+let lastTrayMenu: MenuItemConstructorOptions[] = []
+let lastTrayIcon = ''
+let lastTrayTooltip = 'moho'
+
+function refreshTrayMenu(): void {
+  if (!tray) return
+  lastTrayMenu = trayMenu(
+    {
+      state: lastTray,
+      windowVisible: !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible(),
+      status: trayStatus,
+      offered: trayOffered,
+      invisibleName: trayInvisibleName
+    },
+    {
+      toggleWindow,
+      openLatest: () => {
+        const id = notifier.latestUnread()
+        if (id) openConversation(id)
       },
-      { type: 'separator' },
-      {
-        label: 'Quit',
-        click: () => {
-          app.quit()
-        }
-      }
-    ])
+      openSettings: () => tellWindow('settings'),
+      setStatus: (status) => {
+        trayStatus = status
+        tellWindow('status', status)
+      },
+      restart: restartMoho,
+      quit: () => app.quit()
+    }
   )
+  tray.setContextMenu(Menu.buildFromTemplate(lastTrayMenu))
+}
+
+function createTray(): void {
+  tray = new Tray(trayIcon(0))
+  tray.setToolTip('moho')
+  refreshTrayMenu()
   tray.on('click', toggleWindow)
+  // The icon is drawn for the panel it sits on, so it is drawn again when the
+  // system changes colour scheme.
+  nativeTheme.on('updated', () => updateTray(lastTray))
 }
 
 /** What the notifier last said, kept so a change of setting can redraw without waiting for the next message. */
-let lastUnread = 0
-let lastAlert = false
+let lastTray: TrayState = NOTHING_WAITING
 
-function updateTray(unreadCount: number, hasAlert: boolean): void {
-  lastUnread = unreadCount
-  lastAlert = hasAlert
-  // The unread badge: the tray's alert dot and count, and the launcher's
-  // count where the desktop has one. Off, the tray is just the tray.
+function updateTray(state: TrayState): void {
+  lastTray = state
+  // The unread badge: the tray's count and the launcher's count where the
+  // desktop has one. Off, the tray is just the tray.
   const badge = prefs.get<boolean>('notifications.badge', true)
-  app.setBadgeCount(badge ? unreadCount : 0)
+  app.setBadgeCount(badge ? state.unread : 0)
   // The taskbar flash: asking for attention while the window is not in front.
   const flash = prefs.get<boolean>('notifications.flash', true)
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.flashFrame(flash && hasAlert && !mainWindow.isFocused())
+    mainWindow.flashFrame(flash && state.unread > 0 && trayStatus !== 'dnd' && !mainWindow.isFocused())
   }
+  refreshTrayMenu()
   if (!tray) return
-  tray.setImage(trayIcon(badge && hasAlert))
-  tray.setToolTip(badge && unreadCount > 0 ? `moho - ${unreadCount} unread` : 'moho')
+  tray.setImage(trayIcon(badge ? state.unread : 0))
+  lastTrayTooltip = trayTooltip(state, badge)
+  tray.setToolTip(lastTrayTooltip)
   send(IPC.link, client.linkUp)
 }
 
@@ -667,21 +769,17 @@ function wireIpc(): void {
   })
 
   ipcMain.handle(IPC.prefsGetAll, () => prefs.all())
-  ipcMain.handle(IPC.prefsSet, (e, key: string, value: unknown) => {
-    prefs.set(key, value)
-    // The badge and the flash are decided from these as they stand.
-    if (key === 'notifications.badge' || key === 'notifications.flash') updateTray(lastUnread, lastAlert)
-    // Every window keeps its own cache of these, so a setting changed in one
-    // is stale in the others until they are told. That is not cosmetic once
-    // there are several windows: muting a conversation, or switching the log
-    // to compact, would apply to whichever window happened to be asked.
-    // Not echoed to the window that set it - it already knows, and has drawn.
-    for (const w of liveWindows()) {
-      if (w.webContents !== e.sender) w.webContents.send(IPC.prefsChanged, key, value)
-    }
-    // Pins and mutes feed the tray/notification rules, which live here.
-    if (key === 'pinnedBuffers' || key === 'mutedBuffers') notifier.publish()
-    if (key === 'hotkey.toggle') applyHotkey(String(value))
+  ipcMain.handle(IPC.prefsSet, (e, key: string, value: unknown) => applyPref(key, value, e.sender))
+
+  // The window says what status its accounts are at, for the tray's menu to check.
+  ipcMain.on(IPC.trayStatus, (_e, statuses: Record<string, string>, offered: string[], shown: string | null, invisibleName: string) => {
+    accountStatus = statuses && typeof statuses === 'object' ? statuses : {}
+    trayOffered = Array.isArray(offered) ? offered.filter(isTrayStatus) : []
+    trayStatus = isTrayStatus(shown) ? shown : null
+    trayInvisibleName = invisibleName === 'Offline' ? 'Offline' : 'Invisible'
+    refreshTrayMenu()
+    // Do not disturb is asking for quiet, including from the taskbar.
+    updateTray(lastTray)
   })
 
   ipcMain.handle(IPC.markBufferRead, (_e, bufferId: string) => notifier.clear(bufferId))
@@ -1140,24 +1238,10 @@ app.whenReady().then(() => {
   notifier = new Notifier(
     prefs,
     updateTray,
-    (bufferId) => {
-      // If this conversation has a window of its own, that window is what the
-      // click asked for. Raising the main one and switching it would move
-      // somebody away from whatever they were reading in order to show them a
-      // conversation that was already open on their screen.
-      const popout = popouts.get(bufferId)
-      if (popout && !popout.isDestroyed()) {
-        if (popout.isMinimized()) popout.restore()
-        popout.show()
-        popout.focus()
-        return
-      }
-      mainWindow?.show()
-      mainWindow?.focus()
-      mainWindow?.webContents.send(IPC.activateBuffer, bufferId)
-    },
+    openConversation,
     () => mainWindow?.webContents ?? null,
-    (bufferId) => popoutState().watched.includes(bufferId)
+    (bufferId) => popoutState().watched.includes(bufferId),
+    (accountId) => accountStatus[accountId] === 'dnd'
   )
 
   client.on('link', (up) => {
@@ -1204,6 +1288,25 @@ app.whenReady().then(() => {
   createWindow()
   createTray()
   applyHotkey(prefs.get<string>('hotkey.toggle'))
+  // For the UI harness, which has no way to look inside a tray: what it shows
+  // and offers, and the entries themselves to be clicked. Only when it asks.
+  if (process.env.MOHO_UI_SHOTS === '1') {
+    ;(globalThis as Record<string, unknown>).__mohoTray = {
+      update: updateTray,
+      icon: () => lastTrayIcon,
+      tooltip: () => lastTrayTooltip,
+      menu: () => lastTrayMenu,
+      click: (path: string[]) => {
+        let items: MenuItemConstructorOptions[] = lastTrayMenu
+        let item: MenuItemConstructorOptions | undefined
+        for (const label of path) {
+          item = items.find((i) => i.label === label || (i.label ?? '').startsWith(label))
+          items = (item?.submenu as MenuItemConstructorOptions[]) ?? []
+        }
+        item?.click?.({ checked: !item.checked } as never, undefined, {} as never)
+      }
+    }
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

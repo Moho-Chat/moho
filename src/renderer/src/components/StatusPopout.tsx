@@ -6,6 +6,7 @@ import { useEscapeLayer } from '../lib/layers'
 import { presenceClass } from '../lib/presence'
 import { classes } from '../lib/util'
 import type { Account } from '../../../shared/wire'
+import { statusName, supportsStatus } from '../lib/status'
 import type { Status } from './UserFooter'
 
 /** The statuses that can be chosen, with the dot each is drawn with. Signing out is separate, below them. */
@@ -89,7 +90,7 @@ export function StatusPopout({
       aria-label="Set your status"
       style={pos ? { left: pos.left, bottom: pos.bottom } : { visibility: 'hidden' }}
     >
-      {CHOICES.map((c) => (
+      {CHOICES.filter((c) => supportsStatus(account.service, c.id)).map((c) => (
         <button
           key={c.id}
           type="button"
@@ -100,8 +101,8 @@ export function StatusPopout({
         >
           <span className={classes('status-dot', presenceClass(c.dot))} />
           <span className="status-choice-text">
-            <span>{c.label}</span>
-            {c.hint && <span className="small muted">{c.hint}</span>}
+            <span>{statusName(account.service, c.id)}</span>
+            {c.hint && <span className="small muted">{account.service === 'matrix' ? 'Your presence is set to offline' : c.hint}</span>}
           </span>
           {c.id === status && <Icon name="check" size={16} className="status-check" />}
         </button>
