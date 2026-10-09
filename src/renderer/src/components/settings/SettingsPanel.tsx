@@ -116,6 +116,7 @@ const CATEGORIES: { id: string; label: string; group: string; icon?: string; ser
   // The app itself.
   { id: 'general', label: 'General', group: 'App' },
   { id: 'appearance', label: 'Appearance', group: 'App' },
+  { id: 'notifications', label: 'Notifications', group: 'App' },
   // One page per network, each only while there is an account on it.
   { id: 'irc', label: 'IRC', group: 'Networks', service: 'irc' },
   { id: 'sneedchat', label: 'Sneedchat', group: 'Networks', service: 'sneedchat' },
@@ -220,6 +221,8 @@ function Page({ id }: { id: string }): JSX.Element | null {
       return <GeneralSettings />
     case 'appearance':
       return <AppearanceSettings />
+    case 'notifications':
+      return <NotificationSettings />
     case 'irc':
       return <IrcSettings />
     case 'sneedchat':
@@ -575,6 +578,50 @@ function StorageSettings(): JSX.Element {
         </div>
       ))}
     </SettingsSection>
+  )
+}
+
+/**
+ * What the app does to get your attention. Which conversations may is decided
+ * where it always was - muting a channel or a server from its menu - and these
+ * are about how, for the ones that may.
+ */
+function NotificationSettings(): JSX.Element {
+  return (
+    <>
+      <SettingsSection
+        title="Alerts"
+        description="For a direct message, or a message that mentions you or matches one of your highlight words, in a conversation you have not muted."
+      >
+        <ToggleSetting
+          settingKey="notifications.desktop"
+          label="Desktop notifications"
+          description="A notification from your desktop, with the sender's picture. Clicking it opens the conversation."
+          defaultValue={true}
+        />
+        <ToggleSetting
+          settingKey="notifications.sound"
+          label="Play a sound"
+          description="Use the system's own notification sound. Off, they arrive silently."
+          defaultValue={true}
+        />
+      </SettingsSection>
+
+      <SettingsSection title="When moho is not in front">
+        <ToggleSetting
+          settingKey="notifications.flash"
+          label="Flash the taskbar"
+          description="Ask for attention on the taskbar or dock until you come back to the window."
+          defaultValue={true}
+        />
+        <ToggleSetting
+          settingKey="notifications.badge"
+          label="Show an unread badge"
+          description="A dot and a count on the tray icon, and on the launcher where your desktop has one. Off, the tray is just the tray."
+          defaultValue={true}
+        />
+      </SettingsSection>
+    </>
   )
 }
 

@@ -555,10 +555,25 @@ function createTray(): void {
   tray.on('click', toggleWindow)
 }
 
+/** What the notifier last said, kept so a change of setting can redraw without waiting for the next message. */
+let lastUnread = 0
+let lastAlert = false
+
 function updateTray(unreadCount: number, hasAlert: boolean): void {
+  lastUnread = unreadCount
+  lastAlert = hasAlert
+  // The unread badge: the tray's alert dot and count, and the launcher's
+  // count where the desktop has one. Off, the tray is just the tray.
+  const badge = prefs.get<boolean>('notifications.badge', true)
+  app.setBadgeCount(badge ? unreadCount : 0)
+  // The taskbar flash: asking for attention while the window is not in front.
+  const flash = prefs.get<boolean>('notifications.flash', true)
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.flashFrame(flash && hasAlert && !mainWindow.isFocused())
+  }
   if (!tray) return
-  tray.setImage(trayIcon(hasAlert))
-  tray.setToolTip(unreadCount > 0 ? `moho - ${unreadCount} unread` : 'moho')
+  tray.setImage(trayIcon(badge && hasAlert))
+  tray.setToolTip(badge && unreadCount > 0 ? `moho - ${unreadCount} unread` : 'moho')
   send(IPC.link, client.linkUp)
 }
 
@@ -605,6 +620,8 @@ function wireIpc(): void {
   ipcMain.handle(IPC.prefsGetAll, () => prefs.all())
   ipcMain.handle(IPC.prefsSet, (e, key: string, value: unknown) => {
     prefs.set(key, value)
+    // The badge and the flash are decided from these as they stand.
+    if (key === 'notifications.badge' || key === 'notifications.flash') updateTray(lastUnread, lastAlert)
     // Every window keeps its own cache of these, so a setting changed in one
     // is stale in the others until they are told. That is not cosmetic once
     // there are several windows: muting a conversation, or switching the log

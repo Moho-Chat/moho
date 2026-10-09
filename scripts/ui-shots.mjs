@@ -521,6 +521,16 @@ const SCENES = [
       await sleep(900)
     }
   },
+  {
+    name: 'settings-notifications',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await p.evaluate(`window.__mohoShots.store.setActivePanel('settings')`)
+      await sleep(300)
+      await p.evaluate(click('.settings-rail-item', 'Notifications'))
+      await sleep(500)
+    }
+  },
   { name: 'settings-accounts', setup: async (p) => { await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`); await sleep(400) } },
   { name: 'discord-guild', setup: discord(false) },
   {
