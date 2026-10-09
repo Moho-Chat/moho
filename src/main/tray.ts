@@ -53,7 +53,6 @@ export interface TrayActions {
   openLatest: () => void
   openSettings: () => void
   setStatus: (status: TrayStatus) => void
-  setNotifications: (on: boolean) => void
   restart: () => void
   quit: () => void
 }
@@ -63,7 +62,6 @@ export interface TrayModel {
   windowVisible: boolean
   /** The status the accounts are at, where the window has said. */
   status: TrayStatus | null
-  notifications: boolean
 }
 
 const STATUSES: { id: TrayStatus; label: string }[] = [
@@ -75,7 +73,8 @@ const STATUSES: { id: TrayStatus; label: string }[] = [
 
 /**
  * The right-click menu: what is new, how to get to moho, how to say what you
- * are doing, and how to leave. Daemon plumbing - restart it, stop it - is
+ * are doing - which includes Do not disturb, the one switch for silencing it -
+ * and how to leave. Daemon plumbing - restart it, stop it - is
  * deliberately not here; it is a thing for Settings, and "restart moho"
  * covers what somebody reaching for it from a tray actually wants.
  */
@@ -95,12 +94,6 @@ export function trayMenu(model: TrayModel, act: TrayActions): MenuItemConstructo
         checked: model.status === s.id,
         click: () => act.setStatus(s.id)
       }))
-    },
-    {
-      label: 'Desktop notifications',
-      type: 'checkbox',
-      checked: model.notifications,
-      click: (item) => act.setNotifications(item.checked)
     },
     { label: 'Settings', click: act.openSettings },
     { type: 'separator' },

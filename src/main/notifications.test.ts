@@ -23,10 +23,10 @@ import type { TrayState } from './tray'
 
 const payload = { accountId: 'a', bufferId: 'b', title: 'alice', body: 'hi' }
 
-function notifier(settings: Record<string, unknown>): { n: Notifier; alerts: TrayState[] } {
+function notifier(settings: Record<string, unknown>, dnd: string[] = []): { n: Notifier; alerts: TrayState[] } {
   const alerts: TrayState[] = []
   const prefs = { get: <T>(key: string, fallback: T): T => (key in settings ? (settings[key] as T) : fallback) }
-  const n = new Notifier(prefs as never, (state) => alerts.push(state), () => {})
+  const n = new Notifier(prefs as never, (state) => alerts.push(state), () => {}, () => null, () => false, (account) => dnd.includes(account))
   return { n, alerts }
 }
 
@@ -76,5 +76,24 @@ describe('what the tray is told is waiting', () => {
     expect(n.latestUnread()).toBe('first')
     n.clearAll()
     expect(n.latestUnread()).toBeNull()
+  })
+})
+
+describe('Do not disturb', () => {
+  beforeEach(() => {
+    shown.length = 0
+  })
+
+  it('shows no notification for an account that is set to it, but still counts the conversation', async () => {
+    const { n, alerts } = notifier({}, ['a'])
+    await n.handle(payload)
+    expect(shown).toHaveLength(0)
+    expect(alerts.at(-1)?.unread).toBe(1)
+  })
+
+  it('leaves the other accounts alone', async () => {
+    const { n } = notifier({}, ['somebody-else'])
+    await n.handle(payload)
+    expect(shown).toHaveLength(1)
   })
 })

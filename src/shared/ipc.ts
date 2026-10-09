@@ -55,7 +55,7 @@ export const IPC = {
   popoutsChanged: 'moho:popout:changed',
   /** main -> window: something from the tray menu that the window carries out. */
   trayCommand: 'moho:tray:command',
-  /** window -> main: the status the accounts are at, for the tray menu to check. */
+  /** window -> main: the status each connected account is at. */
   trayStatus: 'moho:tray:status'
 } as const
 

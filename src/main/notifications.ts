@@ -61,7 +61,16 @@ export class Notifier {
      * them what they can already see, and a tray badge counting it as unread
      * is simply wrong.
      */
-    private isWatched: (bufferId: string) => boolean = () => false
+    private isWatched: (bufferId: string) => boolean = () => false,
+    /**
+     * Whether this account has been set to Do not disturb.
+     *
+     * That is the one switch for silence: an account that says so gets no popup
+     * and no sound, however its conversations behave. What it is sent still
+     * counts as unread - the tray and the badge keep their numbers, as Discord's
+     * own do - and is there to be read when it is looked at.
+     */
+    private isDnd: (accountId: string) => boolean = () => false
   ) {}
 
   trackBuffer(buffer: ChatBuffer, removed: boolean): void {
@@ -103,6 +112,8 @@ export class Notifier {
       this.unread.add(payload.bufferId)
       this.publish()
     }
+
+    if (this.isDnd(payload.accountId)) return
 
     // Switched off in Settings: the conversation still counts as unread above,
     // it just does not pop up.

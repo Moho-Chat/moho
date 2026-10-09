@@ -10,6 +10,7 @@
  *
  *   npm run test:tray        (builds first; needs the daemon built too)
  */
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import { cdp, freePort, launchApp, sleep, until } from './lib/harness.mjs'
 
@@ -95,11 +96,8 @@ try {
   await until(page, 'window.__trayGot.length', 'the status to reach the window')
   check(JSON.stringify(await page.evaluate('window.__trayGot[0]')) === '["status","dnd"]', 'a status is handed to the window')
 
-  // Desktop notifications is a real setting, shared with Settings.
-  await tray('t.click(["Desktop notifications"])')
-  await until(page, 'window.moho.prefs.getAll().then((p) => p["notifications.desktop"] === false)', 'the setting to change')
-  check(true, 'Desktop notifications toggles the setting')
-  check((await tray('t.menu().find((i) => i.label === "Desktop notifications").checked')) === false, 'and the menu shows it off')
+  // There is no notifications switch of its own: Do not disturb is that.
+  check(!labels.some((l) => /notification/i.test(l)), 'the menu has no notifications switch of its own', labels.join(' | '))
 
   // Restart brings back moho and a daemon of its own.
   const before = daemons(scratchDir)
@@ -136,13 +134,18 @@ try {
   console.log('FAIL', e.message)
   failures++
 } finally {
-  await stop()
   // The relaunched copy is not the one the harness started, so it is not in the
-  // group stop() ended. It is found by the home it was given, which everything
-  // it starts - its daemon, and the helpers Chromium runs that name no port -
-  // carries in its environment; twice, since it may still be starting.
+  // group stop() ends. It is found by the debugging port it was told to use -
+  // it shows no environment to be found by - and what it started goes when it
+  // does. Ended first, and twice since it may still be starting, because it
+  // writes into the directory stop() is about to remove.
   for (let i = 0; i < 2; i++) {
     await sleep(1500)
+    try {
+      execFileSync('pkill', ['-9', '-f', `remote-debugging-port=${port}`])
+    } catch {
+      /* none left */
+    }
     for (const entry of fs.readdirSync('/proc')) {
       if (!/^\d+$/.test(entry) || Number(entry) === process.pid || !scratchDir) continue
       try {
@@ -152,7 +155,8 @@ try {
       }
     }
   }
-  await sleep(500)
+  await sleep(1500)
+  await stop().catch(() => {})
   if (scratchDir) fs.rmSync(scratchDir, { recursive: true, force: true })
 }
 console.log(failures ? `${failures} failed` : 'all passed')

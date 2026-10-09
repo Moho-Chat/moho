@@ -90,9 +90,12 @@ const api = {
     return () => ipcRenderer.off(IPC.trayCommand, handler)
   },
 
-  /** Says what status the accounts are at, for the tray menu to show as checked. */
-  setTrayStatus(status: string | null): void {
-    ipcRenderer.send(IPC.trayStatus, status)
+  /**
+   * Says what status each connected account is at: for the tray menu to show as
+   * checked, and for main to stay quiet for an account on Do not disturb.
+   */
+  setAccountStatuses(statuses: Record<string, string>): void {
+    ipcRenderer.send(IPC.trayStatus, statuses)
   },
 
   onMaximizeChange(cb: (maximized: boolean) => void): () => void {

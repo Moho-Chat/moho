@@ -1183,14 +1183,14 @@ export class ChatStore {
   }
 
   /**
-   * Tells main what status the accounts are at, so the tray menu's Status
-   * entry can show the one that is set. The first connected account's, since
-   * the menu sets one status on all of them and so they are alike unless one
-   * was changed on its own.
+   * Tells main what status each connected account is at. The tray menu checks
+   * the first one's, since it sets one status on all of them, and main stays
+   * quiet - no popup, no sound - for an account that is on Do not disturb.
    */
   private reportTrayStatus(): void {
-    const status = this.state.accounts.find((a) => a.state === 'connected')?.status
-    window.moho.setTrayStatus(status === 'online' || status === 'idle' || status === 'dnd' || status === 'invisible' ? status : null)
+    const statuses: Record<string, string> = {}
+    for (const a of this.state.accounts) if (a.state === 'connected' && a.status) statuses[a.id] = a.status
+    window.moho.setAccountStatuses(statuses)
   }
 
   // --- lifecycle ------------------------------------------------------

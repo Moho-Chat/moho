@@ -6,7 +6,6 @@ const acts = (): TrayActions => ({
   openLatest: vi.fn(),
   openSettings: vi.fn(),
   setStatus: vi.fn(),
-  setNotifications: vi.fn(),
   restart: vi.fn(),
   quit: vi.fn()
 })
@@ -40,7 +39,7 @@ describe('what is said about what is waiting', () => {
 })
 
 describe('the menu', () => {
-  const model = { state: NOTHING_WAITING, windowVisible: true, status: 'idle' as const, notifications: true }
+  const model = { state: NOTHING_WAITING, windowVisible: true, status: 'idle' as const }
   const labels = (items: ReturnType<typeof trayMenu>): string[] => items.map((i) => i.label ?? '-')
 
   it('offers no daemon plumbing, and a restart that is of moho as a whole', () => {
@@ -62,6 +61,12 @@ describe('the menu', () => {
     expect(first.label).toBe('1 direct message, 1 mention - open')
     first.click?.({} as never, undefined, {} as never)
     expect(a.openLatest).toHaveBeenCalled()
+  })
+
+  it('has no notifications switch of its own: Do not disturb is that', () => {
+    expect(labels(trayMenu(model, acts())).join('|')).not.toMatch(/notification/i)
+    const status = trayMenu(model, acts()).find((i) => i.label === 'Status')
+    expect((status?.submenu as { label: string }[]).map((s) => s.label)).toContain('Do not disturb')
   })
 
   it('asks for the window to be shown or hidden as it stands', () => {

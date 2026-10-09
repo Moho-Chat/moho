@@ -204,7 +204,6 @@ function applyPref(key: string, value: unknown, except?: Electron.WebContents): 
   prefs.set(key, value)
   // The badge and the flash are decided from these as they stand.
   if (key === 'notifications.badge' || key === 'notifications.flash') updateTray(lastTray)
-  if (key === 'notifications.desktop') refreshTrayMenu()
   // Every window keeps its own cache of these, so a setting changed in one
   // is stale in the others until they are told. That is not cosmetic once
   // there are several windows: muting a conversation, or switching the log
@@ -622,8 +621,11 @@ function trayIcon(unread: number): Electron.NativeImage {
   return img.isEmpty() ? nativeImage.createFromPath(resourcePath('icons', 'moho.png')) : img
 }
 
-/** What the window last said the accounts' status is, so the menu can check it. */
+/** What the window last said each connected account's status is. */
+let accountStatus: Record<string, string> = {}
+/** The status the menu shows as checked: the first account's, since the menu sets one on all of them. */
 let trayStatus: TrayStatus | null = null
+const isTrayStatus = (v: unknown): v is TrayStatus => v === 'online' || v === 'idle' || v === 'dnd' || v === 'invisible'
 
 /**
  * Asks the window to do something, showing it first: the tray's entries that
@@ -664,8 +666,7 @@ function refreshTrayMenu(): void {
     {
       state: lastTray,
       windowVisible: !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible(),
-      status: trayStatus,
-      notifications: prefs.get<boolean>('notifications.desktop', true)
+      status: trayStatus
     },
     {
       toggleWindow,
@@ -678,7 +679,6 @@ function refreshTrayMenu(): void {
         trayStatus = status
         tellWindow('status', status)
       },
-      setNotifications: (on) => applyPref('notifications.desktop', on),
       restart: restartMoho,
       quit: () => app.quit()
     }
@@ -708,7 +708,7 @@ function updateTray(state: TrayState): void {
   // The taskbar flash: asking for attention while the window is not in front.
   const flash = prefs.get<boolean>('notifications.flash', true)
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.flashFrame(flash && state.unread > 0 && !mainWindow.isFocused())
+    mainWindow.flashFrame(flash && state.unread > 0 && trayStatus !== 'dnd' && !mainWindow.isFocused())
   }
   refreshTrayMenu()
   if (!tray) return
@@ -768,10 +768,15 @@ function wireIpc(): void {
   ipcMain.handle(IPC.prefsSet, (e, key: string, value: unknown) => applyPref(key, value, e.sender))
 
   // The window says what status its accounts are at, for the tray's menu to check.
-  ipcMain.on(IPC.trayStatus, (_e, status: TrayStatus | null) => {
-    if (status === trayStatus) return
-    trayStatus = status
+  ipcMain.on(IPC.trayStatus, (_e, statuses: Record<string, string>) => {
+    accountStatus = statuses && typeof statuses === 'object' ? statuses : {}
+    const first = Object.values(accountStatus)[0]
+    const next = isTrayStatus(first) ? first : null
+    if (next === trayStatus) return
+    trayStatus = next
     refreshTrayMenu()
+    // Do not disturb is asking for quiet, including from the taskbar.
+    updateTray(lastTray)
   })
 
   ipcMain.handle(IPC.markBufferRead, (_e, bufferId: string) => notifier.clear(bufferId))
@@ -1232,7 +1237,8 @@ app.whenReady().then(() => {
     updateTray,
     openConversation,
     () => mainWindow?.webContents ?? null,
-    (bufferId) => popoutState().watched.includes(bufferId)
+    (bufferId) => popoutState().watched.includes(bufferId),
+    (accountId) => accountStatus[accountId] === 'dnd'
   )
 
   client.on('link', (up) => {
