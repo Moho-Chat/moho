@@ -237,15 +237,19 @@ function callerWindow(event: Electron.IpcMainInvokeEvent): BrowserWindow | null 
  * conversation list and everything else intact: the daemon is a separate
  * process and kept running all along.
  *
- * Not for a clean exit, which is a window being closed, and not more than a few
- * times a minute: a page that dies as it loads would otherwise be reloaded for
+ * Not when the app is quitting, and not more than a few times a minute: a page that dies as it loads would otherwise be reloaded for
  * ever.
  */
 function recoverFromCrash(win: BrowserWindow, name: string): void {
   const recent: number[] = []
   win.webContents.on('render-process-gone', (_e, details) => {
-    log.error(`[window] ${name}: the page process is gone - ${details.reason} (exit code ${details.exitCode})`)
-    if (details.reason === 'clean-exit' || win.isDestroyed()) return
+    log.error(
+      `[window] ${name}: the page process is gone - ${details.reason} (exit code ${details.exitCode}) at ${win.isDestroyed() ? 'a destroyed window' : win.webContents.getURL()}`
+    )
+    // A page that exits cleanly while its window is still there is no window
+    // being closed - that would have taken the window with it - and left the
+    // window empty just the same. Only the app quitting is let go.
+    if (win.isDestroyed() || quitting) return
     const now = Date.now()
     while (recent.length > 0 && now - recent[0] > 60_000) recent.shift()
     recent.push(now)
@@ -254,7 +258,9 @@ function recoverFromCrash(win: BrowserWindow, name: string): void {
       return
     }
     setTimeout(() => {
-      if (!win.isDestroyed()) win.webContents.reload()
+      // Loaded afresh rather than reloaded: a page that had navigated away
+      // would otherwise reload wherever it had got to.
+      if (!win.isDestroyed()) loadRenderer(win)
     }, 500)
   })
   win.webContents.on('unresponsive', () => log.warn(`[window] ${name}: the page has stopped responding`))

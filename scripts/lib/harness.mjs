@@ -281,7 +281,7 @@ export async function launchApp({ env = {} } = {}) {
     await stop()
     throw e
   }
-  return { page, stop }
+  return { page, stop, port }
 }
 
 /**
