@@ -115,6 +115,7 @@ const CATEGORIES: { id: string; label: string; group: string; icon?: string; ser
   { id: 'downloads', label: 'Downloads', group: 'You', icon: 'download' },
   // The app itself.
   { id: 'general', label: 'General', group: 'App' },
+  { id: 'appearance', label: 'Appearance', group: 'App' },
   // One page per network, each only while there is an account on it.
   { id: 'irc', label: 'IRC', group: 'Networks', service: 'irc' },
   { id: 'sneedchat', label: 'Sneedchat', group: 'Networks', service: 'sneedchat' },
@@ -217,6 +218,8 @@ function Page({ id }: { id: string }): JSX.Element | null {
   switch (id) {
     case 'general':
       return <GeneralSettings />
+    case 'appearance':
+      return <AppearanceSettings />
     case 'irc':
       return <IrcSettings />
     case 'sneedchat':
@@ -575,15 +578,12 @@ function StorageSettings(): JSX.Element {
   )
 }
 
-function GeneralSettings(): JSX.Element {
-  const [defaultDir, setDefaultDir] = useState('')
-  useEffect(() => {
-    void window.moho.defaultDownloadDir().then(setDefaultDir)
-  }, [])
-
+/** How things look and read: the layout, the size, the spacing, motion and the clock. */
+function AppearanceSettings(): JSX.Element {
+  const [zoom, setZoom] = usePref<number>('appearance.zoom', 1)
   return (
     <>
-      <SettingsSection title="Message layout">
+      <SettingsSection title="Messages">
         <SelectionSetting
           settingKey="display.messageMode"
           label="Display style"
@@ -595,6 +595,55 @@ function GeneralSettings(): JSX.Element {
             { label: 'Bubbles', value: 'bubbles' }
           ]}
         />
+        <SelectionSetting
+          settingKey="appearance.density"
+          label="Spacing"
+          description="Compact fits more messages on the screen by tightening the space between them."
+          defaultValue="cozy"
+          options={[
+            { label: 'Cozy', value: 'cozy' },
+            { label: 'Compact', value: 'compact' }
+          ]}
+        />
+      </SettingsSection>
+
+      <SettingsSection title="Size">
+        <div className="setting-row">
+          <div className="setting-text">
+            <div>Zoom</div>
+            <div className="small muted">How large everything is drawn, text and all. 100% is as designed.</div>
+          </div>
+          <input
+            type="range"
+            className="setting-range"
+            min={0.8}
+            max={1.6}
+            step={0.05}
+            value={zoom}
+            aria-label="Zoom"
+            onChange={(e) => setZoom(Number(e.target.value))}
+          />
+          <span className="small tabular setting-range-value">{Math.round(zoom * 100)}%</span>
+          {zoom !== 1 && (
+            <button type="button" className="button subtle small" onClick={() => setZoom(1)}>
+              Reset
+            </button>
+          )}
+        </div>
+      </SettingsSection>
+
+      <SettingsSection title="Time">
+        <SelectionSetting
+          settingKey="display.hourFormat"
+          label="Clock"
+          description="How the time beside a message is written. 'System' follows your computer's own setting."
+          defaultValue="24"
+          options={[
+            { label: '24-hour', value: '24' },
+            { label: '12-hour', value: '12' },
+            { label: 'System', value: 'auto' }
+          ]}
+        />
         <ToggleSetting
           settingKey="display.relativeTimestamps"
           label="Relative timestamps"
@@ -603,6 +652,26 @@ function GeneralSettings(): JSX.Element {
         />
       </SettingsSection>
 
+      <SettingsSection title="Motion">
+        <ToggleSetting
+          settingKey="appearance.reduceMotion"
+          label="Reduce motion"
+          description="Nothing slides, fades or grows. Also on whenever your system asks for less motion."
+          defaultValue={false}
+        />
+      </SettingsSection>
+    </>
+  )
+}
+
+function GeneralSettings(): JSX.Element {
+  const [defaultDir, setDefaultDir] = useState('')
+  useEffect(() => {
+    void window.moho.defaultDownloadDir().then(setDefaultDir)
+  }, [])
+
+  return (
+    <>
       <SettingsSection
         title="Highlight keywords"
         description="Words that light a message up and notify you, the same way your own name does. These apply on every account; an account can add its own in the Accounts pane, for words that only mean you on one network."

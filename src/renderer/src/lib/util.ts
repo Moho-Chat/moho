@@ -284,9 +284,21 @@ export function fileNameOf(filePath: string): string {
   return parts[parts.length - 1] || filePath
 }
 
+/**
+ * How clock times are written: 24-hour as this has always been, 12-hour, or
+ * whatever the system's locale says. Set from the appearance settings.
+ */
+let hourFormat: '12' | '24' | 'auto' = '24'
+export function setHourFormat(format: string | undefined): void {
+  hourFormat = format === '12' || format === 'auto' ? format : '24'
+}
+function hour12Option(): { hour12?: boolean } {
+  return hourFormat === 'auto' ? {} : { hour12: hourFormat === '12' }
+}
+
 export function formatTime(ts: number): string {
   const d = new Date(ts * 1000)
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+  return d.toLocaleTimeString([], { hour: hourFormat === '12' ? 'numeric' : '2-digit', minute: '2-digit', ...hour12Option() })
 }
 
 export function formatFullTime(ts: number): string {
@@ -311,7 +323,7 @@ export function formatRelativeTime(ts: number, now = Date.now()): string {
   if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
   if (secs < 23 * 3600) return `${Math.floor(secs / 3600)}h ago`
   const d = new Date(ts * 1000)
-  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', ...hour12Option() })
   if (secs < 47 * 3600) return `Yesterday at ${time}`
   return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} at ${time}`
 }

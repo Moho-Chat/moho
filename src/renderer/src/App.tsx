@@ -32,7 +32,7 @@ import { Icon, IconButton } from './components/Icon'
 import { ConversationMenu } from './components/ConversationMenu'
 import { watchDelta, watchedKickBuffers } from './lib/kickwatch'
 import { useActiveBuffer, useChat, usePref, usePrefsReady, useStore } from './state/hooks'
-import { bufferDisplayName } from './lib/util'
+import { bufferDisplayName, setHourFormat } from './lib/util'
 import type { BufferEntry } from './state/store'
 import { loadLocalEmotes, recoverMissingEmotes } from './lib/emotecache'
 import { restoreMissingMedia } from './lib/mediarestore'
@@ -74,6 +74,19 @@ export default function App(): JSX.Element {
   const streamElsewhere = !!watching && (watching.bufferId !== activeBufferId || activePanel !== '')
 
   const [sidebarFolded, setSidebarFolded] = usePref<boolean>('ui.sidebarFolded', false)
+  // How the window looks, from the appearance settings: how large, how close
+  // together, whether things move, how the clock is written.
+  const [zoom] = usePref<number>('appearance.zoom', 1)
+  const [density] = usePref<string>('appearance.density', 'cozy')
+  const [reduceMotion] = usePref<boolean>('appearance.reduceMotion', false)
+  const [hourFormat] = usePref<string>('display.hourFormat', '24')
+  setHourFormat(hourFormat)
+  useEffect(() => window.moho.setZoom(zoom), [zoom])
+  useEffect(() => {
+    document.documentElement.dataset.density = density
+    if (reduceMotion) document.documentElement.dataset.reduceMotion = ''
+    else delete document.documentElement.dataset.reduceMotion
+  }, [density, reduceMotion])
   const [userListFolded, setUserListFolded] = usePref<boolean>('ui.userListFolded', false)
   const [savedBufferId] = usePref<string>('ui.activeBufferId', '')
   const [savedGroupId] = usePref<string>('ui.activeGroupId', '')

@@ -9901,3 +9901,48 @@ video.lightbox-media {
 .settings-content:not(:has([data-settings-page]:not([hidden]))) .settings-no-matches {
   display: block;
 }
+
+
+/* --- appearance: zoom control, density, reduced motion ---------------------- */
+.setting-range {
+  flex: 0 0 160px;
+  accent-color: var(--primary);
+}
+
+.setting-range-value {
+  flex: none;
+  width: 4ch;
+  text-align: right;
+}
+
+/* Compact: the same messages, closer together - a smaller picture, less air
+   above each new speaker, and no padding between a run's lines. */
+html[data-density='compact'] .message-row.comfy,
+html[data-density='compact'] .message-row.classic {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+html[data-density='compact'] .message-row.comfy:not(.bubbles) {
+  --avatar: 32px;
+  gap: var(--spacing-s);
+}
+
+html[data-density='compact'] .message-row.comfy:not(.bubbles):not(.grouped):not(.system) {
+  margin-top: var(--spacing-s);
+}
+
+html[data-density='compact'] .date-divider ~ .message-row.comfy:not(.bubbles),
+html[data-density='compact'] .new-divider ~ .message-row.comfy:not(.bubbles) {
+  margin-top: 0;
+}
+
+/* The same as the system's own request, asked for from inside the app. */
+html[data-reduce-motion] *,
+html[data-reduce-motion] *::before,
+html[data-reduce-motion] *::after {
+  transition-duration: 0s !important;
+  animation-duration: 0s !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+}

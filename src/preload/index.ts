@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 import { IPC, POPOUT_FLAG, UI_SHOTS_FLAG, type EditAction, type EditMenuRequest, type PopoutState, type ScreenSource } from '../shared/ipc'
 import type { NobilisEvent } from '../shared/wire'
 
@@ -121,6 +121,8 @@ const api = {
     ipcRenderer.invoke(IPC.resolveImagePage, url),
 
   /** Puts a line of text on the system clipboard. */
+  /** How large everything is drawn: 1 is as designed. */
+  setZoom: (factor: number): void => webFrame.setZoomFactor(factor),
   copyText: (text: string): Promise<void> => ipcRenderer.invoke(IPC.writeClipboardText, text),
   /**
    * Where a dropped file actually lives.

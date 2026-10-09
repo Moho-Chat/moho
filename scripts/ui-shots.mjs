@@ -499,6 +499,28 @@ const SCENES = [
       await sleep(500)
     }
   },
+  {
+    name: 'settings-appearance',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await p.evaluate(`window.__mohoShots.store.setActivePanel('settings')`)
+      await sleep(300)
+      await p.evaluate(click('.settings-rail-item', 'Appearance'))
+      await sleep(500)
+    }
+  },
+  {
+    // Compact spacing, 12-hour clock, a larger zoom (#320).
+    name: 'appearance-compact',
+    setup: async (p) => {
+      await p.evaluate(`window.moho.prefs.set('appearance.density', 'compact'), window.moho.prefs.set('display.hourFormat', '12'), window.moho.prefs.set('appearance.zoom', 1.15)`)
+      // Read at start, as a window opened later would.
+      await p.evaluate(`location.reload()`)
+      await sleep(2500)
+      await openChannel(p, '#general')
+      await sleep(900)
+    }
+  },
   { name: 'settings-accounts', setup: async (p) => { await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`); await sleep(400) } },
   { name: 'discord-guild', setup: discord(false) },
   {
