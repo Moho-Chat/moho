@@ -9842,7 +9842,7 @@ video.lightbox-media {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  margin-bottom: var(--spacing-s);
+  margin-bottom: var(--spacing-m);
   padding: 0 var(--spacing-s);
   height: 32px;
   border: 1px solid var(--outline-medium);
@@ -9873,7 +9873,10 @@ video.lightbox-media {
 }
 
 .settings-rail-heading {
-  padding: var(--spacing-xs) var(--spacing-s) 0;
+  /* A rule under each heading, so the sections read as sections. */
+  margin-bottom: var(--spacing-xxs);
+  padding: var(--spacing-xs) var(--spacing-s);
+  border-bottom: 1px solid var(--outline-medium);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.06em;
@@ -10126,4 +10129,12 @@ html[data-reduce-motion] *::after {
   gap: var(--spacing-s);
   min-height: 0;
   overflow-y: auto;
+}
+
+
+/* About on its own, set off from the rest by a rule above it. */
+.settings-rail-group.apart {
+  margin-top: var(--spacing-s);
+  padding-top: var(--spacing-s);
+  border-top: 1px solid var(--outline-medium);
 }

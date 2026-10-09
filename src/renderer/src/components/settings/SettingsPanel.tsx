@@ -111,9 +111,9 @@ function GlobalHighlightKeywords(): JSX.Element {
  * regardless.
  */
 const CATEGORIES: { id: string; label: string; group: string; icon?: string; service?: Account['service'] }[] = [
-  // You: the two things that are about you rather than about the app.
-  { id: 'accounts', label: 'Accounts', group: 'You', icon: 'manage_accounts' },
-  { id: 'downloads', label: 'Downloads', group: 'You', icon: 'download' },
+  // Personal: the two things that are about you rather than about the app.
+  { id: 'accounts', label: 'Accounts', group: 'Personal', icon: 'manage_accounts' },
+  { id: 'downloads', label: 'Downloads', group: 'Personal', icon: 'download' },
   // The app itself.
   { id: 'general', label: 'General', group: 'App' },
   { id: 'appearance', label: 'Appearance', group: 'App' },
@@ -333,7 +333,7 @@ export function SettingsPanel({ page = 'settings' }: { page?: 'settings' | 'acco
           )}
         </label>
         {groups.map((group) => (
-          <div key={group} className="settings-rail-group">
+          <div key={group} className={`settings-rail-group${group === 'About' ? ' apart' : ''}`}>
             {group !== 'About' && <div className="settings-rail-heading small muted">{group}</div>}
             {shown
               .filter((c) => c.group === group)
