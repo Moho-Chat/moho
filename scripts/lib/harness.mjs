@@ -50,7 +50,7 @@ export function fakeIrc({ people = [], caps = [], onJoin, onLine } = {}) {
       while ((at = buffered.indexOf('\n')) >= 0) {
         const line = buffered.slice(0, at).replace(/\r$/, '')
         buffered = buffered.slice(at + 1)
-        onLine?.(line)
+        onLine?.(line, send)
         const [command, ...args] = line.split(' ')
         switch (command.toUpperCase()) {
           case 'CAP':

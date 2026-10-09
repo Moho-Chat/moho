@@ -1,6 +1,6 @@
 import { useMediaUrl } from '../lib/route'
 import { SwitchRow } from './Switch'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { ContextMenu } from './ContextMenu'
 import { RoomSearch } from './RoomSearch'
@@ -194,19 +194,56 @@ function IrcChannelBrowser({ account }: { account: Account }): JSX.Element {
   const serverBuffer = useChat((s) => s.buffers).find(
     (b) => b.accountId === account.id && b.kind === 'server'
   )
-  const [channels, setChannels] = useState<IrcChannelListing[] | null>(null)
+  /** One page of the network's directory, from the daemon: the window never holds the whole of it. */
+  const [directory, setDirectory] = useState<{ total: number; matching: number; channels: IrcChannelListing[] } | null>(null)
   const [asking, setAsking] = useState(false)
   const [filter, setFilter] = useState('')
+  const [problem, setProblem] = useState('')
+  const waiting = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /** The busiest few that match, asked of the daemon, which holds the list. */
+  const fetchPage = (query: string): void => {
+    void window.moho
+      .rpc<{ total: number; matching: number; channels: IrcChannelListing[] }>('getIrcChannels', {
+        accountId: account.id,
+        query,
+        limit: 200
+      })
+      .then(setDirectory)
+      .catch((e: Error) => setProblem(e.message))
+  }
 
   useEffect(() => {
     return window.moho.onEvent((frame) => {
       if (frame.event !== 'ircChannelList') return
-      const data = frame.data as { accountId: string; channels: IrcChannelListing[] }
+      const data = frame.data as { accountId: string; count?: number; error?: string }
       if (data.accountId !== account.id) return
+      if (waiting.current) clearTimeout(waiting.current)
       setAsking(false)
-      setChannels(data.channels)
+      // The network said no, or to come back later: said, rather than left
+      // spinning for a list that is not coming.
+      if (data.error) {
+        setProblem(`The network did not give its list: ${data.error}`)
+        return
+      }
+      setProblem('')
+      fetchPage('')
+      setFilter('')
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account.id])
+
+  useEffect(() => () => {
+    if (waiting.current) clearTimeout(waiting.current)
+  }, [])
+
+  // Filtering is the daemon's to do, a moment after the last key.
+  useEffect(() => {
+    if (!directory) return
+    const t = setTimeout(() => fetchPage(filter), 200)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter])
 
   const ask = (): void => {
     if (!serverBuffer) {
@@ -214,20 +251,26 @@ function IrcChannelBrowser({ account }: { account: Account }): JSX.Element {
       return
     }
     setAsking(true)
-    setChannels(null)
+    setProblem('')
+    if (waiting.current) clearTimeout(waiting.current)
+    // A network that never answers - some drop the request, and a few take
+    // minutes - must not leave this waiting for good. A list that does arrive
+    // later is still taken.
+    waiting.current = setTimeout(() => {
+      setAsking(false)
+      setProblem('No answer after a minute. The network may be busy or may not allow the list; try again, or join a channel by name above.')
+    }, 60_000)
     void window.moho.rpc('sendMessage', { bufferId: serverBuffer.id, body: '/list' }).catch((e: Error) => {
+      if (waiting.current) clearTimeout(waiting.current)
       setAsking(false)
       store.toast('error', e.message)
     })
   }
 
-  const shown = channels
-    ? channels.filter((c) => {
-        const q = filter.trim().toLowerCase()
-        if (!q) return true
-        return c.name.toLowerCase().includes(q) || c.topic.toLowerCase().includes(q)
-      })
-    : []
+  const stopWaiting = (): void => {
+    if (waiting.current) clearTimeout(waiting.current)
+    setAsking(false)
+  }
 
   return (
     <div className="field">
@@ -235,33 +278,39 @@ function IrcChannelBrowser({ account }: { account: Account }): JSX.Element {
       <div className="field-row">
         <input
           className="text-field"
-          placeholder={channels ? 'filter by name or topic' : 'ask the server for its list first'}
+          placeholder={directory ? 'filter by name or topic' : 'ask the server for its list first'}
           value={filter}
-          disabled={!channels}
+          disabled={!directory}
           onChange={(e) => setFilter(e.target.value)}
         />
-        <button type="button" className="button" disabled={asking || !serverBuffer} onClick={ask}>
-          {asking ? 'Asking…' : channels ? 'Refresh' : 'List channels'}
-        </button>
+        {asking ? (
+          <button type="button" className="button subtle" onClick={stopWaiting}>
+            Stop waiting
+          </button>
+        ) : (
+          <button type="button" className="button" disabled={!serverBuffer} onClick={ask}>
+            {directory ? 'Refresh' : 'List channels'}
+          </button>
+        )}
       </div>
 
       {asking && (
         <p className="small muted">
-          A busy network can take a minute to answer, and some refuse the request entirely.
+          <span className="spinner" /> Asking the network. A busy one can take a minute to answer, and some refuse the
+          request entirely.
         </p>
       )}
+      {problem && <p className="small error-text">{problem}</p>}
 
-      {channels && (
+      {directory && (
         <>
           <p className="small muted">
-            {channels.length.toLocaleString()} channels, busiest first
-            {shown.length !== channels.length ? ` — ${shown.length.toLocaleString()} matching` : ''}
+            {directory.total.toLocaleString()} channels, busiest first
+            {directory.matching !== directory.total ? ` — ${directory.matching.toLocaleString()} matching` : ''}
+            {directory.matching > directory.channels.length ? `; the busiest ${directory.channels.length} shown` : ''}
           </p>
           <div className="channel-browser">
-            {/* Capped, because a filter that matches nothing in particular
-                still matches forty thousand rows, and drawing them would
-                freeze the window to no purpose. */}
-            {shown.slice(0, 200).map((c) => (
+            {directory.channels.map((c) => (
               <button
                 key={c.name}
                 type="button"
