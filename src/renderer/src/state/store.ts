@@ -3731,8 +3731,28 @@ export class ChatStore {
       // leaves an optional field out when it is not set, so a plain spread
       // kept the last value it ever had - a room that reconnected stayed
       // marked as interrupted, and the banner over it stayed up.
+      //
+      // The same for every flag the daemon leaves out when it is off - muted on
+      // the account, favourite, low priority, read-only, a forum. A merge that
+      // kept the last value it ever had left a room unmuted on the server still
+      // drawn as muted here, with an Unmute that had nothing left to do.
       this.set({
-        buffers: buffers.map((b) => (b.id === data.id ? { ...b, ...data, link: data.link, syncing: data.syncing, topic: data.topic } : b))
+        buffers: buffers.map((b) =>
+          b.id === data.id
+            ? {
+                ...b,
+                ...data,
+                link: data.link,
+                syncing: data.syncing,
+                topic: data.topic,
+                serverMuted: data.serverMuted ?? false,
+                favourite: data.favourite ?? false,
+                lowPriority: data.lowPriority ?? false,
+                readOnly: data.readOnly,
+                forum: data.forum ?? false
+              }
+            : b
+        )
       })
       this.followPeekJoin(data)
       return
