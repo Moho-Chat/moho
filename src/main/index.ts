@@ -226,6 +226,41 @@ function callerWindow(event: Electron.IpcMainInvokeEvent): BrowserWindow | null 
  * The gap between them is a fraction of a second of the background colour,
  * which is a far better failure than no window at all.
  */
+/**
+ * What to do when a window's page dies under it.
+ *
+ * Nothing used to be done, and nothing said: the renderer process would be
+ * gone - out of memory, killed, crashed - and the window stayed on screen as an
+ * empty shell with no page in it, which is what "the window just went
+ * invisible" was. Now the reason is written to the log, where it outlives the
+ * process, and the page is loaded again so the window comes back with the
+ * conversation list and everything else intact: the daemon is a separate
+ * process and kept running all along.
+ *
+ * Not for a clean exit, which is a window being closed, and not more than a few
+ * times a minute: a page that dies as it loads would otherwise be reloaded for
+ * ever.
+ */
+function recoverFromCrash(win: BrowserWindow, name: string): void {
+  const recent: number[] = []
+  win.webContents.on('render-process-gone', (_e, details) => {
+    log.error(`[window] ${name}: the page process is gone - ${details.reason} (exit code ${details.exitCode})`)
+    if (details.reason === 'clean-exit' || win.isDestroyed()) return
+    const now = Date.now()
+    while (recent.length > 0 && now - recent[0] > 60_000) recent.shift()
+    recent.push(now)
+    if (recent.length > 3) {
+      log.error(`[window] ${name}: it keeps dying; leaving it`)
+      return
+    }
+    setTimeout(() => {
+      if (!win.isDestroyed()) win.webContents.reload()
+    }, 500)
+  })
+  win.webContents.on('unresponsive', () => log.warn(`[window] ${name}: the page has stopped responding`))
+  win.webContents.on('responsive', () => log.warn(`[window] ${name}: the page is responding again`))
+}
+
 function revealOnce(win: BrowserWindow, focus = false): void {
   let done = false
   const reveal = (): void => {
@@ -300,6 +335,7 @@ function createWindow(): void {
   })
 
   revealOnce(mainWindow)
+  recoverFromCrash(mainWindow, 'main')
   wireEditMenu(mainWindow)
 
   // A link that arrived before this window existed - from the click that
@@ -472,6 +508,7 @@ function openPopout(bufferId: string, title?: string): void {
   // Focused as well as shown: unlike the main window at startup, this one was
   // asked for just now.
   revealOnce(win, true)
+  recoverFromCrash(win, `popout ${bufferId}`)
   wireEditMenu(win)
 
   // Sent to this window rather than broadcast: every window draws its own
@@ -604,6 +641,12 @@ function applyHotkey(accelerator: string): void {
     log.warn('[hotkey] invalid accelerator:', accelerator, (e as Error).message)
   }
 }
+
+app.on('child-process-gone', (_e, details) => {
+  // The graphics process or a utility: a window that stops painting with its
+  // page still alive is this.
+  log.error(`[process] ${details.type} process gone - ${details.reason} (exit code ${details.exitCode})`)
+})
 
 function wireIpc(): void {
   ipcMain.handle(IPC.rpc, async (_e, method: string, params: Record<string, unknown>) => {
