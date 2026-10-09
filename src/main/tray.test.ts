@@ -39,7 +39,7 @@ describe('what is said about what is waiting', () => {
 })
 
 describe('the menu', () => {
-  const model = { state: NOTHING_WAITING, windowVisible: true, status: 'idle' as const }
+  const model = { state: NOTHING_WAITING, windowVisible: true, status: 'idle' as const, offered: [] }
   const labels = (items: ReturnType<typeof trayMenu>): string[] => items.map((i) => i.label ?? '-')
 
   it('offers no daemon plumbing, and a restart that is of moho as a whole', () => {
@@ -67,6 +67,14 @@ describe('the menu', () => {
     expect(labels(trayMenu(model, acts())).join('|')).not.toMatch(/notification/i)
     const status = trayMenu(model, acts()).find((i) => i.label === 'Status')
     expect((status?.submenu as { label: string }[]).map((s) => s.label)).toContain('Do not disturb')
+  })
+
+  it('offers only what the connected accounts can be set to', () => {
+    const labelsOf = (offered: ('online' | 'idle' | 'dnd' | 'invisible')[]): string[] =>
+      (trayMenu({ ...model, offered }, acts()).find((i) => i.label === 'Status')?.submenu as { label: string }[]).map((s) => s.label)
+    expect(labelsOf(['online', 'dnd'])).toEqual(['Online', 'Do not disturb'])
+    expect(labelsOf(['online', 'idle', 'dnd', 'invisible'])).toHaveLength(4)
+    expect(labelsOf([])).toHaveLength(4)
   })
 
   it('asks for the window to be shown or hidden as it stands', () => {

@@ -62,6 +62,8 @@ export interface TrayModel {
   windowVisible: boolean
   /** The status the accounts are at, where the window has said. */
   status: TrayStatus | null
+  /** What the connected accounts can be set to; none reported yet means all of them. */
+  offered: TrayStatus[]
 }
 
 const STATUSES: { id: TrayStatus; label: string }[] = [
@@ -88,7 +90,7 @@ export function trayMenu(model: TrayModel, act: TrayActions): MenuItemConstructo
     { label: model.windowVisible ? 'Hide moho' : 'Show moho', click: act.toggleWindow },
     {
       label: 'Status',
-      submenu: STATUSES.map((s) => ({
+      submenu: STATUSES.filter((s) => model.offered.length === 0 || model.offered.includes(s.id)).map((s) => ({
         label: s.label,
         type: 'radio' as const,
         checked: model.status === s.id,

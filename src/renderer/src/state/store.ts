@@ -22,6 +22,7 @@ import type {
   VoiceSession
 } from '../../../shared/wire'
 import { addToast, type ToastAction, type ToastItem } from '../lib/toasts'
+import { ALL_STATUSES, statusesFor, supportsStatus } from '../lib/status'
 import { buildSmilieIndex, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
 import { runExport } from '../lib/exporter'
@@ -1183,14 +1184,19 @@ export class ChatStore {
   }
 
   /**
-   * Tells main what status each connected account is at. The tray menu checks
-   * the first one's, since it sets one status on all of them, and main stays
-   * quiet - no popup, no sound - for an account that is on Do not disturb.
+   * Tells main what status each connected account is at, and which statuses
+   * any of them can be set to. The tray menu offers those and checks the one of
+   * the account with the most to choose from - Discord's rather than a
+   * service that has no idle to be at - and main stays quiet, with no popup and
+   * no sound, for an account that is on Do not disturb.
    */
   private reportTrayStatus(): void {
     const statuses: Record<string, string> = {}
-    for (const a of this.state.accounts) if (a.state === 'connected' && a.status) statuses[a.id] = a.status
-    window.moho.setAccountStatuses(statuses)
+    const connected = this.state.accounts.filter((a) => a.state === 'connected')
+    for (const a of connected) if (a.status) statuses[a.id] = a.status
+    const offered = ALL_STATUSES.filter((s) => connected.some((a) => supportsStatus(a.service, s)))
+    const widest = [...connected].sort((a, b) => statusesFor(b.service).length - statusesFor(a.service).length)[0]
+    window.moho.setAccountStatuses(statuses, offered, widest?.status ?? null)
   }
 
   // --- lifecycle ------------------------------------------------------
@@ -2136,7 +2142,9 @@ export class ChatStore {
    * left alone - choosing a status is not a request to connect it.
    */
   async setStatusEverywhere(status: 'online' | 'idle' | 'dnd' | 'invisible', statusText?: string): Promise<void> {
-    const connected = this.state.accounts.filter((a) => a.state === 'connected')
+    // Only the accounts of a service that has this status: an idle for the
+    // others is not asked of them, and they stay as they were.
+    const connected = this.state.accounts.filter((a) => a.state === 'connected' && supportsStatus(a.service, status))
     await Promise.all(connected.map((a) => this.setAccountStatus(a.id, status, a.service === 'discord' || a.service === 'matrix' ? statusText : undefined)))
   }
 

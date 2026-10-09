@@ -6,6 +6,7 @@ import { useEscapeLayer } from '../lib/layers'
 import { presenceClass } from '../lib/presence'
 import { classes } from '../lib/util'
 import type { Account } from '../../../shared/wire'
+import { supportsStatus } from '../lib/status'
 import type { Status } from './UserFooter'
 
 /** The statuses that can be chosen, with the dot each is drawn with. Signing out is separate, below them. */
@@ -89,7 +90,7 @@ export function StatusPopout({
       aria-label="Set your status"
       style={pos ? { left: pos.left, bottom: pos.bottom } : { visibility: 'hidden' }}
     >
-      {CHOICES.map((c) => (
+      {CHOICES.filter((c) => supportsStatus(account.service, c.id)).map((c) => (
         <button
           key={c.id}
           type="button"

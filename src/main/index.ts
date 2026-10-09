@@ -623,8 +623,9 @@ function trayIcon(unread: number): Electron.NativeImage {
 
 /** What the window last said each connected account's status is. */
 let accountStatus: Record<string, string> = {}
-/** The status the menu shows as checked: the first account's, since the menu sets one on all of them. */
+/** The status the menu shows as checked, and the ones it offers: what the connected accounts can be set to. */
 let trayStatus: TrayStatus | null = null
+let trayOffered: TrayStatus[] = []
 const isTrayStatus = (v: unknown): v is TrayStatus => v === 'online' || v === 'idle' || v === 'dnd' || v === 'invisible'
 
 /**
@@ -666,7 +667,8 @@ function refreshTrayMenu(): void {
     {
       state: lastTray,
       windowVisible: !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible(),
-      status: trayStatus
+      status: trayStatus,
+      offered: trayOffered
     },
     {
       toggleWindow,
@@ -768,12 +770,10 @@ function wireIpc(): void {
   ipcMain.handle(IPC.prefsSet, (e, key: string, value: unknown) => applyPref(key, value, e.sender))
 
   // The window says what status its accounts are at, for the tray's menu to check.
-  ipcMain.on(IPC.trayStatus, (_e, statuses: Record<string, string>) => {
+  ipcMain.on(IPC.trayStatus, (_e, statuses: Record<string, string>, offered: string[], shown: string | null) => {
     accountStatus = statuses && typeof statuses === 'object' ? statuses : {}
-    const first = Object.values(accountStatus)[0]
-    const next = isTrayStatus(first) ? first : null
-    if (next === trayStatus) return
-    trayStatus = next
+    trayOffered = Array.isArray(offered) ? offered.filter(isTrayStatus) : []
+    trayStatus = isTrayStatus(shown) ? shown : null
     refreshTrayMenu()
     // Do not disturb is asking for quiet, including from the taskbar.
     updateTray(lastTray)

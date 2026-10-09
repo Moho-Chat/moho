@@ -12,7 +12,7 @@
  */
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
-import { cdp, freePort, launchApp, sleep, until } from './lib/harness.mjs'
+import { cdp, fakeIrc, freePort, launchApp, openIrcChannel, sleep, until } from './lib/harness.mjs'
 
 let failures = 0
 const check = (ok, what, detail = '') => {
@@ -98,6 +98,25 @@ try {
 
   // There is no notifications switch of its own: Do not disturb is that.
   check(!labels.some((l) => /notification/i.test(l)), 'the menu has no notifications switch of its own', labels.join(' | '))
+
+  // With an IRC account connected - which has away and back, and no invisible -
+  // the menu offers what IRC can be set to, and the daemon takes it.
+  const irc = await fakeIrc({ people: ['bob'], onJoin: (channel, _nick, send) => send(`:bob!b@h PRIVMSG ${channel} :hello there`) })
+  try {
+    await openIrcChannel(page, { port: irc.address().port, nick: 'checker', channels: ['#lobby'], waitFor: 'hello there' })
+    await until(main, 'globalThis.__mohoTray.menu().find((i) => i.label === "Status").submenu.length === 3', 'the menu to offer only IRC\'s statuses')
+    const offered = await tray('t.menu().find((i) => i.label === "Status").submenu.map((i) => i.label)')
+    check(JSON.stringify(offered) === '["Online","Idle","Do not disturb"]', 'IRC alone: no Invisible is offered', JSON.stringify(offered))
+    const statusOf = () => page.evaluate('window.moho.rpc("listAccounts", {}).then((a) => a.find((x) => x.id.startsWith("checker")).status)')
+    await tray('t.click(["Status", "Idle"])')
+    await until(page, 'window.moho.rpc("listAccounts", {}).then((a) => a.find((x) => x.id.startsWith("checker")).status === "idle")', 'IRC to go idle')
+    check(true, 'Idle from the tray sets the IRC account idle')
+    await tray('t.click(["Status", "Do not disturb"])')
+    await until(page, 'window.moho.rpc("listAccounts", {}).then((a) => a.find((x) => x.id.startsWith("checker")).status === "dnd")', 'IRC to go to Do not disturb')
+    check((await statusOf()) === 'dnd', 'Do not disturb from the tray sets it')
+  } finally {
+    irc.close()
+  }
 
   // Restart brings back moho and a daemon of its own.
   const before = daemons(scratchDir)

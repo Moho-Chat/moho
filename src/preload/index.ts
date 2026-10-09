@@ -91,11 +91,12 @@ const api = {
   },
 
   /**
-   * Says what status each connected account is at: for the tray menu to show as
-   * checked, and for main to stay quiet for an account on Do not disturb.
+   * Says what status each connected account is at, which statuses any of them
+   * can be set to, and the one to show as checked: for the tray menu, and for
+   * main to stay quiet for an account on Do not disturb.
    */
-  setAccountStatuses(statuses: Record<string, string>): void {
-    ipcRenderer.send(IPC.trayStatus, statuses)
+  setAccountStatuses(statuses: Record<string, string>, offered: string[], shown: string | null): void {
+    ipcRenderer.send(IPC.trayStatus, statuses, offered, shown)
   },
 
   onMaximizeChange(cb: (maximized: boolean) => void): () => void {
