@@ -96,6 +96,11 @@ export interface Buffer {
   avatarUrl?: string
   /** What the conversation says it is for, where the service has such a thing. */
   topic?: string
+  /**
+   * Why nothing can be written here, when that is so - a channel this account
+   * may read but not write in, or Discord's own notices. Absent where it can.
+   */
+  readOnly?: string
   /** Matrix only - absent, not false, for protocols with no encryption concept. */
   encrypted?: boolean
   /**
@@ -459,6 +464,10 @@ export interface Embed {
   provider?: string
   /** Who made it: a video's channel. */
   author?: string
+  /** The labelled lines under the description. */
+  fields?: { name: string; value: string }[]
+  /** The small line along the bottom. */
+  footer?: string
 }
 
 /**

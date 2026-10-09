@@ -1109,6 +1109,17 @@ function MessageRowBody({
                   />
                 </div>
               )}
+              {!!embed.fields?.length && (
+                <div className="rich-embed-fields small">
+                  {embed.fields.map((f, k) => (
+                    <div key={k} className="rich-embed-field">
+                      <div className="rich-embed-field-name">{f.name}</div>
+                      <div>{f.value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {embed.footer && <div className="rich-embed-footer small muted">{embed.footer}</div>}
               {/* The picture the card is about, where the card brought one
                   of its own. A Matrix link preview is unfurled by the
                   homeserver and arrives as a file the daemon has already

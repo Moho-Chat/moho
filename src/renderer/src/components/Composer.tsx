@@ -807,6 +807,27 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
     if (inputRef.current) setText(composerText(inputRef.current))
   }
 
+  // Somewhere that can be read and not written in: a channel this account has
+  // no permission to send to, or Discord's own notices. A box that every send
+  // is refused from is a worse answer than saying so where it would be.
+  if (buffer.readOnly) {
+    const official = buffer.readOnly.includes('official Discord')
+    return (
+      <div className="composer">
+        <div className="divider-h" />
+        <div className="composer-readonly" role="status">
+          <Icon name={official ? 'verified_user' : 'lock'} size={22} />
+          <div className="composer-readonly-text">
+            <span className="composer-readonly-title">{buffer.readOnly}</span>
+            {official && (
+              <span className="small">Discord will never ask you for your password or account token.</span>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // A Kick account with no sign-in watches; it cannot talk. Offering the
   // box anyway meant typing a message the service was always going to refuse.
   if (account && account.service === 'kick' && !account.hasPassword) {

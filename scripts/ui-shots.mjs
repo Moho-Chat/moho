@@ -1074,6 +1074,38 @@ const SCENES = [
     clip: { x: 0, y: 560, width: 460, height: 240 }
   },
   {
+    // Where the box would be, in Discord's own notices (#328).
+    name: 'discord-official-dm',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(`(() => {
+        const shots = window.__mohoShots
+        const s = shots.state()
+        const id = s.activeBufferId
+        const now = Math.floor(Date.now() / 1000)
+        const notice = (i, title, description, footer, fields) => ({ id: 'n' + i, bufferId: id, from: 'Discord', senderId: 'Discord', body: '', ts: now - (4 - i) * 600, isAction: false, isHighlight: false, kind: 'chat', isOwn: false,
+          embeds: [{ title, description, footer, fields, color: 14423100 }] })
+        shots.patch({
+          buffers: s.buffers.map((b) => b.id === id ? { ...b, readOnly: 'This chat is reserved for official Discord notifications.' } : b),
+          messagesByBuffer: { ...s.messagesByBuffer, [id]: [notice(1, 'You broke Discord community guidelines', 'We have taken action that affects your account.', 'Learn more at discord.com/safety'), notice(2, 'We removed a violation from your account', 'We reviewed a violation regarding our policy and determined it does not violate our community guidelines.', undefined, [{ name: 'Reference', value: 'Case 4471' }])] }
+        })
+        return true
+      })()`)
+      await sleep(600)
+    },
+    clip: { x: 277, y: 160, width: 823, height: 640 }
+  },
+  {
+    // A channel that can be read and not written in (#328).
+    name: 'discord-read-only-channel',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(`(() => { const s = window.__mohoShots.state(); window.__mohoShots.patch({ buffers: s.buffers.map((b) => b.id === s.activeBufferId ? { ...b, readOnly: 'You do not have permission to send messages in this channel.' } : b) }); return true })()`)
+      await sleep(500)
+    },
+    clip: { x: 277, y: 600, width: 823, height: 200 }
+  },
+  {
     name: 'discord-media-grid',
     setup: async (p) => {
       await discord(false)(p)

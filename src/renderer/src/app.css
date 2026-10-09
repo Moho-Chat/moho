@@ -10138,3 +10138,45 @@ html[data-reduce-motion] *::after {
   padding-top: var(--spacing-s);
   border-top: 1px solid var(--outline-medium);
 }
+
+
+/* An embed's labelled lines and its footer. */
+.rich-embed-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-xs);
+}
+
+.rich-embed-field-name {
+  font-weight: var(--weight-semibold);
+}
+
+.rich-embed-footer {
+  margin-top: var(--spacing-xs);
+}
+
+/* Where the message box would be, when nothing can be said here. */
+.composer-readonly {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-m);
+  margin: var(--spacing-s) var(--spacing-m) var(--spacing-m);
+  padding: var(--spacing-s) var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container);
+  color: var(--surface-variant-text);
+}
+
+.composer-readonly-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.composer-readonly-title {
+  color: var(--surface-text);
+  font-weight: var(--weight-semibold);
+}
