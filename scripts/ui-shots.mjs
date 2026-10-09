@@ -1106,6 +1106,23 @@ const SCENES = [
     clip: { x: 277, y: 600, width: 823, height: 200 }
   },
   {
+    // Many servers (#329-ish): the list scrolls, the + and the cog stay put.
+    name: 'rail-many-servers',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(`(() => {
+        const s = window.__mohoShots.state()
+        const extra = Array.from({ length: 24 }, (_, i) => ({ id: 'discord:shots|guild:x' + i, accountId: 'discord:shots', service: 'discord', kind: 'guild', name: 'Server ' + (i + 1), position: 10 + i }))
+        window.__mohoShots.patch({ groups: [...s.groups, ...extra] })
+        return true
+      })()`)
+      await sleep(600)
+      await p.evaluate(`document.querySelector('.rail-scroll').scrollTop = 1e6`)
+      await sleep(300)
+    },
+    clip: { x: 0, y: 44, width: 280, height: 756 }
+  },
+  {
     name: 'discord-media-grid',
     setup: async (p) => {
       await discord(false)(p)

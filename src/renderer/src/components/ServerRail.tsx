@@ -681,24 +681,6 @@ export function ServerRail(): JSX.Element | null {
 
       {rest.map(renderEntry)}
 
-      {/* Where a server is added or joined, at the foot of the list as in
-          Discord, for whichever account is being looked at. */}
-      <button
-        type="button"
-        className="rail-tile rail-add"
-        aria-label="Add or join a server"
-        onMouseEnter={(e) => showRailTip(e.currentTarget, 'Add or join a server')}
-        onMouseLeave={hideRailTip}
-        onClick={() => {
-          const account =
-            groups.find((g) => g.id === activeGroupId)?.accountId || (store.getSnapshot().accounts[0]?.id ?? '')
-          store.setActivePanel('join', account)
-        }}
-      >
-        <span className="rail-face">
-          <Icon name="add" size={22} />
-        </span>
-      </button>
       </div>
 
       {folderMenu && (
@@ -764,6 +746,26 @@ export function ServerRail(): JSX.Element | null {
       )}
 
       <div className="rail-divider" />
+      {/* Where a server is added or joined: pinned below the list with a rule
+          above it, so it never moves however many servers there are or
+          wherever one is dropped, and the list scrolls above it. For whichever
+          account is being looked at. */}
+      <button
+        type="button"
+        className="rail-tile rail-add"
+        aria-label="Add or join a server"
+        onMouseEnter={(e) => showRailTip(e.currentTarget, 'Add or join a server')}
+        onMouseLeave={hideRailTip}
+        onClick={() => {
+          const account =
+            groups.find((g) => g.id === activeGroupId)?.accountId || (store.getSnapshot().accounts[0]?.id ?? '')
+          store.setActivePanel('join', account)
+        }}
+      >
+        <span className="rail-face">
+          <Icon name="add" size={22} />
+        </span>
+      </button>
       <RailMenu />
     </nav>
   )
