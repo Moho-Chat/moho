@@ -10081,3 +10081,49 @@ html[data-reduce-motion] *::after {
 .mention-dismiss:focus-visible {
   opacity: 1;
 }
+
+
+/* --- room settings as a dialog ------------------------------------------------ */
+.room-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  width: min(560px, 94vw);
+  max-height: 80vh;
+  padding: var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: var(--shadow-3);
+}
+
+.room-settings-tabs {
+  display: flex;
+  gap: var(--spacing-xs);
+  border-bottom: 1px solid var(--outline-medium);
+}
+
+.room-settings-tab {
+  padding: var(--spacing-xs) var(--spacing-m);
+  border-bottom: 2px solid transparent;
+  color: var(--surface-variant-text);
+  transition: color var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease);
+}
+
+.room-settings-tab:hover {
+  color: var(--surface-text);
+}
+
+.room-settings-tab.active {
+  border-bottom-color: var(--primary);
+  color: var(--surface-text);
+  font-weight: var(--weight-medium);
+}
+
+.room-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  min-height: 0;
+  overflow-y: auto;
+}

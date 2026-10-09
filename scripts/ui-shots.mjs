@@ -447,6 +447,17 @@ const SCENES = [
       await sleep(500)
     }
   },
+  {
+    // Room settings as a dialog with pages (#324); the room's answers are not there to read, so it shows its frame.
+    name: 'room-settings-dialog',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await p.evaluate(`(() => { const s = window.__mohoShots.state(); window.__mohoShots.patch({ buffers: s.buffers.map((b) => b.id === s.activeBufferId ? { ...b, accountId: 'matrix:' + b.accountId } : b), accounts: s.accounts.map((a) => ({ ...a, id: 'matrix:' + a.id, service: 'matrix' })) }); return true })()`)
+      await sleep(500)
+      await p.evaluate(click('button[title="What this room keeps"]'))
+      await sleep(700)
+    }
+  },
   { name: 'mentions-inbox', setup: async (p) => { await p.evaluate(click('button[title="Mentions"]')); await sleep(400) } },
   {
     name: 'modal-export',
