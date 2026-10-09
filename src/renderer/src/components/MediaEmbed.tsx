@@ -433,11 +433,22 @@ export function MediaEmbed({
             className="media-embed"
             style={ratio}
             src={media(fullSrc)}
-            controls
+            // A GIF is silent, runs on its own and goes round, and has no
+            // player to operate: it plays when it is shown if autoplay is on,
+            // and otherwise while the pointer is over it. Any other video is a
+            // video, with its controls.
+            {...(attachment?.gif
+              ? {
+                  muted: true,
+                  autoPlay: autoplay,
+                  loop: true,
+                  onMouseEnter: (e: React.MouseEvent<HTMLVideoElement>) => !autoplay && void e.currentTarget.play().catch(() => {}),
+                  onMouseLeave: (e: React.MouseEvent<HTMLVideoElement>) => !autoplay && e.currentTarget.pause()
+                }
+              : { controls: true, loop })}
             // Enough to draw the first frame and know how long it is, without
             // pulling megabytes for every video in a scrolled-past backlog.
             preload="metadata"
-            loop={loop}
             playsInline
             onError={() => setFailed(true)}
           />

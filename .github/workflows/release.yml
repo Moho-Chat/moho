@@ -276,6 +276,14 @@ jobs:
       - name: tray check
         run: xvfb-run -a npm run test:tray
 
+      # GIFs: that a message carrying one is drawn as the picture, that a page
+      # nothing could read stays a link, and that the picker finds and sends.
+      # Needs ffmpeg, for the pictures it plays.
+      - name: gif check
+        run: |
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          xvfb-run -a npm run test:gif
+
       # MOHO_BUILD is computed inside the npm script - a shell assignment on
       # the electron-builder line - so it cannot be injected from out here.
       # The only way to control what the artifact is called is to guarantee

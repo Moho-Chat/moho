@@ -9,6 +9,7 @@ import {
   extractMedia,
   extractQuoteBlocks,
   formatMessage,
+  isGifPage,
   hostnameOf,
   ircFormat,
   normalizeBBCode,
@@ -251,5 +252,37 @@ describe('blocks', () => {
     expect(embedColor(0x5865f2)).toBe('#5865f2')
     expect(embedColor(255)).toBe('#0000ff')
     expect(embedColor(undefined)).toBeUndefined()
+  })
+})
+
+describe('links to the pages GIFs are shared from', () => {
+  it('knows Tenor, Giphy and Klipy pages when it sees one', () => {
+    for (const url of [
+      'https://tenor.com/view/cat-gif-22954713',
+      'https://tenor.com/de/view/cat-gif-22954713',
+      'https://giphy.com/gifs/cat-Z7wFi5b2VEAr6',
+      'https://giphy.com/embed/Z7wFi5b2VEAr6',
+      'https://klipy.com/gifs/friends-joey-53',
+      'https://klipy.com/clips/angry-8'
+    ]) {
+      expect(isGifPage(url), url).toBe(true)
+    }
+    expect(isGifPage('https://tenor.com/')).toBe(false)
+    expect(isGifPage('https://example.com/view/cat')).toBe(false)
+  })
+
+  it('does not ask a page what it is, which is a request to a third party for nothing', () => {
+    const asked: string[] = []
+    const media = extractMedia('look https://tenor.com/view/cat-gif-1 and https://klipy.com/gifs/x-1', {
+      contentSniffing: true,
+      onNeedSniff: (url) => asked.push(url)
+    })
+    expect(media).toEqual([])
+    expect(asked).toEqual([])
+  })
+
+  it('still draws a direct file from those hosts, like any other', () => {
+    const media = extractMedia('https://media.tenor.com/abc/cat.mp4 https://media.giphy.com/media/Z7wFi5b2VEAr6/giphy.gif', {})
+    expect(media.map((m) => m.kind)).toEqual(['video', 'image'])
   })
 })

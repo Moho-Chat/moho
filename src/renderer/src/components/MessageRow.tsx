@@ -17,6 +17,7 @@ import { useSniffedTypes, sniffUrl } from '../lib/sniff'
 import { useMediaUrl, useStrictRoute } from '../lib/route'
 import type { ChatMessage } from '../state/store'
 import type {
+  Attachment,
   CustomEmoji,
   MessageBadge,
   MessageComponent,
@@ -418,7 +419,24 @@ function MessageRowBody({
    */
   const own = bubbles && !isSystem && !!message.isOwn
 
-  const attachments = message.attachments ?? []
+  // A GIF that was linked is a picture to play, and goes where pictures go:
+  // the same sizing, the same autoplay and loop settings, the same viewer.
+  const gifs = useMemo(
+    () =>
+      (message.embeds ?? [])
+        .filter((e) => e.kind === 'gif' && e.mediaUrl)
+        .map((e): Attachment => ({
+          // As the daemon said; by the ending only for one that did not.
+          kind: e.mediaKind ?? (/\.(mp4|webm|mov|mkv|ogv)(\?|$)/i.test(e.mediaUrl!) ? 'video' : 'image'),
+          gif: true,
+          url: e.mediaUrl,
+          width: e.width,
+          height: e.height,
+          filename: 'gif'
+        })),
+    [message.embeds]
+  )
+  const attachments = useMemo(() => [...(message.attachments ?? []), ...gifs], [message.attachments, gifs])
   // The ones that go in a grid, and the ones that stay in the row, each with
   // its place in the message so its key stays the same whichever it is.
   const indexed = attachments.map((att, i) => ({ att, i }))
@@ -448,7 +466,12 @@ function MessageRowBody({
     const codeBlocks = extractCodeBlocks(normalized)
     const quoteBlocks = extractQuoteBlocks(stripCodeBlocks(normalized))
 
-    let body = stripEmbeddedUrls(normalized, media)
+    // The page a GIF was linked from is not shown as well as the GIF: it is the
+    // same thing said twice, and is how a posted GIF read as an address.
+    const gifPages = (message.embeds ?? [])
+      .filter((e) => e.kind === 'gif' && e.url)
+      .map((e) => ({ url: e.url!, kind: 'image' as const }))
+    let body = stripEmbeddedUrls(normalized, [...media, ...gifPages])
     body = stripCodeBlocks(body)
     body = stripQuoteBlocks(body)
 
@@ -1077,7 +1100,8 @@ function MessageRowBody({
             </pre>
           ))}
 
-          {(message.embeds || []).map((embed, i) => (
+          {(message.embeds || []).map((embed, i) =>
+            embed.kind === 'gif' ? null : (
             <div
               key={`e${i}`}
               className={classes('rich-embed selectable', embed.kind === 'notice' && 'notice')}
@@ -1170,7 +1194,8 @@ function MessageRowBody({
                 </div>
               )}
             </div>
-          ))}
+            )
+          )}
 
           {/* Pictures and videos that came together are laid out together:
               two side by side, three with the first tall, four in a square,

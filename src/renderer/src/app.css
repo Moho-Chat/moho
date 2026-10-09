@@ -10405,3 +10405,103 @@ html[data-reduce-motion] *::after {
   flex-wrap: wrap;
   gap: var(--spacing-xs);
 }
+
+
+/* GIFs to browse and send. */
+.gif-picker {
+  position: fixed;
+  z-index: var(--z-picker);
+  width: min(420px, calc(100vw - 8px));
+  height: min(480px, calc(100vh - 8px));
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-s);
+  overflow: hidden;
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline-medium);
+  box-shadow: var(--shadow-2);
+  animation: overlay-in var(--motion) var(--ease);
+}
+
+.gif-search {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 0 var(--spacing-xs);
+  color: var(--surface-variant-text);
+}
+
+.gif-search .text-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.gif-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.gif-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  padding-bottom: var(--spacing-s);
+}
+
+.gif-category {
+  padding: var(--spacing-xxs) var(--spacing-s);
+  border-radius: var(--radius-pill);
+  background: var(--surface-hover);
+  color: var(--surface-text);
+  font-size: var(--font-size-small);
+  text-transform: capitalize;
+}
+
+.gif-category:hover {
+  background: var(--surface-selected);
+}
+
+.gif-empty {
+  padding: var(--spacing-l);
+  text-align: center;
+}
+
+.gif-grid {
+  display: flex;
+  gap: var(--spacing-xs);
+  align-items: flex-start;
+}
+
+.gif-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.gif-cell {
+  display: block;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--radius-s, 6px);
+  background: var(--surface-container);
+  cursor: pointer;
+}
+
+.gif-cell:hover,
+.gif-cell:focus-visible {
+  outline: 2px solid var(--primary);
+}
+
+.gif-cell video,
+.gif-cell img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}

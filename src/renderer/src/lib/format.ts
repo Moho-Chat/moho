@@ -584,6 +584,22 @@ const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|avif)(\?\S*)?$/i
 const VIDEO_EXT_RE = /\.(mp4|webm|mov|mkv|ogv)(\?\S*)?$/i
 
 /**
+ * A page of one of the sites GIFs are shared from - Tenor, Giphy, Klipy.
+ *
+ * Not a picture, whatever it shows: a page. What it shows reaches the message
+ * as an embed, from Discord or from the daemon having read the page, so this
+ * need not be asked what it is - which, for a probe, is a request to a third
+ * party the moment a message arrives, and for Klipy one it answers with a
+ * challenge.
+ */
+const GIF_PAGE_RE = /^https?:\/\/(?:www\.)?(?:tenor\.com\/(?:[a-z]{2}(?:-[A-Za-z]{2})?\/)?view\/|giphy\.com\/(?:gifs|embed)\/|klipy\.com\/(?:gifs?|clips?|stickers?|memes?)\/)/i
+
+/** Whether this is a link to a GIF's page on one of those sites. */
+export function isGifPage(url: string): boolean {
+  return GIF_PAGE_RE.test(url)
+}
+
+/**
  * What a thumbnail was linked to, told apart by what it is.
  *
  * A link straight to a bigger file can be opened as it stands. A link to a
@@ -666,6 +682,9 @@ export function extractMedia(
     } else if (OPAQUE_IMAGE_HOSTS.includes(hostnameOf(url))) {
       seen.add(identity)
       result.push({ url, kind: 'image', ...biggerCopy(url, opts.thumbnails) })
+    } else if (isGifPage(url)) {
+      // A page, not a file: see GIF_PAGE_RE. Left as the link it is.
+      continue
     } else if (opts.contentSniffing && /^https?:\/\//i.test(url)) {
       // Nothing else could classify this. Not for file:// URLs: those are
       // always nobilis's own already-classified attachment paths.

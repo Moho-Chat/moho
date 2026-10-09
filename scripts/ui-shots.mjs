@@ -171,6 +171,76 @@ const discord = (inCall) => async (page) => {
   await sleep(300)
 }
 
+
+// --- GIFs (#331) ---------------------------------------------------------------
+
+/**
+ * Three messages that link to GIFs, with or without what the daemon or Discord
+ * says about them: a Tenor page, a Giphy page and a Klipy page. Without, they
+ * are the addresses they were before; with, the first two are the GIFs - the
+ * Klipy page is one nothing can read, and stays a link either way.
+ *
+ * The pictures are made with ffmpeg and handed to the window as blob and data
+ * URLs, since it plays only https media and nothing is fetched from anywhere.
+ */
+const stageGifs = (withEmbeds) => async (page) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'moho-gifs-'))
+  const clip = (name, source) => {
+    const file = path.join(dir, name)
+    execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', source, '-pix_fmt', 'yuv420p', '-y', file])
+    return fs.readFileSync(file).toString('base64')
+  }
+  const mp4 = clip('cat.mp4', 'gradients=s=300x200:d=3:r=15:speed=0.02:c0=0xe0a43a:c1=0xb0457a:c2=0x3a8fe0:nb_colors=3')
+  const gif = (() => {
+    const file = path.join(dir, 'wave.gif')
+    execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'gradients=s=260x180:d=2:r=12:speed=0.03:c0=0x3ae0a4:c1=0x4a2f9a:nb_colors=2', '-y', file])
+    return fs.readFileSync(file).toString('base64')
+  })()
+  fs.rmSync(dir, { recursive: true, force: true })
+  await page.evaluate(`(() => {
+    const shots = window.__mohoShots
+    const s = shots.state()
+    const id = s.activeBufferId
+    const now = Math.floor(Date.now() / 1000)
+    const bytes = Uint8Array.from(atob('${mp4}'), (c) => c.charCodeAt(0))
+    const MP4 = URL.createObjectURL(new Blob([bytes], { type: 'video/mp4' }))
+    const GIF = 'data:image/gif;base64,${gif}'
+    const msg = (n, from, body, embeds) => ({ id: 'gif' + n, bufferId: id, from, senderId: from, body, ts: now - (60 - n) * 20, isAction: false, isHighlight: false, kind: 'chat', isOwn: false, ...(embeds ? { embeds } : {}) })
+    const embeds = ${withEmbeds ? 'true' : 'false'}
+    shots.patch({ messagesByBuffer: { ...s.messagesByBuffer, [id]: [...(s.messagesByBuffer[id] || []),
+      msg(1, 'alice', 'this is how it feels on a monday https://tenor.com/view/monday-cat-gif-22954713', embeds ? [{ kind: 'gif', url: 'https://tenor.com/view/monday-cat-gif-22954713', mediaUrl: MP4, mediaKind: 'video', width: 300, height: 200, provider: 'Tenor' }] : undefined),
+      msg(2, 'bob', 'https://giphy.com/gifs/wave-hello-Z7wFi5b2VEAr6', embeds ? [{ kind: 'gif', url: 'https://giphy.com/gifs/wave-hello-Z7wFi5b2VEAr6', mediaUrl: GIF, mediaKind: 'image', width: 260, height: 180, provider: 'Giphy' }] : undefined),
+      msg(3, 'carol', 'and from klipy: https://klipy.com/gifs/friends-joey-53')
+    ] } })
+    return true
+  })()`)
+  await sleep(900)
+}
+
+/** The GIF picker, open, with a handful of invented GIFs to look through. */
+const openGifPicker = async (page) => {
+  await page.evaluate(`(() => {
+    const shots = window.__mohoShots
+    const s = shots.state()
+    const art = (a, b, label, w, h) => 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + a + '"/><stop offset="1" stop-color="' + b + '"/></linearGradient></defs><rect width="' + w + '" height="' + h + '" fill="url(#g)"/><text x="' + (w / 2) + '" y="' + (h / 2 + 14) + '" font-size="44" font-family="sans-serif" fill="#fff" text-anchor="middle">' + label + '</text></svg>')
+    const gif = (id, title, a, b, w, h) => ({ id, title, url: 'https://tenor.com/view/' + id, src: '', gifSrc: '', preview: art(a, b, title, w, h), width: w, height: h })
+    window.__gifFixture = {
+      categories: [{ name: 'reaction', src: '' }, { name: 'happy', src: '' }, { name: 'dancing', src: '' }, { name: 'cats', src: '' }, { name: 'applause', src: '' }, { name: 'facepalm', src: '' }],
+      gifs: [
+        gif('1', 'cat dance', '#e0a43a', '#b0457a', 480, 300), gif('2', 'thumbs up', '#3a8fe0', '#4a2f9a', 300, 300),
+        gif('3', 'happy dog', '#3ae0a4', '#1f6f5a', 480, 270), gif('4', 'mind blown', '#e05a3a', '#7a2f2f', 300, 360),
+        gif('5', 'clapping', '#8a5ae0', '#3a3fa0', 480, 270), gif('6', 'wow', '#e0d03a', '#a07a1f', 300, 300)
+      ]
+    }
+    shots.patch({ accounts: [...s.accounts, { id: 'discord:gifs', service: 'discord', displayName: 'x', state: 'connected', autojoin: '', currentNick: 'x', status: 'online', useTor: false, ssl: true }] })
+    return true
+  })()`)
+  await sleep(500)
+  await page.evaluate(click('button[title="GIFs"]'))
+  await until(page, 'document.querySelector(".gif-cell")', 'the GIFs')
+  await sleep(500)
+}
+
 // --- scenes ------------------------------------------------------------------
 
 /** Messages with several pictures, one of them a spoiler (#304): two, three and four, then a lone spoiler. */
@@ -270,6 +340,18 @@ const setMode = async (page, mode) => {
  * `video` scenes are recorded instead, while `act` runs.
  */
 const SCENES = [
+  {
+    name: 'gif-links-before',
+    setup: async (p) => { await setMode(p, 'comfy'); await openChannel(p, '#general'); await stageGifs(false)(p) }
+  },
+  {
+    name: 'gif-links-after',
+    setup: async (p) => { await setMode(p, 'comfy'); await openChannel(p, '#general'); await stageGifs(true)(p) }
+  },
+  {
+    name: 'gif-picker',
+    setup: async (p) => { await setMode(p, 'comfy'); await openChannel(p, '#general'); await openGifPicker(p) }
+  },
   { name: 'irc-channel-comfy', setup: async (p) => { await setMode(p, 'comfy'); await openChannel(p, '#general') } },
   {
     // History from several days, scrolled to its start: where date
