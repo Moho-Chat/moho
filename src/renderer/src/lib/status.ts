@@ -30,3 +30,15 @@ export function supportsStatus(service: string, status: Choosable): boolean {
 export function statusesFor(service: string): Choosable[] {
   return ALL_STATUSES.filter((s) => supportsStatus(service, s))
 }
+
+/**
+ * What a status is called on this service.
+ *
+ * Matrix has no invisible mode: what is sent for it is offline presence, which
+ * is what it is, so that is what it says there. Everything else is called what
+ * the others call it.
+ */
+export function statusName(service: string, status: Choosable): string {
+  if (status === 'invisible' && service === 'matrix') return 'Offline'
+  return { online: 'Online', idle: 'Idle', dnd: 'Do not disturb', invisible: 'Invisible' }[status]
+}

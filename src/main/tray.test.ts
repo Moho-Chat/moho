@@ -39,7 +39,7 @@ describe('what is said about what is waiting', () => {
 })
 
 describe('the menu', () => {
-  const model = { state: NOTHING_WAITING, windowVisible: true, status: 'idle' as const, offered: [] }
+  const model = { state: NOTHING_WAITING, windowVisible: true, status: 'idle' as const, offered: [], invisibleName: 'Invisible' }
   const labels = (items: ReturnType<typeof trayMenu>): string[] => items.map((i) => i.label ?? '-')
 
   it('offers no daemon plumbing, and a restart that is of moho as a whole', () => {
@@ -75,6 +75,11 @@ describe('the menu', () => {
     expect(labelsOf(['online', 'dnd'])).toEqual(['Online', 'Do not disturb'])
     expect(labelsOf(['online', 'idle', 'dnd', 'invisible'])).toHaveLength(4)
     expect(labelsOf([])).toHaveLength(4)
+  })
+
+  it('calls invisible offline where only Matrix has it', () => {
+    const sub = trayMenu({ ...model, offered: ['online', 'invisible'], invisibleName: 'Offline' }, acts()).find((i) => i.label === 'Status')?.submenu as { label: string }[]
+    expect(sub.map((s) => s.label)).toEqual(['Online', 'Offline'])
   })
 
   it('asks for the window to be shown or hidden as it stands', () => {

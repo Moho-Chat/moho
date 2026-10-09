@@ -626,6 +626,7 @@ let accountStatus: Record<string, string> = {}
 /** The status the menu shows as checked, and the ones it offers: what the connected accounts can be set to. */
 let trayStatus: TrayStatus | null = null
 let trayOffered: TrayStatus[] = []
+let trayInvisibleName = 'Invisible'
 const isTrayStatus = (v: unknown): v is TrayStatus => v === 'online' || v === 'idle' || v === 'dnd' || v === 'invisible'
 
 /**
@@ -668,7 +669,8 @@ function refreshTrayMenu(): void {
       state: lastTray,
       windowVisible: !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible(),
       status: trayStatus,
-      offered: trayOffered
+      offered: trayOffered,
+      invisibleName: trayInvisibleName
     },
     {
       toggleWindow,
@@ -770,10 +772,11 @@ function wireIpc(): void {
   ipcMain.handle(IPC.prefsSet, (e, key: string, value: unknown) => applyPref(key, value, e.sender))
 
   // The window says what status its accounts are at, for the tray's menu to check.
-  ipcMain.on(IPC.trayStatus, (_e, statuses: Record<string, string>, offered: string[], shown: string | null) => {
+  ipcMain.on(IPC.trayStatus, (_e, statuses: Record<string, string>, offered: string[], shown: string | null, invisibleName: string) => {
     accountStatus = statuses && typeof statuses === 'object' ? statuses : {}
     trayOffered = Array.isArray(offered) ? offered.filter(isTrayStatus) : []
     trayStatus = isTrayStatus(shown) ? shown : null
+    trayInvisibleName = invisibleName === 'Offline' ? 'Offline' : 'Invisible'
     refreshTrayMenu()
     // Do not disturb is asking for quiet, including from the taskbar.
     updateTray(lastTray)

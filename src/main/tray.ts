@@ -64,6 +64,8 @@ export interface TrayModel {
   status: TrayStatus | null
   /** What the connected accounts can be set to; none reported yet means all of them. */
   offered: TrayStatus[]
+  /** What invisible is called: Matrix, which has only offline presence, says offline. */
+  invisibleName: string
 }
 
 const STATUSES: { id: TrayStatus; label: string }[] = [
@@ -91,7 +93,7 @@ export function trayMenu(model: TrayModel, act: TrayActions): MenuItemConstructo
     {
       label: 'Status',
       submenu: STATUSES.filter((s) => model.offered.length === 0 || model.offered.includes(s.id)).map((s) => ({
-        label: s.label,
+        label: s.id === 'invisible' ? model.invisibleName : s.label,
         type: 'radio' as const,
         checked: model.status === s.id,
         click: () => act.setStatus(s.id)

@@ -1190,13 +1190,21 @@ export class ChatStore {
    * service that has no idle to be at - and main stays quiet, with no popup and
    * no sound, for an account that is on Do not disturb.
    */
+  /** What main was last told, so an account list that changed in nothing that matters is not told again. */
+  private lastTrayReport = ''
+
   private reportTrayStatus(): void {
     const statuses: Record<string, string> = {}
     const connected = this.state.accounts.filter((a) => a.state === 'connected')
     for (const a of connected) if (a.status) statuses[a.id] = a.status
     const offered = ALL_STATUSES.filter((s) => connected.some((a) => supportsStatus(a.service, s)))
     const widest = [...connected].sort((a, b) => statusesFor(b.service).length - statusesFor(a.service).length)[0]
-    window.moho.setAccountStatuses(statuses, offered, widest?.status ?? null)
+    // Invisible is what Discord calls it; where only Matrix has it, it is offline.
+    const invisibleName = connected.some((a) => supportsStatus(a.service, 'invisible') && a.service !== 'matrix') ? 'Invisible' : 'Offline'
+    const report = JSON.stringify([statuses, offered, widest?.status ?? null, invisibleName])
+    if (report === this.lastTrayReport) return
+    this.lastTrayReport = report
+    window.moho.setAccountStatuses(statuses, offered, widest?.status ?? null, invisibleName)
   }
 
   // --- lifecycle ------------------------------------------------------
@@ -1262,8 +1270,14 @@ export class ChatStore {
     window.moho.onScreenPick(async (sources) => (await this.askForScreenSource(sources))?.id ?? null)
 
     window.moho.onLinkChange((up) => {
+      // Only the link coming up is news. Main says it again whenever the tray
+      // is redrawn, and taking each of those for a reconnection refreshed
+      // everything and put the pane back on the open conversation's server -
+      // which is how a Discord account retrying every few seconds kept pulling
+      // somebody off the IRC network they had just chosen.
+      const wasUp = this.state.linkUp
       this.set({ linkUp: up })
-      if (up) {
+      if (up && !wasUp) {
         void this.refreshAll()
         void this.refreshNetSettings()
       }
@@ -1367,7 +1381,10 @@ export class ChatStore {
     ])
     // Not awaited: GitHub being slow is no reason to hold the window up.
     void this.checkForRelease()
-    if (this.state.activeBufferId) await this.selectBuffer(this.state.activeBufferId)
+    // The open conversation is read again, and subscribed to again, where it is.
+    // Not followed to its server: a refresh is not somebody choosing it, and
+    // the rail may have been moved to another since.
+    if (this.state.activeBufferId) await this.selectBuffer(this.state.activeBufferId, false)
   }
 
   /**

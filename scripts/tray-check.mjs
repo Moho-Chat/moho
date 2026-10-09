@@ -118,6 +118,21 @@ try {
     irc.close()
   }
 
+  // The tray being redrawn - which it is whenever something unread changes - must
+  // not move the window: somebody who has chosen another server stays on it. The
+  // redraw tells the window the link is up, and taking each for a reconnection
+  // sent the pane back to the server of whatever conversation was open.
+  const away = await page.evaluate('window.__mohoShots.state().activeGroupId')
+  await page.evaluate('window.__mohoShots.store.selectGroup("~mentions")')
+  for (let i = 0; i < 6; i++) {
+    await tray(`t.update({ unread: ${i}, dms: ${i}, mentions: 0 })`)
+    await sleep(200)
+  }
+  await sleep(1500)
+  const stayed = await page.evaluate('window.__mohoShots.state().activeGroupId')
+  check(stayed === '~mentions', 'a redrawn tray leaves the chosen server chosen', `${away} -> ${stayed}`)
+  await tray('t.update({ unread: 0, dms: 0, mentions: 0 })')
+
   // Restart brings back moho and a daemon of its own.
   const before = daemons(scratchDir)
   const pidBefore = await main.evaluate('process.pid')

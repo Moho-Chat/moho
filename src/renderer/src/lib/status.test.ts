@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { statusesFor, supportsStatus } from './status'
+import { statusesFor, statusName, supportsStatus } from './status'
 
 describe('the statuses a service has', () => {
   it('gives Discord all four', () => {
@@ -18,5 +18,13 @@ describe('the statuses a service has', () => {
     expect(statusesFor('kick')).toEqual(['online', 'dnd'])
     expect(statusesFor('sneedchat')).toEqual(['online', 'dnd'])
     expect(supportsStatus('sneedchat', 'idle')).toBe(false)
+  })
+})
+
+describe('what a status is called', () => {
+  it('calls Matrix\'s invisible what it is, offline presence', () => {
+    expect(statusName('matrix', 'invisible')).toBe('Offline')
+    expect(statusName('discord', 'invisible')).toBe('Invisible')
+    expect(statusName('matrix', 'dnd')).toBe('Do not disturb')
   })
 })

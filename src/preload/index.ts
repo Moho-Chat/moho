@@ -95,8 +95,8 @@ const api = {
    * can be set to, and the one to show as checked: for the tray menu, and for
    * main to stay quiet for an account on Do not disturb.
    */
-  setAccountStatuses(statuses: Record<string, string>, offered: string[], shown: string | null): void {
-    ipcRenderer.send(IPC.trayStatus, statuses, offered, shown)
+  setAccountStatuses(statuses: Record<string, string>, offered: string[], shown: string | null, invisibleName: string): void {
+    ipcRenderer.send(IPC.trayStatus, statuses, offered, shown, invisibleName)
   },
 
   onMaximizeChange(cb: (maximized: boolean) => void): () => void {
