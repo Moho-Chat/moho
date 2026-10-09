@@ -17,6 +17,73 @@ Each section has two parts:
   that made it, including dependency updates
   (`node scripts/changelog-deps.mjs <previous tag>` lists those).
 
+## [1.0.0-rc.3]
+
+### Major features
+
+- **Discord forums:** forum and media channels appear in the channel list and open as a pane of posts - title, tags, the first message's words, replies, age, picture and top reaction - with search, sorting, older posts, and a New Post form
+- **A redesigned interface:** Discord-shaped messages with date separators and an unread bar, red mention badges, a Ctrl+K quick switcher, keyboard navigation, a rail with mention counts and folders, a member list with faces, and motion throughout
+- **Settings rebuilt:** one click from the gear, a grouped rail with a search over every setting, and new Appearance (layout, spacing, zoom, clock, reduce motion), Notifications and Keybinds pages with a hotkey recorder
+- **A one-box message composer:** a + menu, Send only when there is something to send, Shift+Enter for a new line on every service, an attachment tray with spoilers, and dropped files going into the tray
+- **Discord notices and permissions:** Discord's own safety notices drawn as the cards they are, and a banner in place of the message box wherever nothing can be written
+
+### Fixes, patches and changes
+
+- Fixed Sneedchat pictures posted back to back by a script merging into one unusable link ([moho `6edae7a`](https://github.com/Moho-Chat/moho/commit/6edae7a))
+- Discord files staged together now go as one message, with an upload ring that fills as it uploads ([moho `9888c80`](https://github.com/Moho-Chat/moho/commit/9888c80), [nobilis `9690905`](https://github.com/Moho-Chat/nobilis/commit/9690905))
+- Fixed the release mirror script printing a traceback while the release did not exist yet ([moho `a8d9f41`](https://github.com/Moho-Chat/moho/commit/a8d9f41))
+- Defined the design tokens the stylesheet used but never had, and applied one set across it ([moho `9db25c8`](https://github.com/Moho-Chat/moho/commit/9db25c8), [moho `3cdfe37`](https://github.com/Moho-Chat/moho/commit/3cdfe37))
+- Added a screenshot harness for before-and-after pictures of the interface ([moho `88375ba`](https://github.com/Moho-Chat/moho/commit/88375ba))
+- Unread channels now read as unread, mentions are red, and every badge is one style ([moho `4ca37dd`](https://github.com/Moho-Chat/moho/commit/4ca37dd))
+- Added date separators to the message list ([moho `b2464e4`](https://github.com/Moho-Chat/moho/commit/b2464e4))
+- Added Mark as read on channels, categories and servers, and Escape to read what you are in ([moho `2745a2f`](https://github.com/Moho-Chat/moho/commit/2745a2f))
+- Added a Ctrl+K quick switcher and keyboard navigation between channels ([moho `1eef37e`](https://github.com/Moho-Chat/moho/commit/1eef37e))
+- Voice panel: a horizontal microphone bar, the connection's real latency, and a share button ([moho `ad0f0c0`](https://github.com/Moho-Chat/moho/commit/ad0f0c0), [nobilis `e0f6169`](https://github.com/Moho-Chat/nobilis/commit/e0f6169))
+- Replies jump to the message they answer, and names and pictures open the profile ([moho `bf45147`](https://github.com/Moho-Chat/moho/commit/bf45147))
+- Added Copy and Copy text on every message, and Copy message link on Discord ([moho `0033955`](https://github.com/Moho-Chat/moho/commit/0033955))
+- The hover toolbar fades in, can be reached by keyboard, and offers Edit, Copy and your recent reactions ([moho `57e1856`](https://github.com/Moho-Chat/moho/commit/57e1856))
+- Fixed six interface bugs: a nested voice button, folded categories hiding unread, muted channels hiding mentions, overlapping corners, the typing strip moving the log, and pinned rows missing their service mark ([moho `6598043`](https://github.com/Moho-Chat/moho/commit/6598043))
+- Pending sends dim only their text, failed ones can be deleted, and Up in an empty box edits your last message in a multi-line editor ([moho `6a82c32`](https://github.com/Moho-Chat/moho/commit/6a82c32))
+- Server rail: mention counts, folders that say what is waiting and stay open, an instant name flyout and a red close button ([moho `8072b24`](https://github.com/Moho-Chat/moho/commit/8072b24))
+- Member list: faces, presence dots, and a click for the profile; Discord's member pictures now come with the list ([moho `c912ed3`](https://github.com/Moho-Chat/moho/commit/c912ed3), [nobilis `4099305`](https://github.com/Moho-Chat/nobilis/commit/4099305))
+- Voice channel list: faces, muted and deafened marks, a speaking ring and a collapsible heading ([moho `843288d`](https://github.com/Moho-Chat/moho/commit/843288d))
+- Comfy messages in Discord's shape, amber mention rows, one code and quote style, and marked system lines ([moho `3a7677e`](https://github.com/Moho-Chat/moho/commit/3a7677e))
+- Buttons are primary, subtle or the one danger style, and the restarts ask first ([moho `2c8609c`](https://github.com/Moho-Chat/moho/commit/2c8609c))
+- Escape closes only the top layer, and full-page panels close on Escape ([moho `c5e7619`](https://github.com/Moho-Chat/moho/commit/c5e7619))
+- Thread panel reads the display settings, groups replies and follows the newest ([moho `33129f9`](https://github.com/Moho-Chat/moho/commit/33129f9))
+- Toasts slide in and out, come in three kinds, pause on hover and fold repeats ([moho `2d1b8be`](https://github.com/Moho-Chat/moho/commit/2d1b8be))
+- Context menu: keyboard navigation, checked items, shortcut hints, and placement that holds while it animates ([moho `4065963`](https://github.com/Moho-Chat/moho/commit/4065963), [moho `fcb7df5`](https://github.com/Moho-Chat/moho/commit/fcb7df5))
+- A conversation opens at its first unread, with a bar saying how many are above ([moho `55fd192`](https://github.com/Moho-Chat/moho/commit/55fd192))
+- Added hover fades, turning fold arrows, arriving messages, a reaction pop and growing overlays ([moho `6d8a050`](https://github.com/Moho-Chat/moho/commit/6d8a050))
+- Every dialog is built from one shared frame with a close button, kept focus and a scrim below the title bar ([moho `5cb30ce`](https://github.com/Moho-Chat/moho/commit/5cb30ce), [moho `420a2f7`](https://github.com/Moho-Chat/moho/commit/420a2f7), [moho `6a329c6`](https://github.com/Moho-Chat/moho/commit/6a329c6))
+- Shift+Enter makes a new line on every service and pasted line breaks stay; IRC sends them as a batch or separate lines, Sneedchat as [br], Kick as one line ([moho `9ba630c`](https://github.com/Moho-Chat/moho/commit/9ba630c), [nobilis `ccc8de6`](https://github.com/Moho-Chat/nobilis/commit/ccc8de6))
+- Reply bar: its own surface, the author's face, Esc to cancel, and an @ switch to answer without pinging on Discord ([moho `f48185e`](https://github.com/Moho-Chat/moho/commit/f48185e), [nobilis `918fcfa`](https://github.com/Moho-Chat/nobilis/commit/918fcfa))
+- One style for the name, command and emoji lists, with member pictures and :shortcode emoji completion ([moho `28d8b3c`](https://github.com/Moho-Chat/moho/commit/28d8b3c))
+- Lightbox: step through a conversation's pictures, wheel and pinch zoom with panning, and Copy picture ([moho `817cb1e`](https://github.com/Moho-Chat/moho/commit/817cb1e))
+- Emoji picker: walk it with the arrow keys, Enter picks the top result, and skin tones are remembered ([moho `99fd0d3`](https://github.com/Moho-Chat/moho/commit/99fd0d3))
+- Attachment tray cards with name, size and a Discord spoiler toggle; dropped files go into the tray instead of being sent at once ([moho `15e7061`](https://github.com/Moho-Chat/moho/commit/15e7061), [nobilis `0f5669b`](https://github.com/Moho-Chat/nobilis/commit/0f5669b))
+- Composer: one box with the + on the left and emoji, stickers, voice and Send on the right ([moho `a59c1ab`](https://github.com/Moho-Chat/moho/commit/a59c1ab))
+- Several pictures in one message lay out as a grid, and SPOILER_ files are blurred until clicked ([moho `87ea3b8`](https://github.com/Moho-Chat/moho/commit/87ea3b8))
+- Pinned messages show as a banner over the log for Discord and Matrix, with a count on the header ([moho `3a74cf0`](https://github.com/Moho-Chat/moho/commit/3a74cf0))
+- Reactions say what they are and who gave them on hover ([moho `506140d`](https://github.com/Moho-Chat/moho/commit/506140d), [nobilis `1da3ad8`](https://github.com/Moho-Chat/nobilis/commit/1da3ad8))
+- User footer: muted and deafened are red, voice buttons stay on every service, and the status is a popout with a custom status for Discord and Matrix and Apply to all accounts ([moho `c026609`](https://github.com/Moho-Chat/moho/commit/c026609), [nobilis `f280563`](https://github.com/Moho-Chat/nobilis/commit/f280563))
+- The footer's join button is gone; the rail's + is the one way in, pinned under a rule above the settings cog while the server list scrolls ([moho `b4c1ced`](https://github.com/Moho-Chat/moho/commit/b4c1ced), [moho `dad5543`](https://github.com/Moho-Chat/moho/commit/dad5543))
+- Header: one 48px row across every column, filled toggles, and the channel topic from IRC, Matrix and Discord ([moho `2ef9e35`](https://github.com/Moho-Chat/moho/commit/2ef9e35), [nobilis `44d1611`](https://github.com/Moho-Chat/nobilis/commit/44d1611))
+- "(edited)" says when on hover, for edits seen live ([moho `7f4c356`](https://github.com/Moho-Chat/moho/commit/7f4c356), [nobilis `e51f139`](https://github.com/Moho-Chat/nobilis/commit/e51f139))
+- Incoming Discord and Matrix calls share one card style and stack ([moho `59d4893`](https://github.com/Moho-Chat/moho/commit/59d4893))
+- Settings: the gear opens it directly, with Accounts and Downloads as pages, a search, one switch for every boolean and a saved tick ([moho `66a0c0f`](https://github.com/Moho-Chat/moho/commit/66a0c0f), [moho `cc4c9f6`](https://github.com/Moho-Chat/moho/commit/cc4c9f6))
+- Settings: added Appearance, Notifications and Keybinds pages, the last with a recorder for the global hotkey ([moho `fe6ad97`](https://github.com/Moho-Chat/moho/commit/fe6ad97), [moho `adca84d`](https://github.com/Moho-Chat/moho/commit/adca84d), [moho `82a0bdf`](https://github.com/Moho-Chat/moho/commit/82a0bdf))
+- Accounts open by default with few accounts, Remove sits in a danger zone, and Join picks its account and says Join ([moho `f8dcccd`](https://github.com/Moho-Chat/moho/commit/f8dcccd))
+- Mentions page: service and unread filters, day groups, two-line bodies and put-away ([moho `078fe41`](https://github.com/Moho-Chat/moho/commit/078fe41))
+- Room settings is a tabbed dialog instead of a popover ([moho `f8936c6`](https://github.com/Moho-Chat/moho/commit/f8936c6))
+- Quiet buttons such as Cancel have their own fill, so they no longer vanish into a dialog ([moho `50aaa97`](https://github.com/Moho-Chat/moho/commit/50aaa97))
+- Fixed browsing an IRC network's channels freezing or blanking the window: the daemon holds the list and sends a page, it times out after a minute, and a refusal is reported ([moho `2b41c5e`](https://github.com/Moho-Chat/moho/commit/2b41c5e), [nobilis `152fdf1`](https://github.com/Moho-Chat/nobilis/commit/152fdf1))
+- Channels in the list no longer jump to the top as messages arrive ([moho `9f03d6b`](https://github.com/Moho-Chat/moho/commit/9f03d6b))
+- Fixed Discord's notices showing only a stand-in title: they are read as cards, and a banner replaces the message box in them and in channels this account cannot write in ([moho `ff7d313`](https://github.com/Moho-Chat/moho/commit/ff7d313), [moho `d7c4215`](https://github.com/Moho-Chat/moho/commit/d7c4215), [moho `2a4f797`](https://github.com/Moho-Chat/moho/commit/2a4f797), [nobilis `1b270be`](https://github.com/Moho-Chat/nobilis/commit/1b270be), [nobilis `97ac6bc`](https://github.com/Moho-Chat/nobilis/commit/97ac6bc), [nobilis `7561b88`](https://github.com/Moho-Chat/nobilis/commit/7561b88))
+- A window whose page dies is reloaded and the reason logged, instead of being left empty ([moho `6899694`](https://github.com/Moho-Chat/moho/commit/6899694), [moho `06bb812`](https://github.com/Moho-Chat/moho/commit/06bb812))
+- Discord forums, with live and archived posts read together ([moho `dd0c25e`](https://github.com/Moho-Chat/moho/commit/dd0c25e), [nobilis `d02bba0`](https://github.com/Moho-Chat/nobilis/commit/d02bba0), [nobilis `8363003`](https://github.com/Moho-Chat/nobilis/commit/8363003), [nobilis `3cf1a5b`](https://github.com/Moho-Chat/nobilis/commit/3cf1a5b), [nobilis `6abcb8e`](https://github.com/Moho-Chat/nobilis/commit/6abcb8e))
+- Added Rust crate tokio-util 0.7.19 ([nobilis `9690905`](https://github.com/Moho-Chat/nobilis/commit/9690905))
+
 ## [1.0.0]
 
 ### Major features
