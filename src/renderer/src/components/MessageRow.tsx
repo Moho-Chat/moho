@@ -7,10 +7,12 @@ import { EventSource } from './EventSource'
 import { ForwardPicker } from './ForwardPicker'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { MediaEmbed } from './MediaEmbed'
-import { EmojiPicker } from './EmojiPicker'
+import { COMMON_EMOJI, EmojiPicker, readRecent } from './EmojiPicker'
+import { reactionLabel, reactorsSentence } from '../lib/reactions'
 import { UploadMeter } from './UploadMeter'
 import { RichText } from '../lib/richtext'
 import { useChat, usePref, useStore } from '../state/hooks'
+import { useTick } from '../lib/clock'
 import { useSniffedTypes, sniffUrl } from '../lib/sniff'
 import { useMediaUrl, useStrictRoute } from '../lib/route'
 import type { ChatMessage } from '../state/store'
@@ -42,6 +44,7 @@ import {
   classes,
   formatFullTime,
   formatRelativeTime,
+  formatRelativeShort,
   formatTime,
   hasDirectMessages,
   isChatKind,
@@ -50,6 +53,7 @@ import {
   isWhisper,
   nickColor
 } from '../lib/util'
+import { useEscapeLayer } from '../lib/layers'
 
 /**
  * A badge, short enough to sit beside a name.
@@ -79,7 +83,28 @@ function badgeLabel(badge: MessageBadge): string {
 }
 
 /** A handful of one-click reactions on the hover toolbar. */
-const QUICK_REACTIONS = ['👍', '❤️', '😂', '🔥']
+/** What a line that is not speech is marked with, by the daemon's word for it. */
+const SYSTEM_MARKS: Record<string, string> = {
+  join: 'login',
+  part: 'logout',
+  quit: 'logout',
+  kick: 'person_remove',
+  nick: 'badge',
+  topic: 'sell',
+  mode: 'shield'
+}
+
+const DEFAULT_REACTIONS = ['👍', '❤️', '😂', '🔥']
+
+/**
+ * The four faces on the hover toolbar: what this account has reacted with
+ * lately, topped up with the usual ones. Plain emoji only - a custom one
+ * belongs to a server and may not be sendable from wherever the toolbar is.
+ */
+function quickReactions(accountId?: string): string[] {
+  const recent = readRecent(accountId).filter((e) => !e.startsWith('<') && !e.startsWith(':'))
+  return [...new Set([...recent, ...DEFAULT_REACTIONS])].slice(0, 4)
+}
 
 export type MessageMode = 'classic' | 'comfy' | 'bubbles'
 
@@ -258,21 +283,16 @@ function ReaderList({
     })
   }, [at])
 
+  useEscapeLayer(onClose)
+
   useEffect(() => {
     const away = (e: MouseEvent): void => {
       if (!box.current?.contains(e.target as Node)) onClose()
     }
-    const key = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
     // Capturing, so a click anywhere closes this before that click does
     // anything else - including on another message's faces.
     window.addEventListener('mousedown', away, true)
-    window.addEventListener('keydown', key)
-    return () => {
-      window.removeEventListener('mousedown', away, true)
-      window.removeEventListener('keydown', key)
-    }
+    return () => window.removeEventListener('mousedown', away, true)
   }, [onClose])
 
   const shown = readers.slice(0, MAX_READER_NAMES)
@@ -318,8 +338,25 @@ function MessageRowBody({
   const strictRoute = useStrictRoute()
   const store = useStore()
   const { menu, open, close } = useContextMenu()
-  const [editing, setEditing] = useState(false)
+  // The message this one answers, if it is on screen to be asked: its name
+  // colour and picture are the author's, and are not in the reply's own
+  // preview. The object itself, so the row only re-renders when that one
+  // message changes.
+  const replyId = message.replyTo && !message.replyTo.thread && !message.replyTo.forwarded ? message.replyTo.id : ''
+  const original = useChat((s) => (replyId ? s.messagesByBuffer[bufferId]?.find((m) => m.id === replyId) : undefined))
+  // Which message is open for editing is the window's, not each row's, so
+  // Up arrow in the message box can open the last one.
+  const editing = useChat((s) => s.editingId === message.id)
+  const setEditing = (on: boolean): void => (on ? store.startEdit(message.id) : store.stopEdit())
+  /** Saving an empty edit is asking to delete it, which is asked about first. */
+  const [askDelete, setAskDelete] = useState(false)
   const [draft, setDraft] = useState(message.body)
+  // Opened from elsewhere - Up arrow in the message box - the field starts
+  // with what the message says now.
+  useEffect(() => {
+    if (editing) setDraft(message.body)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing])
   const [revealed, setRevealed] = useState<Record<number, boolean>>({})
   const [pickerOpen, setPickerOpen] = useState(false)
   /** Writing the reason for a report, before it is sent. */
@@ -346,6 +383,12 @@ function MessageRowBody({
   const canEditDelete =
     !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix')
   const canReact = service === 'discord' || service === 'matrix'
+  // Read again after the picker has been used, which is when it changes.
+  const quick = useMemo(
+    () => quickReactions(store.accountFor(bufferId)?.id),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bufferId, pickerOpen]
+  )
   const pinned = shared.pinned.includes(message.id)
   const isSystem = !isChatKind(message.kind)
   // Said to you rather than to the room. Drawn differently on purpose: the
@@ -376,6 +419,12 @@ function MessageRowBody({
   const own = bubbles && !isSystem && !!message.isOwn
 
   const attachments = message.attachments ?? []
+  // The ones that go in a grid, and the ones that stay in the row, each with
+  // its place in the message so its key stays the same whichever it is.
+  const indexed = attachments.map((att, i) => ({ att, i }))
+  const gridable = indexed.filter(({ att }) => att.kind === 'image' || att.kind === 'video')
+  const tiled = gridable.length >= 2 ? gridable : []
+  const rowed = gridable.length >= 2 ? indexed.filter((x) => !gridable.includes(x)) : indexed
 
   // The extraction passes each walk the same normalised body independently,
   // matching how the original structured this - one do-everything function
@@ -430,6 +479,43 @@ function MessageRowBody({
     }
   }, [message.body, message.html, contentSniffing, sniffed, revealed, isSneedchat, smilieIndex, channels, service, ircColours, strictRoute])
 
+  // Somebody else's name or picture opens who they are, as it does in the
+  // clients this is measured against; your own and the system's have nothing
+  // to open.
+  // Read when the menu opens: by the time an entry is clicked the window may
+  // have let go of the selection.
+  const selectedRef = useRef('')
+  const selected = selectedRef.current
+  const canOpenProfile = !!message.from && !isSystem && !message.isOwn
+  const openProfile = (): void => store.showProfile(bufferId, message.from, message.senderId)
+  // Back to what this answers, bringing it into view first if it is a long
+  // way up - and saying so if it is gone, rather than doing nothing.
+  const jumpToReply = (): void => {
+    if (!replyId) return
+    void store.jumpToMessage(bufferId, replyId).then((found) => {
+      if (found) store.setJumpTarget(replyId)
+      else store.toast('info', "Couldn't find the message this answers")
+    })
+  }
+
+  // Said a moment ago, as this row is first drawn: it arrives rather than
+  // appears. History being scrolled into view is old and stays still.
+  const fresh = useRef(Math.floor(Date.now() / 1000) - message.ts < 3).current
+
+  // Reactions that are new, or have gone up, since this row last drew: they
+  // land with a pop. Nothing pops on the first drawing - a row scrolled into
+  // view full of reactions has not just been reacted to.
+  const seenReactions = useRef<Record<string, number> | null>(null)
+  const popped = new Set<string>()
+  if (seenReactions.current) {
+    for (const r of message.reactions ?? []) {
+      if ((seenReactions.current[r.emoji] ?? 0) < r.count) popped.add(r.emoji)
+    }
+  }
+  useEffect(() => {
+    seenReactions.current = Object.fromEntries((message.reactions ?? []).map((r) => [r.emoji, r.count]))
+  }, [message.reactions])
+
   const entries: MenuEntry[] = [
     // First, above what to do about the message: the question a right click
     // on somebody's line usually asks is who they are, and finding them in a
@@ -444,6 +530,15 @@ function MessageRowBody({
         ] as MenuEntry[])
       : []),
     { label: 'Reply', icon: 'reply', onClick: () => reply() },
+    // What was selected when the menu opened, first: right-clicking on
+    // highlighted text and finding no Copy is the one thing this menu must not
+    // do, having replaced the one the window would have given.
+    ...(selected
+      ? ([{ label: 'Copy', icon: 'content_copy', onClick: () => void window.moho.copyText(selected) }] as MenuEntry[])
+      : []),
+    ...(message.body && !isSystem
+      ? ([{ label: 'Copy text', icon: 'content_copy', onClick: () => void window.moho.copyText(message.body) }] as MenuEntry[])
+      : []),
     // Sending somebody else's message on. Only where the service has a real
     // forward: Discord's carries the original itself, and Matrix's sends its
     // content again, the same upload and formatting. Anywhere else it would
@@ -568,6 +663,15 @@ function MessageRowBody({
           }
         ] as MenuEntry[])
       : []),
+    ...(service === 'discord' && message.id && !isSystem
+      ? ([
+          {
+            label: 'Copy message link',
+            icon: 'link',
+            onClick: () => void store.copyDiscordMessageLink(bufferId, message.id)
+          }
+        ] as MenuEntry[])
+      : []),
     ...(service === 'discord'
       ? ([
           {
@@ -613,7 +717,10 @@ function MessageRowBody({
     store.startReply(message.id, message.from, message.body)
   }
 
-  const timeLabel = relativeTimestamps ? formatRelativeTime(message.ts) : formatTime(message.ts)
+  // Aged on a timer shared by every row, so "now" becomes "3m" without the
+  // list being redrawn.
+  const tick = useTick(relativeTimestamps)
+  const timeLabel = relativeTimestamps ? formatRelativeShort(message.ts, tick || Date.now()) : formatTime(message.ts)
 
   /**
    * Which unfurled link belongs to which rich embed.
@@ -657,6 +764,7 @@ function MessageRowBody({
           isSystem && 'system',
           reward && 'reward',
           grouped && 'grouped',
+          fresh && 'fresh',
           comfy && 'comfy',
           bubbles && 'bubbles',
           own && 'own',
@@ -672,12 +780,15 @@ function MessageRowBody({
         // Where a picture in it came from, for fetching it again once its
         // cached copy has gone - see lib/mediarestore.
         data-buffer-id={bufferId}
-        onContextMenu={open}
+        onContextMenu={(e) => {
+          selectedRef.current = window.getSelection()?.toString().trim() ?? ''
+          open(e)
+        }}
       >
         {/* Bubbles carry their own time inside, which is the whole point of
             the shape - so the gutter that reserves 42px for it on every other
             row would be 42px of nothing. */}
-        {!bubbles && (
+        {mode === 'classic' && (
           <span className="message-time small muted" title={formatFullTime(message.ts)}>
             {grouped ? '' : timeLabel}
           </span>
@@ -691,8 +802,28 @@ function MessageRowBody({
             client, where a group's text all shares one left edge. Wrapped
             lines never showed it because they wrap inside message-content,
             which was already in the right place. */}
+        {/* A join, a part, a topic change: not somebody speaking, so no face -
+            but a small mark in the picture's own column, so the line's text
+            starts where every other line's does instead of at the edge. */}
+        {mode === 'comfy' && isSystem && (
+          <span className="message-avatar system-mark" aria-hidden>
+            <Icon name={SYSTEM_MARKS[message.kind] ?? 'info'} size={16} />
+          </span>
+        )}
         {comfy && !isSystem && (
-          <span className="message-avatar">
+          <span
+            className={classes('message-avatar', canOpenProfile && !grouped && 'clickable')}
+            onClick={canOpenProfile && !grouped ? openProfile : undefined}
+            title={canOpenProfile && !grouped ? `Profile of ${message.from}` : undefined}
+          >
+            {/* A follow-up line has no name line to carry its time, so the
+                time waits in the gutter where the picture would be, and shows
+                when the pointer is on the line. */}
+            {mode === 'comfy' && grouped && (
+              <span className="gutter-time" title={formatFullTime(message.ts)}>
+                {formatTime(message.ts)}
+              </span>
+            )}
             {!grouped &&
               (message.avatarUrl ? (
                 <img
@@ -726,9 +857,22 @@ function MessageRowBody({
               byline, so they live in it. */}
           {!grouped && !isSystem && !own && (
             <span className="message-byline">
-              <span className="message-from" style={{ color: message.senderColor || nickColor(message.from) }}>
+              <span
+                className={classes('message-from', canOpenProfile && 'clickable')}
+                style={{ color: message.senderColor || nickColor(message.from) }}
+                onClick={canOpenProfile ? openProfile : undefined}
+                role={canOpenProfile ? 'button' : undefined}
+                title={canOpenProfile ? `Profile of ${message.from}` : undefined}
+              >
                 {message.isAction ? `* ${message.from}` : message.from}
               </span>
+              {/* The time on the name's own line, as Discord does it, in the
+                  full form the tooltip also carries. */}
+              {mode === 'comfy' && (
+                <span className="message-stamp" title={formatFullTime(message.ts)}>
+                  {timeLabel}
+                </span>
+              )}
               {message.badges?.map((badge) => (
                 <span
                   key={badge.type}
@@ -774,7 +918,10 @@ function MessageRowBody({
               the thread it is in. The second is a button, because a thread is
               somewhere you can go - unless this is already the thread, where
               it would only reopen what is on screen. */}
+          {/* Inside the thread itself, "in thread" above every reply says what
+              the panel's title already says. */}
           {message.replyTo &&
+            !(inThread && message.replyTo.thread) &&
             (message.replyTo.thread && !inThread ? (
               <button
                 type="button"
@@ -786,7 +933,14 @@ function MessageRowBody({
                 {message.replyTo.body && <span className="ellipsis">{message.replyTo.body}</span>}
               </button>
             ) : (
-              <div className="reply-preview small muted">
+              <div
+                className={classes('reply-preview small muted', replyId && 'reply-jump')}
+                onClick={replyId ? jumpToReply : undefined}
+                role={replyId ? 'button' : undefined}
+                tabIndex={replyId ? 0 : undefined}
+                onKeyDown={replyId ? (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), jumpToReply()) : undefined}
+                title={replyId ? 'Go to the message' : undefined}
+              >
                 {/* A forward is not a reply and does not get the reply's
                     arrow: it is somebody else's message arriving, which is a
                     different thing from an answer to one. Its own word for
@@ -799,10 +953,17 @@ function MessageRowBody({
                   }
                   size={13}
                 />
+                {/* The author's own picture where the original is on screen, the
+                    way Discord draws a reply. */}
+                {original?.avatarUrl && (
+                  <img className="reply-avatar" src={media(original.avatarUrl)} alt="" loading="lazy" />
+                )}
                 <span
                   className="reply-from"
                   style={
-                    message.replyTo.forwarded ? undefined : { color: nickColor(message.replyTo.from) }
+                    message.replyTo.forwarded
+                      ? undefined
+                      : { color: original?.senderColor || nickColor(message.replyTo.from) }
                   }
                 >
                   {message.replyTo.from}
@@ -812,20 +973,68 @@ function MessageRowBody({
             ))}
 
           {editing ? (
-            <input
-              className="text-field"
-              autoFocus
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') setEditing(false)
-                if (e.key === 'Enter') {
-                  void store.editMessage(bufferId, message.id, draft)
-                  setEditing(false)
-                }
-              }}
-              onBlur={() => setEditing(false)}
-            />
+            <div className="message-editor">
+              <textarea
+                className="text-field message-edit-field"
+                autoFocus
+                rows={Math.min(8, Math.max(1, draft.split('\n').length))}
+                value={draft}
+                onFocus={(e) => e.currentTarget.setSelectionRange(draft.length, draft.length)}
+                onChange={(e) => {
+                  setDraft(e.target.value)
+                  setAskDelete(false)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    setAskDelete(false)
+                    setEditing(false)
+                  } else if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    if (!draft.trim()) {
+                      setAskDelete(true)
+                      return
+                    }
+                    if (draft !== message.body) void store.editMessage(bufferId, message.id, draft)
+                    setEditing(false)
+                  }
+                }}
+              />
+              {askDelete ? (
+                <div className="message-edit-hint small">
+                  <span>Nothing left. Delete the message instead?</span>
+                  <button
+                    type="button"
+                    className="link-button danger-text"
+                    onClick={() => {
+                      void store.deleteMessage(bufferId, message.id)
+                      setAskDelete(false)
+                      setEditing(false)
+                    }}
+                  >
+                    Delete
+                  </button>
+                  <button type="button" className="link-button" onClick={() => setAskDelete(false)}>
+                    Keep editing
+                  </button>
+                </div>
+              ) : (
+                <div className="message-edit-hint small muted">
+                  escape to <button type="button" className="link-button" onClick={() => setEditing(false)}>cancel</button> · enter to{' '}
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => {
+                      if (!draft.trim()) return setAskDelete(true)
+                      if (draft !== message.body) void store.editMessage(bufferId, message.id, draft)
+                      setEditing(false)
+                    }}
+                  >
+                    save
+                  </button>
+                </div>
+              )}
+            </div>
           ) : (
             parts.html && (
               <span className="message-body selectable">
@@ -843,7 +1052,15 @@ function MessageRowBody({
                   onOpenChannel={(id) => void store.selectBuffer(id, true)}
                   onOpenLink={(url) => store.followDeepLink(url)}
                 />
-                {message.edited && <span className="edited-tag small muted"> (edited)</span>}
+                {message.edited && (
+                  <span
+                    className="edited-tag small muted"
+                    title={message.editedTs ? `Edited ${formatFullTime(message.editedTs)}` : 'Edited'}
+                  >
+                    {' '}
+                    (edited)
+                  </span>
+                )}
               </span>
             )
           )}
@@ -863,12 +1080,23 @@ function MessageRowBody({
           {(message.embeds || []).map((embed, i) => (
             <div
               key={`e${i}`}
-              className="rich-embed selectable"
+              className={classes('rich-embed selectable', embed.kind === 'notice' && 'notice')}
               style={{ borderLeftColor: embedColor(embed.color) || 'var(--outline-strong)' }}
             >
               {embed.provider && <div className="rich-embed-provider small muted">{embed.provider}</div>}
               {embed.author && <div className="rich-embed-author small">{embed.author}</div>}
-              {embed.title &&
+              {embed.title && embed.kind === 'notice' && (
+                <div className="rich-embed-title notice-title">
+                  <Icon name={embed.icon === 'warning' ? 'warning' : 'campaign'} size={16} color={embedColor(embed.color) || undefined} />
+                  {embed.title}
+                </div>
+              )}
+              {embed.kind === 'notice' && embed.timestamp && (
+                <div className="small muted" title={formatFullTime(Math.floor(Date.parse(embed.timestamp) / 1000))}>
+                  {formatRelativeTime(Math.floor(Date.parse(embed.timestamp) / 1000))}
+                </div>
+              )}
+              {embed.title && embed.kind !== 'notice' &&
                 (embed.url ? (
                   <a
                     className="rich-embed-title"
@@ -892,6 +1120,27 @@ function MessageRowBody({
                   onOpenLink={(url) => store.followDeepLink(url)}
                   />
                 </div>
+              )}
+              {!!embed.fields?.length && (
+                <div className="rich-embed-fields small">
+                  {embed.fields.map((f, k) => (
+                    <div key={k} className="rich-embed-field">
+                      <div className="rich-embed-field-name">{f.name}</div>
+                      <div>{f.value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {embed.footer && <div className="rich-embed-footer small muted">{embed.footer}</div>}
+              {embed.cta && (
+                <button
+                  type="button"
+                  className={classes('rich-embed-cta', embed.color === 0xda373c && 'danger')}
+                  disabled={!embed.cta.url}
+                  onClick={() => embed.cta?.url && void window.moho.openExternal(embed.cta.url)}
+                >
+                  {embed.cta.label}
+                </button>
               )}
               {/* The picture the card is about, where the card brought one
                   of its own. A Matrix link preview is unfurled by the
@@ -923,11 +1172,35 @@ function MessageRowBody({
             </div>
           ))}
 
-          {(attachments.length > 0 || embedMedia.loose.length > 0) && (
+          {/* Pictures and videos that came together are laid out together:
+              two side by side, three with the first tall, four in a square,
+              as Discord and Element have them. One alone, or files that are
+              not pictures, keep the row they always had. */}
+          {tiled.length >= 2 && (
+            <div className={`media-grid n${Math.min(tiled.length, 6)}`}>
+              {tiled.map(({ att, i }) => (
+                <MediaEmbed
+                  key={`att-${i}-${att.path || att.url || att.filename}`}
+                  attachment={att}
+                  tile
+                  autoplay={mediaAutoplay}
+                  loop={mediaLoop}
+                  bufferId={bufferId}
+                  messageId={message.id}
+                  from={message.from}
+                  onOpenInDiscord={(b, m) => void store.openInDiscord(b, m)}
+                  onRefresh={(b, m) => store.refreshAttachments(b, m)}
+                  onStale={(b, m) => store.resignWhenIdle(b, m)}
+                />
+              ))}
+            </div>
+          )}
+
+          {(rowed.length > 0 || embedMedia.loose.length > 0) && (
             <div className="media-row">
               {/* Files nobilis described: mimetype and dimensions known up
                   front, so these lay out without waiting on bytes. */}
-              {attachments.map((att, i) => (
+              {rowed.map(({ att, i }) => (
                 <MediaEmbed
                   key={`att-${i}-${att.path || att.url || att.filename}`}
                   attachment={att}
@@ -975,16 +1248,13 @@ function MessageRowBody({
           {(message.reactions?.length ?? 0) > 0 && (
             <div className="reaction-row">
               {message.reactions!.map((r) => (
-                <button
+                <ReactionPill
                   key={r.emoji}
-                  type="button"
-                  className={classes('reaction-pill', r.me && 'mine')}
-                  onClick={() => void store.toggleReaction(bufferId, message.id, r.emoji, !r.me)}
-                  title={r.emoji}
-                >
-                  <ReactionEmoji emoji={r.emoji} animated={r.animated} />
-                  <span className="small">{r.count}</span>
-                </button>
+                  reaction={r}
+                  bufferId={bufferId}
+                  messageId={message.id}
+                  popped={popped.has(r.emoji)}
+                />
               ))}
               {canReact && (
                 <button
@@ -1008,18 +1278,26 @@ function MessageRowBody({
               bytes={message.upload.bytes}
               host={message.upload.host}
               since={message.upload.since}
+              sent={message.upload.sent}
+              total={message.upload.total}
+              files={message.upload.files}
             />
           )}
 
           {message.failed && (
-            <button
-              type="button"
-              className="send-failed small"
-              onClick={() => store.retrySend(message.id)}
-              title={message.errorText}
-            >
-              <Icon name="error" size={13} /> Failed to send — retry
-            </button>
+            <div className="send-failed-actions small">
+              <button
+                type="button"
+                className="send-failed small"
+                onClick={() => store.retrySend(message.id)}
+                title={message.errorText}
+              >
+                <Icon name="error" size={13} /> Failed to send — retry
+              </button>
+              <button type="button" className="send-discard small" onClick={() => store.discardFailed(message.id)}>
+                <Icon name="delete" size={13} /> Delete
+              </button>
+            </div>
           )}
 
           {/* Inside the bubble, at its foot. On a phone the time is part of
@@ -1052,10 +1330,14 @@ function MessageRowBody({
             one" but "where has everybody got to". */}
         {readers && readers.length > 0 && <ReadMarkers readers={readers} />}
 
-        {/* Hover toolbar: quick reactions, add-reaction, reply, more. */}
+        {/* Hover toolbar: quick reactions, add-reaction, reply, edit, copy,
+            more. Not on a line that is not a message - a join, a notice - or
+            one that has not been sent: there is nothing yet to react to or
+            answer. */}
+        {!isSystem && !message.pending && !message.failed && (
         <div className="hover-toolbar">
           {canReact &&
-            QUICK_REACTIONS.map((emoji) => (
+            quick.map((emoji) => (
               <button
                 key={emoji}
                 type="button"
@@ -1080,10 +1362,34 @@ function MessageRowBody({
           <button type="button" className="toolbar-button" title="Reply" onClick={reply}>
             <Icon name="reply" size={15} />
           </button>
+          {canEditDelete && (
+            <button
+              type="button"
+              className="toolbar-button"
+              title="Edit"
+              onClick={() => {
+                setDraft(message.body)
+                setEditing(true)
+              }}
+            >
+              <Icon name="edit" size={15} />
+            </button>
+          )}
+          {message.body && (
+            <button
+              type="button"
+              className="toolbar-button"
+              title="Copy text"
+              onClick={() => void window.moho.copyText(message.body)}
+            >
+              <Icon name="content_copy" size={15} />
+            </button>
+          )}
           <button type="button" className="toolbar-button" title="More" onClick={open}>
             <Icon name="more_horiz" size={15} />
           </button>
         </div>
+        )}
       </div>
 
       {pickerOpen && (
@@ -1131,17 +1437,100 @@ function MessageRowBody({
   )
 }
 
+/** What the first word of an emoji's name is, for the ones the picker knows: what a reaction is called when it is not a custom one. */
+const UNICODE_NAMES: ReadonlyMap<string, string> = new Map(
+  COMMON_EMOJI.flatMap((e) => {
+    const name = e.name.split(/\s+/)[0]
+    // The picture form carries a selector some clients leave off.
+    return [[e.emoji, name] as const, [e.emoji.replace(/\uFE0F$/, ''), name] as const]
+  })
+)
+
+/** Who reacted, once asked, kept briefly so pointing at the same reaction twice is one question. */
+const reactorCache = new Map<string, { at: number; count: number; names: string[] }>()
+const REACTORS_KEPT_MS = 30_000
+
 /**
- * A Discord custom reaction; a plain Unicode reaction is just the character
- * itself.
- *
- * nobilis stores these wrapped as `<:name:id>` - the same shape a message body
- * carries - and only unwraps them at the point it calls Discord's reaction
- * endpoint. Matching only the bare `name:id` therefore matched nothing, and
- * every custom reaction on every message rendered as its literal token beside
- * the count.
+ * One reaction under a message, with the sentence Discord shows over it: who
+ * reacted, and with what. The names are asked for when the pointer has stayed
+ * a moment, not carried on every message - the services that can say do so only
+ * on request, and most reactions are never pointed at.
  */
-function ReactionEmoji({ emoji }: { emoji: string; animated?: boolean }): JSX.Element {
+function ReactionPill({
+  reaction: r,
+  bufferId,
+  messageId,
+  popped
+}: {
+  reaction: { emoji: string; count: number; me: boolean; animated?: boolean }
+  bufferId: string
+  messageId: string
+  popped: boolean
+}): JSX.Element {
+  const store = useStore()
+  const [tip, setTip] = useState(false)
+  const [names, setNames] = useState<string[]>([])
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const label = reactionLabel(r.emoji, UNICODE_NAMES)
+  const sentence = reactorsSentence(label, names, r.count)
+
+  const ask = (): void => {
+    const service = store.accountFor(bufferId)?.service
+    if (service !== 'discord' && service !== 'matrix') return
+    const key = `${bufferId}|${messageId}|${r.emoji}`
+    const kept = reactorCache.get(key)
+    if (kept && kept.count === r.count && Date.now() - kept.at < REACTORS_KEPT_MS) {
+      setNames(kept.names)
+      return
+    }
+    void window.moho
+      .rpc<{ users: { name: string }[] }>('listReactors', { bufferId, messageId, emoji: r.emoji })
+      .then((answer) => {
+        const list = (answer.users ?? []).map((u) => u.name)
+        reactorCache.set(key, { at: Date.now(), count: r.count, names: list })
+        setNames(list)
+      })
+      // An older daemon has no such question, and a refusal is not worth a
+      // toast over a tooltip: the count is still said.
+      .catch(() => {})
+  }
+
+  return (
+    <button
+      type="button"
+      className={classes('reaction-pill', r.me && 'mine', popped && 'pop')}
+      onClick={() => void store.toggleReaction(bufferId, messageId, r.emoji, !r.me)}
+      onMouseEnter={() => {
+        setTip(true)
+        timer.current = setTimeout(ask, 250)
+      }}
+      onMouseLeave={() => {
+        setTip(false)
+        if (timer.current) clearTimeout(timer.current)
+      }}
+      aria-label={sentence}
+    >
+      <ReactionEmoji emoji={r.emoji} />
+      <span className="small">{r.count}</span>
+      {tip && (
+        <span className="reaction-tip small" role="tooltip">
+          {sentence}
+        </span>
+      )}
+    </button>
+  )
+}
+
+/**
+ * A reaction's picture. Discord's custom emoji are fetched by id from its CDN
+ * as WebP, which is animated for the ones that move (`animated=true` in the
+ * address, so nothing has to be known about each one), and a Unicode emoji is
+ * just text.
+ *
+ * Without this branch every custom reaction was drawn as its literal token
+ * beside the count.
+ */
+function ReactionEmoji({ emoji }: { emoji: string }): JSX.Element {
   const media = useMediaUrl()
   const custom = emoji.match(/^<?a?:?([A-Za-z0-9_~]{2,32}):(\d+)>?$/)
   if (!custom) return <span>{emoji}</span>

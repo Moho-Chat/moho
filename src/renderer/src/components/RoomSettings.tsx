@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
-import { HeaderPopover } from './HeaderPopover'
+import { Modal } from './Modal'
 import { ChoiceSetting } from './settings/controls'
 import { useChat, useStore } from '../state/hooks'
 import type { BufferEntry } from '../state/store'
@@ -185,6 +185,18 @@ export function RoomSettings({ buffer }: { buffer: BufferEntry }): JSX.Element {
     }
   }
 
+  const [tab, setTab] = useState<'security' | 'moderation' | 'advanced'>('security')
+  const loadPolicy = (): void => {
+    setPolicyOpen(true)
+    void window.moho
+      .rpc<Policy>('matrixRoomPolicy', { bufferId: buffer.id })
+      .then(setPolicy)
+      .catch((e: Error) => {
+        store.toast('error', e.message)
+        setPolicyOpen(false)
+      })
+  }
+
   return (
     <>
       <span ref={button} className="header-anchor">
@@ -196,9 +208,39 @@ export function RoomSettings({ buffer }: { buffer: BufferEntry }): JSX.Element {
         />
       </span>
       {open && (
-        <HeaderPopover anchor={button.current} width={400} onClose={() => setOpen(false)}>
-          <div className="small muted">This room&apos;s settings</div>
-          {history === null && join === null && <div className="small muted">Looking…</div>}
+        <Modal title="Room settings" icon="tune" className="room-settings" onClose={() => setOpen(false)}>
+          {/* Three pages: who can come in and read, what the room refuses, and
+              the one thing that is not a setting. A popover this tall was a
+              list somebody had to read to the end to know what was in it. */}
+          <div className="room-settings-tabs" role="tablist">
+            {(
+              [
+                ['security', 'Security'],
+                ['moderation', 'Moderation'],
+                ['advanced', 'Advanced']
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={tab === id}
+                className={`room-settings-tab${tab === id ? ' active' : ''}`}
+                onClick={() => {
+                  setTab(id)
+                  // Reading the policy needs the room's whole state, so it is
+                  // asked for when its page is opened and not before.
+                  if (id === 'moderation' && !policy && !policyOpen) loadPolicy()
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="room-settings-body">
+          {history === null && join === null && tab === 'security' && <div className="small muted">Looking…</div>}
+          {tab === 'security' && (
+            <>
           {/* First, because it is the more fundamental of the two: who is in
               the room at all comes before how much of it they can read. */}
           {join && (
@@ -268,6 +310,10 @@ export function RoomSettings({ buffer }: { buffer: BufferEntry }): JSX.Element {
             </>
           )}
 
+            </>
+          )}
+          {tab === 'moderation' && (
+            <>
           {/* What the room refuses, and whose judgement it follows. Behind
               its own press because reading it needs the room's whole state -
               a big answer on a large room, to a question almost nobody is
@@ -280,24 +326,6 @@ export function RoomSettings({ buffer }: { buffer: BufferEntry }): JSX.Element {
                 Which servers this room takes events from, and any ban lists it publishes.
               </div>
             </div>
-            {!policyOpen && (
-              <button
-                type="button"
-                className="button subtle"
-                onClick={() => {
-                  setPolicyOpen(true)
-                  void window.moho
-                    .rpc<Policy>('matrixRoomPolicy', { bufferId: buffer.id })
-                    .then(setPolicy)
-                    .catch((e: Error) => {
-                      store.toast('error', e.message)
-                      setPolicyOpen(false)
-                    })
-                }}
-              >
-                Show
-              </button>
-            )}
           </div>
 
           {policyOpen && !policy && <div className="small muted">Reading the room…</div>}
@@ -386,6 +414,10 @@ export function RoomSettings({ buffer }: { buffer: BufferEntry }): JSX.Element {
             </>
           )}
 
+            </>
+          )}
+          {tab === 'advanced' && (
+            <>
           {/* Not a setting: an upgrade makes a new room and leaves a
               tombstone pointing at it. Offered only where there is somewhere
               to go and somebody who can make the tombstone - and with what
@@ -427,7 +459,13 @@ export function RoomSettings({ buffer }: { buffer: BufferEntry }): JSX.Element {
               )}
             </div>
           )}
-        </HeaderPopover>
+              {!(version?.behind && version.canUpgrade) && (
+                <div className="small muted">Nothing here for this room: it is on the version this server makes now, or you cannot change it.</div>
+              )}
+            </>
+          )}
+          </div>
+        </Modal>
       )}
     </>
   )

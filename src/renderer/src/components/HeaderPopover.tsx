@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEscapeLayer } from '../lib/layers'
 
 /**
  * A panel hanging from a header button, over the conversation.
@@ -67,20 +68,16 @@ export function HeaderPopover({
     return () => window.removeEventListener('resize', place)
   }, [anchor, width, children])
 
+  useEscapeLayer(onClose)
   useEffect(() => {
     const away = (e: MouseEvent): void => {
       if (box.current?.contains(e.target as Node)) return
       if (anchor?.contains(e.target as Node)) return
       onClose()
     }
-    const key = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
     document.addEventListener('mousedown', away)
-    document.addEventListener('keydown', key)
     return () => {
       document.removeEventListener('mousedown', away)
-      document.removeEventListener('keydown', key)
     }
   }, [anchor, onClose])
 

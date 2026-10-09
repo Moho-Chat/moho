@@ -14,6 +14,8 @@ export const IPC = {
   pickSavePath: 'moho:pickSavePath',
   pickDirectory: 'moho:pickDirectory',
   downloadMedia: 'moho:downloadMedia',
+  copyImage: 'moho:copyImage',
+  fileSize: 'moho:fileSize',
   importGroupIcon: 'moho:importGroupIcon',
   defaultDownloadDir: 'moho:defaultDownloadDir',
   readClipboardImage: 'moho:readClipboardImage',
@@ -61,6 +63,14 @@ export const IPC = {
  * differs between the dev server and a packaged file.
  */
 export const POPOUT_FLAG = '--moho-popout='
+
+/**
+ * Set only when main was started with MOHO_UI_SHOTS=1, by the screenshot
+ * harness (scripts/ui-shots.mjs). Lets that harness put Discord-shaped state
+ * into a window that has no Discord account, so screens it cannot otherwise
+ * reach can be photographed. Never present in a normal launch.
+ */
+export const UI_SHOTS_FLAG = '--moho-ui-shots'
 
 /** Which conversations have a window of their own, and which are being watched. */
 export interface PopoutState {

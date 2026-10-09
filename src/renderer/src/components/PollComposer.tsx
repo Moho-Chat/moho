@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { IconButton } from './Icon'
+import { Modal } from './Modal'
 import { useStore } from '../state/hooks'
 
 /** The spec's own ceiling, so twenty-one answers is refused here not there. */
@@ -35,12 +36,7 @@ export function PollComposer({ bufferId, onClose }: { bufferId: string; onClose:
   }
 
   return (
-    <div className="modal-scrim" onClick={onClose}>
-      <div className="modal poll-composer" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <h2 className="modal-title">New poll</h2>
-          <IconButton name="close" size={18} title="Close" onClick={onClose} />
-        </div>
+    <Modal title="New poll" icon="ballot" className="modal poll-composer" onClose={onClose}>
 
         <label className="field">
           <span className="small muted">Question</span>
@@ -99,7 +95,6 @@ export function PollComposer({ bufferId, onClose }: { bufferId: string; onClose:
             {sending ? 'Starting…' : 'Start the poll'}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

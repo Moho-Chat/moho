@@ -1,12 +1,15 @@
 import { useMediaUrl } from '../lib/route'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ContextMenu, useContextMenu } from './ContextMenu'
 import { railConnecting } from '../lib/bufferlink'
-import { Icon, IconButton, MaskIcon } from './Icon'
+import { Icon, MaskIcon } from './Icon'
+import { Modal } from './Modal'
 import { Avatar } from './Avatar'
 import { LeaveConfirm } from './LeaveConfirm'
 import { ircNetworkFor } from '../lib/networks'
 import { useChat, usePref, useStore } from '../state/hooks'
+import { RAIL_TIP, hideRailTip, showRailTip, type RailTipDetail } from '../lib/railtip'
 import { bufferDisplayName, classes, nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
 import { SpaceRooms } from './SpaceRooms'
 import {
@@ -178,6 +181,9 @@ function isMerge(e: React.DragEvent): boolean {
 function RailTile(props: TileProps): JSX.Element {
   const { group, active, unread, highlight, draggable, dropTarget, customIcon, muted, lifted, mergeTarget } = props
   const { menu, open, close } = useContextMenu()
+  const store = useStore()
+  // What is waiting inside this server, for "Mark as read".
+  const waiting = useChat((s) => s.buffers).filter((b) => b.groupId === group.id && (b.unread > 0 || b.highlight))
   const service = serviceIcon(group.service)
   // Only a guild or space needs telling apart by service: its face is a
   // picture or initials that say nothing about where it came from. An account
@@ -203,7 +209,10 @@ function RailTile(props: TileProps): JSX.Element {
         muted && 'muted',
         connecting && 'connecting'
       )}
-      title={connecting ? `${group.name} — connecting…` : group.name}
+      onMouseEnter={(e) => showRailTip(e.currentTarget, connecting ? `${group.name} — connecting…` : group.name)}
+      onMouseLeave={hideRailTip}
+      onFocus={(e) => showRailTip(e.currentTarget, group.name)}
+      onBlur={hideRailTip}
       aria-label={group.name}
       aria-current={active}
       draggable={draggable}
@@ -251,6 +260,12 @@ function RailTile(props: TileProps): JSX.Element {
           y={menu.y}
           entries={[
             {
+              label: 'Mark as read',
+              icon: 'mark_chat_read',
+              disabled: waiting.length === 0,
+              onClick: () => void store.markBuffersRead(waiting.map((b) => b.id))
+            },
+            {
               label: muted ? `Unmute ${group.name}` : `Mute ${group.name}`,
               icon: muted ? 'notifications_active' : 'notifications_off',
               onClick: props.onToggleMute
@@ -284,7 +299,15 @@ function RailTile(props: TileProps): JSX.Element {
           onClose={close}
         />
       )}
-      {badge && (
+      {/* A mention waiting in here says how many are waiting, in the corner
+          the service mark sits in - the mark gives way, since a count is what
+          somebody scanning this column came to see. */}
+      {highlight && unread > 0 && (
+        <span className="rail-count highlight" title={`${unread} unread, with a mention`}>
+          {unread > 99 ? '99+' : unread}
+        </span>
+      )}
+      {badge && !(highlight && unread > 0) && (
         <span className={`rail-service${highlight ? ' highlight' : ''}`}>
           {badge.colour && badge.mark ? (
             <img src={badge.mark} alt="" draggable={false} />
@@ -316,7 +339,8 @@ function DmTile(props: { buffer: BufferEntry; active: boolean; onSelect: () => v
     <button
       type="button"
       className={classes('rail-tile', 'rail-dm', active && 'active')}
-      title={`${name} - ${count} unread message${count === 1 ? '' : 's'}`}
+      onMouseEnter={(e) => showRailTip(e.currentTarget, `${name} - ${count} unread message${count === 1 ? '' : 's'}`)}
+      onMouseLeave={hideRailTip}
       aria-label={`${name}, ${count} unread`}
       onClick={onSelect}
     >
@@ -351,10 +375,10 @@ export function ServerRail(): JSX.Element | null {
   const [customIcons] = usePref<Record<string, string>>('groupIcons', {})
   const [mutedGroups, setMutedGroups] = usePref<string[]>('mutedGroups', [])
   const [folders, setFolders] = usePref<RailFolder[]>('railFolders', [])
-  // Which folder is showing its contents, if any. Deliberately not
-  // remembered: a folder is a place to put things, and it looks the same
-  // either way - there is no state here worth carrying across a restart.
-  const [expanded, setExpanded] = useState('')
+  // Which folder is showing its contents, if any. Remembered: a column that
+  // forgets which folders were open and shuts them all on every start is one
+  // you re-arrange each morning.
+  const [expanded, setExpanded] = usePref<string>('ui.railFolderOpen', '')
   const isFolderOpen = (id: string): boolean => expanded === id
   const toggleFolder = (id: string): void => setExpanded(expanded === id ? '' : id)
   const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; folder: RailFolder } | null>(null)
@@ -572,6 +596,9 @@ export function ServerRail(): JSX.Element | null {
               members={entry.members}
               customIcons={customIcons}
               dropTarget={over === entry.id && dragging !== ''}
+              open={open}
+              unread={entry.members.reduce((n, m) => n + (totals.get(m.id)?.unread ?? 0), 0)}
+              highlight={entry.members.some((m) => totals.get(m.id)?.highlight)}
               onToggle={() => toggleFolder(entry.id)}
               lifted={dragging === `${FOLDER_DRAG_PREFIX}${entry.id}`}
               onDragStart={() => beginDrag(`${FOLDER_DRAG_PREFIX}${entry.id}`)}
@@ -592,6 +619,7 @@ export function ServerRail(): JSX.Element | null {
 
   return (
     <nav className="server-rail" aria-label="Servers">
+      <RailTip />
       {/* Only the entries scroll; the cog stays pinned to the foot. The empty
           space below them is where something is dropped to put it last, and to
           take it back out of a folder on the way - folders themselves are made
@@ -652,6 +680,7 @@ export function ServerRail(): JSX.Element | null {
       )}
 
       {rest.map(renderEntry)}
+
       </div>
 
       {folderMenu && (
@@ -717,6 +746,26 @@ export function ServerRail(): JSX.Element | null {
       )}
 
       <div className="rail-divider" />
+      {/* Where a server is added or joined: pinned below the list with a rule
+          above it, so it never moves however many servers there are or
+          wherever one is dropped, and the list scrolls above it. For whichever
+          account is being looked at. */}
+      <button
+        type="button"
+        className="rail-tile rail-add"
+        aria-label="Add or join a server"
+        onMouseEnter={(e) => showRailTip(e.currentTarget, 'Add or join a server')}
+        onMouseLeave={hideRailTip}
+        onClick={() => {
+          const account =
+            groups.find((g) => g.id === activeGroupId)?.accountId || (store.getSnapshot().accounts[0]?.id ?? '')
+          store.setActivePanel('join', account)
+        }}
+      >
+        <span className="rail-face">
+          <Icon name="add" size={22} />
+        </span>
+      </button>
       <RailMenu />
     </nav>
   )
@@ -735,6 +784,10 @@ function FolderTile(props: {
   customIcons: Record<string, string>
   dropTarget: boolean
   lifted: boolean
+  open: boolean
+  /** What is waiting in the servers inside, so a closed folder can say so. */
+  unread: number
+  highlight: boolean
   onToggle: () => void
   onContextMenu: (e: React.MouseEvent) => void
   onDragStart: () => void
@@ -742,7 +795,10 @@ function FolderTile(props: {
   onDrop: () => void
   onDragEnd: () => void
 }): JSX.Element {
-  const { folder, members, customIcons, dropTarget, lifted } = props
+  const { folder, members, customIcons, dropTarget, lifted, open, unread, highlight } = props
+  // Open, its servers show their own; closed, what is inside would be
+  // invisible without this.
+  const waiting = !open && unread > 0
   return (
     <button
       type="button"
@@ -757,7 +813,10 @@ function FolderTile(props: {
         e.dataTransfer.effectAllowed = 'move'
         props.onDragStart()
       }}
-      title={`${folder.name} — ${members.length} ${members.length === 1 ? 'server' : 'servers'}`}
+      onMouseEnter={(e) =>
+        showRailTip(e.currentTarget, `${folder.name} — ${members.length} ${members.length === 1 ? 'server' : 'servers'}`)
+      }
+      onMouseLeave={hideRailTip}
       aria-label={folder.name}
       onClick={props.onToggle}
       onContextMenu={props.onContextMenu}
@@ -771,6 +830,7 @@ function FolderTile(props: {
       }}
       onDragEnd={props.onDragEnd}
     >
+      <span className={`rail-pill${open ? ' active' : waiting ? ' unread' : ''}`} />
       {/* The same face whether or not it is showing its contents: a folder
           is a folder, and an icon that changes underfoot is one more thing to
           read. Empty it is just a folder; once there is something in it, the
@@ -802,9 +862,14 @@ function FolderTile(props: {
       {/* Once the face is a grid of other people's icons, nothing says it is
           a folder any more - so it takes the same corner badge a guild uses
           to name its service. An empty folder is already unmistakably one. */}
-      {members.length > 0 && (
+      {members.length > 0 && !(waiting && highlight) && (
         <span className="rail-service">
           <Icon name="folder" size={11} />
+        </span>
+      )}
+      {waiting && highlight && (
+        <span className="rail-count highlight" title={`${unread} unread, with a mention`}>
+          {unread > 99 ? '99+' : unread}
         </span>
       )}
     </button>
@@ -830,12 +895,7 @@ function FolderSettings({
   const [colour, setColour] = useState(folder.colour)
 
   return (
-    <div className="modal-scrim" onClick={onClose}>
-      <div className="modal folder-settings" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <h2>Folder Settings</h2>
-          <IconButton name="close" title="Close" onClick={onClose} />
-        </div>
+    <Modal title="Folder Settings" icon="folder" className="modal folder-settings" onClose={onClose}>
 
         <label className="folder-field">
           <span className="small muted">Folder Name</span>
@@ -881,8 +941,7 @@ function FolderSettings({
         <button type="button" className="button primary" onClick={() => onSave(name.trim() || folder.name, colour)}>
           Done
         </button>
-      </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -893,7 +952,6 @@ function FolderSettings({
  */
 function RailMenu(): JSX.Element {
   const store = useStore()
-  const { menu, open, close } = useContextMenu()
   const transfers = useChat((s) => s.transfers)
   // What is going on behind whatever is on screen. Exports count alongside
   // files because they are the same thing to somebody who started one and
@@ -919,11 +977,10 @@ function RailMenu(): JSX.Element {
       <button
         type="button"
         className="rail-tile rail-cog"
-        title={busy > 0 ? `Accounts and settings - ${busyLabel}` : 'Accounts and settings'}
-        aria-label="Accounts and settings"
-        // Opened by left click, unlike the tiles above it - it is a menu
-        // button, not a thing being acted upon.
-        onClick={open}
+        title={busy > 0 ? `Settings - ${busyLabel}` : 'Settings'}
+        aria-label="Settings"
+        // Straight to Settings, where Accounts and Downloads are pages of it.
+        onClick={() => store.setActivePanel('settings')}
       >
         <span className="rail-face">
           <Icon name="settings" size={20} />
@@ -935,21 +992,27 @@ function RailMenu(): JSX.Element {
           <span className={exporting > 0 ? 'rail-downloads exporting' : 'rail-downloads'}>{busy}</span>
         )}
       </button>
-      {menu && (
-        <ContextMenu
-          x={menu.x}
-          y={menu.y}
-          entries={[
-            { label: 'Accounts', icon: 'manage_accounts', onClick: () => store.setActivePanel('accounts') },
-            // Between the two: it is about the app rather than about a server,
-            // which is what this menu is for, and it is the one entry here
-            // that can be busy while you are looking at something else.
-            { label: 'Downloads', icon: 'download', onClick: () => store.setActivePanel('downloads') },
-            { label: 'Settings', icon: 'settings', onClick: () => store.setActivePanel('settings') }
-          ]}
-          onClose={close}
-        />
-      )}
     </>
+  )
+}
+
+/** The flyout every tile in the column points at; one, wherever the pointer is. */
+function RailTip(): JSX.Element | null {
+  const [tip, setTip] = useState<RailTipDetail | null>(null)
+  useEffect(() => {
+    const on = (e: Event): void => setTip((e as CustomEvent<RailTipDetail>).detail)
+    window.addEventListener(RAIL_TIP, on)
+    return () => window.removeEventListener(RAIL_TIP, on)
+  }, [])
+  if (!tip?.rect) return null
+  return createPortal(
+    <div
+      className="rail-tip"
+      role="tooltip"
+      style={{ left: tip.rect.right + 8, top: tip.rect.top + tip.rect.height / 2 }}
+    >
+      {tip.text}
+    </div>,
+    document.body
   )
 }

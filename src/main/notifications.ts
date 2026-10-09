@@ -103,12 +103,17 @@ export class Notifier {
       this.publish()
     }
 
+    // Switched off in Settings: the conversation still counts as unread above,
+    // it just does not pop up.
+    if (!this.prefs.get<boolean>('notifications.desktop', true)) return
     if (!Notification.isSupported()) return
 
     const icon = await this.notificationIcon(payload.avatarUrl)
     const notification = new Notification({
       title: payload.title || 'moho',
       body: payload.body || '',
+      // The system's own sound for it, unless asked to be quiet.
+      silent: !this.prefs.get<boolean>('notifications.sound', true),
       ...(icon ? { icon } : {})
     })
     notification.on('click', () => this.onActivate(payload.bufferId))

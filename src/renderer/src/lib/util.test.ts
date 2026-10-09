@@ -4,6 +4,10 @@ import {
   classes,
   fileNameOf,
   formatRelativeTime,
+  formatRelativeShort,
+  dayLabel,
+  dayOf,
+  startsNewDay,
   guildOf,
   humanBytes,
   isChatKind,
@@ -87,5 +91,50 @@ describe('small things', () => {
 
   it('joins class names, skipping the falsy ones', () => {
     expect(classes('a', false, null, undefined, 'b', '')).toBe('a b')
+  })
+})
+
+describe('date lines', () => {
+  const noon = (y: number, m: number, d: number): number => Math.floor(new Date(y, m - 1, d, 12).getTime() / 1000)
+  const now = new Date(2026, 9, 8, 15).getTime()
+
+  it('says today and yesterday, and the date in full otherwise', () => {
+    expect(dayLabel(noon(2026, 10, 8), now)).toBe('Today')
+    expect(dayLabel(noon(2026, 10, 7), now)).toBe('Yesterday')
+    expect(dayLabel(noon(2026, 3, 3), now)).toContain('2026')
+    expect(dayLabel(noon(2025, 12, 31), now)).toContain('2025')
+  })
+
+  it('puts one before the first message and wherever the day changes', () => {
+    const list = [{ ts: noon(2026, 10, 6) }, { ts: noon(2026, 10, 6) + 60 }, { ts: noon(2026, 10, 7) }, { ts: noon(2026, 10, 7) + 5 }]
+    expect(list.map((_, i) => startsNewDay(list, i))).toEqual([true, false, true, false])
+  })
+
+  it('compares days by the clock on the wall, not by 24 hours', () => {
+    const late = Math.floor(new Date(2026, 9, 7, 23, 59).getTime() / 1000)
+    const early = Math.floor(new Date(2026, 9, 8, 0, 1).getTime() / 1000)
+    expect(dayOf(late)).not.toBe(dayOf(early))
+    expect(startsNewDay([{ ts: late }, { ts: early }], 1)).toBe(true)
+  })
+
+  it('leaves out a line with no time, without losing the day', () => {
+    const list = [{ ts: noon(2026, 10, 7) }, { ts: 0 }, { ts: noon(2026, 10, 7) + 30 }]
+    expect(startsNewDay(list, 1)).toBe(false)
+    expect(startsNewDay(list, 2)).toBe(false)
+  })
+})
+
+describe('relative times for a column', () => {
+  const now = new Date(2026, 9, 8, 15).getTime()
+  const ago = (s: number): number => Math.floor(now / 1000) - s
+
+  it('stays short enough for a narrow column', () => {
+    expect(formatRelativeShort(ago(10), now)).toBe('now')
+    expect(formatRelativeShort(ago(8 * 60), now)).toBe('8m')
+    expect(formatRelativeShort(ago(5 * 3600), now)).toBe('5h')
+    expect(formatRelativeShort(ago(30 * 3600), now)).toBe('Yest')
+    for (const s of [5, 600, 20000, 100000, 900000, 40000000]) {
+      expect(formatRelativeShort(ago(s), now).length).toBeLessThanOrEqual(6)
+    }
   })
 })

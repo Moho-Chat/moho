@@ -9,7 +9,7 @@ import { StreamStage } from './StreamStage'
 import { ServiceBanner } from './ServiceBanner'
 import { RouteAccount, useStrictRoute } from '../lib/route'
 import { useChat, usePref, useStore } from '../state/hooks'
-import { bufferDisplayName, isChatKind } from '../lib/util'
+import { bufferDisplayName, dayLabel, isChatKind, startsNewDay } from '../lib/util'
 import type { ChannelIndex } from '../lib/format'
 import type { ChatMessage } from '../state/store'
 
@@ -187,6 +187,12 @@ export function MessageList(): JSX.Element {
   )?.service
 
   const dividerTs = dividerTsByBuffer[bufferId] || 0
+  /** Whether the "New" line is above what is on screen, so there is more to read than is shown. */
+  const [dividerAbove, setDividerAbove] = useState(false)
+  /** The "N new messages" bar, put away for this much of this conversation. */
+  const [barDismissed, setBarDismissed] = useState('')
+  /** Set when a buffer opens with a lot unread: the layout effect that follows takes it to the line. */
+  const wantDividerRef = useRef(false)
   const isLoadingMore = !!loadingMore[bufferId]
   const isLoadingNewer = !!loadingNewer[bufferId]
   // Where this conversation is missing its middle, from having been entered
@@ -498,7 +504,62 @@ export function MessageList(): JSX.Element {
     anchor(true)
     setMissedCount(0)
     scrollToBottom()
+    setDividerAbove(false)
   }, [bufferId, messages, anchor, scrollToBottom])
+
+  // Opened with a good deal unread: the place to start reading is where that
+  // begins, not the end of it. Decided once per opening, and not at the moment
+  // of switching, because what has been read from the daemon may not have
+  // arrived yet - the line has to be in the drawn part of the log, which is a
+  // tail, before it can be scrolled to.
+  const openedAtRef = useRef('')
+  useLayoutEffect(() => {
+    const key = `${bufferId}|${dividerTs}`
+    if (openedAtRef.current === key || messages.length === 0) return
+    openedAtRef.current = key
+    const first = dividerTs > 0 ? messages.findIndex((m) => m.ts > dividerTs) : -1
+    if (first >= 0 && messages.length - first > 8) {
+      wantDividerRef.current = true
+      setShown((n) => Math.max(n, messages.length - first + JUMP_MARGIN))
+    }
+  }, [bufferId, dividerTs, messages])
+
+  /** Where the "New" line is against what is showing; read off the page, since that is what the person sees. */
+  const measureDivider = useCallback(() => {
+    const el = scrollRef.current
+    const line = el?.querySelector<HTMLElement>('.new-divider')
+    if (!el || !line) {
+      setDividerAbove(false)
+      return
+    }
+    // Clearly above, not merely just off the top: with the line a few pixels
+    // out of sight, everything after it is on screen and there is nothing to
+    // go back for.
+    setDividerAbove(line.getBoundingClientRect().bottom < el.getBoundingClientRect().top - 80)
+  }, [])
+
+  const toDivider = useCallback((smooth: boolean) => {
+    const el = scrollRef.current
+    const line = el?.querySelector<HTMLElement>('.new-divider')
+    if (!el || !line) return
+    anchor(false)
+    // Going back to the line is not missing anything: what is below is what
+    // was already there, not news.
+    setMissedCount(0)
+    lastIdRef.current = messages[messages.length - 1]?.id
+    const target = el.scrollTop + line.getBoundingClientRect().top - el.getBoundingClientRect().top - 48
+    el.scrollTo({ top: Math.max(0, target), behavior: smooth ? 'smooth' : 'auto' })
+  }, [anchor, messages])
+
+  // Once the line is drawn, start there.
+  useLayoutEffect(() => {
+    if (!wantDividerRef.current) return
+    const line = scrollRef.current?.querySelector('.new-divider')
+    if (!line) return
+    wantDividerRef.current = false
+    toDivider(false)
+    measureDivider()
+  }, [messages, shown, bufferId, toDivider, measureDivider])
 
   useLayoutEffect(() => {
     // Older messages prepended by a load-more: hold the user's reading
@@ -562,6 +623,7 @@ export function MessageList(): JSX.Element {
     lastHeightRef.current = height
     lastViewportRef.current = viewport
     notePlace()
+    measureDivider()
 
     // Reading away un-pins the view, and reading back pins it again; nothing
     // else moves it. Both halves of that have been got wrong here before, and
@@ -641,6 +703,16 @@ export function MessageList(): JSX.Element {
     scrollToBottom('smooth')
   }
 
+  // Escape, from anywhere in the window (lib/shortcuts.ts), is "I am done with
+  // this": read it and go to the end of it.
+  const jumpRef = useRef(jumpToPresent)
+  jumpRef.current = jumpToPresent
+  useEffect(() => {
+    const go = (): void => jumpRef.current()
+    window.addEventListener('moho:jump-to-present', go)
+    return () => window.removeEventListener('moho:jump-to-present', go)
+  }, [])
+
   // The divider marks the first message newer than the snapshot taken when the
   // buffer was opened; it deliberately doesn't move as more arrive.
   const dividerIndex = dividerTs > 0 ? messages.findIndex((m) => m.ts > dividerTs) : -1
@@ -714,6 +786,14 @@ export function MessageList(): JSX.Element {
             const i = start + offset
             return (
             <div key={msg.id}>
+              {/* A new day, said once, where it begins - and on the first
+                  line drawn, so the top of the screen is never a time of day
+                  with no day. */}
+              {(startsNewDay(messages, i) || (offset === 0 && msg.ts > 0)) && (
+                <div className="date-divider" role="separator">
+                  <span>{dayLabel(msg.ts)}</span>
+                </div>
+              )}
               {i === dividerIndex && (
                 <div className="new-divider">
                   <span>New</span>
@@ -780,6 +860,25 @@ export function MessageList(): JSX.Element {
         </div>
       )}
 
+      {dividerAbove && barDismissed !== `${bufferId}|${dividerTs}` && dividerIndex >= 0 && (
+        <div className="unread-bar" role="status">
+          <button type="button" className="unread-bar-text" onClick={() => toDivider(true)}>
+            {messages.length - dividerIndex} new message{messages.length - dividerIndex === 1 ? '' : 's'} since{' '}
+            {new Date(dividerTs * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+          </button>
+          <button
+            type="button"
+            className="unread-bar-read"
+            onClick={() => {
+              void store.markBuffersRead([bufferId])
+              setBarDismissed(`${bufferId}|${dividerTs}`)
+            }}
+          >
+            Mark as read <Icon name="mark_chat_read" size={14} />
+          </button>
+        </div>
+      )}
+
       {!anchored && (
         <button type="button" className="jump-to-present" onClick={jumpToPresent}>
           <Icon name="arrow_downward" size={16} />
@@ -835,7 +934,7 @@ function HistoryGap({ loading, onFill }: { loading: boolean; onFill: () => void 
   )
 }
 
-function isGrouped(messages: ChatMessage[], index: number): boolean {
+export function isGrouped(messages: ChatMessage[], index: number): boolean {
   if (index === 0) return false
   const prev = messages[index - 1]
   const cur = messages[index]

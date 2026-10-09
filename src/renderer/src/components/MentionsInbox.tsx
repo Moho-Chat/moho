@@ -6,6 +6,7 @@ import { Avatar } from './Avatar'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { isMutedBuffer, MENTIONS_GROUP_ID } from '../lib/groups'
 import { bufferDisplayName, formatFullTime, formatRelativeTime, serviceLabel } from '../lib/util'
+import { useEscapeLayer } from '../lib/layers'
 
 /**
  * The inbox: everything that mentioned you and that you have not seen yet.
@@ -69,6 +70,8 @@ export function MentionsInbox(): JSX.Element {
     [mentions, dismissedTs, lastReadTs, buffers, muted, mutedGroups]
   )
 
+  useEscapeLayer(() => setOpen(false), open)
+
   // Clicking anywhere else puts it away, the way any other transient panel
   // behaves.
   useEffect(() => {
@@ -76,14 +79,9 @@ export function MentionsInbox(): JSX.Element {
     const close = (e: MouseEvent): void => {
       if (!box.current?.contains(e.target as Node)) setOpen(false)
     }
-    const key = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setOpen(false)
-    }
     document.addEventListener('mousedown', close)
-    document.addEventListener('keydown', key)
     return () => {
       document.removeEventListener('mousedown', close)
-      document.removeEventListener('keydown', key)
     }
   }, [open])
 

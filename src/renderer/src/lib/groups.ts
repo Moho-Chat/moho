@@ -263,7 +263,9 @@ export function isMutedBuffer(
 /**
  * The buffers whose unread should reach a rail tile: what the pane below it
  * would actually list. A hidden buffer has no row to click through to, and a
- * muted one deliberately does not ask for attention.
+ * muted one deliberately does not ask for attention - except to say that
+ * somebody used its owner's name, which muting a place has never meant not
+ * wanting to hear (the clients this one is measured against all keep that).
  */
 export function countsTowardRail(
   buffer: BufferEntry,
@@ -271,7 +273,7 @@ export function countsTowardRail(
   hidden: string[],
   mutedGroups: string[] = []
 ): boolean {
-  return !hidden.includes(buffer.id) && !isMutedBuffer(buffer, muted, mutedGroups)
+  return !hidden.includes(buffer.id) && (buffer.highlight || !isMutedBuffer(buffer, muted, mutedGroups))
 }
 
 
@@ -386,4 +388,23 @@ export function fileInFolder(folders: RailFolder[], folderId: string, groupId: s
 /** Takes a group out of whatever folder holds it. */
 export function removeFromFolders(folders: RailFolder[], groupId: string): RailFolder[] {
   return folders.map((f) => ({ ...f, members: f.members.filter((m) => m !== groupId) }))
+}
+
+/**
+ * How two conversations in the same band of the list are ordered.
+ *
+ * Direct messages go by when they last spoke, as in every chat client: a
+ * person who just wrote to you is where you look. Channels do not. A channel
+ * list that reorders itself as each message arrives is a list nobody can click
+ * - the row moves between the pointer going to it and the click - and a busy
+ * network turns it into a column of rows in constant motion. So channels, and
+ * what is pinned, hold the order the service gave them (its own position),
+ * then alphabetical, and an unread badge says which one has something.
+ */
+export function compareInBand(
+  a: Pick<BufferEntry, 'kind' | 'name' | 'position' | 'lastActivityTs'>,
+  b: Pick<BufferEntry, 'kind' | 'name' | 'position' | 'lastActivityTs'>
+): number {
+  if (a.kind === 'dm' && b.kind === 'dm') return (b.lastActivityTs || 0) - (a.lastActivityTs || 0)
+  return (a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
 }

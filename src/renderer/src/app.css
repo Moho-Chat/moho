@@ -42,7 +42,7 @@
 
 .titlebar-title {
   font-size: var(--font-size-large);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .titlebar-status {
@@ -51,7 +51,7 @@
   gap: var(--spacing-xxs);
   margin-left: var(--spacing-s);
   padding: 2px var(--spacing-s);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-container-highest);
   color: var(--warning);
   font-size: var(--font-size-small);
@@ -117,7 +117,10 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  padding: var(--spacing-xs);
+  height: var(--header-height);
+  box-sizing: border-box;
+  padding: 0 var(--spacing-s);
+  border-bottom: 1px solid var(--outline-medium);
   flex: none;
   /* Both of these, and for different failures: without the first the row
      lays itself out at the width its contents want and pushes them over the
@@ -145,7 +148,7 @@
      tools ran out of room too and spilled leftwards over the name. */
   flex: 1 1 0;
   min-width: 0;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .main-body {
@@ -189,74 +192,17 @@
      be smaller. */
   min-height: 0;
   overflow-y: auto;
-  padding: var(--spacing-xs) 0;
+  /* No room above: the server's name is the first of the header row across the window. */
+  padding: 0 0 var(--spacing-xs);
 }
 
 .bufferlist-empty {
   padding: var(--spacing-m);
 }
 
-.bufferlist-footer {
-  display: flex;
-  flex: none;
-  padding: var(--spacing-xs);
-  gap: var(--spacing-xs);
-}
-
-.footer-button {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--spacing-xs);
-  padding: 6px;
-  border-radius: var(--corner-radius-small);
-  color: var(--surface-variant-text);
-  font-size: var(--font-size-small);
-}
-
-.footer-button:hover {
-  background: var(--primary-hover-light);
-  color: var(--surface-text);
-}
-
-.account-header,
-.group-header {
-  display: flex;
-  align-items: center;
-  padding: 0 var(--spacing-xs);
-  margin-top: var(--spacing-xs);
-}
-
-.account-header-main,
-.group-header-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  padding: 4px var(--spacing-xs);
-  border-radius: var(--corner-radius-small);
-  color: var(--surface-variant-text);
-  font-size: var(--font-size-small);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.account-header-main:hover,
-.group-header-main:hover {
-  background: var(--surface-hover);
-  color: var(--surface-text);
-}
-
-.guild-group .group-header {
-  padding-left: var(--spacing-m);
-}
-
 .connection-dot {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex: none;
   margin-left: auto;
@@ -291,7 +237,7 @@
 
 .buffer-row.highlight .buffer-name {
   color: var(--surface-text);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .buffer-name {
@@ -317,7 +263,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--primary-text);
 }
 
@@ -326,26 +272,73 @@
   height: 24px;
 }
 
+.buffer-row.muted-row:not(.unread) {
+  opacity: 0.55;
+}
+
 .buffer-muted-icon {
   opacity: 0.6;
 }
 
-.unread-badge {
-  flex: none;
+/* One badge, everywhere a count or a state sits on something: the channel
+   list, the rail's tiles and corners, the mentions button and the on-air
+   mark. Two sizes - the usual 18px and the 15px one that has to fit a
+   button's corner - and one escalation: a count is grey, and a mention is
+   red with white text. Red because that is what all three of the clients
+   this one is measured against use for "somebody said your name", and
+   because the blue of selection and links is already everywhere. */
+.unread-badge,
+.rail-count,
+.rail-downloads,
+.live-badge,
+.mentions-count {
+  box-sizing: border-box;
   min-width: 18px;
+  height: 18px;
   padding: 0 5px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-container-highest);
   color: var(--surface-text);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
   line-height: 18px;
   text-align: center;
 }
 
-.unread-badge.highlight {
-  background: var(--primary);
-  color: var(--primary-text);
-  font-weight: 600;
+.unread-badge {
+  flex: none;
+}
+
+.unread-badge.highlight,
+.rail-count.highlight,
+.rail-service.highlight,
+.mentions-count {
+  background: var(--mention);
+  color: var(--on-accent);
+}
+
+/* An unread channel is read as one before its number is: its name goes bold
+   and full-strength, and a short bar stands at the row's left edge. */
+.buffer-row.unread {
+  position: relative;
+}
+
+.buffer-row.unread .buffer-name {
+  color: var(--surface-text);
+  font-weight: var(--weight-semibold);
+}
+
+.buffer-row.unread:not(.active)::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: 50%;
+  width: 4px;
+  height: 8px;
+  margin-top: -4px;
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  background: var(--surface-text);
 }
 
 
@@ -356,8 +349,9 @@
    panel it used to live in is usually closed when one does. */
 .verification-dialog {
   position: fixed;
-  z-index: 70;
-  right: var(--spacing-m);
+  z-index: var(--z-notice);
+  left: 50%;
+  transform: translateX(-50%);
   bottom: var(--spacing-m);
   width: min(360px, calc(100vw - var(--spacing-m) * 2));
   display: flex;
@@ -367,7 +361,7 @@
   background: var(--surface-container-high);
   border: 1px solid var(--outline-strong);
   border-radius: var(--corner-radius);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-2);
 }
 
 .verification-head {
@@ -383,7 +377,7 @@
    viewport, a panel can be as wide as it needs while the row stays narrow. */
 .header-popover {
   position: fixed;
-  z-index: 60;
+  z-index: var(--z-popover);
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
@@ -393,7 +387,7 @@
   background: var(--surface-container-high);
   border: 1px solid var(--outline-strong);
   border-radius: var(--corner-radius);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-2);
 }
 
 .popover-field {
@@ -434,7 +428,7 @@
 
 .search-scope .link-button.active {
   color: var(--primary);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 /* Inside a panel the results are the panel, so they drop the floating shell
@@ -483,6 +477,49 @@
 /* Wraps rather than scrolls, and is capped: a pinned wall of text must not
    push the conversation off the screen, which is the one way this feature
    could be worse than not having it. */
+.pinned-banner {
+  align-items: center;
+}
+
+.pinned-banner .pinned-mark {
+  margin-top: 0;
+}
+
+/* The line is the way to the message: one row, and the whole of it a button. */
+.pinned-banner-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px var(--spacing-xs);
+  border-radius: var(--corner-radius-small);
+  text-align: left;
+  color: var(--surface-text);
+  transition: background var(--motion-fast) var(--ease);
+}
+
+.pinned-banner-body:hover {
+  background: var(--surface-hover);
+}
+
+/* A count on the corner of a header button. */
+.header-count {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 14px;
+  padding: 0 3px;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+  color: var(--on-accent);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  line-height: 14px;
+  text-align: center;
+  pointer-events: none;
+}
+
 .pinned-body {
   flex: 1 1 auto;
   min-width: 0;
@@ -570,10 +607,10 @@
   position: relative;
   flex: none;
   padding: 0 var(--spacing-xs);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--success);
-  color: #fff;
-  font-weight: 700;
+  color: var(--on-accent);
+  font-weight: var(--weight-bold);
 }
 
 .poll-option.winner {
@@ -594,7 +631,7 @@
   border: 1px solid var(--outline-light);
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-2);
   overflow: hidden;
 }
 
@@ -610,7 +647,7 @@
 }
 
 .poll-title {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .poll-buttons {
@@ -650,7 +687,7 @@
   inset: 0 auto 0 0;
   background: var(--primary);
   opacity: 0.28;
-  transition: width 0.3s ease;
+  transition: width var(--motion) ease;
 }
 
 /* The one you picked, which is worth seeing at a glance in a list of rows
@@ -666,7 +703,7 @@
 .poll-label,
 .poll-count {
   position: relative;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .poll-label {
@@ -691,7 +728,7 @@
   display: block;
   height: 100%;
   background: var(--success);
-  transition: width 0.5s linear;
+  transition: width var(--motion-slow) linear;
 }
 
 /* Folded away: still running, still one click from being answered. */
@@ -720,17 +757,13 @@
    sit - one mark for one fact. */
 .live-badge {
   flex: none;
-  padding: 0 5px;
-  border-radius: 999px;
   /* The same solid red as the hang-up button rather than --error, which is
      a pale pink for text and reads as decorative when used as a fill. */
-  background: #c9403c;
-  color: #fff;
+  background: var(--danger);
+  color: var(--on-accent);
   font-size: 9px;
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   letter-spacing: 0.05em;
-  line-height: 18px;
-  text-align: center;
 }
 
 
@@ -768,7 +801,8 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: var(--spacing-s) 0 var(--spacing-m);
+  /* Room above the first line for the toolbar that hangs over its top edge. */
+  padding: var(--spacing-m) 0 var(--spacing-m);
   /* The browser's own anchoring adjusts scrollTop when content above the view
      changes size, which is a reasonable thing for a document and the wrong
      thing here: this list keeps its own position deliberately, and two of
@@ -808,26 +842,30 @@
  * one line of name and arguments over a line of explanation, so the eye runs
  * down the names rather than reading each row.
  */
-.command-picker {
+.command-picker,
+.mention-picker,
+.shortcode-picker {
   display: flex;
   flex-direction: column;
   max-height: 320px;
   overflow-y: auto;
-  margin: 0 var(--spacing-s) var(--spacing-xs);
+  margin: 0 var(--spacing-m) var(--spacing-xs);
   padding: var(--spacing-xs);
   border: 1px solid var(--outline-medium);
   border-radius: var(--corner-radius);
-  background: var(--surface-container);
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  background: var(--surface-container-high);
+  box-shadow: var(--shadow-up);
 }
 
-.command-picker-head {
+.picker-head {
   padding: var(--spacing-xs) var(--spacing-s);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
-.command-option {
+.command-option,
+.mention-option,
+.shortcode-option {
   display: flex;
   align-items: center;
   gap: var(--spacing-s);
@@ -841,8 +879,27 @@
 }
 
 .command-option.active,
-.command-option:hover {
-  background: var(--surface-container-highest);
+.command-option:hover,
+.mention-option.active,
+.shortcode-option.active {
+  background: var(--surface-selected);
+}
+
+.shortcode-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.shortcode-glyph img {
+  max-width: 24px;
+  max-height: 24px;
+  object-fit: contain;
 }
 
 .command-glyph {
@@ -865,14 +922,14 @@
 }
 
 .command-name {
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 /* The arguments are not the name: same line, quieter, so the name still
    reads as the thing being chosen. */
 .command-usage {
   color: var(--surface-variant-text);
-  font-weight: 400;
+  font-weight: var(--weight-regular);
 }
 
 .command-source {
@@ -916,10 +973,10 @@
   -webkit-app-region: no-drag;
   right: var(--spacing-m);
   bottom: 90px;
-  z-index: 40;
+  z-index: var(--z-raised);
   width: 340px;
   margin: 0;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-2);
 }
 
 /*
@@ -1083,7 +1140,7 @@ button.video-tile {
   padding: 1px 6px;
   border-radius: var(--corner-radius-small);
   background: rgba(0, 0, 0, 0.55);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .call-stage-controls {
@@ -1117,14 +1174,14 @@ button.video-tile {
   padding: var(--spacing-m);
   border-radius: var(--corner-radius);
   background: var(--surface-container);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-2);
 }
 
 .screen-picker-head {
   display: flex;
   align-items: center;
   gap: var(--spacing-s);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .screen-picker-head .icon-button {
@@ -1158,7 +1215,7 @@ button.video-tile {
   width: 100%;
   aspect-ratio: 16 / 9;
   object-fit: contain;
-  background: #000;
+  background: var(--media-backdrop);
   border-radius: var(--corner-radius-small);
 }
 
@@ -1245,7 +1302,7 @@ button.video-tile {
   flex-direction: column;
   gap: 2px;
   padding-bottom: var(--spacing-xs);
-  border-bottom: 1px solid var(--outline-low);
+  border-bottom: 1px solid var(--outline-light);
 }
 
 .search-filter {
@@ -1285,7 +1342,7 @@ button.video-tile {
   justify-content: center;
   gap: var(--spacing-s);
   padding: var(--spacing-s) var(--spacing-m);
-  color: var(--surface-text-muted);
+  color: var(--text-muted);
   font-size: var(--font-size-small);
 }
 
@@ -1330,7 +1387,7 @@ button.video-tile {
   padding: 5px;
   border-radius: var(--corner-radius-small);
   background: var(--surface-container-highest);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-1);
 }
 
 .message-row {
@@ -1338,6 +1395,9 @@ button.video-tile {
   align-items: baseline;
   gap: var(--spacing-s);
   padding: 1px var(--spacing-m);
+  /* So a highlight - a jump target, a hover - fades both ways. It used to
+     fade in and snap off. */
+  transition: background var(--motion-slow) ease;
 }
 
 .message-row:hover {
@@ -1345,11 +1405,24 @@ button.video-tile {
 }
 
 .message-row.highlight {
-  background: var(--primary-hover-light);
-  box-shadow: inset 2px 0 0 var(--primary);
+  /* Amber, not the blue of selection and of a jump target, so a message that
+     names you is never mistaken for one that was only clicked. */
+  background: var(--mention-row);
+  box-shadow: inset 2px 0 0 var(--mention-edge);
 }
 
-.message-row.pending {
+.message-row.highlight:hover {
+  background: rgba(250, 168, 26, 0.13);
+}
+
+/* Only what was said is dimmed, not the whole row: an upload's progress and
+   the face beside it are still what they were, and dimming a row as a unit
+   made the one thing that says it is working the faintest thing on it. */
+.message-row.pending .message-body,
+.message-row.pending .message-byline,
+.message-row.pending .media-row,
+.message-row.pending .media-grid,
+.message-row.pending .reply-preview {
   opacity: 0.55;
 }
 
@@ -1384,6 +1457,15 @@ button.video-tile {
   animation: upload-spin 1.1s linear infinite;
 }
 
+/* Filling rather than turning: the arc's length is the share uploaded, drawn
+   from the top. */
+.upload-ring-arc.counted {
+  animation: none;
+  transform: rotate(-90deg);
+  stroke-linecap: butt;
+  transition: stroke-dasharray var(--motion-fast) linear;
+}
+
 @keyframes upload-spin {
   to {
     transform: rotate(360deg);
@@ -1409,8 +1491,56 @@ button.video-tile {
   opacity: 1;
 }
 
-.message-row.system .message-body {
+.message-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  width: 100%;
+  max-width: 720px;
+}
+
+.message-edit-field {
+  resize: none;
+  font: inherit;
+  user-select: text;
+}
+
+.message-edit-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+.link-button.danger-text {
+  color: var(--danger-text);
+}
+
+.send-failed-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-m);
+  margin-top: 2px;
+}
+
+.send-failed-actions .send-failed {
+  margin-top: 0;
+}
+
+/* Not sending it after all. Quieter than retry, which is the likelier want. */
+.send-discard {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
   color: var(--surface-variant-text);
+}
+
+.send-discard:hover {
+  color: var(--surface-text);
+  text-decoration: underline;
+}
+
+.message-row.system .message-body {
+  color: var(--text-muted);
   font-style: italic;
 }
 
@@ -1452,6 +1582,81 @@ button.video-tile {
   padding-top: 0;
 }
 
+/* Comfy, in Discord's shape: a 40px picture, the name with its time beside it,
+   and air above each new speaker so a run of messages reads as one thing and
+   the next person starts a new one. Bubbles keep their own, smaller picture. */
+.message-row.comfy:not(.bubbles) {
+  --avatar: 40px;
+  gap: var(--spacing-m);
+}
+
+.message-row.comfy:not(.bubbles):not(.grouped):not(.system) {
+  margin-top: var(--spacing-l);
+}
+
+/* The first line of the log, or the first under a date or "New" line, has
+   something above it already. */
+.message-row.comfy:not(.bubbles):first-child,
+.date-divider ~ .message-row.comfy:not(.bubbles),
+.new-divider ~ .message-row.comfy:not(.bubbles) {
+  margin-top: 0;
+}
+
+.message-row.comfy:not(.bubbles) .message-avatar {
+  position: relative;
+  width: var(--avatar);
+  height: var(--avatar);
+  /* The name sits level with the top of the picture, not below it. */
+  margin-top: 2px;
+}
+
+.message-row.comfy:not(.bubbles).grouped .message-avatar {
+  height: 0;
+  margin-top: 0;
+}
+
+.message-row.comfy:not(.bubbles) .message-avatar img,
+.message-row.comfy:not(.bubbles) .avatar-fallback {
+  width: var(--avatar);
+  height: var(--avatar);
+  font-size: var(--font-size-large);
+}
+
+.message-row.comfy:not(.bubbles) .system-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0;
+  height: auto;
+  color: var(--text-muted);
+}
+
+/* The time of a follow-up line, in the picture's column, on hover. */
+.gutter-time {
+  position: absolute;
+  top: 3px;
+  right: 0;
+  width: var(--avatar, 40px);
+  text-align: center;
+  font-size: var(--font-size-xxs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity var(--motion-fast) ease;
+}
+
+.message-row:hover .gutter-time {
+  opacity: 1;
+}
+
+.message-stamp {
+  margin-left: var(--spacing-s);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-regular);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
 /* --- bubbles ------------------------------------------------------------
    The phone-messaging shape. What makes it that shape is not the rounding,
    it is that a message takes a side: yours right, theirs left. Everything
@@ -1476,7 +1681,7 @@ button.video-tile {
      become a paragraph of text on a wide window. */
   max-width: min(72%, 34rem);
   padding: var(--spacing-xs) var(--spacing-s);
-  border-radius: 18px;
+  border-radius: var(--radius-bubble);
   background: var(--bubble-them);
   color: var(--bubble-them-text);
 }
@@ -1507,13 +1712,13 @@ button.video-tile {
 }
 
 .message-row.bubbles .message-from {
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .message-row.bubbles .bubble-time {
   display: block;
   margin-top: 2px;
-  font-size: 10px;
+  font-size: var(--font-size-xxs);
   text-align: right;
   font-variant-numeric: tabular-nums;
   /* Against a filled bubble rather than the page, so the muted grey used
@@ -1557,7 +1762,8 @@ button.video-tile {
 
 /* Media sets its own size, and inside a bubble it should reach the rounded
    edge rather than sit on a strip of colour. */
-.message-row.bubbles .media-row {
+.message-row.bubbles .media-row,
+.message-row.bubbles .media-grid {
   margin: var(--spacing-xxs) 0;
 }
 
@@ -1566,7 +1772,7 @@ button.video-tile {
   width: 42px;
   text-align: right;
   font-variant-numeric: tabular-nums;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .message-avatar {
@@ -1592,8 +1798,8 @@ button.video-tile {
   align-items: center;
   justify-content: center;
   color: #101418;
-  font-weight: 600;
-  font-size: 13px;
+  font-weight: var(--weight-semibold);
+  font-size: var(--font-size-compact);
 }
 
 .message-content {
@@ -1610,7 +1816,7 @@ button.video-tile {
 }
 
 .message-from {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 /* Comfy and bubble layouts give the byline its own line; the compact log
@@ -1621,7 +1827,7 @@ button.video-tile {
 }
 
 .edited-tag {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .reply-preview {
@@ -1639,8 +1845,38 @@ button.video-tile {
 }
 
 .reply-from {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   flex: none;
+}
+
+.reply-avatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+}
+
+/* A reply that can be followed: the whole line is the way to the original. */
+.reply-jump {
+  cursor: pointer;
+}
+
+.reply-jump:hover {
+  opacity: 1;
+}
+
+.reply-jump:hover .ellipsis {
+  text-decoration: underline;
+}
+
+.message-from.clickable,
+.message-avatar.clickable {
+  cursor: pointer;
+}
+
+.message-from.clickable:hover {
+  text-decoration: underline;
 }
 
 .send-failed {
@@ -1651,28 +1887,101 @@ button.video-tile {
   margin-top: 2px;
 }
 
+/* A new day. Centred on a rule, quieter than the "New" marker below it, so
+   the two can sit one over the other without competing. */
+.date-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-m);
+  margin: var(--spacing-m) var(--spacing-l) var(--spacing-xs);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.date-divider::before,
+.date-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--outline-strong);
+}
+
 .new-divider {
   display: flex;
   align-items: center;
   gap: var(--spacing-s);
   margin: var(--spacing-s) var(--spacing-m);
-  color: var(--error);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--font-size-xxs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-.new-divider::before,
-.new-divider::after {
+/* A red rule with its marker at the right-hand end, as Discord draws it. */
+.new-divider::before {
   content: '';
   flex: 1;
   height: 1px;
-  background: var(--error);
-  opacity: 0.5;
+  background: var(--danger);
+  opacity: 0.6;
 }
 
-.new-divider::before {
-  flex: 0 0 var(--spacing-s);
+.new-divider > span {
+  order: 2;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--danger);
+  color: var(--on-accent);
+}
+
+/* Across the top of the log while there is more unread above than is showing:
+   how much, since when, and a way to be done with it - Discord's blue strip. */
+.unread-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-m);
+  padding: 4px var(--spacing-m);
+  background: var(--primary);
+  color: var(--primary-text);
+  font-size: var(--font-size-small);
+  font-weight: var(--weight-semibold);
+  box-shadow: var(--shadow-1);
+  animation: unread-bar-in var(--motion) var(--ease);
+}
+
+.unread-bar button {
+  color: inherit;
+  font-weight: inherit;
+}
+
+.unread-bar-text:hover,
+.unread-bar-read:hover {
+  text-decoration: underline;
+}
+
+.unread-bar-read {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+@keyframes unread-bar-in {
+  from {
+    transform: translateY(-100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .unread-bar {
+    animation: none;
+  }
 }
 
 .jump-to-present {
@@ -1689,7 +1998,7 @@ button.video-tile {
   background: var(--surface-container-highest);
   color: var(--surface-text);
   font-size: var(--font-size-small);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-1);
 }
 
 .jump-to-present:hover {
@@ -1708,7 +2017,28 @@ button.video-tile {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  padding: var(--spacing-xs) var(--spacing-s) 0;
+  margin: var(--spacing-xs) var(--spacing-s) 0;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border-radius: var(--corner-radius-small) var(--corner-radius-small) 0 0;
+  background: var(--surface-container-high);
+  border-left: 3px solid var(--primary);
+}
+
+.reply-ping {
+  flex: none;
+  padding: 1px var(--spacing-s);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  font-weight: var(--weight-bold);
+  font-size: var(--font-size-xs);
+}
+
+.reply-ping.on {
+  color: var(--primary);
+}
+
+.reply-ping:hover {
+  background: var(--surface-hover);
 }
 
 .composer-reply .ellipsis {
@@ -1722,47 +2052,104 @@ button.video-tile {
   padding: var(--spacing-xs) var(--spacing-s) 0;
 }
 
-.staged-thumb {
+.staged-card {
   position: relative;
-  width: 72px;
-  height: 72px;
-  border-radius: var(--corner-radius-small);
+  display: flex;
+  flex-direction: column;
+  width: 140px;
+  border-radius: var(--corner-radius);
   background: var(--surface-container-high);
+  overflow: hidden;
+  transition: background var(--motion-fast) var(--ease);
+}
+
+.staged-preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 96px;
+  background: var(--surface-container-lowest, rgba(0, 0, 0, 0.25));
+  color: var(--surface-variant-text);
   overflow: hidden;
 }
 
-.staged-thumb img {
+.staged-preview img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.staged-file {
+/* Hidden behind a spoiler: blurred until it is sent, as it will be seen. */
+.staged-card.is-spoiler .staged-preview img {
+  filter: blur(14px);
+  transform: scale(1.2);
+}
+
+.staged-spoiler-pill {
+  position: absolute;
+  padding: 2px var(--spacing-s);
+  border-radius: var(--radius-pill);
+  background: var(--scrim-strong);
+  color: var(--on-accent);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+}
+
+.staged-meta {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: var(--spacing-xs);
-  color: var(--surface-variant-text);
-  text-align: center;
+  min-width: 0;
+  padding: var(--spacing-xs) var(--spacing-s);
 }
 
-.staged-file .ellipsis {
-  max-width: 100%;
+.staged-name {
+  font-size: var(--font-size-small);
 }
 
-.staged-remove {
+.staged-actions {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
+  top: var(--spacing-xs);
+  right: var(--spacing-xs);
+  display: flex;
+  gap: 2px;
+}
+
+/* Each one fades, rather than the pair: a spoiler mark stays in view while
+   the rest wait for the pointer. */
+.staged-action:not(.on) {
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+
+.staged-card:hover .staged-action,
+.staged-card:focus-within .staged-action {
+  opacity: 1;
+}
+
+.staged-action {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(50, 53, 58, 0.9);
+  width: 26px;
+  height: 26px;
+  border-radius: var(--corner-radius-small);
+  background: var(--scrim-strong);
+  color: var(--on-accent);
+}
+
+.staged-action:hover {
+  background: var(--surface-container-highest);
+}
+
+.staged-action.on {
+  background: var(--primary);
+}
+
+.staged-action.danger:hover {
+  background: var(--danger);
+  color: var(--on-accent);
 }
 
 .composer-row {
@@ -1770,6 +2157,75 @@ button.video-tile {
   align-items: center;
   gap: var(--spacing-xs);
   padding: var(--spacing-s);
+}
+
+.context-menu.above {
+  transform-origin: bottom left;
+}
+
+/* One rounded box holding the "+", the typing and the buttons, as in Discord;
+   the typing itself has no border of its own. Buttons sit at the foot of it, so
+   they stay with the last line as the box grows. */
+.composer-box {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 2px var(--spacing-xs);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  transition: border-color var(--motion-fast) var(--ease);
+}
+
+.composer-box:focus-within {
+  border-color: var(--primary);
+}
+
+.composer-box .composer-input {
+  padding: 5px var(--spacing-xs);
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.composer-box .composer-placeholder {
+  left: var(--spacing-xs);
+  right: var(--spacing-xs);
+}
+
+.composer-box > .icon-button,
+.composer-box > .voice-recorder,
+.composer-lock,
+.composer-box > .composer-tor {
+  height: 32px;
+}
+
+.composer-lock,
+.composer-box > .composer-tor {
+  display: inline-flex;
+  align-items: center;
+}
+
+.composer-plus {
+  color: var(--surface-variant-text);
+}
+
+.composer-plus:hover {
+  color: var(--surface-text);
+}
+
+.composer-send {
+  color: var(--primary);
+  animation: composer-send-in var(--motion-fast) var(--ease);
+}
+
+@keyframes composer-send-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
 }
 
 /* The box is an editable div rather than an input so an emoji can sit in it as
@@ -1833,7 +2289,10 @@ img.composer-emoji {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  padding: var(--spacing-xs) var(--spacing-xs) var(--spacing-xs) var(--spacing-s);
+  height: var(--header-height);
+  box-sizing: border-box;
+  padding: 0 var(--spacing-xs) 0 var(--spacing-s);
+  border-bottom: 1px solid var(--outline-medium);
   flex: none;
 }
 
@@ -1853,7 +2312,7 @@ img.composer-emoji {
   padding: var(--spacing-s) var(--spacing-s) var(--spacing-xxs);
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .nicklist-empty {
@@ -1917,7 +2376,7 @@ img.composer-emoji {
 .panel-heading {
   margin: 0 0 var(--spacing-s);
   font-size: var(--font-size-medium);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--surface-variant-text);
 }
 
@@ -2075,14 +2534,17 @@ img.composer-emoji {
 /* --- context menu ----------------------------------------------------- */
 
 .context-menu {
+  outline: none;
+  transform-origin: top left;
+  animation: menu-in var(--motion-fast) var(--ease);
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-menu);
   min-width: 170px;
   padding: var(--spacing-xs);
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
   border: 1px solid var(--outline-medium);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-2);
 }
 
 .context-menu-item {
@@ -2096,8 +2558,38 @@ img.composer-emoji {
   color: var(--surface-text);
 }
 
-.context-menu-item:hover {
+.context-menu-item:hover,
+.context-menu-item:focus-visible {
   background: var(--primary-hover-light);
+  outline: none;
+}
+
+.context-menu-label {
+  flex: 1;
+}
+
+.context-menu-shortcut {
+  margin-left: var(--spacing-l);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.context-menu-check {
+  color: var(--primary);
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .context-menu {
+    animation: none;
+  }
 }
 
 .context-menu-item.danger {
@@ -2132,7 +2624,7 @@ img.composer-emoji {
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
   border: 1px solid var(--outline-medium);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--shadow-2);
 }
 
 .leave-confirm-head {
@@ -2140,7 +2632,7 @@ img.composer-emoji {
   align-items: center;
   gap: var(--spacing-s);
   font-size: var(--font-size-large);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   margin-bottom: var(--spacing-s);
 }
 
@@ -2187,12 +2679,12 @@ img.composer-emoji {
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
   border: 1px solid var(--outline-medium);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--shadow-2);
 }
 
 .membership-rules-head {
   font-size: var(--font-size-large);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   margin-bottom: var(--spacing-s);
 }
 
@@ -2210,72 +2702,6 @@ img.composer-emoji {
   padding-top: var(--spacing-s);
 }
 
-/* Confirming a dropped file, on the shape LeaveConfirm already uses. */
-.drop-confirm {
-  max-width: 460px;
-  padding: var(--spacing-l);
-  border-radius: var(--corner-radius);
-  background: var(--surface-container-high);
-  border: 1px solid var(--outline-medium);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
-}
-
-.drop-confirm-head {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-s);
-  font-size: var(--font-size-large);
-  font-weight: 600;
-  margin-bottom: var(--spacing-m);
-}
-
-.drop-confirm p {
-  color: var(--surface-variant-text);
-  margin: var(--spacing-m) 0 var(--spacing-l);
-}
-
-.drop-confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--spacing-s);
-}
-
-/* Wraps and scrolls rather than growing: several files at once should not
-   push the buttons off the bottom of the window. */
-.drop-preview {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-s);
-  max-height: 40vh;
-  overflow-y: auto;
-}
-
-.drop-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--spacing-xxs);
-  width: 96px;
-}
-
-.drop-item img,
-.drop-item-file {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 96px;
-  height: 96px;
-  border-radius: var(--corner-radius-small);
-  background: var(--surface-variant);
-  /* Contain, not cover: this is being shown so somebody can tell which file
-     it is, and a crop can hide exactly the part that would say. */
-  object-fit: contain;
-}
-
-.drop-item .small {
-  max-width: 96px;
-}
-
 /* Shown while a file is over the window, so it is clear the app will take it
    rather than the file manager keeping it. Ignores the pointer: it must not
    become the drop target itself and swallow the event. */
@@ -2285,7 +2711,7 @@ img.composer-emoji {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 60;
+  z-index: var(--z-popover);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2293,18 +2719,19 @@ img.composer-emoji {
   gap: var(--spacing-s);
   pointer-events: none;
   background: rgba(0, 0, 0, 0.45);
-  color: #fff;
+  color: var(--on-accent);
   font-size: var(--font-size-large);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   outline: 2px dashed var(--primary);
   outline-offset: -10px;
 }
 
-/* The one button in the app that destroys something. Not --error, which is a
-   pale text colour and reads as decorative when used as a fill. */
-.button.danger {
-  background: #c9403c;
-  color: #fff;
+/* Asking again, in place of the button that was pressed. */
+.confirm-button {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
 }
 
 /* --- mentions ---------------------------------------------------------- */
@@ -2360,7 +2787,7 @@ img.composer-emoji {
 }
 
 .mention-from {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 /* Pushed to the far edge: the when is the least of the three things on this
@@ -2397,14 +2824,10 @@ img.composer-emoji {
   right: -3px;
   pointer-events: none;
   min-width: 15px;
+  height: 15px;
   padding: 0 3px;
-  border-radius: 999px;
-  background: var(--primary);
-  color: var(--primary-text);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--font-size-xxs);
   line-height: 15px;
-  text-align: center;
 }
 
 .mentions-panel {
@@ -2433,7 +2856,7 @@ img.composer-emoji {
 /* Inside the panel the rows sit against its own padding, not the sidebar's. */
 .mentions-panel .mention-row {
   padding: var(--spacing-xs) var(--spacing-s);
-  border-radius: var(--spacing-xs);
+  border-radius: var(--radius-xs);
 }
 
 .mentions-panel .mention-row:hover {
@@ -2471,8 +2894,8 @@ img.composer-emoji {
   display: flex;
   flex-direction: column-reverse;
   gap: var(--spacing-s);
-  /* Above the toasts, which are the only other floating thing this low. */
-  z-index: 2100;
+  /* Bottom left; see .toasts for where everything else floats. */
+  z-index: var(--z-call);
   max-width: 360px;
 }
 
@@ -2484,7 +2907,7 @@ img.composer-emoji {
   border-radius: var(--corner-radius);
   background: var(--surface-container-highest);
   border: 1px solid var(--outline-medium);
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow-2);
   /* Breathes in time with the ringtone, so the panel reads as ringing rather
      than as one more notification that happens to have buttons. */
   animation: call-pulse 2.6s ease-in-out infinite;
@@ -2516,7 +2939,7 @@ img.composer-emoji {
 }
 
 .incoming-call-name {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 /* Green to answer and red to hang up, which is the one piece of visual
@@ -2530,7 +2953,7 @@ img.composer-emoji {
   height: 36px;
   flex: none;
   border-radius: 50%;
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .call-answer {
@@ -2540,7 +2963,7 @@ img.composer-emoji {
 /* Not --error: that token is a pale pink meant for text on a dark surface,
    and a hang-up button filled with it reads as decorative. */
 .call-decline {
-  background: #c9403c;
+  background: var(--danger);
 }
 
 .call-answer:hover,
@@ -2549,13 +2972,17 @@ img.composer-emoji {
 }
 
 .toasts {
+  /* Top right, under the title bar. The bottom corners belong to what is
+     asked of you - a ringing call on the left, a file arriving on the right,
+     a verification in the middle - and a message that something happened
+     must not sit on top of any of them (or under it). */
   position: fixed;
   right: var(--spacing-m);
-  bottom: var(--spacing-m);
+  top: calc(var(--titlebar-height) + var(--spacing-m));
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
-  z-index: 2000;
+  z-index: var(--z-toast);
   max-width: 420px;
 }
 
@@ -2567,16 +2994,77 @@ img.composer-emoji {
   border-radius: var(--corner-radius);
   background: var(--surface-container-highest);
   border: 1px solid var(--outline-medium);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  border-left-width: 3px;
+  box-shadow: var(--shadow-2);
   font-size: var(--font-size-small);
+  animation: toast-in var(--motion) var(--ease);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+/* The kind is said by the edge and the icon, not by recolouring the words. */
+.toast.info {
+  border-left-color: var(--primary);
+}
+
+.toast.success {
+  border-left-color: var(--success);
 }
 
 .toast.error {
-  color: var(--error);
+  border-left-color: var(--danger);
 }
 
-.toast span {
+.toast.error > .icon {
+  color: var(--danger-text);
+}
+
+.toast.success > .icon {
+  color: var(--success);
+}
+
+.toast.info > .icon {
+  color: var(--primary);
+}
+
+.toast.leaving {
+  opacity: 0;
+  transform: translateX(24px);
+}
+
+.toast-text {
   flex: 1;
+  min-width: 0;
+}
+
+.toast-count {
+  margin-left: var(--spacing-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.toast-action {
+  flex: none;
+  padding: 2px var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+}
+
+.toast-action:hover {
+  background: var(--primary-hover-light);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
 }
 
 /* --- rich message content --------------------------------------------- */
@@ -2685,7 +3173,7 @@ img.smilie {
 
 .rich-embed-title {
   display: block;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   margin-bottom: 2px;
 }
 
@@ -2694,7 +3182,7 @@ img.smilie {
 }
 
 .rich-embed-author {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   margin-bottom: 2px;
 }
 
@@ -2769,7 +3257,7 @@ img.smilie {
   width: min(420px, 100%);
   aspect-ratio: 16 / 9;
   border-radius: var(--corner-radius-small);
-  background: #000;
+  background: var(--media-backdrop);
 }
 
 /* The player, at the thumbnail's width and YouTube's shape. */
@@ -2779,7 +3267,7 @@ img.smilie {
   aspect-ratio: 16 / 9;
   border: none;
   border-radius: var(--corner-radius-small);
-  background: #000;
+  background: var(--media-backdrop);
 }
 
 .media-embed.youtube.playing {
@@ -2797,10 +3285,10 @@ img.smilie {
   border: none;
   border-radius: var(--corner-radius-small);
   background: rgba(0, 0, 0, 0.6);
-  color: #fff;
+  color: var(--on-accent);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 120ms;
+  transition: opacity var(--motion-fast);
 }
 
 .media-embed.youtube:hover .youtube-outside,
@@ -2814,7 +3302,7 @@ img.smilie {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--on-accent);
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
 }
 
@@ -2833,11 +3321,12 @@ img.smilie {
 }
 
 .reaction-pill {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--spacing-xxs);
   padding: 1px var(--spacing-s);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-container-high);
   border: 1px solid transparent;
   line-height: 1.5;
@@ -2854,6 +3343,33 @@ img.smilie {
 
 .reaction-pill.add {
   color: var(--surface-variant-text);
+}
+
+/* The sentence over a reaction: who, and with what. Above the pill, and out of
+   the way of the pointer, which is on the pill. */
+.reaction-tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: var(--z-popover);
+  width: max-content;
+  max-width: 280px;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-highest);
+  box-shadow: var(--shadow-2);
+  color: var(--surface-text);
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+  animation: tip-in var(--motion-fast) var(--ease);
+}
+
+@keyframes tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
 }
 
 .reaction-emoji {
@@ -2878,13 +3394,19 @@ img.smilie {
   position: absolute;
   top: -10px;
   right: calc(var(--spacing-m) + var(--read-gutter, 0px));
-  display: none;
+  display: flex;
+  /* Not display:none, which cannot fade and, worse, takes its buttons out of
+     the tab order: it is there and see-through until the row is pointed at or
+     has focus in it. */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast) ease;
   gap: 1px;
   padding: 2px;
   border-radius: var(--corner-radius-small);
   background: var(--surface-container-high);
   border: 1px solid var(--outline-medium);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-1);
   z-index: 5;
 }
 
@@ -2899,8 +3421,10 @@ img.smilie {
   --read-gutter: 62px;
 }
 
-.message-row:hover .hover-toolbar {
-  display: flex;
+.message-row:hover .hover-toolbar,
+.message-row:focus-within .hover-toolbar {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .toolbar-button {
@@ -2909,9 +3433,9 @@ img.smilie {
   justify-content: center;
   width: 26px;
   height: 24px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   color: var(--surface-variant-text);
-  font-size: 14px;
+  font-size: var(--font-size-medium);
 }
 
 .toolbar-button:hover {
@@ -2923,7 +3447,7 @@ img.smilie {
 
 .emoji-picker {
   position: fixed;
-  z-index: 1500;
+  z-index: var(--z-picker);
   width: min(420px, calc(100vw - 8px));
   /* A fixed height, so the rail down the side always has the room the list
      has, as Discord's does. */
@@ -2936,7 +3460,7 @@ img.smilie {
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
   border: 1px solid var(--outline-medium);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow-2);
 }
 
 .emoji-scroll {
@@ -2948,7 +3472,7 @@ img.smilie {
   padding: var(--spacing-s) 2px var(--spacing-xxs);
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .emoji-grid {
@@ -2978,12 +3502,57 @@ img.smilie {
   justify-content: center;
   height: 34px;
   border-radius: var(--corner-radius-small);
-  font-size: 20px;
+  font-size: var(--font-size-xlarge);
   line-height: 1;
 }
 
 .emoji-cell:hover {
   background: var(--primary-hover-light);
+}
+
+/* Where the arrow keys are: the search box keeps the focus, so the cell is
+   marked rather than focused. */
+.emoji-cell.kbd {
+  background: var(--primary-hover-light);
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+/* The skin tone, at the end of the search row. */
+.emoji-tone {
+  position: relative;
+  flex: none;
+}
+
+.emoji-tone-button,
+.emoji-tone-choice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--corner-radius-small);
+  font-size: var(--font-size-large);
+  line-height: 1;
+}
+
+.emoji-tone-button:hover,
+.emoji-tone-choice:hover,
+.emoji-tone-choice.active {
+  background: var(--surface-selected);
+}
+
+.emoji-tone-menu {
+  position: absolute;
+  top: calc(100% + var(--spacing-xs));
+  right: 0;
+  z-index: 1;
+  display: flex;
+  gap: 2px;
+  padding: var(--spacing-xs);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: var(--shadow-2);
 }
 
 .emoji-cell img {
@@ -3019,7 +3588,7 @@ img.smilie {
 .emoji-cell.emoji-token {
   overflow: hidden;
   padding: 0 2px;
-  font-size: 10px;
+  font-size: var(--font-size-xxs);
   line-height: 1.1;
   word-break: break-all;
 }
@@ -3079,11 +3648,7 @@ img.smilie {
 
 .settings-rail-item.active {
   background: var(--primary-container);
-  font-weight: 500;
-}
-
-.settings-rail-item.soon {
-  color: var(--surface-variant-text);
+  font-weight: var(--weight-medium);
 }
 
 .settings-content {
@@ -3103,7 +3668,7 @@ img.smilie {
 .settings-section-title {
   margin: 0 0 var(--spacing-xxs);
   font-size: var(--font-size-medium);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--surface-variant-text);
 }
 
@@ -3113,7 +3678,7 @@ img.smilie {
 
 .setting-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--spacing-m);
   padding: var(--spacing-s) 0;
   border-bottom: 1px solid var(--outline-medium);
@@ -3168,7 +3733,7 @@ img.smilie {
   border-radius: 10px;
   background: var(--surface-container-high);
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease;
 }
 
 .switch.on {
@@ -3184,7 +3749,7 @@ img.smilie {
   height: 14px;
   border-radius: 50%;
   background: var(--surface-text);
-  transition: transform 120ms ease;
+  transition: transform var(--motion-fast) ease;
 }
 
 .switch.on .switch-knob {
@@ -3243,7 +3808,7 @@ img.smilie {
 .setting-segmented button.active {
   background: var(--primary);
   color: var(--primary-text);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .button-row {
@@ -3298,10 +3863,13 @@ img.smilie {
   padding-left: 1.4em;
 }
 
+/* One quote, one code block and one inline code, whichever way the markup
+   reached the line: these used to be two looks each, the second lighter, in a
+   different font and with no background behind inline code. */
 .message-body blockquote {
   margin: var(--spacing-xxs) 0;
-  padding-left: var(--spacing-s);
-  border-left: 2px solid var(--outline-medium);
+  padding: 2px 0 2px var(--spacing-s);
+  border-left: 3px solid var(--outline-strong);
   color: var(--surface-variant-text);
 }
 
@@ -3309,21 +3877,76 @@ img.smilie {
   margin: var(--spacing-xxs) 0;
   padding: var(--spacing-s);
   border-radius: var(--corner-radius-small);
-  background: var(--surface-variant);
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--outline-medium);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
   overflow-x: auto;
   white-space: pre;
 }
 
 .message-body code {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 0.9em;
+  font-family: var(--font-mono);
+  font-size: 0.92em;
 }
 
-/* The "X is typing" line. Reserves no height when empty: a row that
-   appears and disappears under the composer would shove the message list
-   up and down as people start and stop writing. */
+.message-body :not(pre) > code {
+  background: var(--surface-container-highest);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+/* The "X is typing" line. Always one line tall, empty or not: a row that
+   appears and disappears under the composer shoves the message list up and
+   down as people start and stop writing, which is what it did. */
 .composer-typing {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-height: 20px;
   padding: 0 var(--spacing-s) var(--spacing-xxs);
+}
+
+.typing-dots {
+  display: inline-flex;
+  gap: 3px;
+  flex: none;
+}
+
+.typing-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--surface-variant-text);
+  animation: typing-bounce 1.2s ease-in-out infinite;
+}
+
+.typing-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.typing-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes typing-bounce {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typing-dots i {
+    animation: none;
+    opacity: 0.7;
+  }
 }
 
 .invite-list {
@@ -3375,7 +3998,7 @@ img.smilie {
 }
 
 .invite-name {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .invite-actions {
@@ -3421,7 +4044,7 @@ img.smilie {
 }
 
 .join-friends-header .setting-text {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .tab {
@@ -3431,7 +4054,7 @@ img.smilie {
 
 .tab.active {
   color: var(--primary);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .friend-row {
@@ -3486,7 +4109,7 @@ img.smilie {
   font-size: var(--font-size-small);
 }
 
-.presence-dot {
+.status-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -3494,16 +4117,16 @@ img.smilie {
   background: var(--outline);
 }
 
-.presence-dot.online {
+.status-dot.online {
   background: var(--success);
 }
 
-.presence-dot.idle {
+.status-dot.idle {
   background: var(--warning);
 }
 
-.presence-dot.dnd {
-  background: var(--error);
+.status-dot.dnd {
+  background: var(--danger);
 }
 
 /* --- matrix account tools ---------------------------------------------- */
@@ -3699,7 +4322,7 @@ img.smilie {
   display: block;
   height: 100%;
   background: var(--primary);
-  transition: width 120ms linear;
+  transition: width var(--motion-fast) linear;
 }
 
 /* --- a voice message ------------------------------------------------- */
@@ -3718,7 +4341,7 @@ img.smilie {
   background: var(--surface-container-high);
   /* A large radius rather than the small one the media cards use: this is a
      control, and the shape is most of what says so at a glance. */
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   width: max-content;
   max-width: 100%;
 }
@@ -3737,7 +4360,7 @@ img.smilie {
   height: 34px;
   border: none;
   border-radius: 50%;
-  color: var(--on-primary);
+  color: var(--primary-text);
   background: var(--primary);
   cursor: pointer;
 }
@@ -3777,7 +4400,7 @@ img.smilie {
   border-radius: 2px;
   background: var(--outline-strong);
   align-self: center;
-  transition: background-color 90ms linear;
+  transition: background-color var(--motion-fast) linear;
 }
 
 /* How far in the listener is: the played part changes colour and keeps its
@@ -3804,7 +4427,7 @@ img.smilie {
 .voice-speed {
   padding: 2px 7px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font: inherit;
   font-size: var(--font-size-small);
   font-variant-numeric: tabular-nums;
@@ -3821,7 +4444,7 @@ img.smilie {
 /* Marked as changed-from-default, so a message left at double speed does not
    quietly stay that way unnoticed. */
 .voice-speed.changed {
-  color: var(--on-primary);
+  color: var(--primary-text);
   background: var(--primary);
 }
 
@@ -3848,7 +4471,7 @@ img.smilie {
   background: var(--surface-container-highest);
   border: 1px solid var(--outline);
   border-radius: var(--corner-radius-small);
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-2);
   z-index: 3;
 }
 
@@ -3999,7 +4622,7 @@ img.smilie {
   border: 1px solid var(--outline-medium);
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-3);
 }
 
 .forward-picker-list {
@@ -4046,14 +4669,14 @@ img.smilie {
   border: 1px solid var(--outline-medium);
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-3);
 }
 
 .discord-modal-head {
   display: flex;
   align-items: center;
   gap: var(--spacing-s);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .discord-modal-field {
@@ -4077,14 +4700,14 @@ img.smilie {
   border: 1px solid var(--outline-medium);
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-3);
 }
 
 .reason-prompt-head {
   display: flex;
   align-items: center;
   gap: var(--spacing-s);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .reason-prompt-box {
@@ -4118,10 +4741,10 @@ img.smilie {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 200;
+  z-index: var(--z-lightbox);
   /* Belt and braces: nothing in the viewer should ever be draggable. */
   -webkit-app-region: no-drag;
-  background: rgba(0, 0, 0, 0.85);
+  background: var(--scrim-strong);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -4130,6 +4753,8 @@ img.smilie {
 
 .lightbox-bar {
   position: absolute;
+  /* Over a picture magnified past the window, which is drawn in its own layer. */
+  z-index: 1;
   top: 0;
   left: 0;
   right: 0;
@@ -4179,13 +4804,22 @@ img.smilie {
   object-fit: contain;
   border-radius: var(--corner-radius-small);
   cursor: zoom-in;
+  /* Grows out of the middle as it opens, and again for each one stepped to. */
+  animation: lightbox-in var(--motion-slow) var(--ease);
+  user-select: none;
 }
 
-/* At full size the picture is free to overflow the stage; dragging pans it. */
+@keyframes lightbox-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+/* Magnified, it is carried by the pointer rather than by scrolling. */
 .lightbox-stage.zoomed .lightbox-media {
-  max-width: none;
-  max-height: none;
   cursor: grab;
+  animation: none;
 }
 
 .lightbox-stage.zoomed .lightbox-media:active {
@@ -4206,6 +4840,64 @@ video.lightbox-media {
 .lightbox-saved {
   color: var(--success);
   max-width: 40ch;
+}
+
+.lightbox-saved.failed {
+  color: var(--danger);
+}
+
+.lightbox-count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* How far in it is: also the way back out. */
+.lightbox-level {
+  min-width: 4ch;
+  padding: var(--spacing-xs);
+  border-radius: var(--corner-radius-small);
+  color: var(--surface-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.lightbox-level:not(:disabled):hover {
+  background: var(--overlay-control);
+}
+
+.lightbox-level:disabled {
+  color: var(--text-muted);
+}
+
+/* Beside the picture, in the middle of its height: where the eye already is. */
+.lightbox-nav {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-top: -22px;
+  border-radius: var(--radius-pill);
+  background: var(--overlay-control);
+  color: var(--surface-text);
+  transition: background var(--motion-fast) var(--ease);
+}
+
+.lightbox-nav.prev {
+  left: var(--spacing-m);
+}
+
+.lightbox-nav.next {
+  right: var(--spacing-m);
+}
+
+.lightbox-nav:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.lightbox-nav:disabled {
+  opacity: 0.3;
 }
 
 /* --- server rail ------------------------------------------------------ */
@@ -4250,12 +4942,53 @@ video.lightbox-media {
   border-radius: 0 3px 3px 0;
   background: var(--surface-text);
   opacity: 0;
-  transition: height 120ms ease, opacity 120ms ease;
+  transition: height var(--motion-fast) ease, opacity var(--motion-fast) ease;
 }
 
 .rail-pill.active {
   height: 26px;
   opacity: 1;
+}
+
+.rail-tile:hover .rail-pill:not(.active):not(.unread) {
+  height: 20px;
+  opacity: 1;
+}
+
+.rail-tile:hover .rail-pill.unread {
+  height: 20px;
+}
+
+/* The name flyout: instant, in the app's own style, to the right of the tile. */
+.rail-add .rail-face {
+  background: transparent;
+  border: 1px dashed var(--outline-strong);
+  color: var(--success);
+}
+
+.rail-add:hover .rail-face {
+  background: var(--success);
+  border-color: var(--success);
+  color: var(--on-accent);
+}
+
+.rail-tip {
+  position: fixed;
+  z-index: var(--z-menu);
+  transform: translateY(-50%);
+  max-width: 260px;
+  padding: 6px var(--spacing-m);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--outline-medium);
+  box-shadow: var(--shadow-1);
+  color: var(--surface-text);
+  font-size: var(--font-size-medium);
+  font-weight: var(--weight-semibold);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .rail-pill.unread {
@@ -4274,7 +5007,7 @@ video.lightbox-media {
   color: var(--surface-variant-text);
   /* Squircle-to-circle on hover and selection, the way Discord's does. */
   border-radius: 34%;
-  transition: border-radius 120ms ease, background 120ms ease, color 120ms ease;
+  transition: border-radius var(--motion-fast) ease, background var(--motion-fast) ease, color var(--motion-fast) ease;
 }
 
 .rail-tile:hover .rail-face,
@@ -4299,7 +5032,7 @@ video.lightbox-media {
 
 .rail-initials {
   font-size: var(--font-size-medium);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.02em;
 }
 
@@ -4313,7 +5046,7 @@ video.lightbox-media {
   width: 100%;
   height: 100%;
   border-radius: inherit;
-  color: #ffffff;
+  color: var(--on-accent);
 }
 
 /* Which service a tile belongs to, in the corner. Small and quiet - it
@@ -4354,45 +5087,31 @@ video.lightbox-media {
   position: absolute;
   right: -2px;
   bottom: -2px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: var(--surface-container-highest);
-  color: var(--surface-text);
   border: 2px solid var(--surface-container-lowest);
-  font-size: 11px;
-  font-weight: 600;
   line-height: 14px;
-  text-align: center;
 }
 
-/* Someone said your name. Same escalation the channel rows use, so the two
-   agree about what counts as worth interrupting for. */
-.rail-count.highlight {
-  background: var(--primary);
-  color: var(--primary-text);
-}
-
-
-/* A waiting mention is worth more than a quiet service label. */
-.rail-service.highlight {
-  background: var(--primary);
-  color: var(--primary-text);
-}
+/* Someone said your name: red, from the shared badge rule - the same
+   escalation the channel rows use, so the two agree about what is worth
+   interrupting for. A waiting mention is worth more than a quiet service
+   label, so the tile's service mark turns red too. */
 
 /* The selected rail entry, naming what the channel list below belongs to. */
 .group-title {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  padding: var(--spacing-s) var(--spacing-s) var(--spacing-xs) var(--spacing-m);
+  height: var(--header-height);
+  box-sizing: border-box;
+  padding: 0 var(--spacing-s) 0 var(--spacing-m);
+  border-bottom: 1px solid var(--outline-medium);
+  flex: none;
 }
 
 .group-title-name {
   flex: 1;
   min-width: 0;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 /* A brand mark kept in its own colours. Unlike a guild icon it is a logo
@@ -4522,6 +5241,7 @@ video.lightbox-media {
 
 /* The rail's entries scroll; the cog below stays put. */
 .rail-scroll {
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -4564,7 +5284,7 @@ video.lightbox-media {
 
 .render-error h2 {
   font-size: var(--font-size-large);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .render-error-detail {
@@ -4598,7 +5318,7 @@ video.lightbox-media {
   width: 100%;
   max-height: 340px;
   border-radius: var(--corner-radius);
-  background: #000;
+  background: var(--media-backdrop);
 }
 
 .video-expand {
@@ -4614,7 +5334,7 @@ video.lightbox-media {
   background: rgba(0, 0, 0, 0.55);
   border: none;
   border-radius: var(--corner-radius-small);
-  color: #fff;
+  color: var(--on-accent);
   opacity: 0;
 }
 
@@ -4636,8 +5356,8 @@ video.lightbox-media {
   color: var(--surface-variant-text);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
 }
 
 .category-head:hover {
@@ -4675,7 +5395,7 @@ video.lightbox-media {
 
 .category-count {
   margin-left: auto;
-  font-weight: 400;
+  font-weight: var(--weight-regular);
 }
 
 .category-empty {
@@ -4714,8 +5434,8 @@ video.lightbox-media {
   border-radius: var(--corner-radius-small);
   color: var(--surface-text);
   font-family: inherit;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   outline: none;
@@ -4727,7 +5447,7 @@ video.lightbox-media {
   padding: var(--spacing-s) var(--spacing-s) var(--spacing-xxs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .voice-channel {
@@ -4739,12 +5459,26 @@ video.lightbox-media {
   display: flex;
   align-items: center;
   gap: var(--spacing-s);
-  width: 100%;
-  padding: var(--spacing-xxs) var(--spacing-s);
+  /* Shaped like a text channel's row, so the list reads as one list. */
+  width: calc(100% - var(--spacing-s));
+  margin: 1px var(--spacing-xs);
+  padding: 5px var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  color: var(--surface-variant-text);
+}
+
+/* What is clicked to join, filling the row up to the disconnect button. */
+.voice-channel-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
   background: none;
   border: none;
+  padding: 0;
   text-align: left;
-  color: var(--surface-variant-text);
+  color: inherit;
 }
 
 .voice-channel-row:hover {
@@ -4770,16 +5504,27 @@ video.lightbox-media {
   color: var(--surface-variant-text);
 }
 
-.voice-member-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+.voice-member-face {
+  display: flex;
   flex: none;
+  border-radius: 50%;
+  /* Room for the ring, so a speaking member does not move the list. */
+  box-shadow: 0 0 0 2px transparent;
+  transition: box-shadow var(--motion-fast) ease;
+}
+
+.voice-member.speaking .voice-member-face {
+  box-shadow: 0 0 0 2px var(--speaking);
+}
+
+.voice-state {
+  display: flex;
+  color: var(--text-muted);
 }
 
 .voice-you {
   margin-left: auto;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 /* The reason an account is not connected, under its name. Constrained rather
@@ -4815,10 +5560,50 @@ video.lightbox-media {
   position: absolute;
   right: -2px;
   bottom: -2px;
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  border: 2px solid var(--surface-container-low);
+  /* The ring is the colour of whatever is behind, so the dot reads as cut out
+     of the picture - the sidebar's, by default. */
+  border: 2px solid var(--ring, var(--surface-container));
+}
+
+/* One look for a state, wherever it is drawn: the avatar's dot, the server
+   header's connection dot, and the dots in the join dialogs. */
+.presence-online {
+  background: var(--success);
+}
+
+.presence-idle {
+  background: var(--warning);
+}
+
+.presence-dnd {
+  background: var(--danger);
+}
+
+/* Away and gone are a ring with nothing in it, as Discord draws them - which
+   a solid grey could not be told from a picture that failed to load. */
+.presence-offline {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--outline);
+}
+
+.presence-connecting {
+  background: var(--outline);
+  animation: presence-wait 1.2s ease-in-out infinite;
+}
+
+@keyframes presence-wait {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .presence-connecting {
+    animation: none;
+  }
 }
 
 .header-face .presence-dot {
@@ -4854,7 +5639,7 @@ video.lightbox-media {
   border: 1px solid var(--outline-medium);
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-2);
 }
 
 /* Says what the button will actually do, which differs between a group and a
@@ -4976,6 +5761,7 @@ video.lightbox-media {
 }
 
 .header-anchor {
+  position: relative;
   display: inline-flex;
 }
 
@@ -5014,7 +5800,7 @@ video.lightbox-media {
 .channel-browser-name {
   flex: none;
   max-width: 40%;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 /* Right-aligned and tabular so the counts line up as a column somebody can
@@ -5043,7 +5829,7 @@ video.lightbox-media {
   background: var(--surface-container-highest);
   color: var(--surface-variant-text);
   font-size: 9px;
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   letter-spacing: 0.04em;
   vertical-align: middle;
 }
@@ -5137,7 +5923,7 @@ video.lightbox-media {
   position: absolute;
   top: calc(100% + var(--spacing-xs));
   right: 0;
-  z-index: 40;
+  z-index: var(--z-raised);
   width: 380px;
   max-height: 420px;
   overflow-y: auto;
@@ -5145,7 +5931,7 @@ video.lightbox-media {
   background: var(--surface-container-high);
   border: 1px solid var(--outline-strong);
   border-radius: var(--corner-radius);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-2);
 }
 
 .search-results-head,
@@ -5161,7 +5947,7 @@ video.lightbox-media {
   padding: var(--spacing-xs) var(--spacing-s);
   background: none;
   border: none;
-  border-radius: var(--spacing-xs);
+  border-radius: var(--radius-xs);
   text-align: left;
   color: var(--surface-text);
 }
@@ -5177,7 +5963,7 @@ video.lightbox-media {
 }
 
 .search-result-from {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .search-result-body {
@@ -5188,7 +5974,7 @@ video.lightbox-media {
    wall of similar rows. */
 .message-row.found {
   background: var(--primary-pressed);
-  transition: background 0.4s ease;
+  transition: background var(--motion-slow) ease;
 }
 
 /* --- voice panel ------------------------------------------------------ */
@@ -5205,7 +5991,7 @@ video.lightbox-media {
 .voice-panel-head {
   display: flex;
   align-items: center;
-  gap: var(--spacing-s);
+  gap: var(--spacing-xxs);
 }
 
 .voice-panel-state {
@@ -5214,39 +6000,54 @@ video.lightbox-media {
   gap: var(--spacing-s);
   flex: 1;
   min-width: 0;
+  white-space: nowrap;
   color: var(--success);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   font-size: var(--font-size-small);
 }
 
-/* Rising bars, so a glance says whether the microphone is hearing anything
-   rather than only that a connection exists. */
-.voice-meter {
-  display: flex;
-  align-items: flex-end;
-  gap: 2px;
-  height: 12px;
-  flex: none;
-}
-
-.voice-meter-bar {
-  width: 3px;
-  background: var(--outline);
-  border-radius: 1px;
-}
-
-.voice-meter-bar:nth-child(1) {
+/* What the microphone is hearing, as a bar along the panel: full width so it
+   cannot be mistaken for a connection indicator, which is what three little
+   rising strokes beside the title looked like. It fills as somebody speaks. */
+.voice-panel .voice-level {
   height: 4px;
-}
-.voice-meter-bar:nth-child(2) {
-  height: 8px;
-}
-.voice-meter-bar:nth-child(3) {
-  height: 12px;
+  margin: var(--spacing-xs) 0 var(--spacing-xs);
+  border-radius: var(--radius-pill);
+  background: var(--surface-container-highest);
+  overflow: hidden;
 }
 
-.voice-meter-bar.lit {
-  background: var(--success);
+.voice-panel .voice-level-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--speaking);
+  transition: width 140ms linear;
+}
+
+.voice-panel .voice-level.hot .voice-level-fill {
+  background: var(--warning);
+}
+
+/* The round trip to the voice server, next to the title it qualifies. */
+.voice-ping {
+  margin-left: auto;
+  padding-right: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-regular);
+  font-variant-numeric: tabular-nums;
+}
+
+.voice-ping.good {
+  color: var(--success);
+}
+
+.voice-ping.fair {
+  color: var(--warning);
+}
+
+.voice-ping.poor {
+  color: var(--danger-text);
 }
 
 .voice-panel-where {
@@ -5271,12 +6072,17 @@ video.lightbox-media {
 
 .modal-scrim {
   position: fixed;
-  inset: 0;
-  z-index: 60;
+  /* Below the title bar, which is a drag region the compositor resolves
+     before the page: painted over it, the bar would be dead to the mouse. */
+  top: var(--titlebar-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-dialog);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--scrim);
 }
 
 .modal {
@@ -5289,7 +6095,7 @@ video.lightbox-media {
   background: var(--surface-container);
   border: 1px solid var(--outline-medium);
   border-radius: var(--corner-radius);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-3);
 }
 
 .modal-head {
@@ -5300,7 +6106,7 @@ video.lightbox-media {
 
 .modal-head h2 {
   font-size: var(--font-size-large);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .folder-field {
@@ -5326,7 +6132,7 @@ video.lightbox-media {
   height: 34px;
   border: 2px solid transparent;
   border-radius: var(--corner-radius-small);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .swatch.chosen {
@@ -5344,7 +6150,7 @@ video.lightbox-media {
   color: var(--primary-text);
   border: none;
   border-radius: var(--corner-radius-small);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 /* --- rail folders ------------------------------------------------------ */
@@ -5454,7 +6260,7 @@ video.lightbox-media {
   padding: var(--spacing-xxs);
   background: none;
   border: none;
-  border-radius: var(--spacing-xs);
+  border-radius: var(--radius-xs);
   text-align: left;
   color: inherit;
 }
@@ -5474,13 +6280,114 @@ video.lightbox-media {
   padding: 0;
   background: none;
   border: none;
-  border-radius: var(--spacing-xs);
+  border-radius: var(--radius-xs);
   color: var(--surface-variant-text);
 }
 
 .user-audio-button:hover {
   background: var(--surface-hover);
   color: var(--surface-text);
+}
+
+/* Muted and deafened are the state to see at a glance, so they are red, as in
+   Discord: the glyph changes too, but a slash is easy to miss at 18px. */
+.user-audio-button.muted {
+  color: var(--danger-text);
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+}
+
+.user-audio-button.muted:hover {
+  background: color-mix(in srgb, var(--danger) 30%, transparent);
+  color: var(--danger-text);
+}
+
+.user-audio-button:disabled {
+  opacity: 0.38;
+  pointer-events: none;
+}
+
+/* --- the status popout ---------------------------------------------------- */
+.status-popout {
+  position: fixed;
+  z-index: var(--z-popover);
+  width: 280px;
+  padding: var(--spacing-xs);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: var(--shadow-up);
+  transform-origin: bottom left;
+  animation: menu-in var(--motion-fast) var(--ease);
+}
+
+.status-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  color: var(--surface-text);
+  text-align: left;
+}
+
+.status-choice:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.status-choice.current {
+  background: var(--surface-selected);
+}
+
+.status-choice:disabled {
+  opacity: 0.38;
+}
+
+.status-choice.danger {
+  color: var(--danger-text);
+}
+
+.status-choice-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.status-check {
+  flex: none;
+  color: var(--primary);
+}
+
+/* The dot, at the size it is in a menu rather than on a corner of a face. */
+.status-dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.status-rule {
+  height: 1px;
+  margin: var(--spacing-xs) 0;
+  background: var(--outline-medium);
+}
+
+.status-say {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  padding: var(--spacing-xs) var(--spacing-s);
+}
+
+.status-say-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.status-all {
+  padding: var(--spacing-xs) var(--spacing-s);
 }
 
 
@@ -5496,15 +6403,14 @@ video.lightbox-media {
 }
 
 .user-name {
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--surface-text);
 }
 
 /* --- File transfers --------------------------------------------------- */
 
-/* Sits above the calls rather than beside them: both float bottom-left, and
-   two stacks in the same corner would overlap. A ringing call is the more
-   urgent of the two, so it keeps the corner. */
+/* Bottom right. A ringing call keeps the bottom left, a verification the
+   middle, and toasts the top right, so none of them can land on another. */
 .transfer-panel {
   position: fixed;
   right: var(--spacing-m);
@@ -5512,7 +6418,7 @@ video.lightbox-media {
   display: flex;
   flex-direction: column-reverse;
   gap: var(--spacing-s);
-  z-index: 2100;
+  z-index: var(--z-call);
   width: 340px;
   max-width: calc(100vw - var(--spacing-xl));
 }
@@ -5525,7 +6431,7 @@ video.lightbox-media {
   border-radius: var(--corner-radius);
   background: var(--surface-container-highest);
   border: 1px solid var(--outline-medium);
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow-2);
 }
 
 .transfer-head {
@@ -5574,7 +6480,7 @@ video.lightbox-media {
 .transfer-bar-fill {
   height: 100%;
   background: var(--primary);
-  transition: width 0.2s linear;
+  transition: width var(--motion) linear;
 }
 
 .transfer-panel p {
@@ -5685,16 +6591,12 @@ video.lightbox-media {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 17px;
-  height: 17px;
-  padding: 0 4px;
-  border-radius: 999px;
+  /* Blue, not red: it is progress, not an alarm. */
   background: var(--primary);
   color: var(--primary-text);
   border: 2px solid var(--surface-container-lowest);
-  font-size: 10px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+  font-size: var(--font-size-xxs);
+  line-height: 14px;
 }
 
 /* An export running behind whatever is on screen. A slow pulse rather than a
@@ -5770,7 +6672,7 @@ video.lightbox-media {
   width: 9px;
   height: 9px;
   margin: 0 4px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--primary);
   flex: none;
 }
@@ -5785,7 +6687,7 @@ video.lightbox-media {
   border-radius: 6px;
   background: var(--surface-container-lowest);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
+  font-size: var(--font-size-compact);
   letter-spacing: 0.06em;
   line-height: 1.7;
   overflow-wrap: anywhere;
@@ -5800,7 +6702,7 @@ video.lightbox-media {
   gap: 2px;
   flex: none;
   padding: 4px 2px;
-  border-bottom: 1px solid var(--outline-variant);
+  border-bottom: 1px solid var(--outline-medium);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -5842,8 +6744,8 @@ video.lightbox-media {
 }
 
 .emoji-jump-initial {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-size-small);
+  font-weight: var(--weight-semibold);
 }
 
 /* Same reasoning as the tab: shown, plainly unusable, and the title says
@@ -5861,7 +6763,7 @@ video.lightbox-media {
 .kick-points {
   position: relative;
   flex: none;
-  border-top: 1px solid var(--outline-variant);
+  border-top: 1px solid var(--outline-medium);
 }
 
 .kick-points-plaque {
@@ -5901,7 +6803,7 @@ video.lightbox-media {
   border: 1px solid var(--outline-medium);
   border-radius: var(--corner-radius) var(--corner-radius) 0 0;
   background: var(--surface-container-high);
-  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-up);
   overflow: hidden;
 }
 
@@ -5993,10 +6895,10 @@ video.lightbox-media {
 
 .export-range input[type='datetime-local'] {
   padding: 4px 6px;
-  border: 1px solid var(--outline-variant);
+  border: 1px solid var(--outline-medium);
   border-radius: 6px;
   background: var(--surface-container-lowest);
-  color: var(--on-surface);
+  color: var(--surface-text);
   font: inherit;
 }
 
@@ -6036,7 +6938,7 @@ video.lightbox-media {
   gap: 3px;
   margin-left: var(--spacing-xs);
   padding: 0 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--outline-medium);
   color: var(--surface-variant-text);
   font-style: normal;
@@ -6074,7 +6976,7 @@ video.lightbox-media {
   gap: 3px;
   margin-left: var(--spacing-xs);
   padding: 0 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--whisper-tint);
   color: var(--whisper);
   font-style: normal;
@@ -6180,7 +7082,7 @@ video.lightbox-media {
    window - it opens from the right-hand gutter, so it grows leftwards. */
 .reader-list {
   position: fixed;
-  z-index: 40;
+  z-index: var(--z-raised);
   min-width: 180px;
   max-width: 260px;
   max-height: 320px;
@@ -6192,7 +7094,7 @@ video.lightbox-media {
   border: 1px solid var(--outline-medium);
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-2);
 }
 
 .reader-list-head {
@@ -6233,7 +7135,7 @@ video.lightbox-media {
 
 .thread-title {
   flex: 1;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .thread-body {
@@ -6246,26 +7148,6 @@ video.lightbox-media {
 .thread-empty {
   padding: var(--spacing-m);
   text-align: center;
-}
-
-.thread-composer {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-s);
-  border-top: 1px solid var(--outline-light);
-}
-
-.thread-composer textarea {
-  flex: 1;
-  resize: none;
-  max-height: 8em;
-  padding: var(--spacing-s);
-  border: 1px solid var(--outline-medium);
-  border-radius: var(--corner-radius);
-  background: var(--surface-container-high);
-  color: var(--surface-text);
-  font: inherit;
 }
 
 /* The way in, from the message a thread grew out of. Quiet until pointed at:
@@ -6316,7 +7198,7 @@ video.lightbox-media {
   background: var(--surface-container);
   border: 1px solid var(--outline-medium);
   border-radius: var(--corner-radius);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-3);
   overflow: hidden;
 }
 
@@ -6546,7 +7428,7 @@ video.lightbox-media {
   background: var(--surface-container);
   border: 1px solid var(--outline-medium);
   border-radius: var(--corner-radius);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-3);
 }
 
 .profile-head {
@@ -6564,7 +7446,7 @@ video.lightbox-media {
 
 .profile-name {
   font-size: var(--font-size-large);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .profile-roles {
@@ -6672,8 +7554,8 @@ video.lightbox-media {
   width: 34px;
   height: 34px;
   border-radius: var(--corner-radius);
-  color: #fff;
-  font-weight: 600;
+  color: var(--on-accent);
+  font-weight: var(--weight-semibold);
   overflow: hidden;
 }
 
@@ -6727,40 +7609,12 @@ video.lightbox-media {
 
 .account-group-name {
   flex: 1;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 /* --- tagging someone -----------------------------------------------------
    Above the box, which is the only place it can go without covering what is
    being typed - and where every other client puts it. */
-.mention-picker {
-  display: flex;
-  flex-direction: column;
-  max-height: 15rem;
-  overflow-y: auto;
-  margin: 0 var(--spacing-m);
-  border: 1px solid var(--outline-medium);
-  border-radius: var(--corner-radius);
-  background: var(--surface-container-high);
-  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.35);
-}
-
-.mention-option {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-s);
-  padding: var(--spacing-xs) var(--spacing-s);
-  background: none;
-  border: none;
-  color: var(--surface-text);
-  text-align: left;
-}
-
-/* One highlight for both the keyboard and the mouse: the arrows move it and
-   the pointer moves it, so there is never a second, competing selection. */
-.mention-option.active {
-  background: var(--primary-hover-light);
-}
 
 .mention-glyph {
   display: flex;
@@ -6892,7 +7746,7 @@ video.lightbox-media {
   border: 1px solid var(--outline-medium);
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-3);
   overflow-y: auto;
 }
 
@@ -6949,7 +7803,7 @@ video.lightbox-media {
   align-items: center;
   gap: var(--spacing-s);
   padding: var(--spacing-xs) var(--spacing-xxs);
-  border-bottom: 1px solid var(--outline-faint, var(--outline-medium));
+  border-bottom: 1px solid var(--outline-light, var(--outline-medium));
 }
 
 .space-room:last-child {
@@ -7054,7 +7908,7 @@ video.lightbox-media {
 .room-search-suggested-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--spacing-xxs) var(--spacing-m); max-height: 180px; overflow-y: auto; }
 .room-search-suggestion { display: flex; flex-direction: column; align-items: flex-start; text-align: left; background: none; border: 0; padding: var(--spacing-xxs) 0; color: inherit; cursor: pointer; font: inherit; }
 .room-search-suggestion:hover .room-search-suggestion-name { text-decoration: underline; }
-.room-search-suggestion-name { font-weight: 600; }
+.room-search-suggestion-name { font-weight: var(--weight-semibold); }
 
 /* A room being looked into, in the pane a conversation would fill. */
 .peek-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -7074,7 +7928,7 @@ video.lightbox-media {
 .stage {
   position: relative;
   flex: none;
-  background: #000;
+  background: var(--media-backdrop);
   color: #f2f3f5;
   overflow: hidden;
   user-select: none;
@@ -7090,7 +7944,7 @@ video.lightbox-media {
 .stage-window-root {
   position: fixed;
   inset: 0;
-  background: #000;
+  background: var(--media-backdrop);
 }
 
 .stage.collapsed {
@@ -7138,12 +7992,12 @@ video.lightbox-media {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .stage-subtitle {
-  font-weight: 400;
-  font-size: 12px;
+  font-weight: var(--weight-regular);
+  font-size: var(--font-size-small);
   color: #b5bac1;
   margin-left: var(--spacing-xs);
 }
@@ -7167,8 +8021,8 @@ video.lightbox-media {
 }
 
 .stage-head-button:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  background: var(--overlay-control);
+  color: var(--on-accent);
 }
 
 .stage-area {
@@ -7181,7 +8035,7 @@ video.lightbox-media {
 }
 
 .stage-empty {
-  color: #949ba4;
+  color: var(--text-muted);
 }
 
 .stage-grid {
@@ -7220,7 +8074,7 @@ video.lightbox-media {
   justify-content: center;
   cursor: pointer;
   outline: none;
-  transition: box-shadow 0.12s ease;
+  transition: box-shadow var(--motion-fast) ease;
 }
 
 .stage-tile.strip {
@@ -7233,12 +8087,12 @@ video.lightbox-media {
 
 /* Who is talking: the green ring Discord draws. */
 .stage-tile.speaking {
-  box-shadow: inset 0 0 0 3px #23a55a;
+  box-shadow: inset 0 0 0 3px var(--speaking);
 }
 
 .stage-tile-face .avatar-fallback,
 .stage-tile-face img {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-2);
 }
 
 .stage-picture {
@@ -7247,7 +8101,7 @@ video.lightbox-media {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  background: #000;
+  background: var(--media-backdrop);
 }
 
 .stage-tile-name {
@@ -7260,22 +8114,22 @@ video.lightbox-media {
   gap: 4px;
   max-width: calc(100% - 16px);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: rgba(0, 0, 0, 0.6);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 500;
+  color: var(--on-accent);
+  font-size: var(--font-size-compact);
+  font-weight: var(--weight-medium);
 }
 
 .stage-tile.strip .stage-tile-name {
   left: 4px;
   bottom: 4px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   padding: 1px 6px;
 }
 
 .stage-tile-state {
-  color: #f23f43;
+  color: var(--danger-text);
 }
 
 .stage-tile-live {
@@ -7284,11 +8138,11 @@ video.lightbox-media {
   left: 8px;
   z-index: 1;
   padding: 1px 6px;
-  border-radius: 4px;
-  background: #da373c;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
+  border-radius: var(--radius-xs);
+  background: var(--danger);
+  color: var(--on-accent);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
   letter-spacing: 0.04em;
 }
 
@@ -7297,11 +8151,11 @@ video.lightbox-media {
   z-index: 1;
   padding: 8px 16px;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: rgba(0, 0, 0, 0.72);
-  color: #fff;
+  color: var(--on-accent);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   cursor: pointer;
 }
 
@@ -7322,7 +8176,7 @@ video.lightbox-media {
   border: 0;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.6);
-  color: #fff;
+  color: var(--on-accent);
   cursor: pointer;
 }
 
@@ -7358,7 +8212,7 @@ video.lightbox-media {
   background: #2b2d31;
   color: #f2f3f5;
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: background var(--motion-fast) ease;
 }
 
 .stage-button.compact {
@@ -7379,16 +8233,16 @@ video.lightbox-media {
 /* Something switched off that normally is on: a muted microphone. */
 .stage-button.off {
   background: #f2f3f5;
-  color: #da373c;
+  color: var(--danger);
 }
 
 .stage-button.danger {
-  background: #da373c;
-  color: #fff;
+  background: var(--danger);
+  color: var(--on-accent);
 }
 
 .stage-button.danger:hover {
-  background: #a12828;
+  background: var(--danger-hover);
 }
 
 .stage-resize {
@@ -7402,7 +8256,7 @@ video.lightbox-media {
 }
 
 .stage-resize:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--overlay-control);
 }
 
 /* The line left above the conversation while the call is in its own window. */
@@ -7418,7 +8272,7 @@ video.lightbox-media {
 /* Something a call button asks before it acts, above the button. */
 .stage-popover {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-menu);
   transform: translateX(-50%);
 }
 
@@ -7433,7 +8287,7 @@ video.lightbox-media {
   border: 1px solid var(--outline-medium);
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-3);
 }
 
 .go-live-row {
@@ -7499,8 +8353,8 @@ video.lightbox-media {
   padding: 2px 7px;
   border-radius: 10px;
   background: rgba(0, 0, 0, 0.6);
-  color: #fff;
-  font-size: 11px;
+  color: var(--on-accent);
+  font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
@@ -7562,9 +8416,9 @@ video.lightbox-media {
   border: 0;
   border-radius: var(--corner-radius-small);
   background: transparent;
-  color: var(--on-surface-variant, inherit);
+  color: var(--surface-variant-text, inherit);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   cursor: pointer;
 }
 
@@ -7574,7 +8428,7 @@ video.lightbox-media {
 
 .emoji-tab.active {
   background: var(--surface-container-highest);
-  color: var(--on-surface, inherit);
+  color: var(--surface-text, inherit);
 }
 
 .emoji-search {
@@ -7585,7 +8439,7 @@ video.lightbox-media {
   padding: 6px 10px;
   border-radius: var(--corner-radius-small);
   background: var(--surface-container-lowest, rgba(0, 0, 0, 0.25));
-  color: var(--on-surface-variant, inherit);
+  color: var(--surface-variant-text, inherit);
 }
 
 .emoji-search input {
@@ -7594,7 +8448,7 @@ video.lightbox-media {
   border: 0;
   outline: none;
   background: transparent;
-  color: var(--on-surface, inherit);
+  color: var(--surface-text, inherit);
   font: inherit;
 }
 
@@ -7602,7 +8456,7 @@ video.lightbox-media {
   display: flex;
   flex: 1;
   min-height: 0;
-  border-top: 1px solid var(--outline-variant);
+  border-top: 1px solid var(--outline-medium);
 }
 
 .emoji-body .emoji-scroll {
@@ -7640,10 +8494,10 @@ video.lightbox-media {
   border: 0;
   border-radius: 50%;
   background: transparent;
-  color: var(--on-surface-variant, inherit);
+  color: var(--surface-variant-text, inherit);
   cursor: pointer;
   overflow: hidden;
-  transition: border-radius 0.12s;
+  transition: border-radius var(--motion-fast);
 }
 
 .emoji-rail-item:hover,
@@ -7665,7 +8519,7 @@ video.lightbox-media {
   flex: none;
   min-height: 48px;
   padding: 6px 12px;
-  border-top: 1px solid var(--outline-variant);
+  border-top: 1px solid var(--outline-medium);
   background: var(--surface-container, rgba(0, 0, 0, 0.15));
 }
 
@@ -7684,7 +8538,7 @@ video.lightbox-media {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 /* A small panel above a call button: the call's volume, the soundboard. */
@@ -7693,7 +8547,7 @@ video.lightbox-media {
   border: 1px solid var(--outline-medium);
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-3);
 }
 
 .call-volume-panel {
@@ -7766,7 +8620,7 @@ video.lightbox-media {
 }
 
 .soundboard-emoji {
-  font-size: 16px;
+  font-size: var(--font-size-large);
   line-height: 1;
 }
 
@@ -7802,7 +8656,7 @@ video.lightbox-media {
   margin: 0;
   border: none;
   border-radius: 0;
-  background: #000;
+  background: var(--media-backdrop);
 }
 
 .call-stage.in-window .call-stage-title {
@@ -7849,7 +8703,7 @@ video.lightbox-media {
 
 .bufferlist-events:hover {
   background: var(--surface-container-highest);
-  color: var(--on-surface, inherit);
+  color: var(--surface-text, inherit);
 }
 
 /* The events pane and the create panel: Discord's dark rounded sheet. */
@@ -7862,7 +8716,7 @@ video.lightbox-media {
   border: 1px solid var(--outline-medium);
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow-3);
   overflow: hidden;
 }
 
@@ -7874,8 +8728,8 @@ video.lightbox-media {
 }
 
 .events-pane-count {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: var(--font-size-large);
+  font-weight: var(--weight-semibold);
 }
 
 .events-pane-sep {
@@ -7907,14 +8761,14 @@ video.lightbox-media {
 }
 
 .event-card {
-  border: 1px solid var(--outline-variant, var(--outline-medium));
+  border: 1px solid var(--outline-medium, var(--outline-medium));
   border-radius: var(--corner-radius);
   background: var(--surface-container);
   overflow: hidden;
 }
 
 .event-card.live {
-  border-color: #3ba55d;
+  border-color: var(--live);
 }
 
 .event-card-image {
@@ -7935,13 +8789,13 @@ video.lightbox-media {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-compact);
+  font-weight: var(--weight-semibold);
   color: var(--primary);
 }
 
 .event-card.live .event-card-when {
-  color: #3ba55d;
+  color: var(--live);
 }
 
 .event-card-count {
@@ -7951,13 +8805,13 @@ video.lightbox-media {
   padding: 2px 8px;
   border-radius: 10px;
   background: var(--surface-container-highest);
-  color: var(--on-surface, inherit);
+  color: var(--surface-text, inherit);
   font-variant-numeric: tabular-nums;
 }
 
 .event-card-name {
   font-size: 18px;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .event-card-desc {
@@ -7969,7 +8823,7 @@ video.lightbox-media {
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  border-top: 1px solid var(--outline-variant, var(--outline-medium));
+  border-top: 1px solid var(--outline-medium, var(--outline-medium));
 }
 
 .event-card-where {
@@ -7987,9 +8841,9 @@ video.lightbox-media {
   border: 0;
   border-radius: var(--corner-radius-small);
   background: var(--surface-container-highest);
-  color: var(--on-surface, inherit);
+  color: var(--surface-text, inherit);
   font: inherit;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   cursor: pointer;
 }
 
@@ -8031,8 +8885,8 @@ video.lightbox-media {
 }
 
 .event-create-title {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: var(--font-size-large);
+  font-weight: var(--weight-semibold);
 }
 
 .event-where {
@@ -8061,7 +8915,7 @@ video.lightbox-media {
 }
 
 .event-where-label {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .event-field {
@@ -8087,13 +8941,8 @@ video.lightbox-media {
   align-items: center;
   gap: 8px;
   padding: 12px 20px;
-  border-top: 1px solid var(--outline-variant, var(--outline-medium));
+  border-top: 1px solid var(--outline-medium, var(--outline-medium));
   background: var(--surface-container);
-}
-
-/* "Invite friends to event": over the events pane. */
-.share-event-backdrop {
-  z-index: 1600;
 }
 
 .share-event {
@@ -8130,7 +8979,7 @@ video.lightbox-media {
 
 .share-event-section {
   padding: 10px 0 4px;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .share-row {
@@ -8150,7 +8999,7 @@ video.lightbox-media {
   flex: 1;
   flex-direction: column;
   min-width: 0;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .share-event-foot {
@@ -8158,12 +9007,12 @@ video.lightbox-media {
   flex-direction: column;
   gap: 8px;
   padding: 14px 20px 18px;
-  border-top: 1px solid var(--outline-variant, var(--outline-medium));
+  border-top: 1px solid var(--outline-medium, var(--outline-medium));
   background: var(--surface-container);
 }
 
 .share-event-foot-title {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .share-event-link {
@@ -8180,7 +9029,7 @@ video.lightbox-media {
   border: 0;
   outline: none;
   background: transparent;
-  color: var(--on-surface, inherit);
+  color: var(--surface-text, inherit);
   font: inherit;
 }
 
@@ -8205,23 +9054,23 @@ video.lightbox-media {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #3ba55d;
+  background: var(--live);
 }
 
 .live-event-label {
-  color: #3ba55d;
-  font-weight: 600;
-  font-size: 13px;
+  color: var(--live);
+  font-weight: var(--weight-semibold);
+  font-size: var(--font-size-compact);
 }
 
 .live-event-name {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--on-surface, inherit);
+  color: var(--surface-text, inherit);
   font: inherit;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: var(--font-size-large);
+  font-weight: var(--weight-bold);
   text-align: left;
   cursor: pointer;
 }
@@ -8238,20 +9087,20 @@ video.lightbox-media {
   padding: 8px;
   border: 0;
   border-radius: var(--corner-radius-small);
-  background: #248046;
-  color: #fff;
+  background: var(--go);
+  color: var(--on-accent);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   cursor: pointer;
 }
 
 .live-event-join:hover:not(:disabled) {
-  background: #1a6334;
+  background: var(--go-hover);
 }
 
 .live-event-join:disabled {
   background: var(--surface-container-highest);
-  color: var(--on-surface-variant, inherit);
+  color: var(--surface-variant-text, inherit);
   cursor: default;
 }
 
@@ -8306,7 +9155,7 @@ video.lightbox-media {
 }
 
 .service-banner-title {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .service-banner-detail {
@@ -8347,7 +9196,7 @@ video.lightbox-media {
 /* An account's routing: three positions on one track, the chosen one under
    a sliding thumb (#257). */
 .route-level-head {
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .route-level {
@@ -8356,7 +9205,7 @@ video.lightbox-media {
   grid-template-columns: repeat(3, 1fr);
   margin-top: var(--spacing-xs);
   padding: 3px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-container-high);
 }
 
@@ -8366,10 +9215,10 @@ video.lightbox-media {
   bottom: 3px;
   left: 3px;
   width: calc((100% - 6px) / 3);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--primary-container);
   transform: translateX(calc(var(--route-index, 0) * 100%));
-  transition: transform 160ms ease;
+  transition: transform var(--motion-fast) ease;
 }
 
 .route-level-option {
@@ -8377,7 +9226,7 @@ video.lightbox-media {
   z-index: 1;
   padding: 5px 8px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: none;
   color: var(--surface-variant-text);
   font: inherit;
@@ -8387,7 +9236,7 @@ video.lightbox-media {
 
 .route-level-option.on {
   color: var(--primary-text);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .route-level-desc {
@@ -8419,7 +9268,7 @@ video.lightbox-media {
   flex-direction: column;
   gap: var(--spacing-s);
   padding: var(--spacing-s) var(--spacing-m);
-  border: 1px solid #c9403c;
+  border: 1px solid var(--danger);
   border-radius: var(--corner-radius-small);
 }
 
@@ -8453,13 +9302,13 @@ video.lightbox-media {
   flex: none;
   border-radius: 50%;
   background: var(--primary);
-  color: var(--on-primary, #fff);
+  color: var(--primary-text, #fff);
 }
 
 /* --- formatting in the message box ------------------------------------- */
 
 /* The box shows a format as it will look. */
-.composer-input [data-fmt='bold'] { font-weight: 700; }
+.composer-input [data-fmt='bold'] { font-weight: var(--weight-bold); }
 .composer-input [data-fmt='italic'] { font-style: italic; }
 .composer-input [data-fmt='underline'] { text-decoration: underline; }
 .composer-input [data-fmt='strike'] { text-decoration: line-through; }
@@ -8482,7 +9331,7 @@ video.lightbox-media {
 /* The strip over selected text. Centred on the selection, above it. */
 .format-bar {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-menu);
   transform: translate(-50%, calc(-100% - 8px));
   display: flex;
   flex-wrap: wrap;
@@ -8492,7 +9341,7 @@ video.lightbox-media {
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
   border: 1px solid var(--outline-medium);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-2);
 }
 
 .format-group {
@@ -8518,7 +9367,7 @@ video.lightbox-media {
 
 .format-button:hover {
   background: var(--surface-container-highest, var(--outline-medium));
-  color: var(--on-surface, inherit);
+  color: var(--surface-text, inherit);
 }
 
 .format-colours {
@@ -8537,8 +9386,1022 @@ video.lightbox-media {
   justify-content: center;
   padding: 0;
   border: 1px solid var(--outline-medium);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   cursor: pointer;
   color: var(--surface-variant-text);
   background: none;
+}
+
+/* Timestamps and reply previews are there, and quieter than what was said. The
+   second class is what lets this beat `.muted`, which they also carry. */
+.message-time.muted,
+.reply-preview.muted {
+  color: var(--text-muted);
+}
+
+/* --- the quick switcher -------------------------------------------------- */
+
+.switcher-scrim {
+  align-items: flex-start;
+  padding-top: 12vh;
+}
+
+.switcher {
+  width: min(560px, calc(100vw - 32px));
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline-medium);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+}
+
+.switcher-field {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-m) var(--spacing-l);
+  border-bottom: 1px solid var(--outline-medium);
+  color: var(--surface-variant-text);
+}
+
+.switcher-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  font-size: var(--font-size-large);
+  color: var(--surface-text);
+  user-select: text;
+}
+
+.switcher-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--spacing-xs);
+}
+
+.switcher-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  width: 100%;
+  padding: 6px var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  color: var(--surface-variant-text);
+  text-align: left;
+}
+
+.switcher-row.selected {
+  background: var(--primary-hover);
+  color: var(--surface-text);
+}
+
+.switcher-row.unread .switcher-title {
+  color: var(--surface-text);
+  font-weight: var(--weight-semibold);
+}
+
+.switcher-lead {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  flex: none;
+}
+
+.switcher-title {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.switcher-where {
+  flex: 1;
+  min-width: 0;
+}
+
+.switcher-empty {
+  padding: var(--spacing-l);
+  text-align: center;
+}
+
+.switcher-hint {
+  display: flex;
+  gap: var(--spacing-l);
+  padding: var(--spacing-s) var(--spacing-l);
+  border-top: 1px solid var(--outline-medium);
+}
+
+/* The title bar's way in, in the middle of what is otherwise an empty bar. */
+.icon-button.titlebar-close:hover {
+  background: var(--danger);
+  color: var(--on-accent);
+}
+
+.titlebar-search {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  min-width: 220px;
+  padding: 4px var(--spacing-m);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--outline-medium);
+  color: var(--surface-variant-text);
+  font-size: var(--font-size-small);
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-search:hover {
+  background: var(--surface-container-low);
+  color: var(--surface-text);
+}
+
+.titlebar-search kbd {
+  margin-left: auto;
+  font: inherit;
+  font-size: var(--font-size-xs);
+  opacity: 0.7;
+}
+
+@media (max-width: 760px) {
+  .titlebar-search {
+    display: none;
+  }
+}
+
+/* A toggle that is on: sharing a screen, for one. */
+.icon-button.active {
+  background: var(--primary-hover);
+  color: var(--primary);
+}
+
+
+/* --- motion ------------------------------------------------------------ */
+
+/* A pointer arriving on something fades it in rather than snapping it, on the
+   one set of durations; leaving fades it out. */
+.buffer-row,
+.nick-row,
+.icon-button,
+.toolbar-button,
+.context-menu-item,
+.settings-rail-item,
+.user-identity-button,
+.user-audio-button,
+.reaction-pill,
+.category-head,
+.voice-channel-row,
+.header-nameplate {
+  transition:
+    background-color var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    opacity var(--motion-fast) ease;
+}
+
+/* The fold arrow turns instead of being swapped for a different one. */
+.fold-chevron {
+  transition: transform var(--motion-fast) ease;
+}
+
+.fold-chevron.folded {
+  transform: rotate(-90deg);
+}
+
+/* A message that has just been said arrives. */
+.message-row.fresh {
+  animation: message-in var(--motion) var(--ease);
+}
+
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Things that open over the window grow out of where they are. */
+.header-popover,
+.emoji-picker,
+.profile-card,
+.reason-prompt,
+.leave-confirm,
+.switcher,
+.stage-panel {
+  animation: overlay-in var(--motion) var(--ease);
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+.modal-scrim,
+.lightbox-backdrop {
+  animation: scrim-in var(--motion) ease;
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.jump-to-present {
+  animation: slide-up var(--motion) var(--ease);
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* A reaction added lands with a small pop. */
+.reaction-pill.pop {
+  animation: reaction-pop var(--motion) var(--ease);
+}
+
+@keyframes reaction-pop {
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message-row.fresh,
+  .header-popover,
+  .emoji-picker,
+  .profile-card,
+  .reason-prompt,
+  .leave-confirm,
+  .switcher,
+  .stage-panel,
+  .modal-scrim,
+  .lightbox-backdrop,
+  .jump-to-present,
+  .status-popout,
+  .reaction-tip,
+  .reaction-pill.pop {
+    animation: none;
+  }
+}
+
+
+/* --- the shared dialog frame -------------------------------------------- */
+
+.dialog {
+  margin: auto;
+}
+
+.dialog-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  font-weight: var(--weight-medium);
+}
+
+.dialog-title {
+  flex: 1;
+  min-width: 0;
+}
+
+
+/* --- several pictures in one message ---------------------------------------
+   One block no wider than a single picture would be: two side by side, three
+   with the first tall on the left, four in a square, more in rows of three.
+   Cells crop to fit, which is what a grid is - the full picture is a click
+   away. */
+.media-grid {
+  display: grid;
+  gap: 2px;
+  width: min(100%, 420px);
+  margin-top: var(--spacing-xxs);
+  border-radius: var(--corner-radius);
+  overflow: hidden;
+  grid-auto-rows: 150px;
+}
+
+.media-grid.n2,
+.media-grid.n4 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.media-grid.n3 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.media-grid.n3 > :first-child {
+  grid-row: span 2;
+}
+
+.media-grid.n5,
+.media-grid.n6 {
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: 110px;
+}
+
+.media-grid .media-embed-wrap.tile {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.media-grid .media-embed-wrap.tile img,
+.media-grid .media-embed-wrap.tile video {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  object-fit: cover;
+  border-radius: 0;
+}
+
+/* --- hidden behind a spoiler -------------------------------------------- */
+.media-embed-wrap.spoilered {
+  overflow: hidden;
+  border-radius: var(--corner-radius-small);
+  cursor: pointer;
+}
+
+.media-embed-wrap.spoilered img,
+.media-embed-wrap.spoilered video {
+  filter: blur(28px);
+  transform: scale(1.15);
+  pointer-events: none;
+}
+
+.spoiler-cover {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+.spoiler-pill {
+  padding: var(--spacing-xs) var(--spacing-m);
+  border-radius: var(--radius-pill);
+  background: var(--scrim-strong);
+  color: var(--on-accent);
+  font-size: var(--font-size-small);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  transition: background var(--motion-fast) var(--ease);
+}
+
+.media-embed-wrap.spoilered:hover .spoiler-pill {
+  background: var(--surface-container-highest);
+}
+
+
+/* --- the topic, beside the name --------------------------------------------- */
+.header-nameplate.with-topic {
+  flex: 0 1 auto;
+  max-width: 45%;
+}
+
+.header-topic {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  height: 24px;
+  margin-left: var(--spacing-xs);
+  padding: 0 var(--spacing-s);
+  border: 0;
+  border-left: 1px solid var(--outline-medium);
+  border-radius: 0 var(--corner-radius-small) var(--corner-radius-small) 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-small);
+  text-align: left;
+  transition: background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
+}
+
+.header-topic:hover,
+.header-topic[aria-expanded='true'] {
+  background: var(--surface-hover);
+  color: var(--surface-text);
+}
+
+/* The whole of it: as long as it is, wrapped, and selectable. */
+.header-topic-full {
+  max-height: 50vh;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+
+/* A tick that appears beside a field the moment it saves, and goes. Its place
+   is kept so the field does not move when it comes. */
+.saved-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 18px;
+  color: var(--success);
+  opacity: 0;
+  transition: opacity var(--motion) var(--ease);
+}
+
+.saved-mark.shown {
+  opacity: 1;
+}
+
+
+/* --- settings: grouped rail, search, pages -------------------------------- */
+.settings [hidden] {
+  display: none !important;
+}
+
+.settings-search {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-m);
+  padding: 0 var(--spacing-s);
+  height: 32px;
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-lowest, rgba(0, 0, 0, 0.25));
+  color: var(--surface-variant-text);
+  transition: border-color var(--motion-fast) var(--ease);
+}
+
+.settings-search:focus-within {
+  border-color: var(--primary);
+}
+
+.settings-search-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--surface-text);
+}
+
+.settings-rail-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  margin-bottom: var(--spacing-s);
+}
+
+.settings-rail-heading {
+  /* A rule under each heading, so the sections read as sections. */
+  margin-bottom: var(--spacing-xxs);
+  padding: var(--spacing-xs) var(--spacing-s);
+  border-bottom: 1px solid var(--outline-medium);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Accounts and Downloads bring their own padding and scrolling. */
+.settings-content.bare {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-page-title {
+  margin: var(--spacing-m) 0 var(--spacing-xs);
+  font-size: var(--font-size-large);
+  font-weight: var(--weight-semibold);
+}
+
+.settings-no-matches {
+  display: none;
+}
+
+.settings-content:not(:has([data-settings-page]:not([hidden]))) .settings-no-matches {
+  display: block;
+}
+
+
+/* --- appearance: zoom control, density, reduced motion ---------------------- */
+.setting-range {
+  flex: 0 0 160px;
+  accent-color: var(--primary);
+}
+
+.setting-range-value {
+  flex: none;
+  width: 4ch;
+  text-align: right;
+}
+
+/* Compact: the same messages, closer together - a smaller picture, less air
+   above each new speaker, and no padding between a run's lines. */
+html[data-density='compact'] .message-row.comfy,
+html[data-density='compact'] .message-row.classic {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+html[data-density='compact'] .message-row.comfy:not(.bubbles) {
+  --avatar: 32px;
+  gap: var(--spacing-s);
+}
+
+html[data-density='compact'] .message-row.comfy:not(.bubbles):not(.grouped):not(.system) {
+  margin-top: var(--spacing-s);
+}
+
+html[data-density='compact'] .date-divider ~ .message-row.comfy:not(.bubbles),
+html[data-density='compact'] .new-divider ~ .message-row.comfy:not(.bubbles) {
+  margin-top: 0;
+}
+
+/* The same as the system's own request, asked for from inside the app. */
+html[data-reduce-motion] *,
+html[data-reduce-motion] *::before,
+html[data-reduce-motion] *::after {
+  transition-duration: 0s !important;
+  animation-duration: 0s !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+}
+
+
+/* --- keybinds ------------------------------------------------------------- */
+.keys {
+  display: inline-flex;
+  gap: var(--spacing-xxs);
+  flex: none;
+}
+
+.key {
+  min-width: 24px;
+  padding: 2px var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-bottom-width: 2px;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-high);
+  color: var(--surface-text);
+  font-family: inherit;
+  font-size: var(--font-size-small);
+  text-align: center;
+}
+
+.hotkey-recorder {
+  min-width: 140px;
+}
+
+.hotkey-recorder.recording {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+
+/* --- accounts and join ------------------------------------------------------ */
+.danger-zone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  margin-top: var(--spacing-m);
+  padding: var(--spacing-s) var(--spacing-m);
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  border-radius: var(--corner-radius);
+}
+
+.danger-zone-title {
+  color: var(--danger-text);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.join-frame {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.join-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-m) var(--spacing-m) 0;
+}
+
+
+/* --- the mentions page: filters, days, two lines, put away ------------------- */
+.mentions-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-s) var(--spacing-m);
+}
+
+.mentions-filters-gap {
+  flex: 1;
+}
+
+.mentions-none {
+  padding: var(--spacing-m);
+}
+
+.mention-entry {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  border-left: 3px solid transparent;
+  transition: background var(--motion-fast) var(--ease);
+}
+
+.mention-entry.unread {
+  border-left-color: var(--mention);
+}
+
+.mention-entry:hover {
+  background: var(--surface-hover);
+}
+
+.mention-open {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  text-align: left;
+}
+
+.mention-open[disabled] {
+  opacity: 0.55;
+}
+
+/* Two lines of what was said, then cut off: enough to know whether it is the
+   one, without the page being as long as the messages. */
+.mention-text-two {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.mention-dismiss {
+  position: absolute;
+  top: var(--spacing-xs);
+  right: var(--spacing-s);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+
+.mention-entry:hover .mention-dismiss,
+.mention-dismiss:focus-visible {
+  opacity: 1;
+}
+
+
+/* --- room settings as a dialog ------------------------------------------------ */
+.room-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  width: min(560px, 94vw);
+  max-height: 80vh;
+  padding: var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: var(--shadow-3);
+}
+
+.room-settings-tabs {
+  display: flex;
+  gap: var(--spacing-xs);
+  border-bottom: 1px solid var(--outline-medium);
+}
+
+.room-settings-tab {
+  padding: var(--spacing-xs) var(--spacing-m);
+  border-bottom: 2px solid transparent;
+  color: var(--surface-variant-text);
+  transition: color var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease);
+}
+
+.room-settings-tab:hover {
+  color: var(--surface-text);
+}
+
+.room-settings-tab.active {
+  border-bottom-color: var(--primary);
+  color: var(--surface-text);
+  font-weight: var(--weight-medium);
+}
+
+.room-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+
+/* About on its own, set off from the rest by a rule above it. */
+.settings-rail-group.apart {
+  margin-top: var(--spacing-s);
+  padding-top: var(--spacing-s);
+  border-top: 1px solid var(--outline-medium);
+}
+
+
+/* An embed's labelled lines and its footer. */
+.rich-embed-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-xs);
+}
+
+.rich-embed-field-name {
+  font-weight: var(--weight-semibold);
+}
+
+.rich-embed-footer {
+  margin-top: var(--spacing-xs);
+}
+
+/* Where the message box would be, when nothing can be said here. */
+.composer-readonly {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-m);
+  margin: var(--spacing-s) var(--spacing-m) var(--spacing-m);
+  padding: var(--spacing-s) var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container);
+  color: var(--surface-variant-text);
+}
+
+.composer-readonly-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.composer-readonly-title {
+  color: var(--surface-text);
+  font-weight: var(--weight-semibold);
+}
+
+
+/* The platform's own notices to an account (Discord's safety messages): a
+   heading with a glyph, the words, and a bar along the foot that is the button. */
+.rich-embed.notice {
+  max-width: 520px;
+  overflow: hidden;
+}
+
+.notice-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.rich-embed-cta {
+  display: block;
+  width: calc(100% + var(--spacing-m) * 2);
+  margin: var(--spacing-s) calc(var(--spacing-m) * -1) calc(var(--spacing-s) * -1);
+  padding: var(--spacing-s) var(--spacing-m);
+  background: var(--surface-container-highest);
+  color: var(--link, var(--primary));
+  text-align: left;
+  font-weight: var(--weight-medium);
+}
+
+.rich-embed-cta.danger {
+  background: var(--danger);
+  color: var(--on-accent);
+}
+
+.rich-embed-cta:disabled {
+  cursor: default;
+  color: var(--surface-variant-text);
+}
+
+
+/* --- a forum: a list of posts -------------------------------------------------- */
+.forum-pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--spacing-m) var(--spacing-l) 0;
+  gap: var(--spacing-s);
+  overflow: hidden;
+}
+
+.forum-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+.forum-search {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--spacing-s);
+  height: 40px;
+  padding: 0 var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container);
+  color: var(--surface-variant-text);
+}
+
+.forum-search:focus-within {
+  border-color: var(--primary);
+}
+
+.forum-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--surface-text);
+}
+
+.forum-sorts {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.forum-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  min-height: 0;
+  padding-bottom: var(--spacing-l);
+  overflow-y: auto;
+}
+
+.forum-post {
+  display: flex;
+  flex: none;
+  align-items: stretch;
+  gap: var(--spacing-m);
+  width: 100%;
+  padding: var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container);
+  text-align: left;
+  transition: background var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease);
+}
+
+.forum-post:hover {
+  background: var(--surface-container-high);
+  border-color: var(--outline-strong);
+}
+
+.forum-post.older .forum-post-title {
+  color: var(--surface-variant-text);
+}
+
+.forum-post.opening {
+  opacity: 0.6;
+}
+
+.forum-post-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.forum-post-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-large);
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.forum-pin {
+  color: var(--primary);
+}
+
+.forum-post-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+.forum-tag {
+  padding: 1px var(--spacing-s);
+  border-radius: var(--radius-pill);
+  background: var(--surface-container-highest);
+  color: var(--surface-text);
+}
+
+.forum-post-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: var(--surface-variant-text);
+}
+
+.forum-post-text strong {
+  color: var(--surface-text);
+}
+
+.forum-post-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-m);
+}
+
+.forum-post-count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+}
+
+.forum-post-thumb {
+  flex: none;
+  align-self: center;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--corner-radius-small);
+  object-fit: cover;
+  background: var(--surface-container-highest);
+}
+
+.forum-older {
+  padding-top: var(--spacing-s);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.forum-empty,
+.forum-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-l);
+}
+
+.forum-more {
+  align-self: center;
+}
+
+.forum-new {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  width: min(520px, 94vw);
+  padding: var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: var(--shadow-3);
+}
+
+.forum-new-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
 }

@@ -99,6 +99,23 @@ export function localPath(source: string): string | null {
   return null
 }
 
+/**
+ * The bytes of one piece of media, wherever it is: a file nobilis cached, or a
+ * link (including the app's own moho-media one). For putting a picture on the
+ * clipboard, where saving it first would leave a file nobody asked for.
+ */
+export async function readMedia(
+  source: string,
+  fetchRemote: (url: string) => Promise<{ ok: boolean; status: number; bytes: () => Promise<Uint8Array> }>
+): Promise<Uint8Array> {
+  const local = localPath(source)
+  if (local) return fsp.readFile(local)
+  if (!/^(https?|moho-media):\/\//i.test(source)) throw new Error('unsupported link')
+  const res = await fetchRemote(source)
+  if (!res.ok) throw new Error(`server returned ${res.status}`)
+  return res.bytes()
+}
+
 export interface SaveResult {
   path?: string
   error?: string

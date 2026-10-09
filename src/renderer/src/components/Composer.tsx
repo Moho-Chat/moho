@@ -4,15 +4,16 @@ import { applyFormat } from '../lib/composeFormatDom'
 import { useMediaUrl } from '../lib/route'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
+import { ContextMenu, type MenuEntry } from './ContextMenu'
 import torMark from '../assets/tor.svg'
 import { PollComposer } from './PollComposer'
 import { Avatar } from './Avatar'
-import { EmojiPicker, type StickerEntry } from './EmojiPicker'
+import { COMMON_EMOJI, emojiToken, EmojiPicker, type StickerEntry } from './EmojiPicker'
 import { PlaceField } from './PlaceField'
 import { VoiceRecorder } from './VoiceRecorder'
 import { useActiveBuffer, useChat, useStore } from '../state/hooks'
 import { emojiPreview } from '../lib/format'
-import { bufferDisplayName, classes, fileNameOf, isImageFile, resolveMediaUrl } from '../lib/util'
+import { bufferDisplayName, classes, fileNameOf, humanSize, isImageFile, resolveMediaUrl } from '../lib/util'
 import { completeNick, cyclePrefix, type Completion } from '../lib/completion'
 import {
   mentionInsert,
@@ -21,12 +22,22 @@ import {
   rankMentions,
   type MentionTarget
 } from '../lib/mentions'
+import { STAGE_FILES, type StagedFile } from '../lib/staging'
+import { withTone } from '../lib/skintone'
+import { usePref } from '../state/hooks'
+import { rankShortcodes, shortcodeQuery, unicodeTargets, type ShortcodeTarget } from '../lib/shortcodes'
 
 interface StagedAttachment {
   id: number
   path: string
   name: string
   isImage: boolean
+  /** A picture of it where the path cannot be shown: made from the dropped file. */
+  preview?: string
+  /** In bytes, once it has been asked. */
+  size?: number | null
+  /** Sent hidden behind a spoiler: Discord only. */
+  spoiler: boolean
 }
 
 /**
@@ -96,11 +107,23 @@ interface TypedCommand {
   command?: { options?: { name: string; type?: number; required?: boolean }[] }
 }
 
-export function Composer(): JSX.Element | null {
+/**
+ * The message box. In a thread panel it is the same box answering the thread
+ * rather than the room: it takes the open thread's conversation, sends through
+ * the thread, and leaves alone what belongs to the room's own box - the
+ * keyboard listeners for typing anywhere, files dropped on the window, a reply
+ * in progress and the things that are a message of their own kind.
+ */
+export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Element | null {
   const store = useStore()
-  const buffer = useActiveBuffer()
-  const replyingTo = useChat((s) => s.replyingTo)
-  const whisperingTo = useChat((s) => s.whisperingTo)
+  const activeBuffer = useActiveBuffer()
+  const threadBufferId = useChat((s) => s.openThread?.bufferId)
+  const allBuffers = useChat((s) => s.buffers)
+  const buffer = thread ? (allBuffers.find((b) => b.id === threadBufferId) ?? null) : activeBuffer
+  const storedReply = useChat((s) => s.replyingTo)
+  const storedWhisper = useChat((s) => s.whisperingTo)
+  const replyingTo = thread ? null : storedReply
+  const whisperingTo = thread ? null : storedWhisper
   const accounts = useChat((s) => s.accounts)
   const [text, setText] = useState('')
   const [staged, setStaged] = useState<StagedAttachment[]>([])
@@ -110,6 +133,33 @@ export function Composer(): JSX.Element | null {
   /** The account's sticker packs, fetched when the picker is first opened. */
   const [stickers, setStickers] = useState<StickerEntry[]>([])
   const [stickerPicker, setStickerPicker] = useState(false)
+  /**
+   * What to do with files dropped on the window: they land in the tray, to be
+   * looked over and sent with the next message rather than going out on the
+   * spot. Set further down, where the box's own staging is.
+   */
+  const takeFiles = useRef<(files: StagedFile[]) => void>(() => {})
+  useEffect(() => {
+    // Files dropped on the window go to the room's box, not to this one.
+    if (thread) return
+    const onStage = (e: Event): void => takeFiles.current((e as CustomEvent<StagedFile[]>).detail)
+    window.addEventListener(STAGE_FILES, onStage)
+    return () => window.removeEventListener(STAGE_FILES, onStage)
+  }, [thread])
+  // The pictures made for the tray are held for as long as it is, and let go
+  // of when a card leaves it or the box is gone.
+  const previews = useRef(new Set<string>())
+  useEffect(() => {
+    const kept = new Set(staged.map((a) => a.preview).filter((p): p is string => !!p))
+    for (const url of staged.map((a) => a.preview)) if (url) previews.current.add(url)
+    for (const url of [...previews.current]) {
+      if (!kept.has(url)) {
+        URL.revokeObjectURL(url)
+        previews.current.delete(url)
+      }
+    }
+  }, [staged])
+  useEffect(() => () => previews.current.forEach((url) => URL.revokeObjectURL(url)), [])
   /** The little form for sending a place, which is a field rather than a map. */
   const [placeOpen, setPlaceOpen] = useState(false)
   const seqRef = useRef(0)
@@ -144,6 +194,8 @@ export function Composer(): JSX.Element | null {
   const cycle = useRef<{ last: Completion; attempt: number } | null>(null)
   /** The "@..." being typed, and which suggestion is selected. */
   const [mention, setMention] = useState<{ query: string; index: number } | null>(null)
+  /** The ":..." being typed, the same way. */
+  const [shortcode, setShortcode] = useState<{ query: string; index: number } | null>(null)
   /**
    * The slash commands this channel offers, while one is being typed.
    *
@@ -166,11 +218,18 @@ export function Composer(): JSX.Element | null {
   const [roles, setRoles] = useState<{ id: string; name: string; colour?: string }[]>([])
   const emojiButtonRef = useRef<HTMLButtonElement>(null)
   const stickerButtonRef = useRef<HTMLButtonElement>(null)
-  const placeButtonRef = useRef<HTMLButtonElement>(null)
+  const plusButtonRef = useRef<HTMLButtonElement>(null)
+  /** The "+" menu, where it opened. */
+  const [plusMenu, setPlusMenu] = useState<{ x: number; y: number } | null>(null)
 
   const smilies = useChat((s) => s.smilies)
   const bufferEmojiByBuffer = useChat((s) => s.bufferEmoji)
 
+  const replyPing = useChat((s) => s.replyPing)
+  // The message being answered, if it is on screen: for its author's face.
+  const repliedTo = useChat((s) =>
+    s.replyingTo?.id && buffer ? s.messagesByBuffer[buffer.id]?.find((m) => m.id === s.replyingTo?.id) : undefined
+  )
   const account = buffer && accounts.find((a) => a.id === buffer.accountId)
   const service = account?.service
   const tunnelAll = useChat((s) => s.tunnelAll)
@@ -198,11 +257,23 @@ export function Composer(): JSX.Element | null {
   const supportsAttachments =
     service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc'
 
+  // Starting a reply puts the cursor in the box: the next thing anybody does
+  // is write the answer.
+  const replyingId = useChat((s) => s.replyingTo?.id ?? '')
+  useEffect(() => {
+    if (replyingId) inputRef.current?.focus()
+  }, [replyingId])
+
   // Refocus on buffer switch so typing works immediately after clicking a
   // channel, without a second click into the field.
   useEffect(() => {
-    inputRef.current?.focus()
-  }, [buffer?.id])
+    if (!thread) inputRef.current?.focus()
+  }, [buffer?.id, thread])
+  // And a thread opened is a thread to answer.
+  const threadRoot = useChat((s) => s.openThread?.rootId)
+  useEffect(() => {
+    if (thread && threadRoot) inputRef.current?.focus()
+  }, [thread, threadRoot])
 
   // Typing anywhere in an active window goes into the box, as it does in
   // every other chat client: no click first. Only when nothing else is being
@@ -210,6 +281,8 @@ export function Composer(): JSX.Element | null {
   // a picture being looked at - and never with a shortcut key held, which is
   // the app's own to answer.
   useEffect(() => {
+    // The room's box alone listens: two would both take the same key.
+    if (thread) return
     const free = (): boolean => {
       const active = document.activeElement
       if (active instanceof HTMLElement) {
@@ -254,7 +327,7 @@ export function Composer(): JSX.Element | null {
       document.removeEventListener('paste', onPaste)
       window.removeEventListener('focus', onWindowFocus)
     }
-  }, [])
+  }, [thread])
 
   /**
    * Everything that can be tagged here: the people in the conversation, the
@@ -263,9 +336,9 @@ export function Composer(): JSX.Element | null {
   const mentionTargets = useMemo((): MentionTarget[] => {
     const members: MentionTarget[] = (roster ?? []).map((m) => ({
       name: m.nick,
-      detail: m.userId && m.userId !== m.nick ? undefined : undefined,
       kind: 'member' as const,
-      userId: m.userId
+      userId: m.userId,
+      avatarUrl: m.avatarUrl
     }))
     const roleTargets: MentionTarget[] = roles.map((r) => ({
       name: r.name,
@@ -284,6 +357,31 @@ export function Composer(): JSX.Element | null {
   const suggestions = useMemo(
     () => (mention ? rankMentions(mentionTargets, mention.query) : []),
     [mention, mentionTargets]
+  )
+
+  /**
+   * Everything a ":word" can become here: the common Unicode set, this
+   * channel's own emoji (a server's, or a Kick channel's) and, on Sneedchat,
+   * its smilies - the same places the picker draws from.
+   */
+  const [tone] = usePref<number>('emoji.skinTone', 0)
+  const bufferEmoji = bufferEmojiByBuffer[buffer?.id ?? ''] || []
+  const shortcodeTargets = useMemo((): ShortcodeTarget[] => {
+    const own: ShortcodeTarget[] = bufferEmoji.map((e) => ({ name: e.name, aliases: [], token: emojiToken(e) }))
+    const sneed: ShortcodeTarget[] =
+      service === 'sneedchat'
+        ? smilies.flatMap((s) => {
+            const [first, ...rest] = s.aliases ?? []
+            return first ? [{ name: first.replace(/^:|:$/g, ''), aliases: rest.map((a) => a.replace(/^:|:$/g, '')), token: first }] : []
+          })
+        : []
+    // The hands come in the tone chosen in the picker.
+    const common = unicodeTargets(COMMON_EMOJI.map((e) => ({ ...e, emoji: withTone(e.emoji, tone) })))
+    return [...own, ...sneed, ...common]
+  }, [bufferEmoji, smilies, service, tone])
+  const shortcodes = useMemo(
+    () => (shortcode ? rankShortcodes(shortcodeTargets, shortcode.query) : []),
+    [shortcode, shortcodeTargets]
   )
 
   // What has been typed as a command, if anything: a slash at the very start
@@ -333,10 +431,56 @@ export function Composer(): JSX.Element | null {
     void window.moho.rpc('sendTyping', { bufferId: buffer.id }).catch(() => {})
   }
 
-  const stage = (path: string): void => {
+  const stage = (path: string, file?: File): void => {
     const name = fileNameOf(path)
-    setStaged((s) => [...s, { id: ++seqRef.current, path, name, isImage: isImageFile(name) }])
+    const id = ++seqRef.current
+    const isImage = isImageFile(name)
+    const preview = file && isImage ? URL.createObjectURL(file) : undefined
+    setStaged((s) => [...s, { id, path, name, isImage, spoiler: false, preview }])
+    // Its size is the main process's to read; the card says it when it comes.
+    void window.moho.fileSize(path).then((size) => setStaged((s) => s.map((a) => (a.id === id ? { ...a, size } : a))))
   }
+  takeFiles.current = (files) => {
+    if (!supportsAttachments) {
+      store.toast('info', "Files can't be sent in this conversation")
+      return
+    }
+    files.forEach((f) => stage(f.path, f.file))
+    inputRef.current?.focus()
+  }
+
+  const pickAndStage = (): void => void window.moho.pickFile().then((p) => p && stage(p))
+  /**
+   * What the "+" holds. A file everywhere it can go; and on Matrix the things
+   * that are a message of their own kind rather than text - a place, a poll.
+   * With nothing but the file, the button is that and skips the menu.
+   */
+  const plusEntries: MenuEntry[] = [
+    {
+      label: supportsAttachments ? 'Upload a file' : "Upload a file (not available here)",
+      icon: 'upload_file',
+      disabled: !supportsAttachments,
+      onClick: pickAndStage
+    },
+    ...(service === 'matrix' && !thread
+      ? ([
+          {
+            label: 'Send a location',
+            icon: 'location_on',
+            onClick: () => {
+              setPickerOpen(false)
+              setStickerPicker(false)
+              setPlaceOpen(true)
+            }
+          },
+          { label: 'Start a poll', icon: 'ballot', onClick: () => setPolling(true) }
+        ] as MenuEntry[])
+      : [])
+  ]
+
+  /** Sends to where this box answers: the room, or the thread it is the panel's. */
+  const post = (body: string, attachment?: string | string[], spoilers?: string[]): Promise<void> =>
+    thread ? store.sendToThread(body, attachment, spoilers) : store.sendMessage(buffer.id, body, attachment, spoilers)
 
   const submit = (): void => {
     // The text as this service will read it: formatting in the box becomes
@@ -368,12 +512,26 @@ export function Composer(): JSX.Element | null {
     if (staged.length > 0) {
       // Each attachment is its own send; the typed text rides along as the
       // caption on the first one, matching how Discord treats a caption.
-      staged.forEach((att, i) => {
-        void store.sendMessage(buffer.id, i === 0 ? body : '', att.path)
-      })
+      if (service === 'discord') {
+        // Discord carries up to ten files in one message, which is what its
+        // own client makes of several chosen at once: one post, one caption,
+        // one upload to watch. Past ten, the next ten make the next message.
+        for (let i = 0; i < staged.length; i += 10) {
+          const batch = staged.slice(i, i + 10)
+          void post(
+            i === 0 ? body : '',
+            batch.map((att) => att.path),
+            batch.filter((att) => att.spoiler).map((att) => att.path)
+          )
+        }
+      } else {
+        staged.forEach((att, i) => {
+          void post(i === 0 ? body : '', att.path)
+        })
+      }
       setStaged([])
     } else {
-      void store.sendMessage(buffer.id, body)
+      void post(body)
     }
     if (inputRef.current) inputRef.current.replaceChildren()
     setText('')
@@ -422,9 +580,10 @@ export function Composer(): JSX.Element | null {
 
     // Pasting into an editable div would otherwise bring the clipboard's own
     // markup with it - fonts, colours, whole tables. Only the text is wanted.
-    // Newlines flattened for the same reason Enter does not make one, and
-    // because an input silently did this to a multi-line paste anyway.
-    const pasted = e.clipboardData.getData('text/plain').replace(/\s*\n\s*/g, ' ')
+    // Line breaks kept: they are the person's, and what becomes of them is the
+    // service's - a newline on Discord and Matrix, a batch or separate lines on
+    // IRC, a space on Kick. Only the carriage returns a paste brings are tidied.
+    const pasted = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n')
     if (pasted) {
       // Deprecated, and still the only way to insert at the caret while
       // keeping the box's own undo history intact. Chromium is the only
@@ -520,11 +679,14 @@ export function Composer(): JSX.Element | null {
     const node = selection?.anchorNode
     if (!selection || !node || node.nodeType !== Node.TEXT_NODE) {
       setMention(null)
+      setShortcode(null)
       return
     }
     const before = (node.textContent ?? '').slice(0, selection.anchorOffset)
     const query = mentionQuery(before)
     setMention(query === null ? null : { query, index: 0 })
+    const code = shortcodeQuery(before)
+    setShortcode(code === null ? null : { query: code, index: 0 })
   }
 
   /**
@@ -561,6 +723,45 @@ export function Composer(): JSX.Element | null {
     selection.addRange(range)
 
     setMention(null)
+    if (inputRef.current) setText(composerText(inputRef.current))
+  }
+
+  /**
+   * Puts a chosen emoji in the box in place of the ":word" that was typed,
+   * as its picture where there is one - as the picker's own choice would be.
+   */
+  const takeShortcode = (target: ShortcodeTarget): void => {
+    const selection = window.getSelection()
+    const node = selection?.anchorNode
+    if (!selection || !node || node.nodeType !== Node.TEXT_NODE || !shortcode) return
+    const offset = selection.anchorOffset
+    const start = offset - shortcode.query.length - 1
+    if (start < 0) return
+
+    const preview = emojiPreview(target.token, service === 'sneedchat' ? smilies : [])
+    let inserted: Node
+    if (preview) {
+      const img = document.createElement('img')
+      img.className = 'composer-emoji'
+      img.src = media(preview.src)
+      img.alt = preview.label
+      img.title = preview.label
+      img.dataset.token = target.token
+      inserted = img
+    } else {
+      inserted = document.createTextNode(target.token)
+    }
+    const range = document.createRange()
+    range.setStart(node, start)
+    range.setEnd(node, offset)
+    range.deleteContents()
+    range.insertNode(inserted)
+    range.setStartAfter(inserted)
+    range.collapse(true)
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    setShortcode(null)
     if (inputRef.current) setText(composerText(inputRef.current))
   }
 
@@ -606,6 +807,27 @@ export function Composer(): JSX.Element | null {
     if (inputRef.current) setText(composerText(inputRef.current))
   }
 
+  // Somewhere that can be read and not written in: a channel this account has
+  // no permission to send to, or Discord's own notices. A box that every send
+  // is refused from is a worse answer than saying so where it would be.
+  if (buffer.readOnly) {
+    const official = buffer.readOnly.includes('official Discord')
+    return (
+      <div className="composer">
+        <div className="divider-h" />
+        <div className="composer-readonly" role="status">
+          <Icon name={official ? 'verified_user' : 'lock'} size={22} />
+          <div className="composer-readonly-text">
+            <span className="composer-readonly-title">{buffer.readOnly}</span>
+            {official && (
+              <span className="small">Discord will never ask you for your password or account token.</span>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // A Kick account with no sign-in watches; it cannot talk. Offering the
   // box anyway meant typing a message the service was always going to refuse.
   if (account && account.service === 'kick' && !account.hasPassword) {
@@ -640,7 +862,7 @@ export function Composer(): JSX.Element | null {
           as a bug until the line above says what was searched for. */}
       {commands.length > 0 && (
         <div className="command-picker" role="listbox" aria-label="Run a command">
-          <div className="command-picker-head small muted">
+          <div className="picker-head small muted">
             Commands matching /{typedCommand}
           </div>
           {commands.map((c, i) => (
@@ -674,6 +896,7 @@ export function Composer(): JSX.Element | null {
 
       {mention && suggestions.length > 0 && (
         <div className="mention-picker" role="listbox" aria-label="Tag somebody">
+          <div className="picker-head small muted">Members matching @{mention.query}</div>
           {suggestions.map((target, i) => (
             <button
               key={`${target.kind}:${target.name}`}
@@ -690,7 +913,7 @@ export function Composer(): JSX.Element | null {
               onMouseEnter={() => setMention({ ...mention, index: i })}
             >
               {target.kind === 'member' ? (
-                <Avatar name={target.name} size={20} />
+                <Avatar name={target.name} url={target.avatarUrl} size={24} accountId={account?.id} />
               ) : (
                 <span className="mention-glyph" style={target.colour ? { color: target.colour } : undefined}>
                   <Icon name={target.kind === 'role' ? 'group' : 'campaign'} size={16} />
@@ -702,6 +925,34 @@ export function Composer(): JSX.Element | null {
               {target.detail && <span className="small muted ellipsis mention-detail">{target.detail}</span>}
             </button>
           ))}
+        </div>
+      )}
+
+      {shortcode && shortcodes.length > 0 && (
+        <div className="shortcode-picker" role="listbox" aria-label="Pick an emoji">
+          <div className="picker-head small muted">Emoji matching :{shortcode.query}</div>
+          {shortcodes.map((target, i) => {
+            const preview = emojiPreview(target.token, service === 'sneedchat' ? smilies : [])
+            return (
+              <button
+                key={`${target.token}:${target.name}`}
+                type="button"
+                role="option"
+                aria-selected={i === shortcode.index}
+                className={classes('shortcode-option', i === shortcode.index && 'active')}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  takeShortcode(target)
+                }}
+                onMouseEnter={() => setShortcode({ ...shortcode, index: i })}
+              >
+                <span className="shortcode-glyph">
+                  {preview ? <img src={media(preview.src)} alt="" /> : target.glyph}
+                </span>
+                <span className="ellipsis">:{target.name}:</span>
+              </button>
+            )
+          })}
         </div>
       )}
 
@@ -720,40 +971,98 @@ export function Composer(): JSX.Element | null {
       {replyingTo && (
         <div className="composer-reply small">
           <Icon name="reply" size={14} />
-          <span className="ellipsis muted">
-            Replying to {replyingTo.from}
-            {replyingTo.body ? `: ${replyingTo.body}` : ''}
+          {repliedTo?.avatarUrl && <img className="reply-avatar" src={media(repliedTo.avatarUrl)} alt="" />}
+          <span className="ellipsis">
+            Replying to <strong>{replyingTo.from}</strong>
+            {replyingTo.body ? <span className="muted">{`: ${replyingTo.body}`}</span> : ''}
           </span>
-          <IconButton name="close" size={14} title="Cancel reply" onClick={() => store.cancelReply()} />
+          {/* Whether the one answered is told, as Discord's own bar has it.
+              Only there: nothing else here can say it. */}
+          {service === 'discord' && replyingTo.id && (
+            <button
+              type="button"
+              className={classes('reply-ping', replyPing && 'on')}
+              title={replyPing ? 'The author will be pinged. Click to answer without pinging them.' : 'The author will not be pinged. Click to ping them.'}
+              aria-pressed={replyPing}
+              onClick={() => store.toggleReplyPing()}
+            >
+              @ {replyPing ? 'ON' : 'OFF'}
+            </button>
+          )}
+          <IconButton name="close" size={14} title="Cancel reply (Esc)" onClick={() => store.cancelReply()} />
         </div>
       )}
 
       {staged.length > 0 && (
         <div className="composer-attachments">
           {staged.map((att) => (
-            <div key={att.id} className="staged-thumb" title={att.name}>
-              {att.isImage ? (
-                <img src={resolveMediaUrl(att.path)} alt={att.name} />
-              ) : (
-                <div className="staged-file">
-                  <Icon name="description" size={22} />
-                  <span className="small ellipsis">{att.name}</span>
-                </div>
-              )}
-              <button
-                type="button"
-                className="staged-remove"
-                title="Remove"
-                onClick={() => setStaged((s) => s.filter((x) => x.id !== att.id))}
-              >
-                <Icon name="close" size={13} color="var(--error)" />
-              </button>
+            <div key={att.id} className={classes('staged-card', att.spoiler && 'is-spoiler')}>
+              <div className="staged-preview">
+                {att.isImage ? (
+                  <img src={att.preview ?? resolveMediaUrl(att.path)} alt="" />
+                ) : (
+                  <Icon name="description" size={32} />
+                )}
+                {att.spoiler && <span className="staged-spoiler-pill">SPOILER</span>}
+              </div>
+              <div className="staged-meta">
+                <span className="staged-name ellipsis" title={att.name}>
+                  {att.name}
+                </span>
+                {typeof att.size === 'number' && <span className="small muted">{humanSize(att.size)}</span>}
+              </div>
+              {/* On the card's corner, and there only while it is pointed at
+                  or focused - they would be a dozen buttons otherwise. */}
+              <div className="staged-actions">
+                {service === 'discord' && (
+                  <button
+                    type="button"
+                    className={classes('staged-action', att.spoiler && 'on')}
+                    title={att.spoiler ? 'Not a spoiler' : 'Mark as spoiler'}
+                    aria-pressed={att.spoiler}
+                    onClick={() => setStaged((s) => s.map((x) => (x.id === att.id ? { ...x, spoiler: !x.spoiler } : x)))}
+                  >
+                    <Icon name={att.spoiler ? 'visibility_off' : 'visibility'} size={16} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="staged-action danger"
+                  title="Remove"
+                  onClick={() => setStaged((s) => s.filter((x) => x.id !== att.id))}
+                >
+                  <Icon name="delete" size={16} />
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
 
       <div className="composer-row">
+       <div className="composer-box">
+        {/* Everything that is not typed goes through here, inside the box on
+            the left as in Discord. Where there is only the one thing - a
+            file - it is that thing, without a menu in between. */}
+        <button
+          ref={plusButtonRef}
+          type="button"
+          className="icon-button composer-plus"
+          title={plusEntries.length > 1 ? 'Add to the message' : supportsAttachments ? 'Attach a file' : "Attachments aren't supported for this service"}
+          aria-haspopup={plusEntries.length > 1 ? 'menu' : undefined}
+          disabled={plusEntries.length <= 1 && !supportsAttachments}
+          onClick={(e) => {
+            if (plusEntries.length > 1) {
+              const r = e.currentTarget.getBoundingClientRect()
+              setPlusMenu({ x: r.left, y: r.top - 6 })
+            } else {
+              pickAndStage()
+            }
+          }}
+        >
+          <Icon name="add_circle" size={22} fill />
+        </button>
+
         {/* Where this conversation's traffic goes: through Tor, the account
             being routed or everything being. Beside the lock rather than
             instead of it - a Matrix room can be both encrypted and routed,
@@ -772,12 +1081,13 @@ export function Composer(): JSX.Element | null {
             </span>
           ))}
         {service === 'matrix' && (
-          <Icon
-            name={buffer.encrypted ? 'lock' : 'lock_open'}
-            size={16}
-            color={buffer.encrypted ? 'var(--primary)' : 'var(--surface-variant-text)'}
-            style={{ margin: '0 2px' }}
-          />
+          <span className="composer-lock" title={buffer.encrypted ? 'Encrypted' : 'Not encrypted'}>
+            <Icon
+              name={buffer.encrypted ? 'lock' : 'lock_open'}
+              size={16}
+              color={buffer.encrypted ? 'var(--primary)' : 'var(--surface-variant-text)'}
+            />
+          </span>
         )}
 
         <div className="composer-input-wrap">
@@ -791,18 +1101,18 @@ export function Composer(): JSX.Element | null {
             suppressContentEditableWarning
             role="textbox"
             aria-multiline="true"
-            aria-label={`Message ${bufferDisplayName(buffer.name)}`}
+            aria-label={thread ? 'Reply in thread' : `Message ${bufferDisplayName(buffer.name)}`}
             onInput={(e) => {
               setText(composerText(e.currentTarget))
               noteTyping()
               noteMention()
             }}
             onKeyDown={(e) => {
-              // Enter sends and Shift+Enter does nothing, which is what the
-              // input this replaced did. An editable div would happily take a
-              // second line, but a newline reaching IRC is a malformed
-              // PRIVMSG - nothing between here and the socket splits one - so
-              // multi-line is a separate change with its own thinking to do.
+              // Enter sends and Shift+Enter makes a new line. What a line break
+              // becomes on the way out is the daemon's to decide per service -
+              // IRC cannot carry one in a PRIVMSG, so it goes as a multiline
+              // batch where the network has them and as separate lines where
+              // it does not.
               // While the mention list is up it owns the keys somebody is
               // already using to drive it - a list you steer with the arrows
               // and take with Enter is one nobody has to be taught.
@@ -827,6 +1137,24 @@ export function Composer(): JSX.Element | null {
                   return
                 }
               }
+              if (shortcode && shortcodes.length > 0) {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  const step = e.key === 'ArrowDown' ? 1 : shortcodes.length - 1
+                  setShortcode({ ...shortcode, index: (shortcode.index + step) % shortcodes.length })
+                  return
+                }
+                if (e.key === 'Enter' || e.key === 'Tab') {
+                  e.preventDefault()
+                  takeShortcode(shortcodes[shortcode.index])
+                  return
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setShortcode(null)
+                  return
+                }
+              }
               if (mention && suggestions.length > 0) {
                 if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                   e.preventDefault()
@@ -848,7 +1176,36 @@ export function Composer(): JSX.Element | null {
               if (e.key === 'Enter') {
                 e.preventDefault()
                 if (!e.shiftKey) submit()
+                // Shift+Enter is a new line, on every service: what becomes of
+                // it on the way out is the daemon's business per protocol.
+                else document.execCommand('insertLineBreak')
                 return
+              }
+              // Escape puts a reply down - after the lists above, which took
+              // theirs first.
+              if (e.key === 'Escape' && replyingTo) {
+                e.preventDefault()
+                store.cancelReply()
+                return
+              }
+              // Up in an empty box opens your last message for editing, as in
+              // Discord and Element: the quickest way to fix a typo.
+              if (
+                !thread &&
+                e.key === 'ArrowUp' &&
+                !e.shiftKey &&
+                !e.ctrlKey &&
+                !e.altKey &&
+                !e.metaKey &&
+                !text &&
+                (service === 'discord' || service === 'sneedchat' || service === 'matrix')
+              ) {
+                const last = store.lastEditableOwn(buffer.id)
+                if (last) {
+                  e.preventDefault()
+                  store.startEdit(last)
+                  return
+                }
               }
               // The browser would make its own bold and italic here, in markup
               // this service may not have. Taken over: the same keys, applied
@@ -890,7 +1247,7 @@ export function Composer(): JSX.Element | null {
           />
           {!text.trim() && (
             <span className="composer-placeholder muted">
-              Message {bufferDisplayName(buffer.name)}
+              {thread ? 'Reply in thread' : `Message ${bufferDisplayName(buffer.name)}`}
             </span>
           )}
         </div>
@@ -913,7 +1270,7 @@ export function Composer(): JSX.Element | null {
             gesture: an emoji goes into the line being written and a sticker
             is the message. Only where the service has them: Matrix, where a
             pack supplies them, and Discord, where each guild has its own. */}
-        {(service === 'matrix' || service === 'discord') && (
+        {!thread && (service === 'matrix' || service === 'discord') && (
           <button
             ref={stickerButtonRef}
             type="button"
@@ -930,53 +1287,29 @@ export function Composer(): JSX.Element | null {
           </button>
         )}
 
-        {/* Beside the sticker button for the same reason it is beside the
-            emoji one: a location is the message rather than something typed
-            into it. Matrix only, which is the one service here that carries
-            a place as its own kind of message. */}
-        {service === 'matrix' && (
-          <button
-            ref={placeButtonRef}
-            type="button"
-            className="icon-button"
-            title="Send a location"
-            onClick={() => {
-              setPickerOpen(false)
-              setStickerPicker(false)
-              setPlaceOpen(!placeOpen)
-            }}
-          >
-            <Icon name="location_on" size={18} />
-          </button>
-        )}
-
         {/* Saying it rather than typing it. The two services that have voice
             messages at all: Discord's flag and base64 waveform, and Matrix's
             MSC3245 marker with integers. The daemon speaks both from one
             recording, so this is the same button either way. */}
-        {(service === 'discord' || service === 'matrix') && <VoiceRecorder bufferId={buffer.id} />}
+        {!thread && (service === 'discord' || service === 'matrix') && <VoiceRecorder bufferId={buffer.id} />}
 
-        {/* Only Matrix, and only because it is the only service whose polls
-            this client can start: Kick's are the streamer's to make and
-            Discord's are read here. */}
-        {service === 'matrix' && (
-          <IconButton name="ballot" title="Start a poll" onClick={() => setPolling(true)} />
+        {/* Sending is the one thing the box does that its own Enter does not
+            say, so it is only drawn when there is something to send. */}
+        {(text.trim() || staged.length > 0) && (
+          <button type="button" className="icon-button composer-send" title="Send (Enter)" onClick={submit}>
+            <Icon name="send" size={20} fill />
+          </button>
         )}
-
-        <IconButton
-          name="add"
-          title={
-            supportsAttachments ? 'Attach a file' : "Attachments aren't supported for this service"
-          }
-          disabled={!supportsAttachments}
-          onClick={() => void window.moho.pickFile().then((p) => p && stage(p))}
-        />
-        <IconButton name="send" title="Send" onClick={submit} />
+       </div>
       </div>
+
+      {plusMenu && (
+        <ContextMenu x={plusMenu.x} y={plusMenu.y} above entries={plusEntries} onClose={() => setPlusMenu(null)} />
+      )}
 
       {placeOpen && (
         <PlaceField
-          anchor={placeButtonRef.current}
+          anchor={plusButtonRef.current}
           onClose={() => setPlaceOpen(false)}
           onSend={(place, label) => {
             setPlaceOpen(false)
@@ -1047,7 +1380,7 @@ export function Composer(): JSX.Element | null {
  * stopped, and a Matrix client that closes mid-sentence never sends its
  * cancel. Without this the line would sit there indefinitely.
  */
-function TypingLine({ bufferId }: { bufferId: string }): JSX.Element | null {
+function TypingLine({ bufferId }: { bufferId: string }): JSX.Element {
   const entry = useChat((s) => s.typingByBuffer[bufferId])
   const [, tick] = useState(0)
 
@@ -1059,7 +1392,12 @@ function TypingLine({ bufferId }: { bufferId: string }): JSX.Element | null {
     return () => clearTimeout(t)
   }, [entry])
 
-  if (!entry || entry.until <= Date.now() || entry.nicks.length === 0) return null
+  // Always drawn, empty or not: the strip keeps its height whether anybody is
+  // writing or not, so the log above it is not shoved up and down as people
+  // start and stop.
+  if (!entry || entry.until <= Date.now() || entry.nicks.length === 0) {
+    return <div className="composer-typing small muted" aria-live="polite" />
+  }
 
   const names = entry.nicks
   const who =
@@ -1070,8 +1408,13 @@ function TypingLine({ bufferId }: { bufferId: string }): JSX.Element | null {
         : `${names.length} people are typing`
 
   return (
-    <div className="composer-typing small muted ellipsis" aria-live="polite">
-      {who}…
+    <div className="composer-typing small muted" aria-live="polite">
+      <span className="typing-dots" aria-hidden>
+        <i />
+        <i />
+        <i />
+      </span>
+      <span className="ellipsis">{who}</span>
     </div>
   )
 }

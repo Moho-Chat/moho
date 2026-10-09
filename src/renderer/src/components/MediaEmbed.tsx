@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
-import { Lightbox } from './Lightbox'
+import { Lightbox, type LightboxSource } from './Lightbox'
+import { registerMedia } from '../lib/gallery'
 import { VoiceMessage } from './VoiceMessage'
 import { LottieSticker, lottieStickerId } from './LottieSticker'
 import { fullImageFor, knownFullImage } from '../lib/fullimage'
 import { useMediaUrl, useStrictRoute } from '../lib/route'
+import { classes, humanSize } from '../lib/util'
 import type { MediaItem } from '../lib/format'
 import type { Attachment } from '../../../shared/wire'
 
@@ -38,7 +40,15 @@ interface Props {
    * the caller with every other picture on screen that says the same.
    */
   onStale?: (bufferId: string, messageId: string) => void
+  /**
+   * One cell of a grid, where several pictures arrived in one message: it
+   * fills the cell and crops to it rather than keeping its own shape.
+   */
+  tile?: boolean
 }
+
+/** What Discord puts at the front of a file name to hide it behind a spoiler. */
+const SPOILER_PREFIX = 'SPOILER_'
 
 /**
  * Every cdn.discordapp.com / media.discordapp.net link Discord hands out is
@@ -62,11 +72,6 @@ function linkExpired(url: string): boolean {
   return Date.now() / 1000 >= parseInt(ex, 16)
 }
 
-function humanSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
 
 /**
  * The shape an unmeasured picture is given to sit in.
@@ -88,7 +93,8 @@ export function MediaEmbed({
   from,
   onOpenInDiscord,
   onRefresh,
-  onStale
+  onStale,
+  tile
 }: Props): JSX.Element | null {
   // Through the account's route when it is strictly routed (#257).
   const media = useMediaUrl()
@@ -106,6 +112,12 @@ export function MediaEmbed({
   /** What the picture turned out to be, once it had loaded enough to say. */
   const [seen, setSeen] = useState<{ width: number; height: number } | null>(null)
   const [playing, setPlaying] = useState(false)
+  // Hidden until it is clicked, as Discord does with a file sent as a spoiler.
+  const spoiler = !!attachment?.filename?.startsWith(SPOILER_PREFIX)
+  const [revealed, setRevealed] = useState(false)
+  const hidden = spoiler && !revealed
+  // What it is called, less the marker: that is not part of the name.
+  const shownName = spoiler ? attachment?.filename?.slice(SPOILER_PREFIX.length) : attachment?.filename
   const [expanded, setExpanded] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState('')
@@ -146,6 +158,30 @@ export function MediaEmbed({
 
   const open = (): void => void window.moho.openExternal(openTarget)
 
+  /** What the viewer shows for this one: also what it shows when stepped to from another. */
+  const viewerSource = (): LightboxSource =>
+    kind === 'video'
+      ? { kind: 'video', src: media(fullSrc), externalUrl: openTarget, filename: shownName, loop, from }
+      : {
+          kind: 'image',
+          src: media(expandedSrc),
+          externalUrl: openTarget,
+          filename: shownName,
+          width: attachment?.width,
+          height: attachment?.height,
+          from
+        }
+  // Part of the conversation's gallery for as long as it is on screen, so the
+  // arrows in the viewer reach it from its neighbours.
+  const wrapRef = useRef<HTMLSpanElement>(null)
+  const viewerRef = useRef(viewerSource)
+  viewerRef.current = viewerSource
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el || (kind !== 'image' && kind !== 'video')) return
+    return registerMedia(el, () => viewerRef.current())
+  }, [kind])
+
   /**
    * The size the picture is going to be, decided before it arrives.
    *
@@ -163,7 +199,22 @@ export function MediaEmbed({
   const measured = seen ?? (attachment?.width && attachment?.height
     ? { width: attachment.width, height: attachment.height }
     : null)
-  const ratio = { aspectRatio: measured ? `${measured.width} / ${measured.height}` : UNKNOWN_RATIO }
+  const ratio = tile ? {} : { aspectRatio: measured ? `${measured.width} / ${measured.height}` : UNKNOWN_RATIO }
+  /** The cover over a hidden picture: the click that takes it away is not a click on the picture. */
+  const cover = hidden ? (
+    <span className="spoiler-cover" title="Click to reveal" role="button" aria-label="Reveal the spoiler">
+      <span className="spoiler-pill">SPOILER</span>
+    </span>
+  ) : null
+  const reveal = hidden
+    ? {
+        onClickCapture: (e: React.MouseEvent): void => {
+          e.stopPropagation()
+          e.preventDefault()
+          setRevealed(true)
+        }
+      }
+    : {}
 
   const canRefresh = !!(isDiscordAttachment(openTarget) && bufferId && messageId && onRefresh)
   const lapsed = canRefresh && linkExpired(openTarget)
@@ -316,7 +367,12 @@ export function MediaEmbed({
     }
 
     return (
-      <span className="media-embed-wrap" style={ratio}>
+      <span
+        ref={wrapRef}
+        className={classes('media-embed-wrap', tile && 'tile', hidden && 'spoilered')}
+        style={ratio}
+        {...reveal}
+      >
         <img
           className="media-embed"
           style={ratio}
@@ -341,6 +397,7 @@ export function MediaEmbed({
           onError={() => (showingPreview ? setPreviewGone(true) : setFailed(true))}
           onClick={load}
         />
+        {cover}
         {showingPreview && stale && (
           <span className="expired-overlay small">
             <Icon name={refreshing ? 'hourglass_empty' : 'refresh'} size={16} />
@@ -349,15 +406,8 @@ export function MediaEmbed({
         )}
         {expanded && (
           <Lightbox
-            source={{
-              kind: 'image',
-              src: media(expandedSrc),
-              externalUrl: openTarget,
-              filename: attachment?.filename,
-              width: attachment?.width,
-              height: attachment?.height,
-              from
-            }}
+            source={viewerSource()}
+            anchor={wrapRef.current}
             onClose={() => setExpanded(false)}
           />
         )}
@@ -373,7 +423,12 @@ export function MediaEmbed({
     // and handling the failure is the honest test.
     return (
       <>
-        <span className="media-embed-wrap video" style={ratio}>
+        <span
+          ref={wrapRef}
+          className={classes('media-embed-wrap video', tile && 'tile', hidden && 'spoilered')}
+          style={ratio}
+          {...reveal}
+        >
           <video
             className="media-embed"
             style={ratio}
@@ -394,17 +449,12 @@ export function MediaEmbed({
           >
             <Icon name="fullscreen" size={16} />
           </button>
+          {cover}
         </span>
         {expanded && (
           <Lightbox
-            source={{
-              kind: 'video',
-              src: media(fullSrc),
-              externalUrl: openTarget,
-              filename: attachment?.filename,
-              loop,
-              from
-            }}
+            source={viewerSource()}
+            anchor={wrapRef.current}
             onClose={() => setExpanded(false)}
           />
         )}

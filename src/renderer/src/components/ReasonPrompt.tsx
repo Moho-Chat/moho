@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
-import { Icon } from './Icon'
+import { Modal } from './Modal'
 
 /**
  * A sentence somebody has to write before something happens.
@@ -40,54 +39,42 @@ export function ReasonPrompt({
 
   useEffect(() => {
     box.current?.focus()
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onCancel])
+  }, [])
 
   const ready = optional || reason.trim().length > 0
 
-  return createPortal(
-    <div className="lightbox-backdrop" onClick={onCancel}>
-      <div className="reason-prompt" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className="reason-prompt-head">
-          <Icon name={danger ? 'flag' : 'door_front'} size={18} />
-          <span>{title}</span>
-        </div>
-        <p className="small muted">{detail}</p>
-        <textarea
-          ref={box}
-          className="reason-prompt-box"
-          rows={3}
-          value={reason}
-          placeholder={placeholder}
-          onChange={(e) => setReason(e.target.value)}
-          onKeyDown={(e) => {
-            // Enter sends, because this is one sentence rather than a
-            // document; a newline is still there for anybody who wants two.
-            if (e.key === 'Enter' && !e.shiftKey && ready) {
-              e.preventDefault()
-              onConfirm(reason.trim())
-            }
-          }}
-        />
-        <div className="reason-prompt-actions">
-          <button type="button" className="button" onClick={onCancel}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className={danger ? 'button danger' : 'button'}
-            disabled={!ready}
-            onClick={() => onConfirm(reason.trim())}
-          >
-            {confirmLabel}
-          </button>
-        </div>
+  return (
+    <Modal title={title} icon={danger ? 'flag' : 'door_front'} onClose={onCancel} className="reason-prompt">
+      <p className="small muted">{detail}</p>
+      <textarea
+        ref={box}
+        className="reason-prompt-box"
+        rows={3}
+        value={reason}
+        placeholder={placeholder}
+        onChange={(e) => setReason(e.target.value)}
+        onKeyDown={(e) => {
+          // Enter sends, because this is one sentence rather than a
+          // document; a newline is still there for anybody who wants two.
+          if (e.key === 'Enter' && !e.shiftKey && ready) {
+            e.preventDefault()
+            onConfirm(reason.trim())
+          }
+        }}
+      />
+      <div className="reason-prompt-actions">
+        <button type="button" className="button subtle" onClick={onCancel}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className={danger ? 'button danger' : 'button'}
+          disabled={!ready}
+          onClick={() => onConfirm(reason.trim())}
+        >
+          {confirmLabel}
+        </button>
       </div>
-    </div>,
-    document.body
+    </Modal>
   )
 }

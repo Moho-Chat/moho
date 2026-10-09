@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
-import { Icon, IconButton } from './Icon'
+import { IconButton } from './Icon'
+import { Modal } from './Modal'
 import { useStore } from '../state/hooks'
 
 /** What the daemon read back off the server. */
@@ -46,28 +46,15 @@ export function EventSource({
       .catch((e: Error) => setFailed(e.message))
   }, [bufferId, messageId])
 
-  // Escape closes it, the same as every other dialog here. A panel of JSON is
-  // exactly the thing somebody opens by accident and wants gone.
-  useEffect(() => {
-    const key = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', key)
-    return () => window.removeEventListener('keydown', key)
-  }, [onClose])
-
   const copy = (value: unknown): void => {
     void window.moho.copyText(JSON.stringify(value, null, 2))
     store.toast('info', 'Copied')
   }
 
-  return createPortal(
-    <div className="lightbox-backdrop" onClick={onClose}>
-      <div className="event-source" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className="reason-prompt-head">
-          <Icon name="data_object" size={18} />
-          <span>Message source</span>
-        </div>
+  // Escape closes it, the same as every other dialog here: a panel of JSON is
+  // exactly the thing somebody opens by accident and wants gone.
+  return (
+    <Modal title="Message source" icon="data_object" className="event-source" onClose={onClose}>
         <div className="small muted ellipsis">{messageId}</div>
 
         {!source && !failed && <div className="small muted">Reading…</div>}
@@ -94,9 +81,7 @@ export function EventSource({
             Close
           </button>
         </div>
-      </div>
-    </div>,
-    document.body
+    </Modal>
   )
 }
 

@@ -284,9 +284,21 @@ export function fileNameOf(filePath: string): string {
   return parts[parts.length - 1] || filePath
 }
 
+/**
+ * How clock times are written: 24-hour as this has always been, 12-hour, or
+ * whatever the system's locale says. Set from the appearance settings.
+ */
+let hourFormat: '12' | '24' | 'auto' = '24'
+export function setHourFormat(format: string | undefined): void {
+  hourFormat = format === '12' || format === 'auto' ? format : '24'
+}
+function hour12Option(): { hour12?: boolean } {
+  return hourFormat === 'auto' ? {} : { hour12: hourFormat === '12' }
+}
+
 export function formatTime(ts: number): string {
   const d = new Date(ts * 1000)
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+  return d.toLocaleTimeString([], { hour: hourFormat === '12' ? 'numeric' : '2-digit', minute: '2-digit', ...hour12Option() })
 }
 
 export function formatFullTime(ts: number): string {
@@ -311,9 +323,57 @@ export function formatRelativeTime(ts: number, now = Date.now()): string {
   if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
   if (secs < 23 * 3600) return `${Math.floor(secs / 3600)}h ago`
   const d = new Date(ts * 1000)
-  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', ...hour12Option() })
   if (secs < 47 * 3600) return `Yesterday at ${time}`
   return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} at ${time}`
+}
+
+/** The calendar day a time falls on, in this person's own time zone, as a comparable number. */
+export function dayOf(ts: number): number {
+  const d = new Date(ts * 1000)
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate()
+}
+
+/**
+ * What a date line says: "Today", "Yesterday", or the date in full. The year
+ * is always there - a conversation can be years deep, and "March 3" alone
+ * would be a guess.
+ */
+export function dayLabel(ts: number, now = Date.now()): string {
+  const day = dayOf(ts)
+  if (day === dayOf(Math.floor(now / 1000))) return 'Today'
+  if (day === dayOf(Math.floor(now / 1000) - 86400)) return 'Yesterday'
+  return new Date(ts * 1000).toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric' })
+}
+
+/**
+ * Whether a date line belongs before message `i`: the first one there is, and
+ * wherever the day changes. Messages with no usable time (a local notice) are
+ * left out of it, neither starting a day nor ending one.
+ */
+export function startsNewDay(messages: { ts: number }[], i: number): boolean {
+  const ts = messages[i]?.ts
+  if (!ts || ts <= 0) return false
+  for (let j = i - 1; j >= 0; j--) {
+    const before = messages[j].ts
+    if (before > 0) return dayOf(before) !== dayOf(ts)
+  }
+  return true
+}
+
+/**
+ * The same, short enough for a column: "now", "8m", "3h", "Yest", then the
+ * date ("Mar 3"). The exact time is in the row's tooltip. A column wide enough
+ * for "Yesterday at 2:02 PM" is 100px of margin on every line; one that is not
+ * made that label overflow into the avatar.
+ */
+export function formatRelativeShort(ts: number, now = Date.now()): string {
+  const secs = Math.max(0, Math.floor(now / 1000) - ts)
+  if (secs < 60) return 'now'
+  if (secs < 3600) return `${Math.floor(secs / 60)}m`
+  if (secs < 23 * 3600) return `${Math.floor(secs / 3600)}h`
+  if (secs < 47 * 3600) return 'Yest'
+  return new Date(ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
 export function classes(...parts: (string | false | null | undefined)[]): string {
@@ -326,4 +386,16 @@ export function humanBytes(bytes: number): string {
   if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`
   if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`
   return `${bytes} B`
+}
+
+/** A size as it is read: "812 B", "11.7 KB", "3.4 MB". */
+export function humanSize(bytes: number): string {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let size = bytes
+  let unit = 0
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024
+    unit += 1
+  }
+  return unit === 0 ? `${bytes} B` : `${size.toFixed(1)} ${units[unit]}`
 }

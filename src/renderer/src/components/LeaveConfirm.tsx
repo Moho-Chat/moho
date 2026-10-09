@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
-import { Icon } from './Icon'
+import { Modal } from './Modal'
 
 /**
  * Confirming something that cannot be undone from here.
@@ -33,37 +32,18 @@ export function LeaveConfirm(props: {
     return () => clearTimeout(t)
   }, [left])
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onCancel])
 
-  return createPortal(
-    <div className="lightbox-backdrop" onClick={onCancel}>
-      <div className="leave-confirm" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className="leave-confirm-head">
-          <Icon name="warning" size={20} color="var(--warning)" />
-          <span>Leave {name}?</span>
-        </div>
-        <p className="small">{detail}</p>
-        <div className="leave-confirm-actions">
-          <button type="button" className="button" onClick={onCancel} autoFocus>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="button danger"
-            disabled={left > 0}
-            onClick={onLeave}
-          >
-            {left > 0 ? `Leave in ${left}` : 'Leave'}
-          </button>
-        </div>
+  return (
+    <Modal title={`Leave ${name}?`} icon="warning" iconColor="var(--warning)" onClose={onCancel} className="leave-confirm">
+      <p className="small">{detail}</p>
+      <div className="leave-confirm-actions">
+        <button type="button" className="button subtle" onClick={onCancel} autoFocus>
+          Cancel
+        </button>
+        <button type="button" className="button danger" disabled={left > 0} onClick={onLeave}>
+          {left > 0 ? `Leave in ${left}` : 'Leave'}
+        </button>
       </div>
-    </div>,
-    document.body
+    </Modal>
   )
 }

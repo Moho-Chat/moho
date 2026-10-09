@@ -2,13 +2,15 @@ import { useMediaUrl } from '../lib/route'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { bufferLink } from '../lib/bufferlink'
 import { Icon, IconButton, ServiceMark } from './Icon'
-import { ContextMenu, useContextMenu } from './ContextMenu'
+import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { bufferMenuEntries } from '../lib/buffermenu'
 import { UserFooter } from './UserFooter'
 import { VoiceChannels } from './VoiceChannels'
 import { VoicePanel } from './VoicePanel'
+import { presenceClass, presenceLabel } from '../lib/presence'
 import { useChat, useIdSetPref, useMapPref, usePref, useStore } from '../state/hooks'
 import {
+  compareInBand,
   dmGroup,
   DM_GROUP_ID,
   isDirectMessage,
@@ -180,7 +182,8 @@ export function BufferList(): JSX.Element {
 
   /**
    * What the pane lists, in reading order: pinned first, then direct messages,
-   * then channels, each band by most recent activity.
+   * then channels. Direct messages go by most recent activity; channels hold
+   * their place (see `compareInBand`).
    *
    * The pinned page is the same list unfiltered by group - a pin is a
    * cross-service shortcut, so its page is the one place they all appear
@@ -210,9 +213,7 @@ export function BufferList(): JSX.Element {
       if (b.kind === 'dm') return 2
       return 3
     }
-    return [...inScope].sort(
-      (a, b) => band(a) - band(b) || (b.lastActivityTs || 0) - (a.lastActivityTs || 0)
-    )
+    return [...inScope].sort((a, b) => band(a) - band(b) || compareInBand(a, b))
   }, [visible, activeGroup, isPinnedPage, isDmPage, pinned])
 
   /**
@@ -227,8 +228,7 @@ export function BufferList(): JSX.Element {
    *
    * Ordinary channels sort by the service's own position within a heading,
    * since that is the order the server arranged them in and the reason it
-   * supplies one. The gathered pages have no such order to respect and keep
-   * the recency they were already sorted by.
+   * supplies one. The gathered pages keep the order they were sorted into.
    */
   const grouped = useMemo(() => {
     if (!activeGroup) return null
@@ -279,9 +279,9 @@ export function BufferList(): JSX.Element {
   }, [store, eventGuild?.accountId, eventGuild?.guildId])
   const openCategoryMenu = (e: React.MouseEvent, section: CategorySection): void => {
     e.preventDefault()
-    // Only a heading you made is yours to rename or remove; a server's
-    // category is theirs, and offering to rename it would be a lie.
-    if (!section.custom) return
+    // Every heading can be read through; only one you made is yours to rename
+    // or remove - a server's category is theirs, and offering to rename it
+    // would be a lie.
     setCatMenu({ x: e.clientX, y: e.clientY, section })
   }
 
@@ -293,6 +293,10 @@ export function BufferList(): JSX.Element {
       muted={isEffectivelyMuted(b)}
       pinned={isPinned(b.id)}
       accounts={accounts}
+      // The pinned page gathers rooms from every service, so each says which
+      // one it is from - `#general` on Discord and on IRC look the same
+      // otherwise. A conversation with a person keeps their face instead.
+      showServiceIcon={isPinnedPage && b.kind !== 'dm'}
       // Already on the page being shown; keep the rail where it is. A room
       // still being joined has nothing behind it to select - it exists in
       // this window only - so the row is there to be seen rather than opened.
@@ -572,23 +576,44 @@ export function BufferList(): JSX.Element {
                           title={
                             section.custom
                               ? 'Your heading — drop channels here, drag to reorder, right-click to rename or remove'
-                              : `${section.name} — drag to reorder`
+                              : `${section.name} — drag to reorder, right-click to mark as read`
                           }
                         >
-                          <Icon name={folded ? 'chevron_right' : 'expand_more'} size={14} />
+                          <Icon name="expand_more" size={14} className={classes('fold-chevron', folded && 'folded')} />
                           <span className="ellipsis">{section.name}</span>
-                          {folded && section.buffers.length > 0 && (
-                            <span className="muted category-count">{section.buffers.length}</span>
-                          )}
+                          {folded && section.buffers.length > 0 && (() => {
+                            // What is waiting in what is folded away, which is
+                            // the thing worth knowing about a closed heading;
+                            // how many channels it has is the fallback.
+                            const waiting = section.buffers.filter((b) => b.unread > 0 && (!isEffectivelyMuted(b) || b.highlight))
+                            const unread = waiting.reduce((n, b) => n + b.unread, 0)
+                            return unread > 0 ? (
+                              <span
+                                className={classes('unread-badge category-count', waiting.some((b) => b.highlight) && 'highlight')}
+                                title={`${unread} unread in ${waiting.length} ${waiting.length === 1 ? 'channel' : 'channels'}`}
+                              >
+                                {unread > 99 ? '99+' : unread}
+                              </span>
+                            ) : (
+                              <span className="muted category-count">{section.buffers.length}</span>
+                            )
+                          })()}
                         </button>
                         )
                       )}
 
                       {/* A collapsed heading still shows the channel you are
                           reading, or selecting it from elsewhere would appear
-                          to do nothing. */}
+                          to do nothing - and the ones with something waiting,
+                          or folding a category would hide exactly what the
+                          list is for. */}
                       {section.buffers
-                        .filter((b) => !folded || b.id === activeBufferId)
+                        .filter(
+                          (b) =>
+                            !folded ||
+                            b.id === activeBufferId ||
+                            (b.unread > 0 && (!isEffectivelyMuted(b) || b.highlight))
+                        )
                         .map((b) => renderRow(b))}
                       {section.custom && section.buffers.length === 0 && !folded && (
                         <div className="category-empty small muted">Drag a channel onto this heading</div>
@@ -654,19 +679,30 @@ export function BufferList(): JSX.Element {
           y={catMenu.y}
           entries={[
             {
-              label: 'Rename',
-              icon: 'edit',
-              onClick: () =>
-                setNaming({ id: catMenu.section.key, name: catMenu.section.name ?? '' })
+              label: 'Mark as read',
+              icon: 'mark_chat_read',
+              disabled: !catMenu.section.buffers.some((b) => b.unread > 0 || b.highlight),
+              onClick: () => void store.markBuffersRead(catMenu.section.buffers.map((b) => b.id))
             },
-            {
-              label: 'Remove',
-              icon: 'delete',
-              danger: true,
-              // The channels stay; only the heading goes, and they fall back
-              // to wherever the service filed them.
-              onClick: () => writeCategories(myCategories.filter((c) => c.id !== catMenu.section.key))
-            }
+            ...(catMenu.section.custom
+              ? ([
+                  { separator: true },
+                  {
+                    label: 'Rename',
+                    icon: 'edit',
+                    onClick: () =>
+                      setNaming({ id: catMenu.section.key, name: catMenu.section.name ?? '' })
+                  },
+                  {
+                    label: 'Remove',
+                    icon: 'delete',
+                    danger: true,
+                    // The channels stay; only the heading goes, and they fall back
+                    // to wherever the service filed them.
+                    onClick: () => writeCategories(myCategories.filter((c) => c.id !== catMenu.section.key))
+                  }
+                ] as MenuEntry[])
+              : [])
           ]}
           onClose={() => setCatMenu(null)}
         />
@@ -776,13 +812,9 @@ export function dmStatus(
  * is nothing to leave and this only hides it.
  */
 function ConnectionDot({ state }: { state: string }): JSX.Element {
-  const color =
-    state === 'connected'
-      ? 'var(--success)'
-      : state === 'connecting'
-        ? 'var(--warning)'
-        : 'var(--outline)'
-  return <span className="connection-dot" style={{ background: color }} title={state} />
+  // The same dot as a person's, because it says the same kind of thing: here,
+  // being reached, or not.
+  return <span className={`connection-dot ${presenceClass(state)}`} title={presenceLabel(state)} />
 }
 
 interface BufferRowProps {
@@ -872,6 +904,7 @@ function BufferRow({
   onDragEnd
 }: BufferRowProps): JSX.Element {
   const { menu, open, close } = useContextMenu()
+  const store = useStore()
   const account = accounts.find((a) => a.id === buffer.accountId)
   // A DM's picture comes off the service's CDN; through the route for a
   // strictly routed account (#257).
@@ -908,6 +941,9 @@ function BufferRow({
     // that it is not one of the others - a notice about a quota is easy to
     // scroll past when it arrives in what looks like a room a stranger made.
     <Icon name={serviceRoomGlyph()} size={15} />
+  ) : buffer.forum ? (
+    // A forum is posts, not a place to talk, and says so in the glyph.
+    <Icon name="forum" size={15} />
   ) : (
     <Icon name={bufferKindGlyph(buffer.kind)} size={15} />
   )
@@ -958,6 +994,7 @@ function BufferRow({
     onFile,
     onPopOut,
     onDock,
+    onMarkRead: () => void store.markBuffersRead([buffer.id]),
     onMarkUnread: account?.service === 'matrix' ? onMarkUnread : undefined,
     onTag: account?.service === 'matrix' ? onTag : undefined,
     markedUnread: buffer.markedUnread
@@ -971,6 +1008,10 @@ function BufferRow({
           'buffer-row',
           active && 'active',
           buffer.highlight && 'highlight',
+          // Said by the name, not only by a number beside it: bold, and a bar
+          // at the edge. Not for a muted room, which asked not to be told.
+          ((buffer.unread > 0 && (!muted || buffer.highlight)) || (buffer.markedUnread && !muted)) && 'unread',
+          muted && 'muted-row',
           lifted && 'lifted',
           link && 'unlinked'
         )}
@@ -1009,7 +1050,7 @@ function BufferRow({
             arrive is worse than either on its own. */}
         {live ? (
           <span className="live-badge">LIVE</span>
-        ) : buffer.unread > 0 && !muted ? (
+        ) : buffer.unread > 0 && (!muted || buffer.highlight) ? (
           <span className={classes('unread-badge', buffer.highlight && 'highlight')}>
             {buffer.unread > 99 ? '99+' : buffer.unread}
           </span>

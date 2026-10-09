@@ -467,9 +467,9 @@ function PinnedMessages({ buffer }: { buffer: BufferEntry }): JSX.Element | null
     }
     setOpen(true)
     setRows(null)
-    void window.moho
-      .rpc<{ pinned: Message[] }>('listPinned', { bufferId: buffer.id })
-      .then((answer) => setRows(answer.pinned))
+    void store
+      .loadPins(buffer.id)
+      .then((pinned) => setRows(pinned))
       .catch((e: Error) => {
         store.toast('error', e.message)
         setRows([])
@@ -494,6 +494,7 @@ function PinnedMessages({ buffer }: { buffer: BufferEntry }): JSX.Element | null
           className={open ? 'active' : undefined}
           onClick={show}
         />
+        {count > 0 && <span className="header-count">{count > 99 ? '99+' : count}</span>}
       </span>
       {open && (
         <HeaderPopover anchor={button.current} width={400} onClose={() => setOpen(false)}>

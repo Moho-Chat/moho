@@ -6,6 +6,7 @@ import { useChat, useStore } from '../state/hooks'
 import { classes } from '../lib/util'
 import type { BufferEntry } from '../state/store'
 import type { DiscordFriend } from '../../../shared/wire'
+import { useEscapeLayer } from '../lib/layers'
 
 /** Ten people including you, which is Discord's own ceiling. */
 const GROUP_DM_MAX_OTHERS = 9
@@ -49,19 +50,16 @@ export function AddToConversation({ buffer }: { buffer: BufferEntry }): JSX.Elem
       .catch((e: Error) => store.toast('error', e.message))
   }, [open, accountId, store])
 
+  useEscapeLayer(() => setOpen(false), open)
+
   useEffect(() => {
     if (!open) return
     const away = (e: MouseEvent): void => {
       if (!box.current?.contains(e.target as Node)) setOpen(false)
     }
-    const key = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setOpen(false)
-    }
     document.addEventListener('mousedown', away)
-    window.addEventListener('keydown', key)
     return () => {
       document.removeEventListener('mousedown', away)
-      window.removeEventListener('keydown', key)
     }
   }, [open])
 
@@ -158,7 +156,7 @@ export function AddToConversation({ buffer }: { buffer: BufferEntry }): JSX.Elem
                   </span>
                 )}
                 <span className="ellipsis">{f.globalName || f.username}</span>
-                <span className={`presence-dot ${f.status || 'offline'}`} />
+                <span className={`status-dot ${f.status || 'offline'}`} />
               </button>
             ))}
 

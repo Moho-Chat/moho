@@ -58,6 +58,8 @@ export interface BufferMenuInput {
   onMarkUnread?: () => void
   /** Already marked, so the entry has nothing left to offer. */
   markedUnread?: boolean
+  /** Clears what is waiting here; offered only while something is. */
+  onMarkRead?: () => void
 }
 
 /** What leaving is called, which depends on what is being left. */
@@ -97,6 +99,7 @@ export function bufferMenuEntries({
   onFile,
   onPopOut,
   onDock,
+  onMarkRead,
   onMarkUnread,
   markedUnread
 }: BufferMenuInput): MenuEntry[] {
@@ -172,6 +175,9 @@ export function bufferMenuEntries({
     // those two are about it always. Offered only where it can be kept, and
     // not offered again once it is set - reading the room is what takes it
     // off, which is the gesture somebody already has.
+    ...(onMarkRead && (buffer.unread > 0 || buffer.highlight || buffer.markedUnread)
+      ? ([{ label: 'Mark as read', icon: 'mark_chat_read', onClick: onMarkRead }] as MenuEntry[])
+      : []),
     ...(onMarkUnread && !markedUnread
       ? ([{ label: 'Mark as unread', icon: 'mark_chat_unread', onClick: onMarkUnread }] as MenuEntry[])
       : []),

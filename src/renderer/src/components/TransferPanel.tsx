@@ -1,6 +1,7 @@
 import { Icon, IconButton } from './Icon'
 import { useChat, useStore } from '../state/hooks'
 import type { DccTransfer } from '../../../shared/wire'
+import { humanSize } from '../lib/util'
 
 /**
  * Files offered over IRC: the asking, and then the watching.
@@ -218,13 +219,4 @@ export function humanRate(bytesPerSecond: number): string {
   return `${humanSize(bytesPerSecond)}/s`
 }
 
-export function humanSize(bytes: number): string {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let size = bytes
-  let unit = 0
-  while (size >= 1024 && unit < units.length - 1) {
-    size /= 1024
-    unit += 1
-  }
-  return unit === 0 ? `${bytes} B` : `${size.toFixed(1)} ${units[unit]}`
-}
+export { humanSize }

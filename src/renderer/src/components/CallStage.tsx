@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton } from './Icon'
+import { Modal } from './Modal'
 import { VideoStage } from './VideoStage'
 import { Stage, fitTiles, type StageButton, type StageTile } from './stage/Stage'
 import { Avatar } from './Avatar'
@@ -367,12 +368,7 @@ export function ScreenPicker(): JSX.Element | null {
   if (!sources) return null
 
   return (
-    <div className="lightbox-backdrop" onClick={() => store.chooseScreenSource(null)}>
-      <div className="screen-picker" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className="screen-picker-head">
-          <span>Share a screen or window</span>
-          <IconButton name="close" size={16} title="Cancel" onClick={() => store.chooseScreenSource(null)} />
-        </div>
+    <Modal title="Share a screen or window" icon="screen_share" className="screen-picker" onClose={() => store.chooseScreenSource(null)}>
         <div className="screen-picker-grid">
           {sources.map((source) => (
             <button
@@ -386,47 +382,7 @@ export function ScreenPicker(): JSX.Element | null {
             </button>
           ))}
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }
 
-/**
- * Somebody ringing, and the two answers.
- *
- * Its own panel rather than a line in the log, because a call is answered in
- * the seconds it is offered and a message that scrolls is not an offer. Two
- * ways in, because an offer with a camera and one without are different
- * things to accept - and answering a video call with audio only is a thing
- * people do on purpose.
- */
-export function IncomingMatrixCall(): JSX.Element | null {
-  const store = useStore()
-  const ringing = useChat((s) => s.ringingCall)
-  const buffers = useChat((s) => s.buffers)
-  if (!ringing) return null
-
-  const where = buffers.find((b) => b.id === ringing.bufferId)?.name ?? ''
-
-  return (
-    <div className="incoming-calls">
-      <div className="incoming-call">
-        <Icon name={ringing.video ? 'videocam' : 'call'} size={18} />
-        <span className="ellipsis">
-          {ringing.from} is calling{where ? ` in ${where}` : ''}
-        </span>
-        <button type="button" className="button" onClick={() => void store.answerMatrixCall(false)}>
-          Answer
-        </button>
-        {ringing.video && (
-          <button type="button" className="button" onClick={() => void store.answerMatrixCall(true)}>
-            With video
-          </button>
-        )}
-        <button type="button" className="button danger" onClick={() => store.declineMatrixCall()}>
-          Decline
-        </button>
-      </div>
-    </div>
-  )
-}

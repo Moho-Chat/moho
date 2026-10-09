@@ -10,6 +10,8 @@ export interface Account {
    * `state`, which is whether the connection is up.
    */
   status?: string
+  /** What it says beside the status, where the service has a place for that. */
+  statusText?: string
   state: string
   autojoin: string
   hasNickservPassword: boolean
@@ -92,6 +94,15 @@ export interface Buffer {
   name: string
   lastActivityTs: number
   avatarUrl?: string
+  /** What the conversation says it is for, where the service has such a thing. */
+  topic?: string
+  /**
+   * Why nothing can be written here, when that is so - a channel this account
+   * may read but not write in, or Discord's own notices. Absent where it can.
+   */
+  readOnly?: string
+  /** A Discord forum: a list of posts, each a thread, not a conversation. */
+  forum?: boolean
   /** Matrix only - absent, not false, for protocols with no encryption concept. */
   encrypted?: boolean
   /**
@@ -455,6 +466,16 @@ export interface Embed {
   provider?: string
   /** Who made it: a video's channel. */
   author?: string
+  /** The labelled lines under the description. */
+  fields?: { name: string; value: string }[]
+  /** The small line along the bottom. */
+  footer?: string
+  /** A button along the bottom of the card. With no address it is drawn and goes nowhere. */
+  cta?: { label: string; url?: string }
+  /** "notice" for the platform's own notices to an account. */
+  kind?: string
+  /** A glyph for the heading. */
+  icon?: string
 }
 
 /**
@@ -503,6 +524,8 @@ export interface Message {
   kind: string
   replyTo?: ReplyPreview
   edited?: boolean
+  /** When the edit was seen, in Unix seconds; absent for one that was already there. */
+  editedTs?: number
   reactions?: Reaction[]
   isOwn?: boolean
   avatarUrl?: string
@@ -618,6 +641,8 @@ export interface Member {
    * split into online and offline.
    */
   status?: string
+  /** Their picture, where the service has one in its member list. */
+  avatarUrl?: string
 }
 
 export interface Protocol {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Icon, IconButton } from './Icon'
 import { useChat } from '../state/hooks'
+import { OPEN_SWITCHER } from './QuickSwitcher'
 
 /**
  * The window's own chrome, drawn in the renderer because the BrowserWindow is
@@ -42,14 +43,29 @@ export function TitleBar({ title }: { title?: string } = {}): JSX.Element {
         )}
       </div>
 
+      {/* Only in the main window: a popout is one conversation, and nowhere
+          else to go. */}
+      {title === undefined && (
+        <button
+          type="button"
+          className="titlebar-search"
+          title="Jump to a conversation (Ctrl+K)"
+          onClick={() => window.dispatchEvent(new CustomEvent(OPEN_SWITCHER))}
+        >
+          <Icon name="search" size={14} />
+          <span>Where to?</span>
+          <kbd>Ctrl K</kbd>
+        </button>
+      )}
+
       <div className="titlebar-controls">
         <IconButton name="remove" title="Minimize" onClick={() => void window.moho.window.minimize()} />
         <IconButton
-          name={maximized ? 'fullscreen_exit' : 'fullscreen'}
+          name={maximized ? 'filter_none' : 'crop_square'}
           title={maximized ? 'Restore' : 'Maximize'}
           onClick={() => void window.moho.window.toggleMaximize().then(setMaximized)}
         />
-        <IconButton name="close" title="Close" onClick={() => void window.moho.window.close()} />
+        <IconButton name="close" title="Close" className="titlebar-close" onClick={() => void window.moho.window.close()} />
       </div>
     </div>
   )

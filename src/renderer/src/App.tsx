@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { TitleBar } from './components/TitleBar'
 import { BufferList } from './components/BufferList'
 import { ServerRail } from './components/ServerRail'
+import { ForumPane } from './components/ForumPane'
 import { MessageList } from './components/MessageList'
 import { MentionsInbox } from './components/MentionsInbox'
 import { MentionsPage } from './components/MentionsPage'
@@ -17,12 +18,11 @@ import { ProfileCard } from './components/ProfileCard'
 import { ConversationTools } from './components/ConversationTools'
 import { AccountsPanel } from './components/AccountsPanel'
 import { SettingsPanel } from './components/settings/SettingsPanel'
-import { DownloadsPanel } from './components/DownloadsPanel'
 import { JoinPanel } from './components/JoinPanel'
 import { PeekBar, PeekView } from './components/PeekView'
 import { Toasts } from './components/Toasts'
 import { IncomingCallPanel } from './components/IncomingCallPanel'
-import { CallAudio, CallStage, IncomingMatrixCall, ScreenPicker } from './components/CallStage'
+import { CallAudio, CallStage, ScreenPicker } from './components/CallStage'
 import { CallWindowHost } from './components/stage/CallWindowHost'
 import { StreamStage, StreamWindowHost } from './components/StreamStage'
 import { EventCreatePanel, EventsPane } from './components/DiscordEvents'
@@ -33,12 +33,23 @@ import { Icon, IconButton } from './components/Icon'
 import { ConversationMenu } from './components/ConversationMenu'
 import { watchDelta, watchedKickBuffers } from './lib/kickwatch'
 import { useActiveBuffer, useChat, usePref, usePrefsReady, useStore } from './state/hooks'
-import { bufferDisplayName } from './lib/util'
+import { bufferDisplayName, setHourFormat } from './lib/util'
 import type { BufferEntry } from './state/store'
 import { loadLocalEmotes, recoverMissingEmotes } from './lib/emotecache'
 import { restoreMissingMedia } from './lib/mediarestore'
+import { useShortcuts } from './lib/shortcuts'
+import { useEscapeLayer } from './lib/layers'
+import { installDialogFocus } from './lib/dialogs'
+import { QuickSwitcher } from './components/QuickSwitcher'
 
 export default function App(): JSX.Element {
+  useShortcuts()
+  useEffect(() => installDialogFocus(), [])
+  // The full-page panels - Settings, Accounts, Downloads, Join - go away on
+  // Escape like everything else that opens over the window, but underneath
+  // whatever opened on top of them.
+  const panelOpen = useChat((s) => s.activePanel !== '')
+  useEscapeLayer(() => store.setActivePanel(''), panelOpen)
   const store = useStore()
   const prefsReady = usePrefsReady()
   const [booted, setBooted] = useState(false)
@@ -64,6 +75,19 @@ export default function App(): JSX.Element {
   const streamElsewhere = !!watching && (watching.bufferId !== activeBufferId || activePanel !== '')
 
   const [sidebarFolded, setSidebarFolded] = usePref<boolean>('ui.sidebarFolded', false)
+  // How the window looks, from the appearance settings: how large, how close
+  // together, whether things move, how the clock is written.
+  const [zoom] = usePref<number>('appearance.zoom', 1)
+  const [density] = usePref<string>('appearance.density', 'cozy')
+  const [reduceMotion] = usePref<boolean>('appearance.reduceMotion', false)
+  const [hourFormat] = usePref<string>('display.hourFormat', '24')
+  setHourFormat(hourFormat)
+  useEffect(() => window.moho.setZoom(zoom), [zoom])
+  useEffect(() => {
+    document.documentElement.dataset.density = density
+    if (reduceMotion) document.documentElement.dataset.reduceMotion = ''
+    else delete document.documentElement.dataset.reduceMotion
+  }, [density, reduceMotion])
   const [userListFolded, setUserListFolded] = usePref<boolean>('ui.userListFolded', false)
   const [savedBufferId] = usePref<string>('ui.activeBufferId', '')
   const [savedGroupId] = usePref<string>('ui.activeGroupId', '')
@@ -140,12 +164,8 @@ export default function App(): JSX.Element {
   const headerTitle =
     peeking
       ? `Looking · ${peek?.name || peek?.alias || ''}`
-      : activePanel === 'accounts'
-      ? 'Accounts'
-      : activePanel === 'settings'
+      : activePanel === 'accounts' || activePanel === 'settings' || activePanel === 'downloads'
         ? 'Settings'
-        : activePanel === 'downloads'
-        ? 'Downloads'
         : activePanel === 'join'
         ? `Join · ${joinAccount?.displayName ?? ''}`
         : onMentionsPage
@@ -210,8 +230,9 @@ export default function App(): JSX.Element {
 
             {activePanel === '' && !onMentionsPage && !peeking && buffer?.kind === 'channel' && (
               <IconButton
-                name={userListFolded ? 'group' : 'group_off'}
+                name="group"
                 title={userListFolded ? 'Show members' : 'Hide members'}
+                className={userListFolded ? undefined : 'active'}
                 onClick={() => setUserListFolded(!userListFolded)}
               />
             )}
@@ -248,7 +269,8 @@ export default function App(): JSX.Element {
             <>
               {/* Above the box, saying why it will not work here yet. */}
               {buffer && <MembershipGate buffer={buffer} />}
-              <Composer />
+              {/* A forum has no box: what is said in it is said in a post. */}
+              {!buffer?.forum && <Composer />}
             </>
           )}
         </div>
@@ -286,7 +308,6 @@ export default function App(): JSX.Element {
       <IncomingCallPanel />
       {/* A Matrix call rings here too, but is answered by this window rather
           than by the daemon - the media is the window's. */}
-      <IncomingMatrixCall />
       <ScreenPicker />
       {/* A form a Discord bot asked for. Over everything, because it is the
           answer to something just pressed and it expires. */}
@@ -314,6 +335,7 @@ export default function App(): JSX.Element {
       <TransferPanel />
       <FileDrop />
       <Toasts />
+      <QuickSwitcher />
       <EditMenu />
     </div>
   )
@@ -353,13 +375,16 @@ function Body({
   activeGroupId: string
   peeking: boolean
 }): JSX.Element {
-  if (activePanel === 'settings') return <SettingsPanel />
-  // Above the no-accounts case below: a finished download is still worth
-  // looking at on a machine whose accounts have since been removed.
-  if (activePanel === 'downloads') return <DownloadsPanel />
+  const activeBuffer = useActiveBuffer()
+  // Settings, with Accounts and Downloads as pages of it. Above the
+  // no-accounts case below: a finished download is still worth looking at on
+  // a machine whose accounts have since been removed.
+  if (activePanel === 'settings' || activePanel === 'accounts' || activePanel === 'downloads') {
+    return <SettingsPanel page={activePanel} />
+  }
   // With no accounts at all, the accounts panel is the only useful thing to
   // show - there is nothing to chat in yet.
-  if (activePanel === 'accounts' || !hasAccounts) return <AccountsPanel />
+  if (!hasAccounts) return <AccountsPanel />
   if (activePanel === 'join') return <JoinPanel />
   // A room being looked into: the pane's own view, with nothing to type into.
   if (peeking) return <PeekView />
@@ -369,6 +394,8 @@ function Body({
   // An invitation stands where the conversation would, because it is the
   // conversation being offered.
   if (activeGroupId.startsWith(INVITE_PREFIX)) return <InvitePanel groupId={activeGroupId} />
+  // A forum is a list of posts, not a log.
+  if (hasBuffer && activeBuffer?.forum) return <ForumPane buffer={activeBuffer} />
   if (hasBuffer) return <MessageList />
   return <Placeholder icon="forum" text="Select or join a channel" />
 }

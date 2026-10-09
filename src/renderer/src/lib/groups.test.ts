@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import type { BufferEntry } from '../state/store'
 import {
+  compareInBand,
+  countsTowardRail,
   fileInFolder,
   foldTogether,
   orderedGroups,
@@ -73,5 +76,45 @@ describe('folders', () => {
     expect(moved.find((f) => f.id === 'x')?.members).toEqual(['b'])
     expect(moved.find((f) => f.id === 'y')?.members).toEqual(['c', 'a'])
     expect(removeFromFolders(moved, 'c').find((f) => f.id === 'y')?.members).toEqual(['a'])
+  })
+})
+
+describe('what a muted place still says', () => {
+  const buf = (extra: Partial<BufferEntry>): BufferEntry =>
+    ({ id: 'a|#x', accountId: 'a', kind: 'channel', name: '#x', lastActivityTs: 0, groupId: 'g', unread: 3, highlight: false, ...extra }) as BufferEntry
+
+  it('counts a quiet muted channel for nothing', () => {
+    expect(countsTowardRail(buf({}), ['a|#x'], [])).toBe(false)
+    expect(countsTowardRail(buf({}), [], [], ['g'])).toBe(false)
+  })
+
+  it('still counts it once somebody has used your name', () => {
+    expect(countsTowardRail(buf({ highlight: true }), ['a|#x'], [])).toBe(true)
+    expect(countsTowardRail(buf({ highlight: true }), [], [], ['g'])).toBe(true)
+  })
+
+  it('never counts what has no row to click through to', () => {
+    expect(countsTowardRail(buf({ highlight: true }), [], ['a|#x'])).toBe(false)
+  })
+})
+
+describe('compareInBand', () => {
+  const ch = (name: string, lastActivityTs: number, position = 0) => ({ kind: 'channel' as const, name, lastActivityTs, position })
+  const dm = (name: string, lastActivityTs: number) => ({ kind: 'dm' as const, name, lastActivityTs, position: 0 })
+
+  it('keeps channels where they are however recently they spoke', () => {
+    const list = [ch('#zebra', 100), ch('#alpha', 5), ch('#mid', 50)]
+    expect(list.sort(compareInBand).map((c) => c.name)).toEqual(['#alpha', '#mid', '#zebra'])
+    // A message arriving changes nothing about the order.
+    list[0] = ch('#alpha', 9999)
+    expect(list.sort(compareInBand).map((c) => c.name)).toEqual(['#alpha', '#mid', '#zebra'])
+  })
+
+  it("follows the service's own position before the name", () => {
+    expect([ch('#a', 0, 2), ch('#b', 0, 1)].sort(compareInBand).map((c) => c.name)).toEqual(['#b', '#a'])
+  })
+
+  it('still puts the person who just wrote first among direct messages', () => {
+    expect([dm('old', 1), dm('new', 9)].sort(compareInBand).map((c) => c.name)).toEqual(['new', 'old'])
   })
 })

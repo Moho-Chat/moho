@@ -1,5 +1,5 @@
-import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { IPC, POPOUT_FLAG, type EditAction, type EditMenuRequest, type PopoutState, type ScreenSource } from '../shared/ipc'
+import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
+import { IPC, POPOUT_FLAG, UI_SHOTS_FLAG, type EditAction, type EditMenuRequest, type PopoutState, type ScreenSource } from '../shared/ipc'
 import type { NobilisEvent } from '../shared/wire'
 
 /**
@@ -121,6 +121,8 @@ const api = {
     ipcRenderer.invoke(IPC.resolveImagePage, url),
 
   /** Puts a line of text on the system clipboard. */
+  /** How large everything is drawn: 1 is as designed. */
+  setZoom: (factor: number): void => webFrame.setZoomFactor(factor),
   copyText: (text: string): Promise<void> => ipcRenderer.invoke(IPC.writeClipboardText, text),
   /**
    * Where a dropped file actually lives.
@@ -156,6 +158,14 @@ const api = {
   importGroupIcon: (groupId: string): Promise<{ path?: string; error?: string }> =>
     ipcRenderer.invoke(IPC.importGroupIcon, groupId),
   defaultDownloadDir: (): Promise<string> => ipcRenderer.invoke(IPC.defaultDownloadDir),
+  /**
+   * Puts a picture on the system clipboard: from its pixels where the page
+   * could read them, otherwise from where it lives.
+   */
+  /** How big a file is, for the tray it is staged in; null for what cannot be read. */
+  fileSize: (path: string): Promise<number | null> => ipcRenderer.invoke(IPC.fileSize, path),
+  copyImage: (source: string, dataUrl?: string): Promise<{ error?: string }> =>
+    ipcRenderer.invoke(IPC.copyImage, source, dataUrl),
   downloadMedia: (source: string, filename?: string): Promise<{ path?: string; error?: string }> =>
     ipcRenderer.invoke(IPC.downloadMedia, source, filename),
   readClipboardImage: (): Promise<string | null> => ipcRenderer.invoke(IPC.readClipboardImage),
@@ -182,6 +192,9 @@ const api = {
     ipcRenderer.invoke(IPC.markBufferRead, bufferId),
 
   /** Conversations in windows of their own. */
+  /** Whether the screenshot harness started this window - see UI_SHOTS_FLAG. */
+  uiShots: process.argv.includes(UI_SHOTS_FLAG),
+
   popout: {
     /** Set only in a popped-out window, naming the conversation it shows. */
     bufferId: popoutBufferId,

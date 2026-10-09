@@ -113,6 +113,7 @@ export interface MentionTarget {
   kind: 'member' | 'role' | 'keyword'
   /** Members only, for the picture. */
   userId?: string
+  avatarUrl?: string
 }
 
 /** The targets that match, best first. */

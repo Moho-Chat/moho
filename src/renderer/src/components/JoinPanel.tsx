@@ -1,10 +1,11 @@
 import { useMediaUrl } from '../lib/route'
-import { useEffect, useState } from 'react'
+import { SwitchRow } from './Switch'
+import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { ContextMenu } from './ContextMenu'
 import { RoomSearch } from './RoomSearch'
 import { useChat, useStore } from '../state/hooks'
-import { classes } from '../lib/util'
+import { classes, serviceLabel } from '../lib/util'
 import type { Account, DiscordFriend } from '../../../shared/wire'
 
 /**
@@ -67,22 +68,53 @@ export function JoinPanel(): JSX.Element {
   const accountId = useChat((s) => s.joinPanelAccountId)
   const account = useChat((s) => s.accounts).find((a) => a.id === accountId)
 
+  const store = useStore()
+  const all = useChat((s) => s.accounts)
   if (!account) return <div className="panel muted">No account selected.</div>
 
-  switch (account.service) {
-    case 'irc':
-      return <IrcJoin account={account} />
-    case 'matrix':
-      return <MatrixJoin account={account} />
-    case 'discord':
-      return <DiscordJoin account={account} />
-    case 'kick':
-      return <KickJoin account={account} />
-    case 'sneedchat':
-      return <SneedchatRooms account={account} />
-    default:
-      return <div className="panel muted">Joining isn&apos;t supported for this service yet.</div>
-  }
+  const body = ((): JSX.Element => {
+    switch (account.service) {
+      case 'irc':
+        return <IrcJoin account={account} />
+      case 'matrix':
+        return <MatrixJoin account={account} />
+      case 'discord':
+        return <DiscordJoin account={account} />
+      case 'kick':
+        return <KickJoin account={account} />
+      case 'sneedchat':
+        return <SneedchatRooms account={account} />
+      default:
+        return <div className="panel muted">Joining isn&apos;t supported for this service yet.</div>
+    }
+  })()
+  const joinable = all.filter((a) => ['irc', 'matrix', 'discord', 'kick', 'sneedchat'].includes(a.service))
+
+  return (
+    <div className="join-frame">
+      {/* Which account this is for, first: it decides everything below it,
+          and was only ever the one selected in the footer. */}
+      {joinable.length > 1 && (
+        <div className="join-picker" role="radiogroup" aria-label="Join on">
+          <span className="small muted">Join on</span>
+          {joinable.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              role="radio"
+              aria-checked={a.id === account.id}
+              className={`service-chip${a.id === account.id ? ' active' : ''}`}
+              onClick={() => store.setActivePanel('join', a.id)}
+            >
+              {a.displayName || a.id}
+              <span className="small muted"> · {serviceLabel(a.service)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {body}
+    </div>
+  )
 }
 
 /** A labelled field that fires on Enter and clears itself. */
@@ -113,7 +145,7 @@ function SubmitField({
           onKeyDown={(e) => e.key === 'Enter' && submit()}
         />
         <button type="button" className="button" onClick={submit} disabled={!value.trim()}>
-          Go
+          Join
         </button>
       </div>
     </div>
@@ -162,19 +194,56 @@ function IrcChannelBrowser({ account }: { account: Account }): JSX.Element {
   const serverBuffer = useChat((s) => s.buffers).find(
     (b) => b.accountId === account.id && b.kind === 'server'
   )
-  const [channels, setChannels] = useState<IrcChannelListing[] | null>(null)
+  /** One page of the network's directory, from the daemon: the window never holds the whole of it. */
+  const [directory, setDirectory] = useState<{ total: number; matching: number; channels: IrcChannelListing[] } | null>(null)
   const [asking, setAsking] = useState(false)
   const [filter, setFilter] = useState('')
+  const [problem, setProblem] = useState('')
+  const waiting = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /** The busiest few that match, asked of the daemon, which holds the list. */
+  const fetchPage = (query: string): void => {
+    void window.moho
+      .rpc<{ total: number; matching: number; channels: IrcChannelListing[] }>('getIrcChannels', {
+        accountId: account.id,
+        query,
+        limit: 200
+      })
+      .then(setDirectory)
+      .catch((e: Error) => setProblem(e.message))
+  }
 
   useEffect(() => {
     return window.moho.onEvent((frame) => {
       if (frame.event !== 'ircChannelList') return
-      const data = frame.data as { accountId: string; channels: IrcChannelListing[] }
+      const data = frame.data as { accountId: string; count?: number; error?: string }
       if (data.accountId !== account.id) return
+      if (waiting.current) clearTimeout(waiting.current)
       setAsking(false)
-      setChannels(data.channels)
+      // The network said no, or to come back later: said, rather than left
+      // spinning for a list that is not coming.
+      if (data.error) {
+        setProblem(`The network did not give its list: ${data.error}`)
+        return
+      }
+      setProblem('')
+      fetchPage('')
+      setFilter('')
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account.id])
+
+  useEffect(() => () => {
+    if (waiting.current) clearTimeout(waiting.current)
+  }, [])
+
+  // Filtering is the daemon's to do, a moment after the last key.
+  useEffect(() => {
+    if (!directory) return
+    const t = setTimeout(() => fetchPage(filter), 200)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter])
 
   const ask = (): void => {
     if (!serverBuffer) {
@@ -182,20 +251,26 @@ function IrcChannelBrowser({ account }: { account: Account }): JSX.Element {
       return
     }
     setAsking(true)
-    setChannels(null)
+    setProblem('')
+    if (waiting.current) clearTimeout(waiting.current)
+    // A network that never answers - some drop the request, and a few take
+    // minutes - must not leave this waiting for good. A list that does arrive
+    // later is still taken.
+    waiting.current = setTimeout(() => {
+      setAsking(false)
+      setProblem('No answer after a minute. The network may be busy or may not allow the list; try again, or join a channel by name above.')
+    }, 60_000)
     void window.moho.rpc('sendMessage', { bufferId: serverBuffer.id, body: '/list' }).catch((e: Error) => {
+      if (waiting.current) clearTimeout(waiting.current)
       setAsking(false)
       store.toast('error', e.message)
     })
   }
 
-  const shown = channels
-    ? channels.filter((c) => {
-        const q = filter.trim().toLowerCase()
-        if (!q) return true
-        return c.name.toLowerCase().includes(q) || c.topic.toLowerCase().includes(q)
-      })
-    : []
+  const stopWaiting = (): void => {
+    if (waiting.current) clearTimeout(waiting.current)
+    setAsking(false)
+  }
 
   return (
     <div className="field">
@@ -203,33 +278,39 @@ function IrcChannelBrowser({ account }: { account: Account }): JSX.Element {
       <div className="field-row">
         <input
           className="text-field"
-          placeholder={channels ? 'filter by name or topic' : 'ask the server for its list first'}
+          placeholder={directory ? 'filter by name or topic' : 'ask the server for its list first'}
           value={filter}
-          disabled={!channels}
+          disabled={!directory}
           onChange={(e) => setFilter(e.target.value)}
         />
-        <button type="button" className="button" disabled={asking || !serverBuffer} onClick={ask}>
-          {asking ? 'Asking…' : channels ? 'Refresh' : 'List channels'}
-        </button>
+        {asking ? (
+          <button type="button" className="button subtle" onClick={stopWaiting}>
+            Stop waiting
+          </button>
+        ) : (
+          <button type="button" className="button" disabled={!serverBuffer} onClick={ask}>
+            {directory ? 'Refresh' : 'List channels'}
+          </button>
+        )}
       </div>
 
       {asking && (
         <p className="small muted">
-          A busy network can take a minute to answer, and some refuse the request entirely.
+          <span className="spinner" /> Asking the network. A busy one can take a minute to answer, and some refuse the
+          request entirely.
         </p>
       )}
+      {problem && <p className="small error-text">{problem}</p>}
 
-      {channels && (
+      {directory && (
         <>
           <p className="small muted">
-            {channels.length.toLocaleString()} channels, busiest first
-            {shown.length !== channels.length ? ` — ${shown.length.toLocaleString()} matching` : ''}
+            {directory.total.toLocaleString()} channels, busiest first
+            {directory.matching !== directory.total ? ` — ${directory.matching.toLocaleString()} matching` : ''}
+            {directory.matching > directory.channels.length ? `; the busiest ${directory.channels.length} shown` : ''}
           </p>
           <div className="channel-browser">
-            {/* Capped, because a filter that matches nothing in particular
-                still matches forty thousand rows, and drawing them would
-                freeze the window to no purpose. */}
-            {shown.slice(0, 200).map((c) => (
+            {directory.channels.map((c) => (
               <button
                 key={c.name}
                 type="button"
@@ -353,35 +434,25 @@ function CreateMatrixRoom({ account }: { account: Account }): JSX.Element {
         onChange={(e) => setTopic(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && create()}
       />
-      <label className="checkbox-row">
-        <input type="checkbox" checked={isSpace} onChange={(e) => setIsSpace(e.target.checked)} />
-        <span>
-          Make it a space
-          <span className="small muted"> — a container for other rooms rather than a place to talk</span>
-        </span>
-      </label>
-      <label className="checkbox-row">
-        <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
-        <span>
-          Anyone can find and join it
-          <span className="small muted"> — otherwise it is invite only</span>
-        </span>
-      </label>
-      <label className="checkbox-row">
-        <input
-          type="checkbox"
-          checked={encrypted}
-          disabled={isPublic}
-          onChange={(e) => setEncrypted(e.target.checked)}
-        />
-        <span>
-          Encrypt it
-          <span className="small muted">
-            {' '}
-            — cannot be turned off later, so a room that might need it should have it from the start
-          </span>
-        </span>
-      </label>
+      <SwitchRow
+        title="Make it a space"
+        description="A container for other rooms rather than a place to talk"
+        checked={isSpace}
+        onChange={setIsSpace}
+      />
+      <SwitchRow
+        title="Anyone can find and join it"
+        description="Otherwise it is invite only"
+        checked={isPublic}
+        onChange={setIsPublic}
+      />
+      <SwitchRow
+        title="Encrypt it"
+        description="Cannot be turned off later, so a room that might need it should have it from the start"
+        checked={encrypted}
+        disabled={isPublic}
+        onChange={setEncrypted}
+      />
       <div className="field-row">
         <button type="button" className="button primary" disabled={busy || !name.trim()} onClick={create}>
           {busy ? 'Creating…' : 'Create'}
@@ -886,7 +957,7 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
           )}
           <span className="ellipsis">{f.globalName || f.username}</span>
           <span className="small muted ellipsis">{f.username}</span>
-          <span className={`presence-dot ${f.status || 'offline'}`} />
+          <span className={`status-dot ${f.status || 'offline'}`} />
         </button>
       ))}
 

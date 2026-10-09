@@ -1,4 +1,5 @@
-import { ContextMenu, useContextMenu } from './ContextMenu'
+import { useRef, useState } from 'react'
+import { StatusPopout } from './StatusPopout'
 import { Icon } from './Icon'
 import { Avatar } from './Avatar'
 import { useStore, useChat } from '../state/hooks'
@@ -18,20 +19,6 @@ import type { Account } from '../../../shared/wire'
  */
 
 export type Status = 'online' | 'idle' | 'dnd' | 'invisible' | 'offline'
-
-const STATUSES: { id: Status; label: string; glyph: string }[] = [
-  { id: 'online', label: 'Online', glyph: 'circle' },
-  { id: 'idle', label: 'Idle', glyph: 'dark_mode' },
-  { id: 'dnd', label: 'Do not disturb', glyph: 'do_not_disturb_on' },
-  // The one people want from a client that is not the service's own: still
-  // connected, still reading, counted as away by everybody looking. Not the
-  // same thing as the entry below, which actually disconnects.
-  { id: 'invisible', label: 'Invisible', glyph: 'visibility_off' },
-  // Not a mood but an action: it signs the account out. Named for the state it
-  // leaves you in rather than for the mechanism, since that is how it reads
-  // beside the other two.
-  { id: 'offline', label: 'Sign out', glyph: 'logout' }
-]
 
 /**
  * What the plaque should say, which is not always what the account last chose.
@@ -53,7 +40,8 @@ function label(status: Status | 'connecting'): string {
 
 export function UserFooter({ account }: { account?: Account }): JSX.Element {
   const store = useStore()
-  const { menu, open, close } = useContextMenu()
+  const [open, setOpen] = useState(false)
+  const identity = useRef<HTMLButtonElement>(null)
   const voice = useChat((s) => s.voicePrefs)
   const inACall = useChat((s) => s.voiceSessions.length > 0 || !!s.activeCall)
   const details = useChat((s) => s.connectionDetail)
@@ -77,9 +65,12 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
     <>
       <div className="user-footer">
         <button
+          ref={identity}
           type="button"
           className="user-identity-button"
-          onClick={open}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
           title={detail ? `${name} — ${label(status)}\n${detail}` : `${name} — ${label(status)}`}
         >
           <Avatar name={name} url={account.avatarUrl} size={28} status={status} accountId={account.id} />
@@ -89,14 +80,24 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
           </span>
         </button>
 
-        {showVoice && (
-          <>
+        {/* Always here, so the footer is the same shape on every account:
+            where there is nothing to apply them to they are greyed, with the
+            reason on hover, rather than gone. */}
         <button
           type="button"
+          disabled={!showVoice}
           className={`user-audio-button${voice.micMuted ? ' muted' : ''}`}
           // Deafening silences the microphone too, so the button says so
           // rather than appearing to be a separate switch that stopped working.
-          title={voice.deafened ? 'Muted while deafened' : voice.micMuted ? 'Unmute microphone' : 'Mute microphone'}
+          title={
+            !showVoice
+              ? `Voice isn't available on ${serviceLabel(account.service)}`
+              : voice.deafened
+                ? 'Muted while deafened'
+                : voice.micMuted
+                  ? 'Unmute microphone'
+                  : 'Mute microphone'
+          }
           aria-pressed={voice.micMuted}
           onClick={() => void store.setVoiceMuted({ micMuted: !voice.micMuted })}
         >
@@ -105,47 +106,18 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
 
         <button
           type="button"
+          disabled={!showVoice}
           className={`user-audio-button${voice.deafened ? ' muted' : ''}`}
-          title={voice.deafened ? 'Undeafen' : 'Deafen'}
+          title={!showVoice ? `Voice isn't available on ${serviceLabel(account.service)}` : voice.deafened ? 'Undeafen' : 'Deafen'}
           aria-pressed={voice.deafened}
           onClick={() => void store.setVoiceMuted({ deafened: !voice.deafened })}
         >
           <Icon name={voice.deafened ? 'headset_off' : 'headset_mic'} size={18} />
         </button>
-          </>
-        )}
-
-        {/* Joining something new, beside the account it would be joined on.
-            It used to sit in the heading above the channel list, where it read
-            as belonging to whichever server was open rather than to the
-            account - and where "+" next to a guild's name suggests adding
-            something *to that guild*. Down here the account is named right
-            beside it, which is the question the button actually answers. */}
-        <button
-          type="button"
-          className="user-audio-button"
-          title={`Join or add on ${serviceLabel(account.service)}`}
-          onClick={() => store.setActivePanel('join', account.id)}
-        >
-          <Icon name="add" size={18} />
-        </button>
       </div>
 
-      {menu && (
-        <ContextMenu
-          x={menu.x}
-          y={menu.y}
-          entries={STATUSES.map((s) => ({
-            label: s.id === status ? `${s.label} ✓` : s.label,
-            icon: s.glyph,
-            // Signing out is the one entry here that loses something - the
-            // connection, and with it anything unsent - so it is marked as the
-            // destructive one rather than sitting flush with the others.
-            danger: s.id === 'offline' && status !== 'offline',
-            onClick: () => void store.setPresence(account.id, s.id)
-          }))}
-          onClose={close}
-        />
+      {open && (
+        <StatusPopout account={account} status={status} anchor={identity.current} onClose={() => setOpen(false)} />
       )}
     </>
   )

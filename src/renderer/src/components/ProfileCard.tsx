@@ -1,5 +1,4 @@
-import { useEffect } from 'react'
-import { createPortal } from 'react-dom'
+import { Modal } from './Modal'
 import { Avatar } from './Avatar'
 import { Icon, IconButton } from './Icon'
 import { useChat, useStore } from '../state/hooks'
@@ -23,14 +22,6 @@ export function ProfileCard(): JSX.Element | null {
   const profile = useChat((s) => s.profile)
   const store = useStore()
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') store.closeProfile()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [store])
-
   if (!profile) return null
 
   const rows: [string, string][] = []
@@ -42,9 +33,8 @@ export function ProfileCard(): JSX.Element | null {
   if (profile.idleSeconds !== undefined) rows.push(['Idle', describeIdle(profile.idleSeconds)])
   for (const extra of profile.extra ?? []) rows.push([extra.label, extra.value])
 
-  return createPortal(
-    <div className="modal-scrim" onClick={() => store.closeProfile()}>
-      <div className="profile-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+  return (
+    <Modal title={profile.name} className="profile-card" onClose={() => store.closeProfile()} header={
         <div className="profile-head">
           <Avatar name={profile.name} url={profile.avatarUrl} size={40} status={profile.status} accountId={profile.accountId} />
           <div className="profile-title">
@@ -56,6 +46,7 @@ export function ProfileCard(): JSX.Element | null {
           </div>
           <IconButton name="close" title="Close" onClick={() => store.closeProfile()} />
         </div>
+    }>
 
         {/* Their standing, said plainly. A role list is the service's own
             words for it - "Operator in #channel", "Admin", a subscriber
@@ -135,9 +126,7 @@ export function ProfileCard(): JSX.Element | null {
             <Icon name="info" size={14} /> {profile.service} keeps nothing else about them.
           </p>
         )}
-      </div>
-    </div>,
-    document.body
+    </Modal>
   )
 }
 

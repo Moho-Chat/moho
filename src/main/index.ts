@@ -6,6 +6,7 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  ClipboardItem,
   dialog,
   globalShortcut,
   ipcMain,
@@ -23,13 +24,13 @@ import { NobilisProcess } from './nobilis-process'
 import { Prefs } from './prefs'
 import { Notifier } from './notifications'
 import { browserLogin, LOGIN_FLOWS } from './browser-login'
-import { EDIT_ACTIONS, IPC, POPOUT_FLAG, type EditAction, type EditMenuRequest, type PopoutState } from '../shared/ipc'
+import { EDIT_ACTIONS, IPC, POPOUT_FLAG, UI_SHOTS_FLAG, type EditAction, type EditMenuRequest, type PopoutState } from '../shared/ipc'
 import { clearnetLinks } from '../shared/clearnet'
 import { readCapped, pictureNamedIn } from './imagepage'
 import { DEEP_LINK_SCHEMES, isDeepLink } from '../shared/deeplink'
 import { allowPickedFile, allowRoot, installMediaHandler, registerMediaScheme } from './media-protocol'
 import { installScreenShare } from './screenshare'
-import { defaultDownloadDir, saveMedia } from './downloads'
+import { defaultDownloadDir, readMedia, saveMedia } from './downloads'
 import type { Buffer as ChatBuffer } from '../shared/wire'
 import { log } from './log'
 import { applyPolicy, applyTunnel } from './tunnel'
@@ -225,6 +226,47 @@ function callerWindow(event: Electron.IpcMainInvokeEvent): BrowserWindow | null 
  * The gap between them is a fraction of a second of the background colour,
  * which is a far better failure than no window at all.
  */
+/**
+ * What to do when a window's page dies under it.
+ *
+ * Nothing used to be done, and nothing said: the renderer process would be
+ * gone - out of memory, killed, crashed - and the window stayed on screen as an
+ * empty shell with no page in it, which is what "the window just went
+ * invisible" was. Now the reason is written to the log, where it outlives the
+ * process, and the page is loaded again so the window comes back with the
+ * conversation list and everything else intact: the daemon is a separate
+ * process and kept running all along.
+ *
+ * Not when the app is quitting, and not more than a few times a minute: a page that dies as it loads would otherwise be reloaded for
+ * ever.
+ */
+function recoverFromCrash(win: BrowserWindow, name: string): void {
+  const recent: number[] = []
+  win.webContents.on('render-process-gone', (_e, details) => {
+    log.error(
+      `[window] ${name}: the page process is gone - ${details.reason} (exit code ${details.exitCode}) at ${win.isDestroyed() ? 'a destroyed window' : win.webContents.getURL()}`
+    )
+    // A page that exits cleanly while its window is still there is no window
+    // being closed - that would have taken the window with it - and left the
+    // window empty just the same. Only the app quitting is let go.
+    if (win.isDestroyed() || quitting) return
+    const now = Date.now()
+    while (recent.length > 0 && now - recent[0] > 60_000) recent.shift()
+    recent.push(now)
+    if (recent.length > 3) {
+      log.error(`[window] ${name}: it keeps dying; leaving it`)
+      return
+    }
+    setTimeout(() => {
+      // Loaded afresh rather than reloaded: a page that had navigated away
+      // would otherwise reload wherever it had got to.
+      if (!win.isDestroyed()) loadRenderer(win)
+    }, 500)
+  })
+  win.webContents.on('unresponsive', () => log.warn(`[window] ${name}: the page has stopped responding`))
+  win.webContents.on('responsive', () => log.warn(`[window] ${name}: the page is responding again`))
+}
+
 function revealOnce(win: BrowserWindow, focus = false): void {
   let done = false
   const reveal = (): void => {
@@ -265,6 +307,9 @@ function wireEditMenu(win: BrowserWindow): void {
   })
 }
 
+/** The screenshot harness's flag, passed on to every window when it asked for it. */
+const shotsArguments = process.env.MOHO_UI_SHOTS === '1' ? [UI_SHOTS_FLAG] : []
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1100,
@@ -290,11 +335,13 @@ function createWindow(): void {
       // is allowed, and reads its popout flag from process.argv, which stays
       // readable. See the note in whenReady for the hosts that cannot honour
       // this.
-      sandbox: true
+      sandbox: true,
+      additionalArguments: shotsArguments
     }
   })
 
   revealOnce(mainWindow)
+  recoverFromCrash(mainWindow, 'main')
   wireEditMenu(mainWindow)
 
   // A link that arrived before this window existed - from the click that
@@ -459,7 +506,7 @@ function openPopout(bufferId: string, title?: string): void {
       nodeIntegration: false,
       // As the main window - a popout draws the same conversations.
       sandbox: true,
-      additionalArguments: [`${POPOUT_FLAG}${bufferId}`]
+      additionalArguments: [`${POPOUT_FLAG}${bufferId}`, ...shotsArguments]
     }
   })
   popouts.set(bufferId, win)
@@ -467,6 +514,7 @@ function openPopout(bufferId: string, title?: string): void {
   // Focused as well as shown: unlike the main window at startup, this one was
   // asked for just now.
   revealOnce(win, true)
+  recoverFromCrash(win, `popout ${bufferId}`)
   wireEditMenu(win)
 
   // Sent to this window rather than broadcast: every window draws its own
@@ -550,10 +598,25 @@ function createTray(): void {
   tray.on('click', toggleWindow)
 }
 
+/** What the notifier last said, kept so a change of setting can redraw without waiting for the next message. */
+let lastUnread = 0
+let lastAlert = false
+
 function updateTray(unreadCount: number, hasAlert: boolean): void {
+  lastUnread = unreadCount
+  lastAlert = hasAlert
+  // The unread badge: the tray's alert dot and count, and the launcher's
+  // count where the desktop has one. Off, the tray is just the tray.
+  const badge = prefs.get<boolean>('notifications.badge', true)
+  app.setBadgeCount(badge ? unreadCount : 0)
+  // The taskbar flash: asking for attention while the window is not in front.
+  const flash = prefs.get<boolean>('notifications.flash', true)
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.flashFrame(flash && hasAlert && !mainWindow.isFocused())
+  }
   if (!tray) return
-  tray.setImage(trayIcon(hasAlert))
-  tray.setToolTip(unreadCount > 0 ? `moho - ${unreadCount} unread` : 'moho')
+  tray.setImage(trayIcon(badge && hasAlert))
+  tray.setToolTip(badge && unreadCount > 0 ? `moho - ${unreadCount} unread` : 'moho')
   send(IPC.link, client.linkUp)
 }
 
@@ -585,6 +648,12 @@ function applyHotkey(accelerator: string): void {
   }
 }
 
+app.on('child-process-gone', (_e, details) => {
+  // The graphics process or a utility: a window that stops painting with its
+  // page still alive is this.
+  log.error(`[process] ${details.type} process gone - ${details.reason} (exit code ${details.exitCode})`)
+})
+
 function wireIpc(): void {
   ipcMain.handle(IPC.rpc, async (_e, method: string, params: Record<string, unknown>) => {
     try {
@@ -600,6 +669,8 @@ function wireIpc(): void {
   ipcMain.handle(IPC.prefsGetAll, () => prefs.all())
   ipcMain.handle(IPC.prefsSet, (e, key: string, value: unknown) => {
     prefs.set(key, value)
+    // The badge and the flash are decided from these as they stand.
+    if (key === 'notifications.badge' || key === 'notifications.flash') updateTray(lastUnread, lastAlert)
     // Every window keeps its own cache of these, so a setting changed in one
     // is stale in the others until they are told. That is not cosmetic once
     // there are several windows: muting a conversation, or switching the log
@@ -847,6 +918,40 @@ function wireIpc(): void {
   // has no business writing anything else onto the system clipboard.
   ipcMain.handle(IPC.writeClipboardText, (_e, text: string) => {
     if (typeof text === 'string' && text.length > 0) clipboard.writeText(text)
+  })
+
+  // A picture on the clipboard, for pasting into another app. Taken from the
+  // page's own pixels when it could read them (that also covers formats the
+  // clipboard does not take as they are, such as WebP), and otherwise from
+  // wherever the picture lives.
+  ipcMain.handle(IPC.copyImage, async (_e, source: string, dataUrl?: string) => {
+    try {
+      const img =
+        typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')
+          ? nativeImage.createFromDataURL(dataUrl)
+          : nativeImage.createFromBuffer(
+              Buffer.from(
+                await readMedia(String(source), async (url) => {
+                  const res = await net.fetch(url)
+                  return { ok: res.ok, status: res.status, bytes: async () => new Uint8Array(await res.arrayBuffer()) }
+                })
+              )
+            )
+      if (img.isEmpty()) return { error: "this kind of picture can't be copied" }
+      await clipboard.write([new ClipboardItem({ 'image/png': new Blob([img.toPNG()], { type: 'image/png' }) })])
+      return {}
+    } catch (e) {
+      return { error: (e as Error).message }
+    }
+  })
+
+  ipcMain.handle(IPC.fileSize, async (_e, file: string) => {
+    try {
+      const st = await fsp.stat(String(file))
+      return st.isFile() ? st.size : null
+    } catch {
+      return null
+    }
   })
 
   ipcMain.handle(IPC.restartDaemon, () => nobilis.restart())

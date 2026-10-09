@@ -1,6 +1,6 @@
 {
   "name": "moho",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0-rc.3",
   "description": "Unified desktop chat client for IRC, Discord, Sneedchat and Matrix",
   "author": "Salastil",
   "license": "GPL-3.0-or-later",
@@ -21,6 +21,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "test:ui": "electron-vite build && node scripts/ui-check.mjs",
+    "shots": "electron-vite build && node scripts/ui-shots.mjs",
     "pack": "npm run daemon && npm run build && MOHO_BUILD=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty) electron-builder --linux AppImage",
     "pack:deb": "npm run daemon && npm run build && MOHO_BUILD=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty) electron-builder --linux deb",
     "pack:linux": "npm run daemon && npm run build && MOHO_BUILD=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty) electron-builder --linux AppImage deb",

@@ -1,14 +1,21 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ConfirmButton } from '../ConfirmButton'
+import { Switch } from '../Switch'
 import {
   ChoiceSetting,
   DirectorySetting,
+  SavedMark,
   SettingsSection,
   SelectionSetting,
   StringSetting,
-  ToggleSetting
+  ToggleSetting,
+  useSavedFlash
 } from './controls'
 import { useChat, usePref, useStore } from '../../state/hooks'
 import { Icon } from '../Icon'
+import { acceleratorLabel, acceleratorOf } from '../../lib/accelerator'
+import { AccountsPanel } from '../AccountsPanel'
+import { DownloadsPanel } from '../DownloadsPanel'
 import { humanBytes } from '../../lib/util'
 import { TunnelAllSwitch, useNetSettings } from './Tunnel'
 import type { Account, DccPrefs } from '../../../../shared/wire'
@@ -26,6 +33,7 @@ function GlobalHighlightKeywords(): JSX.Element {
   const store = useStore()
   const [words, setWords] = useState('')
   const [saved, setSaved] = useState('')
+  const [flashed, flash] = useSavedFlash()
 
   useEffect(() => {
     void window.moho
@@ -50,6 +58,7 @@ function GlobalHighlightKeywords(): JSX.Element {
         const text = (answer.global || []).join(', ')
         setWords(text)
         setSaved(text)
+        flash()
       })
       .catch((e: Error) => store.toast('error', e.message))
   }
@@ -63,6 +72,7 @@ function GlobalHighlightKeywords(): JSX.Element {
           that arrive after you add them.
         </div>
       </div>
+      <SavedMark shown={flashed} />
       <input
         className="text-field setting-input"
         value={words}
@@ -100,15 +110,23 @@ function GlobalHighlightKeywords(): JSX.Element {
  * not so is worse than no entry, and this rule would have hidden them both
  * regardless.
  */
-const CATEGORIES: { id: string; label: string; service?: Account['service'] }[] = [
-  { id: 'general', label: 'General' },
-  { id: 'irc', label: 'IRC', service: 'irc' },
-  { id: 'sneedchat', label: 'Sneedchat', service: 'sneedchat' },
-  { id: 'tor', label: 'Tor' },
-  { id: 'discord', label: 'Discord', service: 'discord' },
-  { id: 'matrix', label: 'Matrix', service: 'matrix' },
-  { id: 'kick', label: 'Kick', service: 'kick' },
-  { id: 'about', label: 'About' }
+const CATEGORIES: { id: string; label: string; group: string; icon?: string; service?: Account['service'] }[] = [
+  // Personal: the two things that are about you rather than about the app.
+  { id: 'accounts', label: 'Accounts', group: 'Personal', icon: 'manage_accounts' },
+  { id: 'downloads', label: 'Downloads', group: 'Personal', icon: 'download' },
+  // The app itself.
+  { id: 'general', label: 'General', group: 'App' },
+  { id: 'appearance', label: 'Appearance', group: 'App' },
+  { id: 'notifications', label: 'Notifications', group: 'App' },
+  { id: 'keybinds', label: 'Keybinds', group: 'App' },
+  // One page per network, each only while there is an account on it.
+  { id: 'irc', label: 'IRC', group: 'Networks', service: 'irc' },
+  { id: 'sneedchat', label: 'Sneedchat', group: 'Networks', service: 'sneedchat' },
+  { id: 'tor', label: 'Tor', group: 'Networks' },
+  { id: 'discord', label: 'Discord', group: 'Networks', service: 'discord' },
+  { id: 'matrix', label: 'Matrix', group: 'Networks', service: 'matrix' },
+  { id: 'kick', label: 'Kick', group: 'Networks', service: 'kick' },
+  { id: 'about', label: 'About', group: 'About' }
 ]
 
 /**
@@ -198,9 +216,55 @@ interface UploadHost {
   notFor?: string[]
 }
 
-export function SettingsPanel(): JSX.Element {
+/** The page for one category of settings. Accounts and Downloads are whole pages of their own, shown in the same frame. */
+function Page({ id }: { id: string }): JSX.Element | null {
+  switch (id) {
+    case 'general':
+      return <GeneralSettings />
+    case 'appearance':
+      return <AppearanceSettings />
+    case 'notifications':
+      return <NotificationSettings />
+    case 'keybinds':
+      return <KeybindSettings />
+    case 'irc':
+      return <IrcSettings />
+    case 'sneedchat':
+      return <SneedchatSettings />
+    case 'tor':
+      return <TorSettings />
+    case 'matrix':
+      return (
+        <>
+          <MatrixSettings />
+          <MatrixReceiptSettings />
+        </>
+      )
+    case 'discord':
+      return <DiscordSettings />
+    case 'kick':
+      return <KickSettings />
+    case 'about':
+      return <AboutSettings />
+    default:
+      return null
+  }
+}
+
+/**
+ * Settings, with Accounts and Downloads as pages of it rather than as separate
+ * things behind a menu: one place to go, one click from the rail's cog.
+ *
+ * `page` is which of the three the window is showing (accounts and downloads
+ * have their own panel names, which other parts of the app open directly); the
+ * rest are pages within 'settings'.
+ */
+export function SettingsPanel({ page = 'settings' }: { page?: 'settings' | 'accounts' | 'downloads' }): JSX.Element {
+  const store = useStore()
   const [selected, setSelected] = useState('general')
+  const [query, setQuery] = useState('')
   const accounts = useChat((s) => s.accounts)
+  const content = useRef<HTMLDivElement>(null)
 
   const shown = useMemo(() => {
     const have = new Set(accounts.map((a) => a.service))
@@ -214,40 +278,109 @@ export function SettingsPanel(): JSX.Element {
     if (!shown.some((c) => c.id === selected)) setSelected('general')
   }, [shown, selected])
 
+  const current = page === 'settings' ? selected : page
+  const q = query.trim().toLowerCase()
+  // Searching looks across every page that is made of settings, which it does
+  // by showing them all and hiding the rows that do not match.
+  const searching = q !== '' && page === 'settings'
+  const searchable = shown.filter((c) => c.id !== 'accounts' && c.id !== 'downloads')
+
+  useEffect(() => {
+    const root = content.current
+    if (!root) return
+    const rows = root.querySelectorAll<HTMLElement>('.setting-row, .switch-row')
+    for (const row of rows) row.hidden = searching && !(row.textContent ?? '').toLowerCase().includes(q)
+    for (const section of root.querySelectorAll<HTMLElement>('.settings-section')) {
+      const title = section.querySelector('.settings-section-title')?.textContent?.toLowerCase() ?? ''
+      const any = [...section.querySelectorAll<HTMLElement>('.setting-row, .switch-row')].some((r) => !r.hidden)
+      section.hidden = searching && !any && !title.includes(q)
+    }
+    for (const group of root.querySelectorAll<HTMLElement>('[data-settings-page]')) {
+      group.hidden = searching && ![...group.querySelectorAll<HTMLElement>('.settings-section')].some((s) => !s.hidden)
+    }
+  })
+
+  const go = (id: string): void => {
+    setQuery('')
+    if (id === 'accounts' || id === 'downloads') {
+      store.setActivePanel(id)
+      return
+    }
+    setSelected(id)
+    store.setActivePanel('settings')
+  }
+
+  const groups = [...new Set(shown.map((c) => c.group))]
+
   return (
     <div className="settings">
       <div className="settings-rail">
-        {shown.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            className={`settings-rail-item${selected === c.id ? ' active' : ''}`}
-            onClick={() => setSelected(c.id)}
-          >
-            {c.label}
-          </button>
+        <label className="settings-search">
+          <Icon name="search" size={16} />
+          <input
+            className="settings-search-input"
+            placeholder="Search"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              if (page !== 'settings') store.setActivePanel('settings')
+            }}
+          />
+          {query && (
+            <button type="button" className="icon-button" title="Clear" onClick={() => setQuery('')}>
+              <Icon name="close" size={14} />
+            </button>
+          )}
+        </label>
+        {groups.map((group) => (
+          <div key={group} className={`settings-rail-group${group === 'About' ? ' apart' : ''}`}>
+            {group !== 'About' && <div className="settings-rail-heading small muted">{group}</div>}
+            {shown
+              .filter((c) => c.group === group)
+              .map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`settings-rail-item${!searching && current === c.id ? ' active' : ''}`}
+                  onClick={() => go(c.id)}
+                >
+                  {c.label}
+                </button>
+              ))}
+          </div>
         ))}
       </div>
 
       <div className="divider-v" />
 
-      <div className="settings-content">
-        {selected === 'general' && <GeneralSettings />}
-        {selected === 'irc' && <IrcSettings />}
-        {selected === 'sneedchat' && <SneedchatSettings />}
-        {selected === 'tor' && <TorSettings />}
-        {selected === 'matrix' && (
-          <>
-            <MatrixSettings />
-            <MatrixReceiptSettings />
-          </>
-        )}
-        {selected === 'discord' && <DiscordSettings />}
-        {selected === 'kick' && <KickSettings />}
-        {selected === 'about' && <AboutSettings />}
+      <div
+        ref={content}
+        className={`settings-content${page !== 'settings' ? ' bare' : ''}`}
+      >
+        {page === 'accounts' && <AccountsPanel />}
+        {page === 'downloads' && <DownloadsPanel />}
+        {page === 'settings' &&
+          (searching ? (
+            <>
+              {searchable.map((c) => (
+                <div key={c.id} data-settings-page={c.id}>
+                  <h3 className="settings-page-title">{c.label}</h3>
+                  <Page id={c.id} />
+                </div>
+              ))}
+              <NoMatches />
+            </>
+          ) : (
+            <Page id={selected} />
+          ))}
       </div>
     </div>
   )
+}
+
+/** Said only when the search found nothing: every page is hidden and the pane would be blank. */
+function NoMatches(): JSX.Element {
+  return <p className="settings-no-matches small muted">Nothing here matches.</p>
 }
 
 /**
@@ -305,7 +438,7 @@ function VoiceSettings(): JSX.Element {
       {/* What a Discord call's microphone goes through before it is sent -
           the processing a Matrix call gets from the browser. The call's
           volume is on the call itself, not here. */}
-      <label className="setting-row">
+      <div className="setting-row">
         <div className="setting-text">
           <div>Echo cancellation</div>
           <div className="small muted">
@@ -313,25 +446,23 @@ function VoiceSettings(): JSX.Element {
             sent back into itself. Off only makes sense with headphones.
           </div>
         </div>
-        <input
-          type="checkbox"
-          className="setting-toggle"
+        <Switch
           checked={voice.echoCancellation ?? true}
-          onChange={(e) => void store.setVoiceProcessing({ echoCancellation: e.target.checked })}
+          label="Echo cancellation"
+          onChange={(on) => void store.setVoiceProcessing({ echoCancellation: on })}
         />
-      </label>
-      <label className="setting-row">
+      </div>
+      <div className="setting-row">
         <div className="setting-text">
           <div>Noise suppression</div>
           <div className="small muted">Takes steady background noise - a fan, a hum - out of your microphone.</div>
         </div>
-        <input
-          type="checkbox"
-          className="setting-toggle"
+        <Switch
           checked={voice.noiseSuppression ?? true}
-          onChange={(e) => void store.setVoiceProcessing({ noiseSuppression: e.target.checked })}
+          label="Noise suppression"
+          onChange={(on) => void store.setVoiceProcessing({ noiseSuppression: on })}
         />
-      </label>
+      </div>
     </SettingsSection>
   )
 }
@@ -454,15 +585,181 @@ function StorageSettings(): JSX.Element {
   )
 }
 
-function GeneralSettings(): JSX.Element {
-  const [defaultDir, setDefaultDir] = useState('')
+/** One key cap, or several for a combination. */
+function Keys({ keys }: { keys: string[] }): JSX.Element {
+  return (
+    <span className="keys">
+      {keys.map((k, i) => (
+        <kbd key={i} className="key">
+          {k}
+        </kbd>
+      ))}
+    </span>
+  )
+}
+
+/**
+ * The global show/hide hotkey, recorded by pressing it rather than typed as an
+ * Electron accelerator. Clicking starts listening; the first combination with
+ * a modifier in it is taken, and Escape gives up.
+ */
+function HotkeyRecorder(): JSX.Element {
+  const [value, setValue] = usePref<string>('hotkey.toggle', 'Control+Shift+M')
+  const [recording, setRecording] = useState(false)
+
   useEffect(() => {
-    void window.moho.defaultDownloadDir().then(setDefaultDir)
-  }, [])
+    if (!recording) return
+    const onKey = (e: KeyboardEvent): void => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        setRecording(false)
+        return
+      }
+      const accelerator = acceleratorOf(e)
+      if (!accelerator) return
+      setValue(accelerator)
+      setRecording(false)
+    }
+    // Captured, ahead of the app's own shortcuts: what is pressed now is the answer.
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [recording, setValue])
 
   return (
+    <div className="setting-row">
+      <div className="setting-text">
+        <div>Show or hide moho</div>
+        <div className="small muted">
+          Works from any program. Wayland compositors do not let an ordinary app grab keys globally, so this only takes
+          effect under X11; on Wayland, bind your compositor to focus moho instead.
+        </div>
+      </div>
+      <button
+        type="button"
+        className={`button hotkey-recorder${recording ? ' recording' : ''}`}
+        onClick={() => setRecording(!recording)}
+        aria-label="Record a new hotkey"
+      >
+        {recording ? 'Press the keys…' : value ? <Keys keys={acceleratorLabel(value)} /> : 'Not set'}
+      </button>
+      {value && !recording && (
+        <button type="button" className="button subtle small" onClick={() => setValue('')}>
+          Clear
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** Every shortcut the app has, by what it is for. The one that can be changed is at the end. */
+const SHORTCUTS: { title: string; rows: { keys: string[]; what: string }[] }[] = [
+  {
+    title: 'Moving around',
+    rows: [
+      { keys: ['Ctrl', 'K'], what: 'Jump to a conversation: search across every account' },
+      { keys: ['Alt', '↑ / ↓'], what: 'The previous or next conversation in the list' },
+      { keys: ['Alt', 'Shift', '↑ / ↓'], what: 'The previous or next one with something unread' },
+      { keys: ['Ctrl', ','], what: 'Open Settings' },
+      { keys: ['Esc'], what: 'Mark this conversation read and go to the latest message' },
+      { keys: ['Shift', 'Esc'], what: 'Mark every conversation on this server read' }
+    ]
+  },
+  {
+    title: 'Writing',
+    rows: [
+      { keys: ['Enter'], what: 'Send' },
+      { keys: ['Shift', 'Enter'], what: 'A new line' },
+      { keys: ['↑'], what: 'In an empty box, edit your last message' },
+      { keys: ['Tab'], what: 'Complete the name being typed; again for the next one' },
+      { keys: ['Ctrl', 'B / I / U'], what: 'Bold, italic or underline, where the service has it' },
+      { keys: ['@'], what: 'Name somebody: arrows to choose, Tab or Enter to take it' },
+      { keys: [':'], what: 'An emoji by name, such as :fire' },
+      { keys: ['/'], what: 'A command, at the start of a message' },
+      { keys: ['Esc'], what: 'Put a reply down, or close a list that is open' }
+    ]
+  },
+  {
+    title: 'Emoji picker and viewer',
+    rows: [
+      { keys: ['↑ ↓ ← →'], what: 'Walk the picker; Enter picks, and picks the top result while searching' },
+      { keys: ['← / →'], what: 'The previous or next picture in the viewer' },
+      { keys: ['+', '-', '0'], what: 'Zoom the viewer in, out, and back to fit' }
+    ]
+  }
+]
+
+/** Every shortcut, and the one that can be changed. */
+function KeybindSettings(): JSX.Element {
+  return (
     <>
-      <SettingsSection title="Message layout">
+      {SHORTCUTS.map((group) => (
+        <SettingsSection key={group.title} title={group.title}>
+          {group.rows.map((row) => (
+            <div key={row.what} className="setting-row">
+              <div className="setting-text">{row.what}</div>
+              <Keys keys={row.keys} />
+            </div>
+          ))}
+        </SettingsSection>
+      ))}
+      <SettingsSection title="Anywhere on your computer">
+        <HotkeyRecorder />
+      </SettingsSection>
+    </>
+  )
+}
+
+/**
+ * What the app does to get your attention. Which conversations may is decided
+ * where it always was - muting a channel or a server from its menu - and these
+ * are about how, for the ones that may.
+ */
+function NotificationSettings(): JSX.Element {
+  return (
+    <>
+      <SettingsSection
+        title="Alerts"
+        description="For a direct message, or a message that mentions you or matches one of your highlight words, in a conversation you have not muted."
+      >
+        <ToggleSetting
+          settingKey="notifications.desktop"
+          label="Desktop notifications"
+          description="A notification from your desktop, with the sender's picture. Clicking it opens the conversation."
+          defaultValue={true}
+        />
+        <ToggleSetting
+          settingKey="notifications.sound"
+          label="Play a sound"
+          description="Use the system's own notification sound. Off, they arrive silently."
+          defaultValue={true}
+        />
+      </SettingsSection>
+
+      <SettingsSection title="When moho is not in front">
+        <ToggleSetting
+          settingKey="notifications.flash"
+          label="Flash the taskbar"
+          description="Ask for attention on the taskbar or dock until you come back to the window."
+          defaultValue={true}
+        />
+        <ToggleSetting
+          settingKey="notifications.badge"
+          label="Show an unread badge"
+          description="A dot and a count on the tray icon, and on the launcher where your desktop has one. Off, the tray is just the tray."
+          defaultValue={true}
+        />
+      </SettingsSection>
+    </>
+  )
+}
+
+/** How things look and read: the layout, the size, the spacing, motion and the clock. */
+function AppearanceSettings(): JSX.Element {
+  const [zoom, setZoom] = usePref<number>('appearance.zoom', 1)
+  return (
+    <>
+      <SettingsSection title="Messages">
         <SelectionSetting
           settingKey="display.messageMode"
           label="Display style"
@@ -474,6 +771,55 @@ function GeneralSettings(): JSX.Element {
             { label: 'Bubbles', value: 'bubbles' }
           ]}
         />
+        <SelectionSetting
+          settingKey="appearance.density"
+          label="Spacing"
+          description="Compact fits more messages on the screen by tightening the space between them."
+          defaultValue="cozy"
+          options={[
+            { label: 'Cozy', value: 'cozy' },
+            { label: 'Compact', value: 'compact' }
+          ]}
+        />
+      </SettingsSection>
+
+      <SettingsSection title="Size">
+        <div className="setting-row">
+          <div className="setting-text">
+            <div>Zoom</div>
+            <div className="small muted">How large everything is drawn, text and all. 100% is as designed.</div>
+          </div>
+          <input
+            type="range"
+            className="setting-range"
+            min={0.8}
+            max={1.6}
+            step={0.05}
+            value={zoom}
+            aria-label="Zoom"
+            onChange={(e) => setZoom(Number(e.target.value))}
+          />
+          <span className="small tabular setting-range-value">{Math.round(zoom * 100)}%</span>
+          {zoom !== 1 && (
+            <button type="button" className="button subtle small" onClick={() => setZoom(1)}>
+              Reset
+            </button>
+          )}
+        </div>
+      </SettingsSection>
+
+      <SettingsSection title="Time">
+        <SelectionSetting
+          settingKey="display.hourFormat"
+          label="Clock"
+          description="How the time beside a message is written. 'System' follows your computer's own setting."
+          defaultValue="24"
+          options={[
+            { label: '24-hour', value: '24' },
+            { label: '12-hour', value: '12' },
+            { label: 'System', value: 'auto' }
+          ]}
+        />
         <ToggleSetting
           settingKey="display.relativeTimestamps"
           label="Relative timestamps"
@@ -482,6 +828,26 @@ function GeneralSettings(): JSX.Element {
         />
       </SettingsSection>
 
+      <SettingsSection title="Motion">
+        <ToggleSetting
+          settingKey="appearance.reduceMotion"
+          label="Reduce motion"
+          description="Nothing slides, fades or grows. Also on whenever your system asks for less motion."
+          defaultValue={false}
+        />
+      </SettingsSection>
+    </>
+  )
+}
+
+function GeneralSettings(): JSX.Element {
+  const [defaultDir, setDefaultDir] = useState('')
+  useEffect(() => {
+    void window.moho.defaultDownloadDir().then(setDefaultDir)
+  }, [])
+
+  return (
+    <>
       <SettingsSection
         title="Highlight keywords"
         description="Words that light a message up and notify you, the same way your own name does. These apply on every account; an account can add its own in the Accounts pane, for words that only mean you on one network."
@@ -531,18 +897,6 @@ function GeneralSettings(): JSX.Element {
       <VoiceSettings />
 
       <StorageSettings />
-
-      <SettingsSection
-        title="Window"
-        description="Wayland compositors don't allow an ordinary app to grab keys globally, so this only takes effect under X11. On Wayland, bind your compositor to focus moho instead."
-      >
-        <StringSetting
-          settingKey="hotkey.toggle"
-          label="Show/hide hotkey"
-          defaultValue="Control+Shift+M"
-          placeholder="Control+Shift+M"
-        />
-      </SettingsSection>
     </>
   )
 }
@@ -760,13 +1114,7 @@ function TransferSettings(): JSX.Element {
             all. The size and count limits still apply.
           </div>
         </div>
-        <div className="setting-actions">
-          <input
-            type="checkbox"
-            checked={prefs?.autoAccept ?? false}
-            onChange={(e) => save({ autoAccept: e.target.checked })}
-          />
-        </div>
+        <Switch checked={prefs?.autoAccept ?? false} label="Accept files automatically" onChange={(on) => save({ autoAccept: on })} />
       </div>
     </SettingsSection>
   )
@@ -893,15 +1241,10 @@ function TorSettings(): JSX.Element {
         title="Tor"
         description="Used by every account whose Tor switch is on, and by everything when all traffic is sent through it. Embedded runs Tor inside moho with no setup; an external SOCKS5 proxy uses a Tor daemon, Tor Browser, or a proxy you host yourself."
       >
-        <label className="setting-row">
+        <div className="setting-row">
           <div className="setting-text">Use an external SOCKS5 proxy instead of embedded Tor</div>
-          <input
-            type="checkbox"
-            className="setting-toggle"
-            checked={useProxy}
-            onChange={(e) => setUseProxy(e.target.checked)}
-          />
-        </label>
+          <Switch checked={useProxy} label="Use an external SOCKS5 proxy" onChange={setUseProxy} />
+        </div>
         {useProxy && (
           <input
             className="text-field"
@@ -941,15 +1284,14 @@ function TorSettings(): JSX.Element {
           >
             Regenerate circuit
           </button>
-          <button
-            type="button"
-            className="button subtle"
-            onClick={() =>
+          <ConfirmButton
+            label="Restart Tor from scratch"
+            question="Drop every Tor connection and start again?"
+            confirmLabel="Restart Tor"
+            onConfirm={() =>
               call('restartTorFromScratch', {}, 'Restarting Tor from scratch - this can take a minute…')
             }
-          >
-            Restart Tor from scratch
-          </button>
+          />
         </div>
       </SettingsSection>
     </>
@@ -1173,16 +1515,15 @@ function AboutSettings(): JSX.Element {
             {linkUp ? 'connected' : 'not connected'}
           </span>
         </div>
-        <button
-          type="button"
-          className="button subtle"
-          onClick={() => {
+        <ConfirmButton
+          label="Restart daemon"
+          question="Disconnect everything and restart nobilis?"
+          confirmLabel="Restart"
+          onConfirm={() => {
             void window.moho.restartDaemon()
             store.toast('info', 'Restarting nobilis\u2026')
           }}
-        >
-          Restart daemon
-        </button>
+        />
         {status && !status.available && (
           <p className="small" style={{ color: 'var(--warning)' }}>
             The nobilis binary wasn&apos;t found. Run <code>cargo build --release</code>, or start

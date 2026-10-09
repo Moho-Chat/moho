@@ -21,9 +21,11 @@ import type {
   VoicePrefs,
   VoiceSession
 } from '../../../shared/wire'
+import { addToast, type ToastAction, type ToastItem } from '../lib/toasts'
 import { buildSmilieIndex, type SmilieEntry, type SmilieIndex } from '../lib/format'
-import { bufferDisplayName, isImageFile, resolveMediaUrl } from '../lib/util'
+import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
 import { runExport } from '../lib/exporter'
+import type { ForumPost } from '../lib/forum'
 import { DM_GROUP_ID, isDirectMessage } from '../lib/groups'
 import { ircNetworkFor } from '../lib/networks'
 import { parseDeepLink, type IrcLink } from '../../../shared/deeplink'
@@ -55,6 +57,15 @@ export interface LiveDiscordEvent {
   channelId?: string | null
   channelName?: string | null
   location?: string | null
+}
+
+/** A forum's posts as last read. */
+export interface ForumPageCache {
+  at: number
+  sort: 'active' | 'created'
+  posts: ForumPost[]
+  hasMore: boolean
+  tags: { id: string; name: string; emoji?: string | null; moderated?: boolean }[]
 }
 
 export interface BufferEntry extends WireBuffer {
@@ -95,8 +106,10 @@ export interface ChatMessage extends Message {
   /** The body as typed, kept so a retry can resend the original text. */
   pendingBody?: string
   pendingReplyTo?: string
-  /** The staged file, kept for the same reason as the body. */
-  pendingAttachment?: string
+  /** The staged file or files, kept for the same reason as the body. */
+  pendingAttachment?: string | string[]
+  /** Which of those go as spoilers. */
+  pendingSpoilers?: string[]
   /**
    * Where the attachment's upload has got to, while one is running.
    *
@@ -104,7 +117,17 @@ export interface ChatMessage extends Message {
    * ends either way - so its presence is exactly "there is an upload
    * happening for this row", which is what the spinner is drawn from.
    */
-  upload?: { phase: 'preparing' | 'sending' | 'waiting'; bytes: number; host: string; since: number }
+  upload?: {
+    phase: 'preparing' | 'sending' | 'waiting'
+    bytes: number
+    host: string
+    since: number
+    /** Bytes taken by the connection and in all, from an upload that counts them. */
+    sent?: number
+    total?: number
+    /** How many files are going in this message, when more than one. */
+    files?: number
+  }
 }
 
 /**
@@ -526,6 +549,18 @@ export interface ChatState {
   /** Which messages each Matrix room has pinned, newest last. */
   /** Which messages a conversation has pinned, where the service says so. */
   pinnedMessages: Record<string, string[]>
+  /**
+   * The pinned messages themselves, once somebody has asked for them. The ids
+   * above say that something is pinned; these say what, for the banner over
+   * the log and for the list in the header, which are the same answer.
+   */
+  pinnedRows: Record<string, Message[]>
+  /**
+   * The last page of posts read from each forum, so coming back to one shows it
+   * at once instead of asking again. Read again when it is a minute old, or
+   * when the sort changes.
+   */
+  forumPages: Record<string, ForumPageCache>
   /** Friends and pending requests per Discord account, as they change. */
   discordFriends: Record<string, DiscordFriend[]>
   /**
@@ -643,6 +678,10 @@ export interface ChatState {
    */
   profile: Profile | null
   replyingTo: { id: string; from: string; body: string } | null
+  /** Whether answering pings the author (Discord's "@ ON"): on for every new reply. */
+  replyPing: boolean
+  /** The message being edited in place, if one is: at most one per window. */
+  editingId: string
   toasts: Toast[]
 
   /** Sneedchat's site-wide smiley table, fetched once and memoised. */
@@ -662,11 +701,7 @@ export interface ChatState {
   matrixLoginStatus: string
 }
 
-export interface Toast {
-  id: number
-  kind: 'info' | 'error'
-  text: string
-}
+export type Toast = ToastItem
 
 const INITIAL: ChatState = {
   newRelease: null,
@@ -714,6 +749,8 @@ const INITIAL: ChatState = {
   pinnedByBuffer: {},
   reviewCard: null,
   pinnedMessages: {},
+  pinnedRows: {},
+  forumPages: {},
   discordFriends: {},
   ringingCall: null,
   callMinimized: false,
@@ -741,6 +778,8 @@ const INITIAL: ChatState = {
   matrixInvites: {},
   profile: null,
   replyingTo: null,
+  replyPing: true,
+  editingId: '',
   toasts: [],
   smilies: [],
   smilieIndex: null,
@@ -1125,6 +1164,16 @@ export class ChatStore {
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
+  }
+
+  /**
+   * For the screenshot harness only (window.__mohoShots, installed in
+   * main.tsx when the window was started with UI_SHOTS_FLAG): puts state in
+   * place directly, as if the daemon had said it.
+   */
+  shotsPatch(patch: Partial<ChatState>): void {
+    if (!window.moho.uiShots) return
+    this.set(patch)
   }
 
   private set(patch: Partial<ChatState>): void {
@@ -2047,12 +2096,13 @@ export class ChatStore {
    */
   async setPresence(
     accountId: string,
-    status: 'online' | 'idle' | 'dnd' | 'invisible' | 'offline'
+    status: 'online' | 'idle' | 'dnd' | 'invisible' | 'offline',
+    statusText?: string
   ): Promise<void> {
     if (status === 'offline') return this.setAccountConnected(accountId, false)
 
     const state = this.state.accounts.find((a) => a.id === accountId)?.state
-    await this.setAccountStatus(accountId, status)
+    await this.setAccountStatus(accountId, status, statusText)
     if (state === 'connected') return
 
     // An attempt already running is stopped before starting another. Without
@@ -2063,12 +2113,23 @@ export class ChatStore {
     await this.setAccountConnected(accountId, true)
   }
 
+  /**
+   * One status for every account that is signed in: for somebody who is
+   * stepping away from all of them at once. An account that is signed out is
+   * left alone - choosing a status is not a request to connect it.
+   */
+  async setStatusEverywhere(status: 'online' | 'idle' | 'dnd' | 'invisible', statusText?: string): Promise<void> {
+    const connected = this.state.accounts.filter((a) => a.state === 'connected')
+    await Promise.all(connected.map((a) => this.setAccountStatus(a.id, status, a.service === 'discord' || a.service === 'matrix' ? statusText : undefined)))
+  }
+
   async setAccountStatus(
     accountId: string,
-    status: 'online' | 'idle' | 'dnd' | 'invisible'
+    status: 'online' | 'idle' | 'dnd' | 'invisible',
+    statusText?: string
   ): Promise<void> {
     try {
-      await window.moho.rpc('setAccountStatus', { accountId, status })
+      await window.moho.rpc('setAccountStatus', { accountId, status, ...(statusText !== undefined ? { statusText } : {}) })
       await this.refreshAccounts()
     } catch (e) {
       this.toast('error', `Couldn't set status: ${(e as Error).message}`)
@@ -2164,16 +2225,22 @@ export class ChatStore {
   }
 
   /** Says something into a thread, rather than into the room around it. */
-  async sendToThread(body: string): Promise<void> {
+  async sendToThread(body: string, attachment?: string | string[], spoilers?: string[]): Promise<void> {
     const open = this.state.openThread
-    if (!open || !body.trim()) return
+    if (!open || (!body.trim() && !attachment)) return
     const root = open.messages.find((m) => m.id === open.rootId)
-    await this.dispatchSend(open.bufferId, body, {
-      id: open.rootId,
-      from: root?.from ?? '',
-      body: root?.body ?? '',
-      thread: true
-    })
+    await this.dispatchSend(
+      open.bufferId,
+      body,
+      {
+        id: open.rootId,
+        from: root?.from ?? '',
+        body: root?.body ?? '',
+        thread: true
+      },
+      attachment,
+      spoilers
+    )
   }
 
   /**
@@ -2337,8 +2404,31 @@ export class ChatStore {
   setPinned(bufferId: string, messageId: string, pinned: boolean): void {
     void window.moho
       .rpc('setPinned', { bufferId, messageId, pinned })
-      .then(() => this.toast('info', pinned ? 'Pinned' : 'Unpinned'))
+      .then(() => {
+        this.toast('info', pinned ? 'Pinned' : 'Unpinned')
+        // The banner and the header's count are of what is pinned now.
+        void this.loadPins(bufferId).catch(() => {})
+      })
       .catch((e: Error) => this.toast('error', e.message))
+  }
+
+  /**
+   * What a conversation has pinned, newest first as the service gives it.
+   * Kept, so the banner over the log and the list in the header share one
+   * answer rather than each asking.
+   */
+  setForumPage(bufferId: string, page: ForumPageCache): void {
+    this.set({ forumPages: { ...this.state.forumPages, [bufferId]: page } })
+  }
+
+  async loadPins(bufferId: string): Promise<Message[]> {
+    const answer = await window.moho.rpc<{ pinned: Message[] }>('listPinned', { bufferId })
+    const rows = answer.pinned ?? []
+    this.set({
+      pinnedRows: { ...this.state.pinnedRows, [bufferId]: rows },
+      pinnedMessages: { ...this.state.pinnedMessages, [bufferId]: rows.map((m) => m.id) }
+    })
+    return rows
   }
 
   /**
@@ -3021,6 +3111,7 @@ export class ChatStore {
           // only - no body, no embeds - so those must not be blanked out.
           body: data.body ?? m.body,
           edited: m.edited || !!data.edited,
+          editedTs: data.editedTs ?? m.editedTs,
           embeds: data.embeds ?? m.embeds ?? [],
           attachments: data.attachments ?? m.attachments
         }))
@@ -3184,7 +3275,14 @@ export class ChatStore {
       // id the send named, so a second message sent while the first is
       // still uploading updates its own row rather than the newest one.
       case 'uploadProgress': {
-        const d = data as { uploadId?: string; phase?: string; bytes?: number; host?: string }
+        const d = data as {
+          uploadId?: string
+          phase?: string
+          bytes?: number
+          host?: string
+          sent?: number
+          total?: number
+        }
         if (!d.uploadId) break
         for (const [clientId, info] of this.pendingSends) {
           if (info.uploadId !== d.uploadId) continue
@@ -3204,7 +3302,13 @@ export class ChatStore {
                 // The first phase sets the clock; later ones keep it, so the
                 // elapsed time on screen is the upload's age rather than the
                 // current phase's.
-                since: m.upload?.since ?? Date.now()
+                since: m.upload?.since ?? Date.now(),
+                files: m.upload?.files,
+                // What has been counted, where the upload counts: kept across
+                // the phases, and full once everything has gone, so the ring
+                // does not empty again while the host thinks.
+                total: d.total ?? m.upload?.total,
+                sent: d.phase === 'waiting' ? (m.upload?.total ?? d.bytes) : (d.sent ?? m.upload?.sent)
               }
             }))
           }
@@ -3307,6 +3411,8 @@ export class ChatStore {
             [data.bufferId as string]: (data.pinned as string[]) || []
           }
         })
+        // The pins changed under rows already read: read them again.
+        if (this.state.pinnedRows[data.bufferId as string]) void this.loadPins(data.bufferId as string).catch(() => {})
         break
 
       case 'pinnedMessage': {
@@ -3570,12 +3676,13 @@ export class ChatStore {
       // bumped). Merge the fresh server fields, keeping local-only unread and
       // highlight rather than resetting them.
       //
+      // `topic` too: a cleared one is left out rather than sent empty.
       // `link` and `syncing` are taken as sent even when absent: the daemon
       // leaves an optional field out when it is not set, so a plain spread
       // kept the last value it ever had - a room that reconnected stayed
       // marked as interrupted, and the banner over it stayed up.
       this.set({
-        buffers: buffers.map((b) => (b.id === data.id ? { ...b, ...data, link: data.link, syncing: data.syncing } : b))
+        buffers: buffers.map((b) => (b.id === data.id ? { ...b, ...data, link: data.link, syncing: data.syncing, topic: data.topic } : b))
       })
       this.followPeekJoin(data)
       return
@@ -3760,6 +3867,9 @@ export class ChatStore {
    * rail off the pinned and direct message pages onto whichever guild happened
    * to own the conversation, which is the opposite of what those pages are for.
    */
+  /** Conversations whose cards have been read again this run. */
+  private rereadEmbeds = new Set<string>()
+
   async selectBuffer(bufferId: string, followGroup = true): Promise<void> {
     if (!this.state.buffers.some((b) => b.id === bufferId)) return
     // A popped-out window is one conversation, and quietly replacing it would
@@ -3776,6 +3886,12 @@ export class ChatStore {
     // Snapshot the divider before clearing unread, so the "New messages" line
     // lands where the user actually left off rather than at the bottom.
     const buffer = this.state.buffers.find((b) => b.id === bufferId)!
+    // Discord's own notices: cards saved before the card reader knew their
+    // shape stay as saved, so the conversation is read again once a run.
+    if (buffer.readOnly?.includes('official Discord') && !this.rereadEmbeds.has(bufferId)) {
+      this.rereadEmbeds.add(bufferId)
+      void window.moho.rpc('rereadDiscordEmbeds', { bufferId }).catch(() => {})
+    }
     const leaving = this.state.activeBufferId
     const dividerTs = this.state.dividerTsByBuffer[bufferId]
     const patch: Partial<ChatState> = {
@@ -3783,6 +3899,7 @@ export class ChatStore {
       activePanel: '',
       peek: null,
       replyingTo: null,
+      editingId: '',
       buffers: this.state.buffers.map((b) =>
         b.id === bufferId ? { ...b, unread: 0, highlight: false } : b
       )
@@ -3790,9 +3907,14 @@ export class ChatStore {
     if (dividerTs === undefined && buffer.unread > 0) {
       const list = this.state.messagesByBuffer[bufferId] || []
       const firstUnread = list.length >= buffer.unread ? list[list.length - buffer.unread] : list[0]
+      // Not enough of the conversation is loaded to count back from its end -
+      // a buffer opened for the first time since a restart is still in the
+      // daemon's store - so the line goes where reading stopped, which is the
+      // time it was last marked read.
+      const stoppedAt = list.length < buffer.unread ? this.state.lastReadTs?.[bufferId] : undefined
       patch.dividerTsByBuffer = {
         ...this.state.dividerTsByBuffer,
-        [bufferId]: firstUnread ? firstUnread.ts - 1 : 0
+        [bufferId]: stoppedAt ?? (firstUnread ? firstUnread.ts - 1 : 0)
       }
     }
     this.set(patch)
@@ -3918,6 +4040,17 @@ export class ChatStore {
    * Opens the real Discord message in a browser - the last resort when even
    * a refresh cannot produce a working link.
    */
+  /** A link to one message, on the clipboard - the same address Open in Discord goes to. */
+  async copyDiscordMessageLink(bufferId: string, messageId: string): Promise<void> {
+    try {
+      const { url } = await window.moho.rpc<{ url: string }>('getDiscordMessageLink', { bufferId, messageId })
+      void window.moho.copyText(url)
+      this.toast('success', 'Link copied')
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
+  }
+
   async openInDiscord(bufferId: string, messageId: string): Promise<void> {
     try {
       const { url } = await window.moho.rpc<{ url: string }>('getDiscordMessageLink', {
@@ -4192,11 +4325,16 @@ export class ChatStore {
    * either the real "message" event echoes it back (reconcileOwnEcho) or the
    * timeout sweep gives up on it.
    */
-  async sendMessage(bufferId: string, body: string, attachmentPath?: string): Promise<void> {
+  async sendMessage(
+    bufferId: string,
+    body: string,
+    attachmentPath?: string | string[],
+    spoilers?: string[]
+  ): Promise<void> {
     // A fresh send takes its reply target from the composer, and consumes it.
-    const reply = this.state.replyingTo
+    const reply = this.state.replyingTo ? { ...this.state.replyingTo, ping: this.state.replyPing } : null
     this.set({ replyingTo: null })
-    return this.dispatchSend(bufferId, body, reply, attachmentPath)
+    return this.dispatchSend(bufferId, body, reply, attachmentPath, spoilers)
   }
 
   /**
@@ -4211,9 +4349,13 @@ export class ChatStore {
   private async dispatchSend(
     bufferId: string,
     body: string,
-    reply: { id: string; from: string; body: string; thread?: boolean } | null,
-    attachmentPath?: string
+    reply: { id: string; from: string; body: string; thread?: boolean; ping?: boolean } | null,
+    attachment?: string | string[],
+    spoilers?: string[]
   ): Promise<void> {
+    // One file, or several that go as one message.
+    const paths = attachment === undefined ? [] : Array.isArray(attachment) ? attachment : [attachment]
+    const attachmentPath = paths[0]
     if (!body.trim() && !attachmentPath) return
     const replyToId = reply?.id
     const clientId = `pending-${++this.sendSeq}-${Date.now()}`
@@ -4245,7 +4387,8 @@ export class ChatStore {
       pending: true,
       pendingBody: body,
       pendingReplyTo: replyToId,
-      pendingAttachment: attachmentPath,
+      pendingAttachment: attachment,
+      ...(spoilers?.length ? { pendingSpoilers: spoilers } : {}),
       ...(reply ? { replyTo: reply } : {})
     }
     // Warn before the message rather than after it. On IRC a message to
@@ -4263,7 +4406,7 @@ export class ChatStore {
     if (attachmentPath) {
       this.mapMessage(bufferId, clientId, (m) => ({
         ...m,
-        upload: { phase: 'preparing', bytes: 0, host: '', since: Date.now() }
+        upload: { phase: 'preparing', bytes: 0, host: '', since: Date.now(), ...(paths.length > 1 ? { files: paths.length } : {}) }
       }))
     }
 
@@ -4277,9 +4420,19 @@ export class ChatStore {
         // change between one message and the next, and the daemon falls back
         // to its own default if this is absent or unknown to it.
         ...(attachmentPath
-          ? { attachmentPath, uploadHost: await uploadHost(account?.service, attachmentPath) }
+          ? {
+              attachmentPath,
+              // Several files that make one message; the daemon reads this
+              // where the service can carry them together.
+              ...(paths.length > 1 ? { attachmentPaths: paths } : {}),
+              // Sent under a name that makes Discord hide them.
+              ...(spoilers?.length ? { spoilerPaths: spoilers } : {}),
+              uploadHost: await uploadHost(account?.service, attachmentPath)
+            }
           : {}),
         ...(replyToId ? { replyToId } : {}),
+        // Switched off for this reply: the author is not pinged.
+        ...(reply?.ping === false ? { replyPing: false } : {}),
         // Into the thread rather than at the message: the daemon needs to be
         // told which, because Matrix says them with the same field.
         ...(reply?.thread ? { thread: true } : {})
@@ -4389,6 +4542,19 @@ export class ChatStore {
     }
   }
 
+  /**
+   * Gives up on a message that failed to send: it goes from the log and from
+   * the books, and nothing is sent. Without this a failure stayed on screen,
+   * with a retry button beside it, until the window was closed.
+   */
+  discardFailed(clientId: string): void {
+    const info = this.pendingSends.get(clientId)
+    if (!info || info.inFlight) return
+    this.pendingSends.delete(clientId)
+    const list = this.state.messagesByBuffer[info.bufferId] || []
+    this.setMessages(info.bufferId, list.filter((m) => m.id !== clientId))
+  }
+
   retrySend(clientId: string): void {
     const info = this.pendingSends.get(clientId)
     if (!info) return
@@ -4413,7 +4579,8 @@ export class ChatStore {
       info.bufferId,
       echo.pendingBody || echo.body,
       echo.replyTo ?? null,
-      echo.pendingAttachment
+      echo.pendingAttachment,
+      echo.pendingSpoilers
     )
   }
 
@@ -4557,7 +4724,34 @@ export class ChatStore {
   }
 
   startReply(id: string, from: string, body: string): void {
-    this.set({ replyingTo: { id, from, body } })
+    this.set({ replyingTo: { id, from, body }, replyPing: true })
+  }
+
+  toggleReplyPing(): void {
+    this.set({ replyPing: !this.state.replyPing })
+  }
+
+  /** Opens a message of yours for editing where it stands. */
+  startEdit(id: string): void {
+    this.set({ editingId: id })
+  }
+
+  stopEdit(): void {
+    if (this.state.editingId) this.set({ editingId: '' })
+  }
+
+  /**
+   * Your last message in a conversation that can still be edited, or '' -
+   * what Up arrow in an empty box reaches for. Only chat lines with text, and
+   * not ones still being sent.
+   */
+  lastEditableOwn(bufferId: string): string {
+    const list = this.state.messagesByBuffer[bufferId] || []
+    for (let i = list.length - 1; i >= 0; i--) {
+      const m = list[i]
+      if (m.isOwn && !m.pending && !m.failed && isChatKind(m.kind) && m.body.trim() && !m.id.startsWith('pending-')) return m.id
+    }
+    return ''
   }
 
   cancelReply(): void {
@@ -4664,12 +4858,13 @@ export class ChatStore {
       })
   }
 
-  toast(kind: 'info' | 'error', text: string): void {
-    const id = ++this.toastSeq
-    this.set({ toasts: [...this.state.toasts, { id, kind, text }] })
-    setTimeout(() => {
-      this.set({ toasts: this.state.toasts.filter((t) => t.id !== id) })
-    }, 6000)
+  /**
+   * Says something happened. How long it stays, and going away when the
+   * pointer is not on it, is the stack's own business (components/Toasts.tsx):
+   * a toast that vanished while being read was the old behaviour.
+   */
+  toast(kind: 'info' | 'success' | 'error', text: string, action?: ToastAction): void {
+    this.set({ toasts: addToast(this.state.toasts, { id: ++this.toastSeq, kind, text, action }) })
   }
 
   dismissToast(id: number): void {

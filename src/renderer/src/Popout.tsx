@@ -9,7 +9,8 @@ import { ConversationTools } from './components/ConversationTools'
 import { BufferFace } from './components/BufferFace'
 import { FileDrop } from './components/FileDrop'
 import { Toasts } from './components/Toasts'
-import { CallStage, IncomingMatrixCall, ScreenPicker } from './components/CallStage'
+import { CallStage, ScreenPicker } from './components/CallStage'
+import { IncomingCallPanel } from './components/IncomingCallPanel'
 import { StreamStage } from './components/StreamStage'
 import { Icon, IconButton } from './components/Icon'
 import { useActiveBuffer, useChat, usePref, usePrefsReady, useStore } from './state/hooks'
@@ -137,7 +138,8 @@ export function Popout({ bufferId }: { bufferId: string }): JSX.Element {
       {/* A call rings wherever the client is, including here: this window has
           its own connection to the daemon and its own media, so a call
           answered here is answered here. */}
-      <IncomingMatrixCall />
+      {/* Silent: the main window is the one that rings. */}
+      <IncomingCallPanel silent />
       <ScreenPicker />
       {/* A popped-out conversation is one conversation, so a call that is not
           this one is in the corner and this one is above the log. */}
