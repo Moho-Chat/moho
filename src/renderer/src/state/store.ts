@@ -73,6 +73,12 @@ export interface BufferEntry extends WireBuffer {
   unread: number
   highlight: boolean
   /**
+   * How many of the unread messages mention this account. The count the rail
+   * shows: a tile that says 33 for thirty-three messages in a busy channel is
+   * noise, where one that says 2 for two people asking for you is the point.
+   */
+  mentions: number
+  /**
    * Left unread on purpose, rather than merely not read yet.
    *
    * Separate from `unread` because it outlives the count: a room marked this
@@ -2191,6 +2197,7 @@ export class ChatStore {
       const buffers = wire.map((b) => ({
         unread: existing.get(b.id)?.unread ?? 0,
         highlight: existing.get(b.id)?.highlight ?? false,
+        mentions: existing.get(b.id)?.mentions ?? 0,
         ...b
       }))
       this.set({ buffers })
@@ -3238,7 +3245,7 @@ export class ChatStore {
             // Reading a room is how a deliberate mark is taken off, so the
             // flag clears with the count. Anything else would need a second
             // gesture to undo the first, and nobody would find it.
-            b.id === data.bufferId ? { ...b, unread: 0, highlight: false, markedUnread: false } : b
+            b.id === data.bufferId ? { ...b, unread: 0, highlight: false, mentions: 0, markedUnread: false } : b
           )
         })
         break
@@ -3650,7 +3657,8 @@ export class ChatStore {
       remoteId: roomIdOrAlias,
       syncing: true,
       unread: 0,
-      highlight: false
+      highlight: false,
+      mentions: 0
     }
     this.set({ buffers: [...this.state.buffers, stand_in] })
     try {
@@ -3723,13 +3731,33 @@ export class ChatStore {
       // leaves an optional field out when it is not set, so a plain spread
       // kept the last value it ever had - a room that reconnected stayed
       // marked as interrupted, and the banner over it stayed up.
+      //
+      // The same for every flag the daemon leaves out when it is off - muted on
+      // the account, favourite, low priority, read-only, a forum. A merge that
+      // kept the last value it ever had left a room unmuted on the server still
+      // drawn as muted here, with an Unmute that had nothing left to do.
       this.set({
-        buffers: buffers.map((b) => (b.id === data.id ? { ...b, ...data, link: data.link, syncing: data.syncing, topic: data.topic } : b))
+        buffers: buffers.map((b) =>
+          b.id === data.id
+            ? {
+                ...b,
+                ...data,
+                link: data.link,
+                syncing: data.syncing,
+                topic: data.topic,
+                serverMuted: data.serverMuted ?? false,
+                favourite: data.favourite ?? false,
+                lowPriority: data.lowPriority ?? false,
+                readOnly: data.readOnly,
+                forum: data.forum ?? false
+              }
+            : b
+        )
       })
       this.followPeekJoin(data)
       return
     }
-    this.set({ buffers: [...buffers, { unread: 0, highlight: false, ...data }] })
+    this.set({ buffers: [...buffers, { unread: 0, highlight: false, mentions: 0, ...data }] })
     // Filed under a rail entry this window has never been told of. An
     // account's own entry is not announced when the account is made - the
     // daemon lists one for every account when asked - so the first
@@ -3878,7 +3906,7 @@ export class ChatStore {
       this.set({
         buffers: this.state.buffers.map((b) =>
           b.id === bufferId
-            ? { ...b, unread: b.unread + 1, highlight: b.highlight || !!msg.isHighlight }
+            ? { ...b, unread: b.unread + 1, highlight: b.highlight || !!msg.isHighlight, mentions: b.mentions + (msg.isHighlight ? 1 : 0) }
             : b
         )
       })
@@ -3943,7 +3971,7 @@ export class ChatStore {
       replyingTo: null,
       editingId: '',
       buffers: this.state.buffers.map((b) =>
-        b.id === bufferId ? { ...b, unread: 0, highlight: false } : b
+        b.id === bufferId ? { ...b, unread: 0, highlight: false, mentions: 0 } : b
       )
     }
     if (dividerTs === undefined && buffer.unread > 0) {
@@ -4129,7 +4157,7 @@ export class ChatStore {
       // here too - the stored timestamp only decides what counts next time.
       this.set({
         buffers: this.state.buffers.map((b) =>
-          bufferIds.includes(b.id) ? { ...b, unread: 0, highlight: false } : b
+          bufferIds.includes(b.id) ? { ...b, unread: 0, highlight: false, mentions: 0 } : b
         )
       })
     } catch (e) {

@@ -60,6 +60,8 @@ interface TileProps {
   active: boolean
   unread: number
   highlight: boolean
+  /** How many unread messages mention this account: the number the tile shows. */
+  mentions: number
   draggable: boolean
   dropTarget: boolean
   /** Being dragged right now: it leaves a gap where it was. */
@@ -179,7 +181,7 @@ function isMerge(e: React.DragEvent): boolean {
 }
 
 function RailTile(props: TileProps): JSX.Element {
-  const { group, active, unread, highlight, draggable, dropTarget, customIcon, muted, lifted, mergeTarget } = props
+  const { group, active, unread, highlight, mentions, draggable, dropTarget, customIcon, muted, lifted, mergeTarget } = props
   const { menu, open, close } = useContextMenu()
   const store = useStore()
   // What is waiting inside this server, for "Mark as read".
@@ -299,15 +301,17 @@ function RailTile(props: TileProps): JSX.Element {
           onClose={close}
         />
       )}
-      {/* A mention waiting in here says how many are waiting, in the corner
-          the service mark sits in - the mark gives way, since a count is what
-          somebody scanning this column came to see. */}
-      {highlight && unread > 0 && (
-        <span className="rail-count highlight" title={`${unread} unread, with a mention`}>
-          {unread > 99 ? '99+' : unread}
+      {/* Mentions say how many are waiting, in the corner the service mark sits
+          in - the mark gives way, since a count is what somebody scanning this
+          column came to see. Only mentions: how many messages there are in a
+          busy channel is not what this column is for, and the pill beside the
+          tile already says there is something to read. */}
+      {mentions > 0 && (
+        <span className="rail-count highlight" title={`${mentions} mention${mentions === 1 ? '' : 's'}`}>
+          {mentions > 99 ? '99+' : mentions}
         </span>
       )}
-      {badge && !(highlight && unread > 0) && (
+      {badge && mentions === 0 && (
         <span className={`rail-service${highlight ? ' highlight' : ''}`}>
           {badge.colour && badge.mark ? (
             <img src={badge.mark} alt="" draggable={false} />
@@ -419,11 +423,14 @@ export function ServerRail(): JSX.Element | null {
 
   // Unread rolls up from the buffers under each entry, so a guild whose
   // channels are all collapsed away still shows it has something waiting.
-  const totals = new Map<string, { unread: number; highlight: boolean }>()
-  const bump = (key: string, b: BufferEntry): void => {
-    const t = totals.get(key) || { unread: 0, highlight: false }
+  const totals = new Map<string, { unread: number; highlight: boolean; mentions: number }>()
+  // `direct` is a page of conversations addressed to you, where every unread
+  // message is one that is for you and so counts as a mention.
+  const bump = (key: string, b: BufferEntry, direct = false): void => {
+    const t = totals.get(key) || { unread: 0, highlight: false, mentions: 0 }
     t.unread += b.unread
     t.highlight = t.highlight || b.highlight
+    t.mentions += direct ? b.unread : b.mentions
     totals.set(key, t)
   }
   const all = buffers as BufferEntry[]
@@ -434,7 +441,7 @@ export function ServerRail(): JSX.Element | null {
     // A buffer can count on more than one tile: where it lives, and on any
     // aggregate page that also lists it. Both are places the user would look.
     if (b.groupId) bump(b.groupId, b)
-    if (isDirectMessage(b)) bump(DM_GROUP_ID, b)
+    if (isDirectMessage(b)) bump(DM_GROUP_ID, b, true)
     if (pinned.includes(b.id)) bump(PINNED_GROUP_ID, b)
   }
 
@@ -552,6 +559,7 @@ export function ServerRail(): JSX.Element | null {
         onBrowse={g.kind === 'space' ? () => setBrowsing(g) : undefined}
         unread={t?.unread ?? 0}
         highlight={t?.highlight ?? false}
+        mentions={t?.mentions ?? 0}
         // Direct messages and pinned lead the rail by definition, so
         // there is nowhere for them to be dragged to.
         draggable={!isFixedEntry(g)}
@@ -599,6 +607,7 @@ export function ServerRail(): JSX.Element | null {
               open={open}
               unread={entry.members.reduce((n, m) => n + (totals.get(m.id)?.unread ?? 0), 0)}
               highlight={entry.members.some((m) => totals.get(m.id)?.highlight)}
+              mentions={entry.members.reduce((n, m) => n + (totals.get(m.id)?.mentions ?? 0), 0)}
               onToggle={() => toggleFolder(entry.id)}
               lifted={dragging === `${FOLDER_DRAG_PREFIX}${entry.id}`}
               onDragStart={() => beginDrag(`${FOLDER_DRAG_PREFIX}${entry.id}`)}
@@ -788,6 +797,7 @@ function FolderTile(props: {
   /** What is waiting in the servers inside, so a closed folder can say so. */
   unread: number
   highlight: boolean
+  mentions: number
   onToggle: () => void
   onContextMenu: (e: React.MouseEvent) => void
   onDragStart: () => void
@@ -795,7 +805,7 @@ function FolderTile(props: {
   onDrop: () => void
   onDragEnd: () => void
 }): JSX.Element {
-  const { folder, members, customIcons, dropTarget, lifted, open, unread, highlight } = props
+  const { folder, members, customIcons, dropTarget, lifted, open, unread, mentions } = props
   // Open, its servers show their own; closed, what is inside would be
   // invisible without this.
   const waiting = !open && unread > 0
@@ -862,14 +872,14 @@ function FolderTile(props: {
       {/* Once the face is a grid of other people's icons, nothing says it is
           a folder any more - so it takes the same corner badge a guild uses
           to name its service. An empty folder is already unmistakably one. */}
-      {members.length > 0 && !(waiting && highlight) && (
+      {members.length > 0 && !(!open && mentions > 0) && (
         <span className="rail-service">
           <Icon name="folder" size={11} />
         </span>
       )}
-      {waiting && highlight && (
-        <span className="rail-count highlight" title={`${unread} unread, with a mention`}>
-          {unread > 99 ? '99+' : unread}
+      {!open && mentions > 0 && (
+        <span className="rail-count highlight" title={`${mentions} mention${mentions === 1 ? '' : 's'}`}>
+          {mentions > 99 ? '99+' : mentions}
         </span>
       )}
     </button>
