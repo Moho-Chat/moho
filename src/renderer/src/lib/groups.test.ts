@@ -81,16 +81,22 @@ describe('folders', () => {
 
 describe('what a muted place still says', () => {
   const buf = (extra: Partial<BufferEntry>): BufferEntry =>
-    ({ id: 'a|#x', accountId: 'a', kind: 'channel', name: '#x', lastActivityTs: 0, groupId: 'g', unread: 3, highlight: false, ...extra }) as BufferEntry
+    ({ id: 'a|#x', accountId: 'a', kind: 'channel', name: '#x', lastActivityTs: 0, groupId: 'g', unread: 3, highlight: false, mentions: 0, ...extra }) as BufferEntry
 
-  it('counts a quiet muted channel for nothing', () => {
+  it('counts a muted channel for nothing', () => {
     expect(countsTowardRail(buf({}), ['a|#x'], [])).toBe(false)
     expect(countsTowardRail(buf({}), [], [], ['g'])).toBe(false)
   })
 
-  it('still counts it once somebody has used your name', () => {
-    expect(countsTowardRail(buf({ highlight: true }), ['a|#x'], [])).toBe(true)
-    expect(countsTowardRail(buf({ highlight: true }), [], [], ['g'])).toBe(true)
+  it('counts it for nothing even once somebody has used your name', () => {
+    expect(countsTowardRail(buf({ highlight: true, mentions: 2 }), ['a|#x'], [])).toBe(false)
+    expect(countsTowardRail(buf({ highlight: true, mentions: 2 }), [], [], ['g'])).toBe(false)
+    // A mute made on the account itself is the same.
+    expect(countsTowardRail(buf({ highlight: true, mentions: 2, serverMuted: true }), [], [])).toBe(false)
+  })
+
+  it('counts what is not muted', () => {
+    expect(countsTowardRail(buf({ highlight: true, mentions: 2 }), [], [])).toBe(true)
   })
 
   it('never counts what has no row to click through to', () => {

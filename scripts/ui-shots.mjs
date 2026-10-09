@@ -94,14 +94,14 @@ const DISCORD = `(() => {
   const ch = (id, name, category, extra = {}) => ({
     id: acc + '|' + id, accountId: acc, kind: 'channel', name: 'Button Eye Crochet/#' + name,
     lastActivityTs: now, groupId: g1, category, position: Number(id.replace(/\\D/g, '')) || 0,
-    unread: 0, highlight: false, ...extra
+    unread: 0, highlight: false, mentions: 0, ...extra
   })
   const buffers = [
     ch('c1', '📜-rules', undefined),
     ch('c2', '📢-announcements', undefined, { unread: 2 }),
     ch('c3', '🤠-general', 'TEXT CHANNELS'),
     ch('c4', '📹-clips', 'TEXT CHANNELS', { unread: 5 }),
-    ch('c5', '📷-screenshots', 'TEXT CHANNELS', { unread: 1, highlight: true }),
+    ch('c5', '📷-screenshots', 'TEXT CHANNELS', { unread: 1, highlight: true, mentions: 1 }),
     ch('c6', '💩-shitpost', 'TEXT CHANNELS', { unread: 9 }),
     ch('c7', '🎨-crafts', 'TEXT CHANNELS'),
     ch('c8', '🐈-cats', 'ANIMALS', { unread: 3 }),
@@ -136,7 +136,7 @@ const DISCORD = `(() => {
       { id: g2, accountId: acc, service: 'discord', kind: 'guild', name: 'Moho Dev', position: 1 }
     ],
     buffers: [...s.buffers.filter((b) => b.accountId !== acc), ...buffers,
-      { id: acc + '|d1', accountId: acc, kind: 'channel', name: 'Moho Dev/#general', lastActivityTs: now, groupId: g2, unread: 2, highlight: true }],
+      { id: acc + '|d1', accountId: acc, kind: 'channel', name: 'Moho Dev/#general', lastActivityTs: now, groupId: g2, unread: 33, highlight: true, mentions: 2 }],
     messagesByBuffer: { ...s.messagesByBuffer, [general]: messages },
     presenceByBuffer: { ...s.presenceByBuffer, [general]: members([['Gaunt King', 'online'], ['Clarence', 'idle'], ['Wren', 'dnd'], ['Salastil', 'online'], ['Old Friend', 'offline'], ['Quiet One', 'offline']]) },
     activeGroupId: g1,
