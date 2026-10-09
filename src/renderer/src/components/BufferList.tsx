@@ -10,6 +10,7 @@ import { VoicePanel } from './VoicePanel'
 import { presenceClass, presenceLabel } from '../lib/presence'
 import { useChat, useIdSetPref, useMapPref, usePref, useStore } from '../state/hooks'
 import {
+  compareInBand,
   dmGroup,
   DM_GROUP_ID,
   isDirectMessage,
@@ -181,7 +182,8 @@ export function BufferList(): JSX.Element {
 
   /**
    * What the pane lists, in reading order: pinned first, then direct messages,
-   * then channels, each band by most recent activity.
+   * then channels. Direct messages go by most recent activity; channels hold
+   * their place (see `compareInBand`).
    *
    * The pinned page is the same list unfiltered by group - a pin is a
    * cross-service shortcut, so its page is the one place they all appear
@@ -211,9 +213,7 @@ export function BufferList(): JSX.Element {
       if (b.kind === 'dm') return 2
       return 3
     }
-    return [...inScope].sort(
-      (a, b) => band(a) - band(b) || (b.lastActivityTs || 0) - (a.lastActivityTs || 0)
-    )
+    return [...inScope].sort((a, b) => band(a) - band(b) || compareInBand(a, b))
   }, [visible, activeGroup, isPinnedPage, isDmPage, pinned])
 
   /**
@@ -228,8 +228,7 @@ export function BufferList(): JSX.Element {
    *
    * Ordinary channels sort by the service's own position within a heading,
    * since that is the order the server arranged them in and the reason it
-   * supplies one. The gathered pages have no such order to respect and keep
-   * the recency they were already sorted by.
+   * supplies one. The gathered pages keep the order they were sorted into.
    */
   const grouped = useMemo(() => {
     if (!activeGroup) return null

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BufferEntry } from '../state/store'
 import {
+  compareInBand,
   countsTowardRail,
   fileInFolder,
   foldTogether,
@@ -94,5 +95,26 @@ describe('what a muted place still says', () => {
 
   it('never counts what has no row to click through to', () => {
     expect(countsTowardRail(buf({ highlight: true }), [], ['a|#x'])).toBe(false)
+  })
+})
+
+describe('compareInBand', () => {
+  const ch = (name: string, lastActivityTs: number, position = 0) => ({ kind: 'channel' as const, name, lastActivityTs, position })
+  const dm = (name: string, lastActivityTs: number) => ({ kind: 'dm' as const, name, lastActivityTs, position: 0 })
+
+  it('keeps channels where they are however recently they spoke', () => {
+    const list = [ch('#zebra', 100), ch('#alpha', 5), ch('#mid', 50)]
+    expect(list.sort(compareInBand).map((c) => c.name)).toEqual(['#alpha', '#mid', '#zebra'])
+    // A message arriving changes nothing about the order.
+    list[0] = ch('#alpha', 9999)
+    expect(list.sort(compareInBand).map((c) => c.name)).toEqual(['#alpha', '#mid', '#zebra'])
+  })
+
+  it("follows the service's own position before the name", () => {
+    expect([ch('#a', 0, 2), ch('#b', 0, 1)].sort(compareInBand).map((c) => c.name)).toEqual(['#b', '#a'])
+  })
+
+  it('still puts the person who just wrote first among direct messages', () => {
+    expect([dm('old', 1), dm('new', 9)].sort(compareInBand).map((c) => c.name)).toEqual(['new', 'old'])
   })
 })
