@@ -52,7 +52,11 @@ export const IPC = {
   /** main -> window: a right click landed on somewhere text is typed. */
   editMenu: 'moho:editMenu',
   deepLink: 'moho:deepLink',
-  popoutsChanged: 'moho:popout:changed'
+  popoutsChanged: 'moho:popout:changed',
+  /** main -> window: something from the tray menu that the window carries out. */
+  trayCommand: 'moho:tray:command',
+  /** window -> main: the status the accounts are at, for the tray menu to check. */
+  trayStatus: 'moho:tray:status'
 } as const
 
 /**

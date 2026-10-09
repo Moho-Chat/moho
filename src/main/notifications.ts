@@ -4,6 +4,7 @@ import path from 'node:path'
 import { Notification, nativeImage, net } from 'electron'
 import type { WebContents } from 'electron'
 import type { Prefs } from './prefs'
+import type { TrayState } from './tray'
 import type { Buffer as ChatBuffer } from '../shared/wire'
 
 /**
@@ -48,7 +49,7 @@ export class Notifier {
 
   constructor(
     private prefs: Prefs,
-    private onAlertChange: (unreadCount: number, hasAlert: boolean) => void,
+    private onAlertChange: (state: TrayState) => void,
     private onActivate: (bufferId: string) => void,
     /** The renderer, borrowed only to decode formats nativeImage cannot. */
     private renderer: () => WebContents | null = () => null,
@@ -288,24 +289,25 @@ export class Notifier {
   }
 
   /**
-   * Whether the tray should show something is waiting.
+   * What the tray should say is waiting.
    *
-   * A direct message counts, and this is the change: the tray used to light up
-   * only for *pinned* buffers, on the reasoning that a DM had already had its
-   * desktop notification and the tray was for things important enough to pin.
-   * In practice that made the icon nearly inert - somebody messages you, and
-   * the one place still on screen after the notification has faded says
-   * nothing, unless you happened to have pinned that exact conversation.
-   *
-   * Pinned buffers still count, so a channel worth pinning can still raise it.
-   * There is no count here: a tray icon is around 22 pixels, which is room for
-   * "yes" and not for a number.
+   * Everything held here was worth a notification - a direct message, or
+   * somebody mentioning this account - so all of it lights the tray, and it
+   * says how many conversations and of which kind. It used to light only for
+   * direct messages and pinned conversations, on the reasoning that a mention
+   * had had its notification and the tray was for what mattered more; the
+   * effect was an icon that stayed dark while somebody was asking for you.
    */
   publish(): void {
-    const pinned = this.prefs.get<string[]>('pinnedBuffers', [])
-    const hasAlert = [...this.unread].some(
-      (id) => this.buffers.get(id)?.kind === 'dm' || pinned.includes(id)
-    )
-    this.onAlertChange(this.unread.size, hasAlert)
+    let dms = 0
+    for (const id of this.unread) if (this.buffers.get(id)?.kind === 'dm') dms++
+    this.onAlertChange({ unread: this.unread.size, dms, mentions: this.unread.size - dms })
+  }
+
+  /** The conversation that has been waiting for you the shortest time. */
+  latestUnread(): string | null {
+    let latest: string | null = null
+    for (const id of this.unread) latest = id
+    return latest
   }
 }

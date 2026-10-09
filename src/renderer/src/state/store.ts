@@ -1179,6 +1179,18 @@ export class ChatStore {
   private set(patch: Partial<ChatState>): void {
     this.state = { ...this.state, ...patch }
     for (const l of this.listeners) l()
+    if (patch.accounts && !this.state.pinnedBufferId) this.reportTrayStatus()
+  }
+
+  /**
+   * Tells main what status the accounts are at, so the tray menu's Status
+   * entry can show the one that is set. The first connected account's, since
+   * the menu sets one status on all of them and so they are alike unless one
+   * was changed on its own.
+   */
+  private reportTrayStatus(): void {
+    const status = this.state.accounts.find((a) => a.state === 'connected')?.status
+    window.moho.setTrayStatus(status === 'online' || status === 'idle' || status === 'dnd' || status === 'invisible' ? status : null)
   }
 
   // --- lifecycle ------------------------------------------------------
@@ -1256,6 +1268,11 @@ export class ChatStore {
     // window gets them instead; main routes them there.
     if (!this.state.pinnedBufferId) {
       window.moho.onActivateBuffer((id) => void this.selectBuffer(id))
+      // The tray's menu: Settings, and a status for every account.
+      window.moho.onTrayCommand((command, arg) => {
+        if (command === 'settings') this.setActivePanel('settings')
+        else if (arg === 'online' || arg === 'idle' || arg === 'dnd' || arg === 'invisible') void this.setStatusEverywhere(arg)
+      })
       window.moho.onDeepLink((url) => this.followDeepLink(url))
     }
 

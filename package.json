@@ -21,6 +21,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "test:ui": "electron-vite build && node scripts/ui-check.mjs",
+    "test:tray": "electron-vite build && node scripts/tray-check.mjs",
     "shots": "electron-vite build && node scripts/ui-shots.mjs",
     "pack": "npm run daemon && npm run build && MOHO_BUILD=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty) electron-builder --linux AppImage",
     "pack:deb": "npm run daemon && npm run build && MOHO_BUILD=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty) electron-builder --linux deb",

@@ -270,6 +270,12 @@ jobs:
       - name: layout check
         run: xvfb-run -a npm run test:ui
 
+      # The tray cannot be looked at, so this reads what main gave it - icon,
+      # tooltip, menu - and presses its entries, including Restart moho, which
+      # has to bring back both the window and a daemon of its own.
+      - name: tray check
+        run: xvfb-run -a npm run test:tray
+
       # MOHO_BUILD is computed inside the npm script - a shell assignment on
       # the electron-builder line - so it cannot be injected from out here.
       # The only way to control what the artifact is called is to guarantee

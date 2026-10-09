@@ -83,6 +83,18 @@ const api = {
     return () => ipcRenderer.off(IPC.activateBuffer, handler)
   },
 
+  /** The tray menu asking this window to open Settings, or to set a status on every account. */
+  onTrayCommand(cb: (command: 'settings' | 'status', arg?: string) => void): () => void {
+    const handler = (_e: unknown, command: 'settings' | 'status', arg?: string): void => cb(command, arg)
+    ipcRenderer.on(IPC.trayCommand, handler)
+    return () => ipcRenderer.off(IPC.trayCommand, handler)
+  },
+
+  /** Says what status the accounts are at, for the tray menu to show as checked. */
+  setTrayStatus(status: string | null): void {
+    ipcRenderer.send(IPC.trayStatus, status)
+  },
+
   onMaximizeChange(cb: (maximized: boolean) => void): () => void {
     const handler = (_e: unknown, v: boolean): void => cb(v)
     ipcRenderer.on(IPC.maximizeChanged, handler)
