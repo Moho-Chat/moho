@@ -9946,3 +9946,33 @@ html[data-reduce-motion] *::after {
   animation-iteration-count: 1 !important;
   scroll-behavior: auto !important;
 }
+
+
+/* --- keybinds ------------------------------------------------------------- */
+.keys {
+  display: inline-flex;
+  gap: var(--spacing-xxs);
+  flex: none;
+}
+
+.key {
+  min-width: 24px;
+  padding: 2px var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-bottom-width: 2px;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-high);
+  color: var(--surface-text);
+  font-family: inherit;
+  font-size: var(--font-size-small);
+  text-align: center;
+}
+
+.hotkey-recorder {
+  min-width: 140px;
+}
+
+.hotkey-recorder.recording {
+  border-color: var(--primary);
+  color: var(--primary);
+}

@@ -13,6 +13,7 @@ import {
 } from './controls'
 import { useChat, usePref, useStore } from '../../state/hooks'
 import { Icon } from '../Icon'
+import { acceleratorLabel, acceleratorOf } from '../../lib/accelerator'
 import { AccountsPanel } from '../AccountsPanel'
 import { DownloadsPanel } from '../DownloadsPanel'
 import { humanBytes } from '../../lib/util'
@@ -117,6 +118,7 @@ const CATEGORIES: { id: string; label: string; group: string; icon?: string; ser
   { id: 'general', label: 'General', group: 'App' },
   { id: 'appearance', label: 'Appearance', group: 'App' },
   { id: 'notifications', label: 'Notifications', group: 'App' },
+  { id: 'keybinds', label: 'Keybinds', group: 'App' },
   // One page per network, each only while there is an account on it.
   { id: 'irc', label: 'IRC', group: 'Networks', service: 'irc' },
   { id: 'sneedchat', label: 'Sneedchat', group: 'Networks', service: 'sneedchat' },
@@ -223,6 +225,8 @@ function Page({ id }: { id: string }): JSX.Element | null {
       return <AppearanceSettings />
     case 'notifications':
       return <NotificationSettings />
+    case 'keybinds':
+      return <KeybindSettings />
     case 'irc':
       return <IrcSettings />
     case 'sneedchat':
@@ -581,6 +585,131 @@ function StorageSettings(): JSX.Element {
   )
 }
 
+/** One key cap, or several for a combination. */
+function Keys({ keys }: { keys: string[] }): JSX.Element {
+  return (
+    <span className="keys">
+      {keys.map((k, i) => (
+        <kbd key={i} className="key">
+          {k}
+        </kbd>
+      ))}
+    </span>
+  )
+}
+
+/**
+ * The global show/hide hotkey, recorded by pressing it rather than typed as an
+ * Electron accelerator. Clicking starts listening; the first combination with
+ * a modifier in it is taken, and Escape gives up.
+ */
+function HotkeyRecorder(): JSX.Element {
+  const [value, setValue] = usePref<string>('hotkey.toggle', 'Control+Shift+M')
+  const [recording, setRecording] = useState(false)
+
+  useEffect(() => {
+    if (!recording) return
+    const onKey = (e: KeyboardEvent): void => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        setRecording(false)
+        return
+      }
+      const accelerator = acceleratorOf(e)
+      if (!accelerator) return
+      setValue(accelerator)
+      setRecording(false)
+    }
+    // Captured, ahead of the app's own shortcuts: what is pressed now is the answer.
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [recording, setValue])
+
+  return (
+    <div className="setting-row">
+      <div className="setting-text">
+        <div>Show or hide moho</div>
+        <div className="small muted">
+          Works from any program. Wayland compositors do not let an ordinary app grab keys globally, so this only takes
+          effect under X11; on Wayland, bind your compositor to focus moho instead.
+        </div>
+      </div>
+      <button
+        type="button"
+        className={`button hotkey-recorder${recording ? ' recording' : ''}`}
+        onClick={() => setRecording(!recording)}
+        aria-label="Record a new hotkey"
+      >
+        {recording ? 'Press the keys…' : value ? <Keys keys={acceleratorLabel(value)} /> : 'Not set'}
+      </button>
+      {value && !recording && (
+        <button type="button" className="button subtle small" onClick={() => setValue('')}>
+          Clear
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** Every shortcut the app has, by what it is for. The one that can be changed is at the end. */
+const SHORTCUTS: { title: string; rows: { keys: string[]; what: string }[] }[] = [
+  {
+    title: 'Moving around',
+    rows: [
+      { keys: ['Ctrl', 'K'], what: 'Jump to a conversation: search across every account' },
+      { keys: ['Alt', '↑ / ↓'], what: 'The previous or next conversation in the list' },
+      { keys: ['Alt', 'Shift', '↑ / ↓'], what: 'The previous or next one with something unread' },
+      { keys: ['Ctrl', ','], what: 'Open Settings' },
+      { keys: ['Esc'], what: 'Mark this conversation read and go to the latest message' },
+      { keys: ['Shift', 'Esc'], what: 'Mark every conversation on this server read' }
+    ]
+  },
+  {
+    title: 'Writing',
+    rows: [
+      { keys: ['Enter'], what: 'Send' },
+      { keys: ['Shift', 'Enter'], what: 'A new line' },
+      { keys: ['↑'], what: 'In an empty box, edit your last message' },
+      { keys: ['Tab'], what: 'Complete the name being typed; again for the next one' },
+      { keys: ['Ctrl', 'B / I / U'], what: 'Bold, italic or underline, where the service has it' },
+      { keys: ['@'], what: 'Name somebody: arrows to choose, Tab or Enter to take it' },
+      { keys: [':'], what: 'An emoji by name, such as :fire' },
+      { keys: ['/'], what: 'A command, at the start of a message' },
+      { keys: ['Esc'], what: 'Put a reply down, or close a list that is open' }
+    ]
+  },
+  {
+    title: 'Emoji picker and viewer',
+    rows: [
+      { keys: ['↑ ↓ ← →'], what: 'Walk the picker; Enter picks, and picks the top result while searching' },
+      { keys: ['← / →'], what: 'The previous or next picture in the viewer' },
+      { keys: ['+', '-', '0'], what: 'Zoom the viewer in, out, and back to fit' }
+    ]
+  }
+]
+
+/** Every shortcut, and the one that can be changed. */
+function KeybindSettings(): JSX.Element {
+  return (
+    <>
+      {SHORTCUTS.map((group) => (
+        <SettingsSection key={group.title} title={group.title}>
+          {group.rows.map((row) => (
+            <div key={row.what} className="setting-row">
+              <div className="setting-text">{row.what}</div>
+              <Keys keys={row.keys} />
+            </div>
+          ))}
+        </SettingsSection>
+      ))}
+      <SettingsSection title="Anywhere on your computer">
+        <HotkeyRecorder />
+      </SettingsSection>
+    </>
+  )
+}
+
 /**
  * What the app does to get your attention. Which conversations may is decided
  * where it always was - muting a channel or a server from its menu - and these
@@ -768,18 +897,6 @@ function GeneralSettings(): JSX.Element {
       <VoiceSettings />
 
       <StorageSettings />
-
-      <SettingsSection
-        title="Window"
-        description="Wayland compositors don't allow an ordinary app to grab keys globally, so this only takes effect under X11. On Wayland, bind your compositor to focus moho instead."
-      >
-        <StringSetting
-          settingKey="hotkey.toggle"
-          label="Show/hide hotkey"
-          defaultValue="Control+Shift+M"
-          placeholder="Control+Shift+M"
-        />
-      </SettingsSection>
     </>
   )
 }
