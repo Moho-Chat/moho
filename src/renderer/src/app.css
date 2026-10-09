@@ -8945,11 +8945,6 @@ video.lightbox-media {
   background: var(--surface-container);
 }
 
-/* "Invite friends to event": over the events pane. */
-.share-event-backdrop {
-  z-index: var(--z-sheet);
-}
-
 .share-event {
   width: min(480px, 94vw);
 }

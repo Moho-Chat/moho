@@ -18,6 +18,7 @@ export function Modal({
   iconColor,
   onClose,
   className,
+  header,
   children
 }: {
   title: string
@@ -25,6 +26,12 @@ export function Modal({
   iconColor?: string
   onClose: () => void
   className?: string
+  /**
+   * A heading of the dialog's own, in place of the title row: for a dialog whose
+   * head is a person's face, or a search box. It brings its own way out; the
+   * title is still what a screen reader calls the dialog.
+   */
+  header?: React.ReactNode
   children: React.ReactNode
 }): JSX.Element {
   useEscapeLayer(onClose)
@@ -37,11 +44,13 @@ export function Modal({
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="dialog-head">
-          {icon && <Icon name={icon} size={18} color={iconColor} />}
-          <span className="dialog-title ellipsis">{title}</span>
-          <IconButton name="close" size={16} title="Close" onClick={onClose} />
-        </div>
+        {header ?? (
+          <div className="dialog-head">
+            {icon && <Icon name={icon} size={18} color={iconColor} />}
+            <span className="dialog-title ellipsis">{title}</span>
+            <IconButton name="close" size={16} title="Close" onClick={onClose} />
+          </div>
+        )}
         {children}
       </div>
     </div>,

@@ -1,7 +1,6 @@
 import { useMediaUrl } from '../lib/route'
-import { useEscapeLayer } from '../lib/layers'
+import { Modal } from './Modal'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { Icon, IconButton } from './Icon'
 import { Avatar } from './Avatar'
 import { ContextMenu, type MenuEntry } from './ContextMenu'
@@ -90,8 +89,6 @@ export function EventsPane(): JSX.Element | null {
     if (count !== undefined) load()
   }, [count, load])
 
-  useEscapeLayer(() => store.closeEvents(), !!pane && !menu && !sharing)
-
   if (!pane) return null
 
   const act = (event: DiscordEvent, method: string, params: Record<string, unknown>, failed: string): void => {
@@ -127,9 +124,8 @@ export function EventsPane(): JSX.Element | null {
   ]
 
   const n = events?.length ?? 0
-  return createPortal(
-    <div className="modal-scrim" onClick={() => store.closeEvents()}>
-      <div className="events-pane" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Events">
+  return (
+    <Modal title="Events" className="events-pane" onClose={() => store.closeEvents()} header={
         <div className="events-pane-head">
           <Icon name="calendar_month" size={22} />
           <span className="events-pane-count">
@@ -142,6 +138,7 @@ export function EventsPane(): JSX.Element | null {
           <span className="events-pane-spacer" />
           <IconButton name="close" title="Close" onClick={() => store.closeEvents()} />
         </div>
+    }>
 
         <div className="events-pane-list">
           {events === null && <p className="small muted">Loading…</p>}
@@ -204,11 +201,9 @@ export function EventsPane(): JSX.Element | null {
             </div>
           ))}
         </div>
-      </div>
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={menuFor(menu.event)} onClose={() => setMenu(null)} />}
       {sharing && <ShareEvent accountId={pane.accountId} event={sharing} onClose={() => setSharing(null)} />}
-    </div>,
-    document.body
+    </Modal>
   )
 }
 
@@ -269,8 +264,6 @@ export function EventCreatePanel(): JSX.Element | null {
       })
       .catch(() => setChannels([]))
   }, [target])
-
-  useEscapeLayer(() => store.closeEventCreate(), !!target)
 
   if (!target) return null
 
@@ -336,15 +329,15 @@ export function EventCreatePanel(): JSX.Element | null {
     </label>
   )
 
-  return createPortal(
-    <div className="modal-scrim" onClick={() => store.closeEventCreate()}>
-      <div className="events-pane event-create" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Create an event">
+  return (
+    <Modal title="Create an event" className="events-pane event-create" onClose={() => store.closeEventCreate()} header={
         <div className="events-pane-head">
           <Icon name="calendar_add_on" size={22} />
           <span className="events-pane-count">Create an event</span>
           <span className="events-pane-spacer" />
           <IconButton name="close" title="Close" onClick={() => store.closeEventCreate()} />
         </div>
+    }>
 
         <div className="event-create-body">
           <div className="event-create-section">
@@ -429,9 +422,7 @@ export function EventCreatePanel(): JSX.Element | null {
             {sending ? 'Creating…' : 'Create Event'}
           </button>
         </div>
-      </div>
-    </div>,
-    document.body
+    </Modal>
   )
 }
 
@@ -476,7 +467,6 @@ function ShareEvent({
       .catch(() => setTargets([]))
   }, [accountId, event.guildId, event.id])
 
-  useEscapeLayer(onClose)
 
   const q = query.trim().toLowerCase()
   const shown = (targets ?? []).filter(
@@ -532,8 +522,7 @@ function ShareEvent({
   }
 
   return (
-    <div className="modal-scrim share-event-backdrop" onClick={onClose}>
-      <div className="events-pane share-event" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Invite friends to event">
+    <Modal title="Invite friends to event" className="events-pane share-event" onClose={onClose} header={
         <div className="share-event-head">
           <div>
             <div className="events-pane-count">Invite friends to event</div>
@@ -546,6 +535,7 @@ function ShareEvent({
           <span className="events-pane-spacer" />
           <IconButton name="close" title="Close" onClick={onClose} />
         </div>
+    }>
         <div className="emoji-search share-event-search">
           <Icon name="search" size={16} />
           <input autoFocus placeholder="Search for friends" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -576,7 +566,6 @@ function ShareEvent({
                 : ''}
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

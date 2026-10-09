@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useEscapeLayer } from '../lib/layers'
 import { ReasonPrompt } from './ReasonPrompt'
-import { createPortal } from 'react-dom'
+import { Modal } from './Modal'
 import { Avatar } from './Avatar'
 import { Icon, IconButton } from './Icon'
 import { usePref, useStore } from '../state/hooks'
@@ -124,7 +123,6 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
   // for what they are actually looking at now.
   const generation = useRef(0)
 
-  useEscapeLayer(onClose)
 
   const servers = extraServers
 
@@ -287,15 +285,8 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
   const rooms = (answer?.rooms ?? []).filter((room) => !disabled.has(room.via))
   const morePages = Object.keys(answer?.next ?? {}).length > 0
 
-  return createPortal(
-    <div className="modal-scrim" onClick={onClose}>
-      <div
-        className="room-search"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Find a room"
-        onClick={(e) => e.stopPropagation()}
-      >
+  return (
+    <Modal title="Find a room" className="room-search" onClose={onClose} header={
         <div className="room-search-head">
           <Icon name="search" size={18} />
           <input
@@ -323,6 +314,7 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
           />
           <IconButton name="close" title="Close" onClick={onClose} />
         </div>
+    }>
 
         {/* Which servers, by name, on their own row so a dozen of them fit -
             and each one a switch, because "search everywhere" and "search
@@ -545,8 +537,6 @@ export function RoomSearch({ account, onClose }: { account: Account; onClose: ()
             </p>
           )}
         </div>
-      </div>
-    </div>,
-    document.body
+    </Modal>
   )
 }
