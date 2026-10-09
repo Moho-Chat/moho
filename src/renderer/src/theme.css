@@ -20,6 +20,10 @@
   --surface-container: #1d2024;
   --surface-container-high: #272a2f;
   --surface-container-highest: #32353a;
+  /* The fill of a quiet button (Cancel and its kind). Lighter than every surface a
+     dialog or panel can be, so it never matches what it sits on; no other fill
+     uses it. */
+  --button-subtle: #444950;
 
   --outline: #8c9199;
   --outline-light: rgba(140, 145, 153, 0.075);
@@ -374,7 +378,7 @@ a:hover {
 }
 
 .button.subtle {
-  background: var(--surface-container-high);
+  background: var(--button-subtle);
   color: var(--surface-text);
 }
 
