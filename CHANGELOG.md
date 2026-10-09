@@ -17,6 +17,25 @@ Each section has two parts:
   that made it, including dependency updates
   (`node scripts/changelog-deps.mjs <previous tag>` lists those).
 
+## [1.0.0-rc.4]
+
+### Major features
+
+- **A rebuilt tray:** an icon drawn for the system's colour scheme with the number of conversations waiting on it, a tooltip that says what is waiting, and a menu of what is new, Show/Hide, Status, Settings, Restart moho and Quit - Restart moho brings back both the window and the daemon
+- **Status by service:** the plaque and the tray offer only the statuses each service has - Discord all four, IRC away and back, Matrix online and offline, Kick and Sneedchat none - and Do not disturb silences desktop notifications on every service, and is Discord's real mode there
+
+### Fixes, patches and changes
+
+- Reworked the tray icon and menu, and dropped Restart daemon and Stop daemon from it ([moho `24106e5`](https://github.com/Moho-Chat/moho/commit/24106e5))
+- Do not disturb now silences an account's desktop notifications and the taskbar flash; the tray no longer has a switch of its own for it ([moho `53fb0f3`](https://github.com/Moho-Chat/moho/commit/53fb0f3))
+- Idle from the tray reaches Discord and IRC and leaves Matrix, Kick and Sneedchat as they were; a service is no longer asked for a status it does not have ([moho `c1bcb72`](https://github.com/Moho-Chat/moho/commit/c1bcb72), [nobilis `a8441ab`](https://github.com/Moho-Chat/nobilis/commit/a8441ab))
+- Fixed Matrix's rate limit on changing status showing as M_LIMIT_EXCEEDED: a limited request now waits the time the server names, and a longer wait is applied when it is over ([moho `0dfff0d`](https://github.com/Moho-Chat/moho/commit/0dfff0d), [nobilis `43135c1`](https://github.com/Moho-Chat/nobilis/commit/43135c1))
+- Fixed the window being pulled back to the open conversation's server whenever you chose another: the daemon link coming up is acted on once, a refresh no longer follows the open conversation, and the tray is told only what changed ([moho `745641a`](https://github.com/Moho-Chat/moho/commit/745641a))
+- Matrix's invisible is called Offline in the plaque, its popout and the tray, which is what it sets ([moho `745641a`](https://github.com/Moho-Chat/moho/commit/745641a))
+- A room muted on a Matrix account can now be unmuted from the menu, including a mute set from Element ([moho `745641a`](https://github.com/Moho-Chat/moho/commit/745641a), [nobilis `59db82c`](https://github.com/Moho-Chat/nobilis/commit/59db82c))
+- Discord requests now give up on a connection that has gone quiet, a history catch-up always releases its place, and the gateway logs what it receives and why a message is dropped ([moho `b151ef8`](https://github.com/Moho-Chat/moho/commit/b151ef8), [nobilis `a34821e`](https://github.com/Moho-Chat/nobilis/commit/a34821e))
+- Fixed Discord reconnecting every few seconds after being told it is rate limited: it now waits out the minute Discord asks for ([nobilis `59db82c`](https://github.com/Moho-Chat/nobilis/commit/59db82c))
+
 ## [1.0.0-rc.3]
 
 ### Major features
