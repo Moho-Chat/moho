@@ -25,6 +25,7 @@ import { addToast, type ToastAction, type ToastItem } from '../lib/toasts'
 import { buildSmilieIndex, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
 import { runExport } from '../lib/exporter'
+import type { ForumPost } from '../lib/forum'
 import { DM_GROUP_ID, isDirectMessage } from '../lib/groups'
 import { ircNetworkFor } from '../lib/networks'
 import { parseDeepLink, type IrcLink } from '../../../shared/deeplink'
@@ -56,6 +57,15 @@ export interface LiveDiscordEvent {
   channelId?: string | null
   channelName?: string | null
   location?: string | null
+}
+
+/** A forum's posts as last read. */
+export interface ForumPageCache {
+  at: number
+  sort: 'active' | 'created'
+  posts: ForumPost[]
+  hasMore: boolean
+  tags: { id: string; name: string; emoji?: string | null; moderated?: boolean }[]
 }
 
 export interface BufferEntry extends WireBuffer {
@@ -545,6 +555,12 @@ export interface ChatState {
    * the log and for the list in the header, which are the same answer.
    */
   pinnedRows: Record<string, Message[]>
+  /**
+   * The last page of posts read from each forum, so coming back to one shows it
+   * at once instead of asking again. Read again when it is a minute old, or
+   * when the sort changes.
+   */
+  forumPages: Record<string, ForumPageCache>
   /** Friends and pending requests per Discord account, as they change. */
   discordFriends: Record<string, DiscordFriend[]>
   /**
@@ -734,6 +750,7 @@ const INITIAL: ChatState = {
   reviewCard: null,
   pinnedMessages: {},
   pinnedRows: {},
+  forumPages: {},
   discordFriends: {},
   ringingCall: null,
   callMinimized: false,
@@ -2400,6 +2417,10 @@ export class ChatStore {
    * Kept, so the banner over the log and the list in the header share one
    * answer rather than each asking.
    */
+  setForumPage(bufferId: string, page: ForumPageCache): void {
+    this.set({ forumPages: { ...this.state.forumPages, [bufferId]: page } })
+  }
+
   async loadPins(bufferId: string): Promise<Message[]> {
     const answer = await window.moho.rpc<{ pinned: Message[] }>('listPinned', { bufferId })
     const rows = answer.pinned ?? []

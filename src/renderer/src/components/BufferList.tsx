@@ -941,6 +941,9 @@ function BufferRow({
     // that it is not one of the others - a notice about a quota is easy to
     // scroll past when it arrives in what looks like a room a stranger made.
     <Icon name={serviceRoomGlyph()} size={15} />
+  ) : buffer.forum ? (
+    // A forum is posts, not a place to talk, and says so in the glyph.
+    <Icon name="forum" size={15} />
   ) : (
     <Icon name={bufferKindGlyph(buffer.kind)} size={15} />
   )

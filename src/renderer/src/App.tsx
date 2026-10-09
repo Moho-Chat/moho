@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { TitleBar } from './components/TitleBar'
 import { BufferList } from './components/BufferList'
 import { ServerRail } from './components/ServerRail'
+import { ForumPane } from './components/ForumPane'
 import { MessageList } from './components/MessageList'
 import { MentionsInbox } from './components/MentionsInbox'
 import { MentionsPage } from './components/MentionsPage'
@@ -268,7 +269,8 @@ export default function App(): JSX.Element {
             <>
               {/* Above the box, saying why it will not work here yet. */}
               {buffer && <MembershipGate buffer={buffer} />}
-              <Composer />
+              {/* A forum has no box: what is said in it is said in a post. */}
+              {!buffer?.forum && <Composer />}
             </>
           )}
         </div>
@@ -373,6 +375,7 @@ function Body({
   activeGroupId: string
   peeking: boolean
 }): JSX.Element {
+  const activeBuffer = useActiveBuffer()
   // Settings, with Accounts and Downloads as pages of it. Above the
   // no-accounts case below: a finished download is still worth looking at on
   // a machine whose accounts have since been removed.
@@ -391,6 +394,8 @@ function Body({
   // An invitation stands where the conversation would, because it is the
   // conversation being offered.
   if (activeGroupId.startsWith(INVITE_PREFIX)) return <InvitePanel groupId={activeGroupId} />
+  // A forum is a list of posts, not a log.
+  if (hasBuffer && activeBuffer?.forum) return <ForumPane buffer={activeBuffer} />
   if (hasBuffer) return <MessageList />
   return <Placeholder icon="forum" text="Select or join a channel" />
 }

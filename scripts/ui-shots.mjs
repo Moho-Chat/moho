@@ -1123,6 +1123,35 @@ const SCENES = [
     clip: { x: 0, y: 44, width: 280, height: 756 }
   },
   {
+    // A Discord forum (#329): a list of posts, not a log, and no message box.
+    name: 'discord-forum',
+    setup: async (p) => {
+      await discord(false)(p)
+      await p.evaluate(`(() => {
+        const s = window.__mohoShots.state()
+        const id = s.activeBufferId
+        const now = Math.floor(Date.now() / 1000)
+        const thumb = (a, b, l) => 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144"><rect width="144" height="144" fill="' + a + '"/><rect y="104" width="144" height="40" fill="' + b + '"/><text x="72" y="64" font-size="22" font-family="sans-serif" fill="#222" text-anchor="middle">' + l + '</text></svg>')
+        const post = (i, name, author, content, days, count, extra = {}) => ({ id: 'p' + i, name, author, content, createdTs: now - days * 86400, lastTs: now - days * 86400, messageCount: count, archived: false, pinned: false, tags: [], ...extra })
+        const posts = [
+          post(0, 'Read this before posting', 'Moderator', 'Please give a title, say what you are working on, and tag it. Duplicate posts are merged.', 90, 12, { pinned: true, tags: [{ name: 'Rules', emoji: '📌' }] }),
+          post(1, 'n64 test suite', 'nemonic', 'https://github.com/thelemmy/nemu64-test', 8, 0, { tags: [{ name: 'Tools' }], thumbnail: thumb('#f4f4f4', '#e8a23a', 'github') }),
+          post(2, 'Recompilator by nemonicicon', 'Sunny', 'https://github.com/nemonicicon/Recompilator', 18, 2, { tags: [{ name: 'Tools' }, { name: 'N64' }], thumbnail: thumb('#f4f4f4', '#d8506a', 'github') }),
+          post(3, 'n64-decomp-workbench by akratch', 'Sunny', 'https://github.com/akratch/n64-decomp-workbench', 22, 3, { reaction: { emoji: '❤️', count: 1 }, thumbnail: thumb('#f4f4f4', '#3a78d8', 'github') }),
+          post(4, 'N64 Game Decompilations', 'binsento', 'https://decomp.dev/?platform=n64', 22, 0, { thumbnail: thumb('#16181d', '#2d5aa8', 'decomp.dev') }),
+          post(5, 'n64dllm-v1 by jlebthedude', 'Sunny', 'https://huggingface.co/jlebthedude/n64dllm-v1', 40, 0, { archived: true, thumbnail: thumb('#2a6fd0', '#e08a3a', 'hf') }),
+          post(6, 'n64recomp-companion by DohmBoy64Bit', 'Sunny', 'https://github.com/DohmBoy64Bit/n64recomp-companion', 52, 1, { archived: true })
+        ]
+        window.__mohoShots.patch({
+          buffers: s.buffers.map((b) => b.id === id ? { ...b, forum: true } : b),
+          forumPages: { ...s.forumPages, [id]: { at: Date.now() + 3600000, sort: 'active', posts, hasMore: true, tags: [{ id: 't1', name: 'Tools' }, { id: 't2', name: 'N64' }] } }
+        })
+        return true
+      })()`)
+      await sleep(700)
+    }
+  },
+  {
     name: 'discord-media-grid',
     setup: async (p) => {
       await discord(false)(p)

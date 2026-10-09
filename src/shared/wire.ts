@@ -101,6 +101,8 @@ export interface Buffer {
    * may read but not write in, or Discord's own notices. Absent where it can.
    */
   readOnly?: string
+  /** A Discord forum: a list of posts, each a thread, not a conversation. */
+  forum?: boolean
   /** Matrix only - absent, not false, for protocols with no encryption concept. */
   encrypted?: boolean
   /**
