@@ -114,21 +114,6 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
         >
           <Icon name={voice.deafened ? 'headset_off' : 'headset_mic'} size={18} />
         </button>
-
-        {/* Joining something new, beside the account it would be joined on.
-            It used to sit in the heading above the channel list, where it read
-            as belonging to whichever server was open rather than to the
-            account - and where "+" next to a guild's name suggests adding
-            something *to that guild*. Down here the account is named right
-            beside it, which is the question the button actually answers. */}
-        <button
-          type="button"
-          className="user-audio-button"
-          title={`Join or add on ${serviceLabel(account.service)}`}
-          onClick={() => store.setActivePanel('join', account.id)}
-        >
-          <Icon name="add" size={18} />
-        </button>
       </div>
 
       {open && (
