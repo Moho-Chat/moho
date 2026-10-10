@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { BufferEntry } from '../state/store'
 import {
   compareInBand,
-  countsTowardRail,
+  countedFor,
   fileInFolder,
   foldTogether,
   orderedGroups,
@@ -84,24 +84,21 @@ describe('what a muted place still says', () => {
   const buf = (extra: Partial<BufferEntry>): BufferEntry =>
     ({ id: 'a|#x', accountId: 'a', kind: 'channel', name: '#x', lastActivityTs: 0, groupId: 'g', unread: 3, highlight: false, mentions: 0, ...extra }) as BufferEntry
 
-  it('counts a muted channel for nothing', () => {
-    expect(countsTowardRail(buf({}), ['a|#x'], [])).toBe(false)
-    expect(countsTowardRail(buf({}), [], [], ['g'])).toBe(false)
+  it('counts a muted channel by its mentions, since muting is not hiding that you were asked for', () => {
+    expect(countedFor(buf({ highlight: true, mentions: 2 }), ['a|#x'], [])).toBe(2)
+    expect(countedFor(buf({ highlight: true, mentions: 2 }), [], [], ['g'])).toBe(2)
+    expect(countedFor(buf({ highlight: true, mentions: 2, serverMuted: true }), [], [])).toBe(2)
+    // Everything else said in it is not counted whether muted or not.
+    expect(countedFor(buf({ unread: 97 }), ['a|#x'], [])).toBe(0)
   })
 
-  it('counts it for nothing even once somebody has used your name', () => {
-    expect(countsTowardRail(buf({ highlight: true, mentions: 2 }), ['a|#x'], [])).toBe(false)
-    expect(countsTowardRail(buf({ highlight: true, mentions: 2 }), [], [], ['g'])).toBe(false)
-    // A mute made on the account itself is the same.
-    expect(countsTowardRail(buf({ highlight: true, mentions: 2, serverMuted: true }), [], [])).toBe(false)
-  })
-
-  it('counts what is not muted', () => {
-    expect(countsTowardRail(buf({ highlight: true, mentions: 2 }), [], [])).toBe(true)
+  it('counts a muted direct message for nothing - it has no mentions, only messages', () => {
+    expect(countedFor(buf({ kind: 'dm', unread: 5 }), [], [])).toBe(5)
+    expect(countedFor(buf({ kind: 'dm', unread: 5 }), ['a|#x'], [])).toBe(0)
   })
 
   it('never counts what has no row to click through to', () => {
-    expect(countsTowardRail(buf({ highlight: true }), [], ['a|#x'])).toBe(false)
+    expect(countedFor(buf({ highlight: true, mentions: 3 }), [], ['a|#x'])).toBe(0)
   })
 })
 

@@ -18,10 +18,19 @@ describe('the number on the tray', () => {
     expect(trayCount([buf({ id: 'a|bob', kind: 'dm', unread: 3 })], [], [], [])).toEqual({ dms: 3, mentions: 0, latest: 'a|bob' })
   })
 
-  it('does not count what is muted or hidden, mentions included', () => {
-    const rows = [buf({ id: 'a|#m', mentions: 4 }), buf({ id: 'a|#h', mentions: 5 }), buf({ id: 'a|gm', mentions: 6, groupId: 'muted-group' })]
-    expect(trayCount(rows, ['a|#m'], ['a|#h'], ['muted-group'])).toEqual({ dms: 0, mentions: 0, latest: null })
-    expect(trayCount([buf({ mentions: 2, serverMuted: true })], [], [], [])).toEqual({ dms: 0, mentions: 0, latest: null })
+  it('does not count what is hidden', () => {
+    expect(trayCount([buf({ id: 'a|#h', mentions: 5 })], [], ['a|#h'], [])).toEqual({ dms: 0, mentions: 0, latest: null })
+  })
+
+  it('counts the mentions in what is muted, and nothing else there', () => {
+    const rows = [buf({ id: 'a|#m', mentions: 4, unread: 90 }), buf({ id: 'a|gm', mentions: 6, groupId: 'muted-group' })]
+    expect(trayCount(rows, ['a|#m'], [], ['muted-group'])).toEqual({ dms: 0, mentions: 10, latest: 'a|#m' })
+    expect(trayCount([buf({ mentions: 2, serverMuted: true })], [], [], [])).toMatchObject({ mentions: 2 })
+    expect(trayCount([buf({ unread: 50, serverMuted: true })], [], [], [])).toMatchObject({ mentions: 0 })
+  })
+
+  it('counts a muted direct message for nothing', () => {
+    expect(trayCount([buf({ id: 'a|bob', kind: 'dm', unread: 3 })], ['a|bob'], [], [])).toEqual({ dms: 0, mentions: 0, latest: null })
   })
 
   it('names the most recently active conversation that has something, for the tray to open', () => {

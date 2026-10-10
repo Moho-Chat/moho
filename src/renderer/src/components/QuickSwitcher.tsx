@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Avatar } from './Avatar'
 import { Icon } from './Icon'
-import { useChat, useStore } from '../state/hooks'
-import { waitingCount } from '../lib/groups'
+import { useChat, useIdSetPref, usePref, useStore } from '../state/hooks'
+import { isMutedBuffer, waitingCount } from '../lib/groups'
 import { rankBuffers, whereText } from '../lib/switcher'
 import { bufferKindGlyph, classes } from '../lib/util'
 
@@ -19,6 +19,8 @@ export function QuickSwitcher(): JSX.Element | null {
   const store = useStore()
   const buffers = useChat((s) => s.buffers)
   const accounts = useChat((s) => s.accounts)
+  const [muted] = useIdSetPref('mutedBuffers')
+  const [mutedGroups] = usePref<string[]>('mutedGroups', [])
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
@@ -104,6 +106,7 @@ export function QuickSwitcher(): JSX.Element | null {
           {hits.length === 0 && <div className="switcher-empty muted">Nothing by that name.</div>}
           {hits.map((hit, i) => {
             const b = hit.buffer
+            const waiting = waitingCount(b, isMutedBuffer(b, muted, mutedGroups))
             return (
               <button
                 key={b.id}
@@ -123,9 +126,9 @@ export function QuickSwitcher(): JSX.Element | null {
                 </span>
                 <span className="switcher-title ellipsis">{hit.title}</span>
                 <span className="switcher-where muted small ellipsis">{hit.where}</span>
-                {waitingCount(b) > 0 && (
+                {waiting > 0 && (
                   <span className={classes('unread-badge', b.highlight && 'highlight')}>
-                    {waitingCount(b) > 99 ? '99+' : waitingCount(b)}
+                    {waiting > 99 ? '99+' : waiting}
                   </span>
                 )}
               </button>

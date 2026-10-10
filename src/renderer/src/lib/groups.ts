@@ -101,10 +101,16 @@ export function isDirectMessage(buffer: BufferEntry): boolean {
  * Mentions, not everything said - a bold name already says there is activity,
  * and a count of it is the noise the rail and tray were rid of. A direct
  * message is the exception that is the same rule: every line in one is
- * addressed to you, so it is counted by each unread message.
+ * addressed to you, so it is counted by each unread message - unless it is
+ * muted, which is asking not to hear about it at all.
+ *
+ * A muted channel still counts the times your name was used in it. Muting is
+ * about being interrupted - a popup, a sound, a phone buzzing - not about
+ * hiding that you were asked for; Discord and Element both keep that badge.
  */
-export function waitingCount(buffer: BufferEntry): number {
-  return isDirectMessage(buffer) ? buffer.unread : buffer.mentions
+export function waitingCount(buffer: BufferEntry, muted = false): number {
+  if (isDirectMessage(buffer)) return muted ? 0 : buffer.unread
+  return buffer.mentions
 }
 
 export function pinnedGroup(): RailGroup {
@@ -273,19 +279,24 @@ export function isMutedBuffer(
 }
 
 /**
- * The buffers whose unread should reach a rail tile: what the pane below it
- * would actually list. A hidden buffer has no row to click through to, and a
- * muted one is muted - it does not count, mentions included. Muting a place is
- * the one way to say "not now", and a tile that goes on counting what was
- * muted says the setting does nothing.
+ * What a conversation adds to a rail tile or the tray: its waiting count, or
+ * nothing at all if it is hidden, which has no row to click through to.
+ *
+ * Muting does not remove it. A muted place is not interrupting anybody - no
+ * popup, no sound, no buzz on a phone - but the times it asked for you are
+ * still true, and a tile that hid them would send you looking in the wrong
+ * place. What a mute does take away is a direct message's count, since that
+ * is everything said in it rather than anything that was meant for you in
+ * particular.
  */
-export function countsTowardRail(
+export function countedFor(
   buffer: BufferEntry,
   muted: string[],
   hidden: string[],
   mutedGroups: string[] = []
-): boolean {
-  return !hidden.includes(buffer.id) && !isMutedBuffer(buffer, muted, mutedGroups)
+): number {
+  if (hidden.includes(buffer.id)) return 0
+  return waitingCount(buffer, isMutedBuffer(buffer, muted, mutedGroups))
 }
 
 
