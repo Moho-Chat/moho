@@ -10,6 +10,7 @@ import {
   removeFromFolders,
   reorder,
   reorderFolder,
+  waitingCount,
   type RailFolder,
   type RailGroup
 } from './groups'
@@ -122,5 +123,17 @@ describe('compareInBand', () => {
 
   it('still puts the person who just wrote first among direct messages', () => {
     expect([dm('old', 1), dm('new', 9)].sort(compareInBand).map((c) => c.name)).toEqual(['new', 'old'])
+  })
+})
+
+describe('waitingCount', () => {
+  const buffer = (over: Partial<BufferEntry>): BufferEntry =>
+    ({ id: 'a|#x', kind: 'channel', unread: 97, mentions: 0, highlight: false, ...over }) as BufferEntry
+  it('is the mentions in a channel, not everything said in it', () => {
+    expect(waitingCount(buffer({}))).toBe(0)
+    expect(waitingCount(buffer({ mentions: 2, highlight: true }))).toBe(2)
+  })
+  it('is each unread message in a direct message, which are all for you', () => {
+    expect(waitingCount(buffer({ kind: 'dm', unread: 4 }))).toBe(4)
   })
 })

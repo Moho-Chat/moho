@@ -95,6 +95,18 @@ export function isDirectMessage(buffer: BufferEntry): boolean {
   return buffer.kind === 'dm'
 }
 
+/**
+ * The number to show beside a conversation: what is addressed to you.
+ *
+ * Mentions, not everything said - a bold name already says there is activity,
+ * and a count of it is the noise the rail and tray were rid of. A direct
+ * message is the exception that is the same rule: every line in one is
+ * addressed to you, so it is counted by each unread message.
+ */
+export function waitingCount(buffer: BufferEntry): number {
+  return isDirectMessage(buffer) ? buffer.unread : buffer.mentions
+}
+
 export function pinnedGroup(): RailGroup {
   return {
     id: PINNED_GROUP_ID,

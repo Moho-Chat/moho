@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Avatar } from './Avatar'
 import { Icon } from './Icon'
 import { useChat, useStore } from '../state/hooks'
+import { waitingCount } from '../lib/groups'
 import { rankBuffers, whereText } from '../lib/switcher'
 import { bufferKindGlyph, classes } from '../lib/util'
 
@@ -122,9 +123,9 @@ export function QuickSwitcher(): JSX.Element | null {
                 </span>
                 <span className="switcher-title ellipsis">{hit.title}</span>
                 <span className="switcher-where muted small ellipsis">{hit.where}</span>
-                {b.unread > 0 && (
+                {waitingCount(b) > 0 && (
                   <span className={classes('unread-badge', b.highlight && 'highlight')}>
-                    {b.unread > 99 ? '99+' : b.unread}
+                    {waitingCount(b) > 99 ? '99+' : waitingCount(b)}
                   </span>
                 )}
               </button>

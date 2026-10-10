@@ -1,4 +1,4 @@
-import { countsTowardRail, isDirectMessage } from './groups'
+import { countsTowardRail, isDirectMessage, waitingCount } from './groups'
 import type { BufferEntry } from '../state/store'
 
 /** What the tray is told is waiting. */
@@ -32,7 +32,7 @@ export function trayCount(buffers: BufferEntry[], muted: string[], hidden: strin
   let latest: BufferEntry | null = null
   for (const b of buffers) {
     if (!countsTowardRail(b, muted, hidden, mutedGroups)) continue
-    const waiting = isDirectMessage(b) ? b.unread : b.mentions
+    const waiting = waitingCount(b)
     if (waiting <= 0) continue
     if (isDirectMessage(b)) dms += waiting
     else mentions += waiting

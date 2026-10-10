@@ -19,6 +19,7 @@ import {
   MENTIONS_GROUP_ID,
   PINNED_GROUP_ID,
   pinnedGroup,
+  waitingCount,
   visibleGroups,
   type RailGroup
 } from '../lib/groups'
@@ -593,12 +594,12 @@ export function BufferList(): JSX.Element {
                             // What is waiting in what is folded away, which is
                             // the thing worth knowing about a closed heading;
                             // how many channels it has is the fallback.
-                            const waiting = section.buffers.filter((b) => b.unread > 0 && (!isEffectivelyMuted(b) || b.highlight))
-                            const unread = waiting.reduce((n, b) => n + b.unread, 0)
+                            const waiting = section.buffers.filter((b) => waitingCount(b) > 0 && (!isEffectivelyMuted(b) || b.highlight))
+                            const unread = waiting.reduce((n, b) => n + waitingCount(b), 0)
                             return unread > 0 ? (
                               <span
                                 className={classes('unread-badge category-count', waiting.some((b) => b.highlight) && 'highlight')}
-                                title={`${unread} unread in ${waiting.length} ${waiting.length === 1 ? 'channel' : 'channels'}`}
+                                title={`${unread} ${unread === 1 ? 'mention' : 'mentions'} in ${waiting.length} ${waiting.length === 1 ? 'channel' : 'channels'}`}
                               >
                                 {unread > 99 ? '99+' : unread}
                               </span>
@@ -1062,9 +1063,9 @@ function BufferRow({
             arrive is worse than either on its own. */}
         {live ? (
           <span className="live-badge">LIVE</span>
-        ) : buffer.unread > 0 && (!muted || buffer.highlight) ? (
+        ) : waitingCount(buffer) > 0 && (!muted || buffer.highlight) ? (
           <span className={classes('unread-badge', buffer.highlight && 'highlight')}>
-            {buffer.unread > 99 ? '99+' : buffer.unread}
+            {waitingCount(buffer) > 99 ? '99+' : waitingCount(buffer)}
           </span>
         ) : (
           // Left unread on purpose, with nothing new in it. A dot rather than
