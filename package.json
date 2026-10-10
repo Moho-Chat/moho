@@ -30,7 +30,8 @@
     "pack:linux": "npm run daemon && npm run build && MOHO_BUILD=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty) electron-builder --linux AppImage deb",
     "pack:dir": "npm run daemon && npm run build && MOHO_BUILD=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty) electron-builder --linux dir",
     "daemon": "./scripts/build-daemon.sh",
-    "deploy": "npm run pack && ./scripts/install-desktop.sh",
+    "tidy": "./scripts/tidy.sh",
+    "deploy": "./scripts/tidy.sh && npm run pack && ./scripts/install-desktop.sh",
     "daemon:win": "./scripts/build-daemon-win.sh",
     "pack:win": "npm run daemon:win && npm run build && MOHO_BUILD=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty) electron-builder --win nsis"
   },
