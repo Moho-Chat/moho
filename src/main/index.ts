@@ -679,7 +679,7 @@ function refreshTrayMenu(): void {
     {
       toggleWindow,
       openLatest: () => {
-        const id = notifier.latestUnread()
+        const id = lastTray.latest ?? notifier.latestUnread()
         if (id) openConversation(id)
       },
       openSettings: () => tellWindow('settings'),
@@ -787,6 +787,14 @@ function wireIpc(): void {
   })
 
   ipcMain.on(IPC.activity, () => idleWatcher.activity())
+
+  // What is waiting, as the window counts it. The tray's number is the window's
+  // own: counted here from notifications it drifted from what the window showed.
+  ipcMain.on(IPC.trayUnread, (_e, count: { dms: number; mentions: number; latest: string | null }) => {
+    const dms = Math.max(0, Number(count?.dms) || 0)
+    const mentions = Math.max(0, Number(count?.mentions) || 0)
+    updateTray({ unread: dms + mentions, dms, mentions, latest: typeof count?.latest === 'string' ? count.latest : null })
+  })
 
   ipcMain.handle(IPC.markBufferRead, (_e, bufferId: string) => notifier.clear(bufferId))
 
@@ -1260,7 +1268,8 @@ app.whenReady().then(() => {
 
   notifier = new Notifier(
     prefs,
-    updateTray,
+    // The tray's number is the window's, not this tally's - see IPC.trayUnread.
+    () => {},
     openConversation,
     () => mainWindow?.webContents ?? null,
     (bufferId) => popoutState().watched.includes(bufferId),
@@ -1320,6 +1329,8 @@ app.whenReady().then(() => {
       update: updateTray,
       idle: (v: boolean | null) => idleWatcher.forceForTesting(v),
       lastActivity: () => idleWatcher.lastActivityAt(),
+      state: () => lastTray,
+      pref: (key: string, value: unknown) => applyPref(key, value),
       icon: () => lastTrayIcon,
       tooltip: () => lastTrayTooltip,
       menu: () => lastTrayMenu,

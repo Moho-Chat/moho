@@ -156,6 +156,30 @@ try {
     check(now.status === 'idle' && !now.auto, 'a chosen Idle stays until Online is chosen', JSON.stringify(now))
     await tray('t.click(["Status", "Online"])')
     await waitFor('x.status === "online"', 'online again')
+
+    // The tray's number is the window's: it follows what is waiting, by the rail's rule.
+    const stage = (patch) => page.evaluate(`(() => { const s = window.__mohoShots.state(); const id = s.buffers.find((b) => b.kind === 'channel' && b.id.startsWith('checker')).id; window.__chan = id; window.__mohoShots.patch({ buffers: s.buffers.map((b) => (b.id === id ? { ...b, ...(${JSON.stringify(patch)}) } : b)) }); return id })()`)
+    const counted = async (want, what) => {
+      await until(main, `(() => { const s = globalThis.__mohoTray.state(); return s.mentions === ${want.mentions} && s.dms === ${want.dms} })()`, what)
+      check(true, what)
+    }
+    await tray('t.update({ unread: 0, dms: 0, mentions: 0 })')
+    const chan = await stage({ unread: 33, mentions: 2, highlight: true })
+    await counted({ mentions: 2, dms: 0 }, 'two mentions in a busy channel make the tray say two, not thirty-three')
+    check((await tray('t.state().latest')) === chan, 'and the menu opens that channel')
+    // Said the way another window would say it, through main.
+    const chanId = await page.evaluate('window.__chan')
+    await tray(`t.pref('mutedBuffers', [${JSON.stringify(chanId)}])`)
+    await counted({ mentions: 0, dms: 0 }, 'muting it takes it off the tray, as it does the rail')
+    await tray("t.pref('mutedBuffers', [])")
+    await counted({ mentions: 2, dms: 0 }, 'and unmuting puts it back')
+    await stage({ unread: 0, mentions: 0, highlight: false })
+    await counted({ mentions: 0, dms: 0 }, 'reading it somewhere else clears the tray as it clears the window')
+    await page.evaluate(`(() => { const s = window.__mohoShots.state(); window.__mohoShots.patch({ buffers: [...s.buffers, { id: 'checker@localhost|bobdm', accountId: s.accounts[0].id, kind: 'dm', name: 'bob', lastActivityTs: 1, unread: 3, highlight: false, mentions: 0 }] }); return true })()`)
+    await counted({ mentions: 0, dms: 3 }, 'a direct message counts for each unread message in it')
+    check(/3 direct messages/.test(await tray('t.tooltip()')), 'and the tooltip says so', await tray('t.tooltip()'))
+    await page.evaluate(`(() => { const s = window.__mohoShots.state(); window.__mohoShots.patch({ buffers: s.buffers.filter((b) => b.id !== 'checker@localhost|bobdm') }); return true })()`)
+    await counted({ mentions: 0, dms: 0 }, 'and the tray is empty again')
   } finally {
     irc.close()
   }

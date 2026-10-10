@@ -8,6 +8,7 @@ import { MessageList } from './components/MessageList'
 import { MentionsInbox } from './components/MentionsInbox'
 import { MentionsPage } from './components/MentionsPage'
 import { INVITE_PREFIX, MENTIONS_GROUP_ID } from './lib/groups'
+import { trayCount } from './lib/traycount'
 import { Composer } from './components/Composer'
 import { MembershipGate } from './components/MembershipGate'
 import { NickList } from './components/NickList'
@@ -89,6 +90,22 @@ export default function App(): JSX.Element {
     else delete document.documentElement.dataset.reduceMotion
   }, [density, reduceMotion])
   const [userListFolded, setUserListFolded] = usePref<boolean>('ui.userListFolded', false)
+
+  // What the tray says is waiting, which is whatever the rail would add up to:
+  // the same rule, from the same lists, said to the main process whenever the
+  // answer changes. Told only when it has, since most changes to the buffers
+  // are not to what is waiting.
+  const [trayMuted] = usePref<string[]>('mutedBuffers', [])
+  const [trayHidden] = usePref<string[]>('hiddenBuffers', [])
+  const [trayMutedGroups] = usePref<string[]>('mutedGroups', [])
+  const lastTray = useRef('')
+  useEffect(() => {
+    const count = trayCount(allBuffers, trayMuted, trayHidden, trayMutedGroups)
+    const said = JSON.stringify(count)
+    if (said === lastTray.current) return
+    lastTray.current = said
+    window.moho.setTrayUnread(count)
+  }, [allBuffers, trayMuted, trayHidden, trayMutedGroups])
   const [savedBufferId] = usePref<string>('ui.activeBufferId', '')
   const [savedGroupId] = usePref<string>('ui.activeGroupId', '')
 

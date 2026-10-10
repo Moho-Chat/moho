@@ -99,6 +99,11 @@ const api = {
     ipcRenderer.send(IPC.trayStatus, statuses, offered, shown, invisibleName)
   },
 
+  /** Says what is waiting, counted the way the rail counts it, for the tray's number. */
+  setTrayUnread(count: { dms: number; mentions: number; latest: string | null }): void {
+    ipcRenderer.send(IPC.trayUnread, count)
+  },
+
   onMaximizeChange(cb: (maximized: boolean) => void): () => void {
     const handler = (_e: unknown, v: boolean): void => cb(v)
     ipcRenderer.on(IPC.maximizeChanged, handler)
