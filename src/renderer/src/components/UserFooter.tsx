@@ -35,8 +35,9 @@ export function effectiveStatus(account: Account): Status | 'connecting' {
   return (account.status as Status) || 'online'
 }
 
-function label(status: Status | 'connecting', service: string): string {
+function label(status: Status | 'connecting', service: string, auto = false): string {
   if (status === 'connecting') return 'Connecting…'
+  if (status === 'idle' && auto) return 'Idle (away)'
   return status === 'invisible' ? statusName(service, 'invisible') : presenceLabel(status)
 }
 
@@ -73,12 +74,12 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
           aria-haspopup="menu"
           aria-expanded={open}
           onClick={() => setOpen(!open)}
-          title={detail ? `${name} — ${label(status, account.service)}\n${detail}` : `${name} — ${label(status, account.service)}`}
+          title={detail ? `${name} — ${label(status, account.service, account.autoIdle)}\n${detail}` : `${name} — ${label(status, account.service, account.autoIdle)}`}
         >
           <Avatar name={name} url={account.avatarUrl} size={28} status={status} accountId={account.id} />
           <span className="user-identity">
             <span className="ellipsis user-name">{name}</span>
-            <span className="ellipsis small muted">{watching ? 'Watching, signed out' : label(status, account.service)}</span>
+            <span className="ellipsis small muted">{watching ? 'Watching, signed out' : label(status, account.service, account.autoIdle)}</span>
           </span>
         </button>
 
@@ -119,7 +120,7 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
       </div>
 
       {open && (
-        <StatusPopout account={account} status={status} anchor={identity.current} onClose={() => setOpen(false)} />
+        <StatusPopout account={account} status={account.autoIdle ? 'online' : status} anchor={identity.current} onClose={() => setOpen(false)} />
       )}
     </>
   )

@@ -9,6 +9,7 @@ import torMark from '../assets/tor.svg'
 import { PollComposer } from './PollComposer'
 import { Avatar } from './Avatar'
 import { COMMON_EMOJI, emojiToken, EmojiPicker, type StickerEntry } from './EmojiPicker'
+import { GifPicker } from './GifPicker'
 import { PlaceField } from './PlaceField'
 import { VoiceRecorder } from './VoiceRecorder'
 import { useActiveBuffer, useChat, useStore } from '../state/hooks'
@@ -133,6 +134,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   /** The account's sticker packs, fetched when the picker is first opened. */
   const [stickers, setStickers] = useState<StickerEntry[]>([])
   const [stickerPicker, setStickerPicker] = useState(false)
+  const [gifPicker, setGifPicker] = useState(false)
   /**
    * What to do with files dropped on the window: they land in the tray, to be
    * looked over and sent with the next message rather than going out on the
@@ -218,6 +220,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const [roles, setRoles] = useState<{ id: string; name: string; colour?: string }[]>([])
   const emojiButtonRef = useRef<HTMLButtonElement>(null)
   const stickerButtonRef = useRef<HTMLButtonElement>(null)
+  const gifButtonRef = useRef<HTMLButtonElement>(null)
   const plusButtonRef = useRef<HTMLButtonElement>(null)
   /** The "+" menu, where it opened. */
   const [plusMenu, setPlusMenu] = useState<{ x: number; y: number } | null>(null)
@@ -1259,12 +1262,32 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
           title="Emoji"
           onClick={() => {
             setStickerPicker(false)
+            setGifPicker(false)
             if (!pickerOpen) loadStickers()
             setPickerOpen(!pickerOpen)
           }}
         >
           <Icon name="mood" size={18} />
         </button>
+
+        {/* GIFs, wherever there is a Discord account to ask for them: the
+            picker borrows that account's way of looking, and what it finds can
+            be sent in any conversation. */}
+        {!thread && accounts.some((a) => a.service === 'discord') && (
+          <button
+            ref={gifButtonRef}
+            type="button"
+            className="icon-button"
+            title="GIFs"
+            onClick={() => {
+              setPickerOpen(false)
+              setStickerPicker(false)
+              setGifPicker(!gifPicker)
+            }}
+          >
+            <Icon name="gif_box" size={18} />
+          </button>
+        )}
 
         {/* Its own button beside the emoji one, because it is its own
             gesture: an emoji goes into the line being written and a sticker
@@ -1279,6 +1302,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
             onClick={() => {
               const opening = !stickerPicker
               setPickerOpen(false)
+              setGifPicker(false)
               setStickerPicker(opening)
               if (opening) loadStickers()
             }}
@@ -1322,6 +1346,16 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
 
       {polling && <PollComposer bufferId={buffer.id} onClose={() => setPolling(false)} />}
 
+
+      {gifPicker && (
+        <GifPicker
+          anchor={gifButtonRef.current}
+          bufferId={buffer.id}
+          accountId={buffer.accountId}
+          discord={service === 'discord'}
+          onClose={() => setGifPicker(false)}
+        />
+      )}
 
       {(pickerOpen || stickerPicker) && (
         <EmojiPicker

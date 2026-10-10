@@ -855,6 +855,27 @@ function GeneralSettings(): JSX.Element {
         <GlobalHighlightKeywords />
       </SettingsSection>
 
+      <SettingsSection title="Presence">
+        <ToggleSetting
+          settingKey="presence.autoIdle"
+          label="Go idle when I step away"
+          description="Shows you as Idle on Discord and IRC after a while with nothing touched, and back to Online when you return. Only while your status is Online: Idle, Do not disturb and Invisible stay where you put them until you set Online again. Not while you are in a call. moho looks only at how long it has been since the keyboard or mouse was used - never at what you do. Where the system will not say (some Wayland desktops), it goes by your use of moho's own windows."
+          defaultValue={true}
+        />
+        <SelectionSetting
+          settingKey="presence.autoIdleMinutes"
+          label="Idle after"
+          defaultValue="10"
+          options={[
+            { label: '5 min', value: '5' },
+            { label: '10 min', value: '10' },
+            { label: '15 min', value: '15' },
+            { label: '30 min', value: '30' },
+            { label: '1 hour', value: '60' }
+          ]}
+        />
+      </SettingsSection>
+
       <SettingsSection title="Updates">
         <ToggleSetting
           settingKey="updates.notify"

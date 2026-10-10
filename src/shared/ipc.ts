@@ -56,7 +56,11 @@ export const IPC = {
   /** main -> window: something from the tray menu that the window carries out. */
   trayCommand: 'moho:tray:command',
   /** window -> main: the status each connected account is at. */
-  trayStatus: 'moho:tray:status'
+  trayStatus: 'moho:tray:status',
+  /** window -> main: what is waiting, for the number on the tray. */
+  trayUnread: 'moho:tray:unread',
+  /** window -> main: something was used in this window, so the person is here. */
+  activity: 'moho:activity'
 } as const
 
 /**

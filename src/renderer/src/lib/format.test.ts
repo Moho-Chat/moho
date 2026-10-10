@@ -9,6 +9,8 @@ import {
   extractMedia,
   extractQuoteBlocks,
   formatMessage,
+  isForumUpload,
+  isGifPage,
   hostnameOf,
   ircFormat,
   normalizeBBCode,
@@ -251,5 +253,57 @@ describe('blocks', () => {
     expect(embedColor(0x5865f2)).toBe('#5865f2')
     expect(embedColor(255)).toBe('#0000ff')
     expect(embedColor(undefined)).toBeUndefined()
+  })
+})
+
+describe('links to the pages GIFs are shared from', () => {
+  it('knows Tenor, Giphy and Klipy pages when it sees one', () => {
+    for (const url of [
+      'https://tenor.com/view/cat-gif-22954713',
+      'https://tenor.com/de/view/cat-gif-22954713',
+      'https://giphy.com/gifs/cat-Z7wFi5b2VEAr6',
+      'https://giphy.com/embed/Z7wFi5b2VEAr6',
+      'https://klipy.com/gifs/friends-joey-53',
+      'https://klipy.com/clips/angry-8'
+    ]) {
+      expect(isGifPage(url), url).toBe(true)
+    }
+    expect(isGifPage('https://tenor.com/')).toBe(false)
+    expect(isGifPage('https://example.com/view/cat')).toBe(false)
+  })
+
+  it('does not ask a page what it is, which is a request to a third party for nothing', () => {
+    const asked: string[] = []
+    const media = extractMedia('look https://tenor.com/view/cat-gif-1 and https://klipy.com/gifs/x-1', {
+      contentSniffing: true,
+      onNeedSniff: (url) => asked.push(url)
+    })
+    expect(media).toEqual([])
+    expect(asked).toEqual([])
+  })
+
+  it('still draws a direct file from those hosts, like any other', () => {
+    const media = extractMedia('https://media.tenor.com/abc/cat.mp4 https://media.giphy.com/media/Z7wFi5b2VEAr6/giphy.gif', {})
+    expect(media.map((m) => m.kind)).toEqual(['video', 'image'])
+  })
+})
+
+describe('the forum\'s own files', () => {
+  const picture = 'https://uploads.kiwifarms.st/data/attachments/9671/9671535-a2e5ae0d55aadd338162770b3fa79f97-alt.avif?hash=-d_TarFo41'
+
+  it('are known by where they are', () => {
+    expect(isForumUpload(picture)).toBe(true)
+    expect(isForumUpload('https://kiwifarms.st/data/video/9667/9667943-abc.mp4?hash=x')).toBe(true)
+    expect(isForumUpload('https://kiwifarms.st/threads/a-thread.123/')).toBe(false)
+    expect(isForumUpload('https://example.com/data/attachments/1/2-a.avif')).toBe(false)
+  })
+
+  it('are not loaded by the window, which would ask for them from the reader\'s own address', () => {
+    expect(extractMedia(`[img]${picture}[/img]`, {})).toEqual([])
+    expect(extractMedia(`look ${picture}`, { contentSniffing: true, onNeedSniff: () => { throw new Error('asked') } })).toEqual([])
+  })
+
+  it('leave other pictures and an AVIF anywhere else as they were', () => {
+    expect(extractMedia('https://i.ibb.co/JRkN8BFv/photo.avif', {}).map((m) => m.kind)).toEqual(['image'])
   })
 })

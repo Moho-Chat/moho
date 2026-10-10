@@ -52,6 +52,9 @@ const REANCHOR_THRESHOLD = 100
  */
 const SCROLL_JITTER = 2
 
+/** How far down from the top edge to look for the row being read, nearest first. */
+const PLACE_PROBES = [1, 24, 48, 80, 120, 180]
+
 /**
  * How long after the reader last touched the list a scroll still counts as
  * theirs.
@@ -363,17 +366,29 @@ export function MessageList(): JSX.Element {
    *
    * By hit test rather than by walking the rows: this runs on every scroll,
    * and a list of two thousand is not a thing to scan that often.
+   *
+   * Every element under the point, not the topmost one, and a few points down
+   * the page rather than one. The "N new messages since" bar is laid over the
+   * top of the log, so asking what was at the edge was answered with the bar
+   * for as long as it was up - and the place stopped being kept, which the
+   * next thing to change size then put the view back to. A date line or the
+   * gap between two groups at the edge gave the same non-answer for a moment.
    */
   const notePlace = useCallback(() => {
     const el = scrollRef.current
     if (!el) return
     const box = el.getBoundingClientRect()
-    const hit = document.elementFromPoint(box.left + 8, box.top + 1)
-    const row = hit?.closest?.('[data-msg-id]') as HTMLElement | null
-    if (!row) return
-    placeRef.current = {
-      id: row.dataset.msgId ?? '',
-      offset: row.getBoundingClientRect().top - box.top
+    for (const down of PLACE_PROBES) {
+      for (const hit of document.elementsFromPoint(box.left + 8, box.top + down)) {
+        if (!el.contains(hit)) continue
+        const row = hit.closest?.('[data-msg-id]') as HTMLElement | null
+        if (!row) continue
+        placeRef.current = {
+          id: row.dataset.msgId ?? '',
+          offset: row.getBoundingClientRect().top - box.top
+        }
+        return
+      }
     }
   }, [])
 

@@ -99,6 +99,11 @@ const api = {
     ipcRenderer.send(IPC.trayStatus, statuses, offered, shown, invisibleName)
   },
 
+  /** Says what is waiting, counted the way the rail counts it, for the tray's number. */
+  setTrayUnread(count: { dms: number; mentions: number; latest: string | null }): void {
+    ipcRenderer.send(IPC.trayUnread, count)
+  },
+
   onMaximizeChange(cb: (maximized: boolean) => void): () => void {
     const handler = (_e: unknown, v: boolean): void => cb(v)
     ipcRenderer.on(IPC.maximizeChanged, handler)
@@ -226,6 +231,25 @@ const api = {
       return () => ipcRenderer.off(IPC.popoutsChanged, handler)
     }
   }
+}
+
+/**
+ * Tells main that somebody is using this window.
+ *
+ * Only that it happened - the event's kind and what it touched are not looked
+ * at, and nothing about them is sent. It is what lets moho know the person has
+ * stepped away, which is the one thing it wants to know, and it is sent at most
+ * every few seconds however much is going on.
+ */
+let lastActivityPing = 0
+const noteActivity = (): void => {
+  const now = Date.now()
+  if (now - lastActivityPing < 5000) return
+  lastActivityPing = now
+  ipcRenderer.send(IPC.activity)
+}
+for (const kind of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart']) {
+  ;(globalThis as unknown as EventTarget).addEventListener(kind, noteActivity, { capture: true, passive: true })
 }
 
 contextBridge.exposeInMainWorld('moho', api)

@@ -18,8 +18,16 @@ set -euo pipefail
 TAG="${1:?usage: scripts/mirror-release.sh vX.Y.Z}"
 VERSION="${TAG#v}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-GITEA="https://git.salastil.com/api/v1"
+# Through Cloudflare by default, which refuses a request body over 100 MB. The
+# files that are bigger go to Gitea directly across the network, which is what
+# MIRROR_GITEA is for - the same instance, reached by its own address:
+#
+#   MIRROR_GITEA=http://192.168.1.212:8991/api/v1 MIRROR_MAX_BYTES=1000000000 \
+#     scripts/mirror-release.sh v1.0.0
+GITEA="${MIRROR_GITEA:-https://git.salastil.com/api/v1}"
 TOKEN="$(cat "$HOME/.config/gitea/token")"
+# What Cloudflare in front of Gitea will take in one request.
+MAX_UPLOAD="${MIRROR_MAX_BYTES:-100000000}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -42,6 +50,14 @@ gitea_release() { # repo title notes-file prerelease file...
     id="$(gitea POST "/repos/$repo/releases" -H 'Content-Type: application/json' -d "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
   fi
   for f in "$@"; do
+    # Gitea is behind Cloudflare, which refuses a request body over 100 MB (a
+    # 413, or a 502 when the connection is cut mid-upload). A file over that
+    # stays on GitHub only, said plainly rather than failing the whole mirror
+    # and leaving everything after it - nobilis's releases - undone.
+    if [ "$(stat -c %s "$f")" -gt "$MAX_UPLOAD" ]; then
+      echo "  SKIPPED $(basename "$f") ($(( $(stat -c %s "$f") / 1000000 )) MB) - over Cloudflare's ${MAX_UPLOAD} byte limit; it is on GitHub only" >&2
+      continue
+    fi
     gitea POST "/repos/$repo/releases/$id/assets?name=$(basename "$f")" -F "attachment=@$f" >/dev/null
     echo "  uploaded $(basename "$f") -> Gitea $repo"
   done

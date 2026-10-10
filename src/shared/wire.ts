@@ -12,6 +12,11 @@ export interface Account {
   status?: string
   /** What it says beside the status, where the service has a place for that. */
   statusText?: string
+  /**
+   * Shown as idle because the person stepped away, not because they chose it:
+   * `status` then reads idle while what they chose is online.
+   */
+  autoIdle?: boolean
   state: string
   autojoin: string
   hasNickservPassword: boolean
@@ -472,8 +477,18 @@ export interface Embed {
   footer?: string
   /** A button along the bottom of the card. With no address it is drawn and goes nowhere. */
   cta?: { label: string; url?: string }
-  /** "notice" for the platform's own notices to an account. */
+  /**
+   * "notice" for the platform's own notices to an account; "gif" for a moving
+   * picture that was linked, drawn as the picture and not as a card.
+   */
   kind?: string
+  /** For a "gif": the video or image to play as it stands, which is not the page that was linked. */
+  mediaUrl?: string
+  /** Whether `mediaUrl` is a video or a picture, as the daemon knows it. */
+  mediaKind?: 'video' | 'image'
+  /** Its size, so the row is laid out before it has loaded. */
+  width?: number
+  height?: number
   /** A glyph for the heading. */
   icon?: string
 }
@@ -511,6 +526,11 @@ export interface Attachment {
    * flag, not a guess from the mimetype.
    */
   voice?: boolean
+  /**
+   * A GIF that was linked, to be played like one - silent, looping, without a
+   * player's controls. Only ever set by the window itself, from an embed.
+   */
+  gif?: boolean
 }
 
 export interface Message {

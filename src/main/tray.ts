@@ -15,6 +15,8 @@ export interface TrayState {
   dms: number
   /** Of those, everything else: somebody mentioning this account in a channel. */
   mentions: number
+  /** The conversation the menu's first line opens, where the window has said. */
+  latest?: string | null
 }
 
 export const NOTHING_WAITING: TrayState = { unread: 0, dms: 0, mentions: 0 }

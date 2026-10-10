@@ -101,7 +101,14 @@ try {
 
   // With an IRC account connected - which has away and back, and no invisible -
   // the menu offers what IRC can be set to, and the daemon takes it.
-  const irc = await fakeIrc({ people: ['bob'], onJoin: (channel, _nick, send) => send(`:bob!b@h PRIVMSG ${channel} :hello there`) })
+  const aways = []
+  const irc = await fakeIrc({
+    people: ['bob'],
+    onJoin: (channel, _nick, send) => send(`:bob!b@h PRIVMSG ${channel} :hello there`),
+    onLine: (line) => {
+      if (/^AWAY/i.test(line)) aways.push(line)
+    }
+  })
   try {
     await openIrcChannel(page, { port: irc.address().port, nick: 'checker', channels: ['#lobby'], waitFor: 'hello there' })
     await until(main, 'globalThis.__mohoTray.menu().find((i) => i.label === "Status").submenu.length === 3', 'the menu to offer only IRC\'s statuses')
@@ -114,6 +121,68 @@ try {
     await tray('t.click(["Status", "Do not disturb"])')
     await until(page, 'window.moho.rpc("listAccounts", {}).then((a) => a.find((x) => x.id.startsWith("checker")).status === "dnd")', 'IRC to go to Do not disturb')
     check((await statusOf()) === 'dnd', 'Do not disturb from the tray sets it')
+
+    // Going idle when the person steps away, and only when they are online.
+    const shown = () => page.evaluate('window.moho.rpc("listAccounts", {}).then((a) => { const x = a.find((y) => y.id.startsWith("checker")); return { status: x.status, auto: !!x.autoIdle } })')
+    const waitFor = (expr, what) => until(page, `window.moho.rpc("listAccounts", {}).then((a) => { const x = a.find((y) => y.id.startsWith("checker")); return ${expr} })`, what)
+    await tray('t.click(["Status", "Online"])')
+    await waitFor('x.status === "online"', 'online again')
+    await tray('t.idle(true)')
+    await waitFor('x.status === "idle" && x.autoIdle === true', 'an online account to go idle when its person steps away')
+    check(true, 'stepping away turns an online account idle, as automatic')
+    await sleep(500)
+    check(aways.some((l) => /AWAY :?Idle/i.test(l)), 'and IRC is told it is away', JSON.stringify(aways))
+    await tray('t.idle(false)')
+    await waitFor('x.status === "online" && !x.autoIdle', 'it to come back')
+    check(aways.some((l) => /^AWAY\s*$/i.test(l)), 'coming back puts it right without anybody touching it', JSON.stringify(aways))
+
+    // What was chosen is never moved.
+    await tray('t.click(["Status", "Do not disturb"])')
+    await waitFor('x.status === "dnd"', 'Do not disturb')
+    await tray('t.idle(true)')
+    await sleep(800)
+    let now = await shown()
+    check(now.status === 'dnd' && !now.auto, 'Do not disturb is kept when they step away', JSON.stringify(now))
+    await tray('t.idle(false)')
+    await sleep(500)
+    now = await shown()
+    check(now.status === 'dnd', 'and when they come back', JSON.stringify(now))
+    await tray('t.click(["Status", "Idle"])')
+    await waitFor('x.status === "idle" && !x.autoIdle', 'a chosen Idle')
+    await tray('t.idle(true)')
+    await tray('t.idle(false)')
+    await sleep(500)
+    now = await shown()
+    check(now.status === 'idle' && !now.auto, 'a chosen Idle stays until Online is chosen', JSON.stringify(now))
+    await tray('t.click(["Status", "Online"])')
+    await waitFor('x.status === "online"', 'online again')
+
+    // The tray's number is the window's: it follows what is waiting, by the rail's rule.
+    const stage = (patch) => page.evaluate(`(() => { const s = window.__mohoShots.state(); const id = s.buffers.find((b) => b.kind === 'channel' && b.id.startsWith('checker')).id; window.__chan = id; window.__mohoShots.patch({ buffers: s.buffers.map((b) => (b.id === id ? { ...b, ...(${JSON.stringify(patch)}) } : b)) }); return id })()`)
+    const counted = async (want, what) => {
+      await until(main, `(() => { const s = globalThis.__mohoTray.state(); return s.mentions === ${want.mentions} && s.dms === ${want.dms} })()`, what)
+      check(true, what)
+    }
+    await tray('t.update({ unread: 0, dms: 0, mentions: 0 })')
+    const chan = await stage({ unread: 33, mentions: 2, highlight: true })
+    await counted({ mentions: 2, dms: 0 }, 'two mentions in a busy channel make the tray say two, not thirty-three')
+    check((await tray('t.state().latest')) === chan, 'and the menu opens that channel')
+    // Said the way another window would say it, through main.
+    const chanId = await page.evaluate('window.__chan')
+    await tray(`t.pref('mutedBuffers', [${JSON.stringify(chanId)}])`)
+    await counted({ mentions: 2, dms: 0 }, 'muting it leaves its mentions on the tray - a mute stops the popups, not the count')
+    await stage({ unread: 40, mentions: 0, highlight: false })
+    await counted({ mentions: 0, dms: 0 }, 'and what else is said in it counts for nothing')
+    await tray("t.pref('mutedBuffers', [])")
+    await stage({ unread: 33, mentions: 2, highlight: true })
+    await counted({ mentions: 2, dms: 0 }, 'unmuting changes nothing about the number')
+    await stage({ unread: 0, mentions: 0, highlight: false })
+    await counted({ mentions: 0, dms: 0 }, 'reading it somewhere else clears the tray as it clears the window')
+    await page.evaluate(`(() => { const s = window.__mohoShots.state(); window.__mohoShots.patch({ buffers: [...s.buffers, { id: 'checker@localhost|bobdm', accountId: s.accounts[0].id, kind: 'dm', name: 'bob', lastActivityTs: 1, unread: 3, highlight: false, mentions: 0 }] }); return true })()`)
+    await counted({ mentions: 0, dms: 3 }, 'a direct message counts for each unread message in it')
+    check(/3 direct messages/.test(await tray('t.tooltip()')), 'and the tooltip says so', await tray('t.tooltip()'))
+    await page.evaluate(`(() => { const s = window.__mohoShots.state(); window.__mohoShots.patch({ buffers: s.buffers.filter((b) => b.id !== 'checker@localhost|bobdm') }); return true })()`)
+    await counted({ mentions: 0, dms: 0 }, 'and the tray is empty again')
   } finally {
     irc.close()
   }
@@ -132,6 +201,14 @@ try {
   const stayed = await page.evaluate('window.__mohoShots.state().activeGroupId')
   check(stayed === '~mentions', 'a redrawn tray leaves the chosen server chosen', `${away} -> ${stayed}`)
   await tray('t.update({ unread: 0, dms: 0, mentions: 0 })')
+
+  // Using a window is heard by main - and only that it happened.
+  const heardBefore = await tray('t.lastActivity()')
+  await sleep(6000)
+  await page.call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 300, y: 300, button: 'none', clickCount: 0 })
+  await sleep(500)
+  const heardAfter = await tray('t.lastActivity()')
+  check(heardAfter > heardBefore, 'moving the pointer in a window is heard as being here', `${heardBefore} -> ${heardAfter}`)
 
   // Restart brings back moho and a daemon of its own.
   const before = daemons(scratchDir)

@@ -13,6 +13,7 @@ import {
   nativeImage,
   nativeTheme,
   net,
+  powerMonitor,
   session,
   Menu,
   screen,
@@ -25,6 +26,7 @@ import { defaultSocketPath, NobilisClient } from './nobilis-client'
 import { NobilisProcess } from './nobilis-process'
 import { Prefs } from './prefs'
 import { Notifier } from './notifications'
+import { IdleWatcher } from './idle'
 import { NOTHING_WAITING, trayIconFile, trayMenu, trayTooltip, type TrayState, type TrayStatus } from './tray'
 import { browserLogin, LOGIN_FLOWS } from './browser-login'
 import { EDIT_ACTIONS, IPC, POPOUT_FLAG, UI_SHOTS_FLAG, type EditAction, type EditMenuRequest, type PopoutState } from '../shared/ipc'
@@ -134,6 +136,7 @@ let prefs: Prefs
 let nobilis: NobilisProcess
 let client: NobilisClient
 let notifier: Notifier
+let idleWatcher: IdleWatcher
 let registeredHotkey: string | null = null
 
 /**
@@ -214,6 +217,7 @@ function applyPref(key: string, value: unknown, except?: Electron.WebContents): 
   // Pins and mutes feed the tray/notification rules, which live here.
   if (key === 'pinnedBuffers' || key === 'mutedBuffers') notifier.publish()
   if (key === 'hotkey.toggle') applyHotkey(String(value))
+  if (key === 'presence.autoIdle' || key === 'presence.autoIdleMinutes') idleWatcher?.evaluate()
 }
 
 /**
@@ -675,7 +679,7 @@ function refreshTrayMenu(): void {
     {
       toggleWindow,
       openLatest: () => {
-        const id = notifier.latestUnread()
+        const id = lastTray.latest ?? notifier.latestUnread()
         if (id) openConversation(id)
       },
       openSettings: () => tellWindow('settings'),
@@ -780,6 +784,16 @@ function wireIpc(): void {
     refreshTrayMenu()
     // Do not disturb is asking for quiet, including from the taskbar.
     updateTray(lastTray)
+  })
+
+  ipcMain.on(IPC.activity, () => idleWatcher.activity())
+
+  // What is waiting, as the window counts it. The tray's number is the window's
+  // own: counted here from notifications it drifted from what the window showed.
+  ipcMain.on(IPC.trayUnread, (_e, count: { dms: number; mentions: number; latest: string | null }) => {
+    const dms = Math.max(0, Number(count?.dms) || 0)
+    const mentions = Math.max(0, Number(count?.mentions) || 0)
+    updateTray({ unread: dms + mentions, dms, mentions, latest: typeof count?.latest === 'string' ? count.latest : null })
   })
 
   ipcMain.handle(IPC.markBufferRead, (_e, bufferId: string) => notifier.clear(bufferId))
@@ -1235,9 +1249,27 @@ app.whenReady().then(() => {
   nobilis = new NobilisProcess()
   client = new NobilisClient()
 
+  // Going idle when the person steps away. What it says, and to whom, is
+  // decided in the daemon - which accounts are online, which are in a call -
+  // so all this says is whether they are here.
+  idleWatcher = new IdleWatcher({
+    now: () => Date.now(),
+    systemIdleSeconds: () => powerMonitor.getSystemIdleTime(),
+    enabled: () => prefs.get<boolean>('presence.autoIdle', true),
+    thresholdMs: () => (Number(prefs.get<unknown>('presence.autoIdleMinutes', '10')) || 10) * 60_000,
+    onChange: (idle) => void client.request('setUserIdle', { idle }).catch(() => {})
+  })
+  setInterval(() => idleWatcher.evaluate(), 10_000).unref()
+  app.on('browser-window-focus', () => idleWatcher.activity())
+  powerMonitor.on('lock-screen', () => idleWatcher.lock())
+  powerMonitor.on('suspend', () => idleWatcher.lock())
+  powerMonitor.on('unlock-screen', () => idleWatcher.unlock())
+  powerMonitor.on('resume', () => idleWatcher.unlock())
+
   notifier = new Notifier(
     prefs,
-    updateTray,
+    // The tray's number is the window's, not this tally's - see IPC.trayUnread.
+    () => {},
     openConversation,
     () => mainWindow?.webContents ?? null,
     (bufferId) => popoutState().watched.includes(bufferId),
@@ -1247,6 +1279,8 @@ app.whenReady().then(() => {
   client.on('link', (up) => {
     send(IPC.link, up)
     if (!up) return
+    // A daemon that has just started knows nothing of this.
+    if (idleWatcher.isIdle()) void client.request('setUserIdle', { idle: true }).catch(() => {})
     // Before anything is fetched for the window: whether its own traffic goes
     // through Tor or the proxy is the daemon's setting, asked of it here.
     void applyTunnel((method, params) => client.request(method, params))
@@ -1293,6 +1327,10 @@ app.whenReady().then(() => {
   if (process.env.MOHO_UI_SHOTS === '1') {
     ;(globalThis as Record<string, unknown>).__mohoTray = {
       update: updateTray,
+      idle: (v: boolean | null) => idleWatcher.forceForTesting(v),
+      lastActivity: () => idleWatcher.lastActivityAt(),
+      state: () => lastTray,
+      pref: (key: string, value: unknown) => applyPref(key, value),
       icon: () => lastTrayIcon,
       tooltip: () => lastTrayTooltip,
       menu: () => lastTrayMenu,

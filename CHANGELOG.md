@@ -17,6 +17,26 @@ Each section has two parts:
   that made it, including dependency updates
   (`node scripts/changelog-deps.mjs <previous tag>` lists those).
 
+## [1.0.0-rc.5]
+
+### Major features
+
+- **GIFs on every service:** a linked GIF is drawn as the picture - silent, looping, without the player - whichever service it came from, and a GIF picker with trending, categories and search sends one from the composer. Klipy, Tenor and Giphy pages are never probed for what they are.
+- **Idle detection:** moho notices when nothing has been used for a while, from the system where it can say and from its own windows where it cannot, and puts an account that has an idle on Idle and back. It has a setting for it and for how long, and the plaque says Idle (away) while keeping what you chose checked.
+- **Link cards on every service:** a YouTube link gets a titled card with its channel on IRC, Matrix, Kick and Sneedchat as it does on Discord - including through Tor, which YouTube refuses the usual way - and one added in an edit, read back from history, or posted before cards existed gets its card too.
+
+### Fixes, patches and changes
+
+- Added idle detection with a setting for it and for how long ([moho `23c87dd`](https://github.com/Moho-Chat/moho/commit/23c87dd), [nobilis `35ea0b7`](https://github.com/Moho-Chat/nobilis/commit/35ea0b7))
+- Added GIFs drawn as pictures on every service, and a GIF picker ([moho `55248eb`](https://github.com/Moho-Chat/moho/commit/55248eb), [nobilis `046fbb4`](https://github.com/Moho-Chat/nobilis/commit/046fbb4))
+- Fixed a Sneedchat picture from the forum's uploads host - an AVIF, or an MP4 - not drawing: its domain is taken off and it is fetched through the account's route, clearnet or Tor ([moho `07f4fc2`](https://github.com/Moho-Chat/moho/commit/07f4fc2), [nobilis `ca29a63`](https://github.com/Moho-Chat/nobilis/commit/ca29a63))
+- Fixed the tray's number drifting from the client's: it is now counted by the window, by the rail's rule, and told to the tray whenever it changes ([moho `1e314f8`](https://github.com/Moho-Chat/moho/commit/1e314f8))
+- Fixed YouTube cards never appearing for an account on Tor: YouTube answers every Tor exit with a 403 on its card lookup, so the video's own page is read when that happens ([moho `8064e79`](https://github.com/Moho-Chat/moho/commit/8064e79), [nobilis `340342b`](https://github.com/Moho-Chat/nobilis/commit/340342b))
+- Fixed link cards being lost when a message was edited, and missing from Matrix history, Discord catch-up and older messages ([moho `638b02e`](https://github.com/Moho-Chat/moho/commit/638b02e), [nobilis `dab394f`](https://github.com/Moho-Chat/nobilis/commit/dab394f))
+- Fixed scrolling through a long run of unread messages snapping back to where the "new messages" bar appeared ([moho `336335a`](https://github.com/Moho-Chat/moho/commit/336335a))
+- The number beside a conversation is what is addressed to you - mentions in a channel, each unread message in a direct message - and the bold name is the sign of activity ([moho `987f31c`](https://github.com/Moho-Chat/moho/commit/987f31c))
+- A muted channel keeps its mention count in the list, the rail, the switcher and the tray, and stops the popups; muting a Discord channel or direct message is now set on the account, so a phone is quiet too ([moho `7803cc3`](https://github.com/Moho-Chat/moho/commit/7803cc3), [nobilis `b0fa250`](https://github.com/Moho-Chat/nobilis/commit/b0fa250))
+
 ## [1.0.0-rc.4]
 
 ### Major features

@@ -28,7 +28,8 @@ import {
   reorderFolder,
   FOLDER_DRAG_PREFIX,
   visibleGroups,
-  countsTowardRail,
+  countedFor,
+  isMutedBuffer,
   dmGroup,
   DM_GROUP_ID,
   isDirectMessage,
@@ -424,24 +425,27 @@ export function ServerRail(): JSX.Element | null {
   // Unread rolls up from the buffers under each entry, so a guild whose
   // channels are all collapsed away still shows it has something waiting.
   const totals = new Map<string, { unread: number; highlight: boolean; mentions: number }>()
-  // `direct` is a page of conversations addressed to you, where every unread
-  // message is one that is for you and so counts as a mention.
-  const bump = (key: string, b: BufferEntry, direct = false): void => {
+  // A direct message counts for every unread message in it - all of them are
+  // for you - and anywhere else for its mentions (see countedFor).
+  const bump = (key: string, b: BufferEntry): void => {
+    const waiting = countedFor(b, muted, hidden, mutedGroups)
+    // What a muted conversation says is only that your name was used in it:
+    // its unread messages are not asking for anything.
+    const quiet = isMutedBuffer(b, muted, mutedGroups)
     const t = totals.get(key) || { unread: 0, highlight: false, mentions: 0 }
-    t.unread += b.unread
-    t.highlight = t.highlight || b.highlight
-    t.mentions += direct ? b.unread : b.mentions
+    t.unread += quiet ? 0 : b.unread
+    t.highlight = t.highlight || (quiet ? waiting > 0 : b.highlight)
+    t.mentions += waiting
     totals.set(key, t)
   }
   const all = buffers as BufferEntry[]
   for (const b of all) {
-    // Only what the pane below would show: a hidden buffer has no row to
-    // reach, and a muted one is not asking for attention.
-    if (!countsTowardRail(b, muted, hidden, mutedGroups)) continue
+    // A hidden buffer has no row to reach.
+    if (hidden.includes(b.id)) continue
     // A buffer can count on more than one tile: where it lives, and on any
     // aggregate page that also lists it. Both are places the user would look.
     if (b.groupId) bump(b.groupId, b)
-    if (isDirectMessage(b)) bump(DM_GROUP_ID, b, true)
+    if (isDirectMessage(b)) bump(DM_GROUP_ID, b)
     if (pinned.includes(b.id)) bump(PINNED_GROUP_ID, b)
   }
 
@@ -527,7 +531,7 @@ export function ServerRail(): JSX.Element | null {
    */
   const unreadDms = all
     .filter(
-      (b) => isDirectMessage(b) && b.unread > 0 && countsTowardRail(b, muted, hidden, mutedGroups)
+      (b) => isDirectMessage(b) && countedFor(b, muted, hidden, mutedGroups) > 0
     )
     .sort((a, b) => (b.lastActivityTs || 0) - (a.lastActivityTs || 0))
 
