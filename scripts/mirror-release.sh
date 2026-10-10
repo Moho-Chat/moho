@@ -18,7 +18,13 @@ set -euo pipefail
 TAG="${1:?usage: scripts/mirror-release.sh vX.Y.Z}"
 VERSION="${TAG#v}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-GITEA="https://git.salastil.com/api/v1"
+# Through Cloudflare by default, which refuses a request body over 100 MB. The
+# files that are bigger go to Gitea directly across the network, which is what
+# MIRROR_GITEA is for - the same instance, reached by its own address:
+#
+#   MIRROR_GITEA=http://192.168.1.212:8991/api/v1 MIRROR_MAX_BYTES=1000000000 \
+#     scripts/mirror-release.sh v1.0.0
+GITEA="${MIRROR_GITEA:-https://git.salastil.com/api/v1}"
 TOKEN="$(cat "$HOME/.config/gitea/token")"
 # What Cloudflare in front of Gitea will take in one request.
 MAX_UPLOAD="${MIRROR_MAX_BYTES:-100000000}"
