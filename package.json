@@ -2,7 +2,7 @@
   "name": "moho",
   "version": "1.0.0-rc.5",
   "description": "Unified desktop chat client for IRC, Discord, Sneedchat and Matrix",
-  "author": "Salastil",
+  "author": "Salastil <salastil@cock.li>",
   "license": "GPL-3.0-or-later",
   "homepage": "https://github.com/Moho-Chat/moho",
   "repository": {
@@ -79,7 +79,7 @@
         "AppImage",
         "deb"
       ],
-      "maintainer": "Salastil <salastil@users.noreply.github.com>",
+      "maintainer": "Salastil <salastil@cock.li>",
       "category": "Network",
       "synopsis": "Unified desktop chat client",
       "icon": "resources/icons/moho.png",

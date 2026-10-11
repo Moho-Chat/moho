@@ -99,9 +99,8 @@ jobs:
       build: ${{ steps.stamp.outputs.build }}
 
     steps:
-      # nobilis is a submodule, and on master its URL is the public GitHub
-      # one - on development it points at Gitea. That is the other reason this
-      # workflow only ever runs on master.
+      # nobilis is a submodule at a commit its own master holds, which is why
+      # this workflow only ever runs on master.
       #
       # Depth 1 is enough: nobilis/build.rs only asks git for a short sha and
       # a dirty flag, and falls back to "unknown" rather than failing.
@@ -340,7 +339,7 @@ jobs:
           retention-days: 7
 
       # The daemon on its own, for nobilis's release - attached to that by
-      # scripts/mirror-release.sh, since this job's token can only release
+      # scripts/release-nobilis.sh, since this job's token can only release
       # here. Not an asset of moho's release: the AppImage already carries it.
       - uses: actions/upload-artifact@v4
         if: github.ref_type == 'tag'
