@@ -373,6 +373,9 @@ const SCENES = [
           row(4, 'kicks', 'Maverick sent 500 Kicks: take my money', { kind: 'kicks', author: 'Maverick', authorColor: '#E26EFF', title: '500', provider: 'Full Send', description: 'take my money', color: 0xb45cff }),
           row(5, 'sub', 'ItsDez gifted 5 subscriptions', { kind: 'gift-sub', author: 'ItsDez', title: '5', description: 'Interstelar\\nRon_OSRS\\nAuzzzii\\nMeowtimeJay\\nstradivarius31' }),
           row(6, 'sub', 'LurkinLeepa gifted a subscription', { kind: 'gift-sub', author: 'LurkinLeepa', title: '1', description: 'onkhell' }),
+          row(10, 'sub', 'bigkhernandez subscribed - 21 months', { kind: 'subscribe', author: 'bigkhernandez', title: '21' }),
+          row(11, 'moderation', 'troll was timed out by mod', { kind: 'moderation', author: 'troll', title: 'was timed out', description: 'mod' }),
+          row(12, 'stream', 'went live', { kind: 'stream', author: 'streamer', title: 'went live', icon: 'live' }),
           row(7, 'raid', 'kreationX raided with 25 viewers', { kind: 'raid', author: 'kreationX', title: '25' }),
           row(8, 'reward', 'onkhell redeemed 5 TONGUE TWISTERS', { kind: 'redeem', author: 'onkhell', title: '5 TONGUE TWISTERS', color: 0xff55b3 }),
           chat(9, 'bob', 'thanks everybody')

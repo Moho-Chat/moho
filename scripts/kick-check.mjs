@@ -38,7 +38,10 @@ const stage = `(() => {
     row(4, 'sub', 'ItsDez gifted 2 subscriptions', { kind: 'gift-sub', author: 'ItsDez', title: '2', description: 'a\\nb' }, 'kicker'),
     row(5, 'reward', 'poo_nana redeemed MUTE', { kind: 'redeem', author: 'poo_nana', title: 'MUTE (user) 30 MINUTES', description: 'O_C_T_O', color: 0xff4b1f }, 'kicker'),
     row(6, 'raid', 'x raided with 25 viewers', { kind: 'raid', author: 'kreationX', title: '25' }, 'kicker'),
-    row(7, 'chat', 'thanks everybody', null, 'dave')
+    row(8, 'sub', 'bigkhernandez subscribed - 21 months', { kind: 'subscribe', author: 'bigkhernandez', title: '21' }, 'kicker'),
+    row(9, 'moderation', 'troll was timed out by mod', { kind: 'moderation', author: 'troll', title: 'was timed out', description: 'mod' }, 'kicker'),
+    row(10, 'stream', 'went live', { kind: 'stream', author: 'streamer', title: 'went live', icon: 'live' }, 'kicker'),
+    row(11, 'chat', 'thanks everybody', null, 'dave')
   ] } })
 })()`
 
@@ -77,7 +80,7 @@ try {
     await sleep(700)
     const m = await page.evaluate(measure)
     console.log(`${mode}: ${JSON.stringify(m)}`)
-    check(m.cards === 4, `${mode}: all four cards are drawn`, `${m.cards}`)
+    check(m.cards === 7, `${mode}: every kind of card is drawn`, `${m.cards}`)
     check(m.marks === 0, `${mode}: no join mark beside a card`, `${m.marks}`)
     if (mode !== 'classic') {
       // The card starts at the picture's edge.

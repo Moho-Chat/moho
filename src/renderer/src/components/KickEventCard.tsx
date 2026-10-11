@@ -4,7 +4,7 @@ import { nickColor } from '../lib/util'
 import type { Embed } from '../../../shared/wire'
 
 /** The embed kinds the daemon draws as these cards instead of as a link preview. */
-export const KICK_EVENT_KINDS = ['kicks', 'gift-sub', 'raid', 'redeem']
+export const KICK_EVENT_KINDS = ['kicks', 'gift-sub', 'raid', 'redeem', 'subscribe', 'moderation', 'stream']
 
 export function isKickEvent(embed: Embed): boolean {
   return !!embed.kind && KICK_EVENT_KINDS.includes(embed.kind)
@@ -24,9 +24,11 @@ function KicksMark({ size = 16 }: { size?: number }): JSX.Element {
  * the edge, a mark for what it was, who did it in bold, and the words - on this
  * client's own surfaces and tokens rather than Kick's page.
  *
- * Four kinds, all from the daemon (nobilis/src/backend/kick/chat.rs): KICKs
- * sent, subscriptions gifted and to whom, a raid, and a channel reward
- * redeemed - which keeps the colour the streamer gave it.
+ * Every kind of event a Kick channel has, all from the daemon
+ * (nobilis/src/backend/kick/chat.rs): KICKs sent, a subscription and one gifted
+ * to somebody, a raid, a channel reward redeemed - which keeps the colour the
+ * streamer gave it - a ban, a timeout or a chat cleared, and the stream going
+ * live or ending.
  */
 export function KickEventCard({ embed }: { embed: Embed }): JSX.Element | null {
   const who = embed.author
@@ -97,6 +99,62 @@ export function KickEventCard({ embed }: { embed: Embed }): JSX.Element | null {
             <strong>{embed.title}</strong>
           </div>
           {embed.description && <div className="kick-event-message">{embed.description}</div>}
+        </div>
+      </div>
+    )
+  }
+
+  if (embed.kind === 'subscribe') {
+    return (
+      <div className="kick-event subscribe selectable">
+        <span className="kick-event-badge lead">
+          <Icon name="workspace_premium" size={22} />
+        </span>
+        <div className="kick-event-line">
+          {name()}
+          <span className="kick-event-verb">subscribed</span>
+          {embed.title && (
+            <>
+              <span className="kick-event-verb">-</span>
+              <strong>{embed.title}</strong>
+              <span className="kick-event-verb">months</span>
+            </>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  if (embed.kind === 'moderation') {
+    return (
+      <div className="kick-event moderation selectable">
+        <span className="kick-event-badge lead">
+          <Icon name="gavel" size={20} />
+        </span>
+        <div className="kick-event-line">
+          <strong className="kick-event-name">{who}</strong>
+          <span className="kick-event-verb">{embed.title}</span>
+          {embed.description && (
+            <>
+              <span className="kick-event-verb">by</span>
+              <strong>{embed.description}</strong>
+            </>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  if (embed.kind === 'stream') {
+    const live = embed.icon === 'live'
+    return (
+      <div className={`kick-event stream selectable ${live ? 'live' : 'offline'}`}>
+        <span className="kick-event-badge lead">
+          <Icon name={live ? 'sensors' : 'sensors_off'} size={20} />
+        </span>
+        <div className="kick-event-line">
+          <strong className="kick-event-name">{who}</strong>
+          <span className="kick-event-verb">{embed.title}</span>
         </div>
       </div>
     )

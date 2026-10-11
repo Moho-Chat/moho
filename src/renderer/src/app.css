@@ -1624,7 +1624,8 @@ button.video-tile {
   padding-left: calc(var(--kick-indent) - var(--kick-border, 3px));
 }
 
-.message-row.comfy.has-kick-event .kick-event.raid {
+.message-row.comfy.has-kick-event .kick-event.raid,
+.message-row.comfy.has-kick-event .kick-event.stream {
   --kick-border: 1px;
 }
 
@@ -1662,8 +1663,37 @@ button.video-tile {
   justify-content: flex-start;
 }
 
-.kick-event.redeem {
+.kick-event.redeem,
+.kick-event.subscribe,
+.kick-event.moderation {
   justify-content: flex-start;
+}
+
+.kick-event.subscribe {
+  --kick-accent: #a970ff;
+}
+
+/* A ban, a timeout, a chat cleared: said in the room's own danger colour. */
+.kick-event.moderation {
+  --kick-accent: var(--danger);
+}
+
+/* The stream going live or ending is a plate like a raid's, and the mark is
+   the part that says which. */
+.kick-event.stream {
+  justify-content: flex-start;
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--radius-pill);
+  padding-inline: var(--spacing-m);
+  background: var(--surface-container-high);
+}
+
+.kick-event.stream.live .kick-event-badge {
+  color: var(--danger);
+}
+
+.kick-event.stream.offline .kick-event-badge {
+  color: var(--text-muted);
 }
 
 .kick-event.raid {
