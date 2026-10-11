@@ -471,6 +471,8 @@ export interface Embed {
   provider?: string
   /** Who made it: a video's channel. */
   author?: string
+  /** The colour the service draws that name in, as `#rrggbb`. */
+  authorColor?: string
   /** The labelled lines under the description. */
   fields?: { name: string; value: string }[]
   /** The small line along the bottom. */
@@ -479,7 +481,10 @@ export interface Embed {
   cta?: { label: string; url?: string }
   /**
    * "notice" for the platform's own notices to an account; "gif" for a moving
-   * picture that was linked, drawn as the picture and not as a card.
+   * picture that was linked, drawn as the picture and not as a card; and
+   * "kicks" and "gift-sub" for what somebody did on a Kick stream - `author`
+   * is who, `title` the amount, and for a gift `description` is who received
+   * it, one name to a line - drawn as the card Kick draws it.
    */
   kind?: string
   /** For a "gif": the video or image to play as it stands, which is not the page that was linked. */

@@ -1572,6 +1572,121 @@ button.video-tile {
   line-height: 1;
 }
 
+/* What somebody did on a Kick stream - KICKs sent, subscriptions gifted - as
+   the card Kick draws it: a bar down the edge, who and what at the left, and
+   the thing itself at the right. On this client's own surfaces; the accent is
+   the gift's tier (Kick green for an ordinary one), tinted into the plate so a
+   large gift is bigger at a glance without the card leaving the theme. */
+.message-row.has-kick-event {
+  align-items: center;
+}
+
+.kick-event {
+  --kick-accent: #53fc18;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-l);
+  min-width: 260px;
+  max-width: min(100%, 460px);
+  padding: var(--spacing-s) var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-left: 3px solid var(--kick-accent);
+  border-radius: var(--corner-radius);
+  background: color-mix(in srgb, var(--kick-accent) 7%, var(--surface-container-high));
+  color: var(--surface-text);
+  font-style: normal;
+}
+
+/* Kick draws a gifted subscription in purple and a raid with no bar at all; a
+   redeemed reward takes the streamer's colour, set inline. */
+.kick-event.gift {
+  --kick-accent: #a970ff;
+  justify-content: flex-start;
+}
+
+.kick-event.redeem {
+  justify-content: flex-start;
+}
+
+.kick-event.raid {
+  justify-content: flex-start;
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--radius-pill);
+  padding-inline: var(--spacing-m);
+  background: var(--surface-container-high);
+}
+
+.kick-event.raid .kick-event-badge {
+  color: var(--text-muted);
+}
+
+.kick-event-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.kick-event-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.kick-event-name {
+  font-weight: var(--weight-bold);
+}
+
+.kick-event-verb {
+  color: var(--text-muted);
+}
+
+.kick-event-amount {
+  font-size: var(--font-size-large, 1.15em);
+  font-variant-numeric: tabular-nums;
+}
+
+.kick-event-message {
+  color: var(--surface-text);
+  overflow-wrap: anywhere;
+}
+
+.kick-event-recipients {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.kick-event-recipient {
+  padding: 0 var(--spacing-s);
+  border-radius: var(--radius-pill);
+  background: var(--surface-container-highest, var(--surface-hover));
+  font-weight: var(--weight-medium);
+}
+
+.kick-event-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--kick-accent);
+}
+
+.kicks-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--kick-accent);
+  color: #0b0e0a;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .message-row.comfy {
   align-items: flex-start;
   padding-top: var(--spacing-xxs);

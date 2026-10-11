@@ -352,6 +352,35 @@ const SCENES = [
     name: 'gif-picker',
     setup: async (p) => { await setMode(p, 'comfy'); await openChannel(p, '#general'); await openGifPicker(p) }
   },
+  {
+    // What somebody did on a Kick stream: KICKs sent, subscriptions gifted. Put
+    // on a channel's messages directly - a stream is not here to do it.
+    name: 'kick-events',
+    setup: async (p) => {
+      await setMode(p, 'classic')
+      await openChannel(p, '#general')
+      await p.evaluate(`(() => {
+        const shots = window.__mohoShots
+        const s = shots.state()
+        const id = s.activeBufferId
+        const now = Math.floor(Date.now() / 1000)
+        const row = (n, kind, body, embed, from = 'bob') => ({ id: 'k' + n, bufferId: id, from, senderId: from, body, ts: now - 60 + n, isAction: false, isHighlight: false, kind, isOwn: false, embeds: embed ? [embed] : [] })
+        const chat = (n, from, body) => row(n, 'chat', body, null, from)
+        shots.patch({ messagesByBuffer: { ...s.messagesByBuffer, [id]: [
+          chat(1, 'bob', 'that was a clean run'),
+          row(2, 'kicks', 'Currington sent 1 Kick', { kind: 'kicks', author: 'Currington', authorColor: '#75FD46', title: '1', provider: 'Hell Yeah', color: 0x53fc18 }),
+          chat(3, 'carol', 'lets gooo'),
+          row(4, 'kicks', 'Maverick sent 500 Kicks: take my money', { kind: 'kicks', author: 'Maverick', authorColor: '#E26EFF', title: '500', provider: 'Full Send', description: 'take my money', color: 0xb45cff }),
+          row(5, 'sub', 'ItsDez gifted 5 subscriptions', { kind: 'gift-sub', author: 'ItsDez', title: '5', description: 'Interstelar\\nRon_OSRS\\nAuzzzii\\nMeowtimeJay\\nstradivarius31' }),
+          row(6, 'sub', 'LurkinLeepa gifted a subscription', { kind: 'gift-sub', author: 'LurkinLeepa', title: '1', description: 'onkhell' }),
+          row(7, 'raid', 'kreationX raided with 25 viewers', { kind: 'raid', author: 'kreationX', title: '25' }),
+          row(8, 'reward', 'onkhell redeemed 5 TONGUE TWISTERS', { kind: 'redeem', author: 'onkhell', title: '5 TONGUE TWISTERS', color: 0xff55b3 }),
+          chat(9, 'bob', 'thanks everybody')
+        ] } })
+      })()`)
+      await sleep(500)
+    }
+  },
   { name: 'irc-channel-comfy', setup: async (p) => { await setMode(p, 'comfy'); await openChannel(p, '#general') } },
   {
     // History from several days, scrolled to its start: where date

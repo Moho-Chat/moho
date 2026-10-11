@@ -166,7 +166,7 @@ export function isWhisper(kind: string | undefined): boolean {
  * does not have.
  */
 export function isReward(kind: string | undefined): boolean {
-  return kind === 'reward' || kind === 'sub' || kind === 'raid' || kind === 'poll'
+  return kind === 'reward' || kind === 'sub' || kind === 'raid' || kind === 'poll' || kind === 'kicks'
 }
 
 export function bufferKindGlyph(kind: string): string {
