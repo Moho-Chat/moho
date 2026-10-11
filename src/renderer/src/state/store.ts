@@ -3983,6 +3983,17 @@ export class ChatStore {
         b.id === bufferId ? { ...b, unread: 0, highlight: false, mentions: 0 } : b
       )
     }
+    // The line a conversation was last opened with is that visit's, and goes
+    // when it is left. Kept, it was found again on every return: a buffer read
+    // to its end, left, and come back to had the old line still in it with
+    // everything said since below it - so it opened far up the history at a
+    // place that was no longer where anything was unread, instead of at the
+    // end. A conversation opened again works out its line afresh, from what
+    // is unread now.
+    if (leaving && leaving !== bufferId && this.state.dividerTsByBuffer[leaving] !== undefined) {
+      const { [leaving]: _gone, ...rest } = this.state.dividerTsByBuffer
+      patch.dividerTsByBuffer = rest
+    }
     if (dividerTs === undefined && buffer.unread > 0) {
       const list = this.state.messagesByBuffer[bufferId] || []
       const firstUnread = list.length >= buffer.unread ? list[list.length - buffer.unread] : list[0]
@@ -3992,7 +4003,7 @@ export class ChatStore {
       // time it was last marked read.
       const stoppedAt = list.length < buffer.unread ? this.state.lastReadTs?.[bufferId] : undefined
       patch.dividerTsByBuffer = {
-        ...this.state.dividerTsByBuffer,
+        ...(patch.dividerTsByBuffer ?? this.state.dividerTsByBuffer),
         [bufferId]: stoppedAt ?? (firstUnread ? firstUnread.ts - 1 : 0)
       }
     }
