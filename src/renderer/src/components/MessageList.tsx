@@ -165,6 +165,16 @@ const RENDER_WINDOW = 120
 const RENDER_STEP = 120
 /** Rows kept below a jumped-to message, so it has somewhere to sit. */
 const JUMP_MARGIN = 40
+/**
+ * The most unread a conversation can have and still open at its first unread
+ * message. Discord's rule, and for the same reason: its first screenful of
+ * history is fifty messages, so an unread run that fits in it is somewhere to
+ * start reading, and one that does not is somewhere nobody wants to be taken -
+ * hundreds or thousands of messages up, with the conversation they came for
+ * a long scroll away. Past it the log opens at its end, as any other does,
+ * and the bar across the top says how much there is and goes back to it.
+ */
+const OPEN_AT_UNREAD_LIMIT = 50
 
 export function MessageList(): JSX.Element {
   const store = useStore()
@@ -527,13 +537,21 @@ export function MessageList(): JSX.Element {
   // of switching, because what has been read from the daemon may not have
   // arrived yet - the line has to be in the drawn part of the log, which is a
   // tail, before it can be scrolled to.
+  // The divider marks the first message newer than the snapshot taken when the
+  // buffer was opened; it deliberately doesn't move as more arrive.
+  const dividerIndex = dividerTs > 0 ? messages.findIndex((m) => m.ts > dividerTs) : -1
+  // Where it is against what is drawn, for the callbacks below that have to
+  // know whether the line exists on the page or only in the log.
+  const dividerRef = useRef({ index: -1, start: 0, length: 0 })
+  dividerRef.current = { index: dividerIndex, start, length: messages.length }
+
   const openedAtRef = useRef('')
   useLayoutEffect(() => {
     const key = `${bufferId}|${dividerTs}`
     if (openedAtRef.current === key || messages.length === 0) return
     openedAtRef.current = key
     const first = dividerTs > 0 ? messages.findIndex((m) => m.ts > dividerTs) : -1
-    if (first >= 0 && messages.length - first > 8) {
+    if (first >= 0 && messages.length - first > 8 && messages.length - first <= OPEN_AT_UNREAD_LIMIT) {
       wantDividerRef.current = true
       setShown((n) => Math.max(n, messages.length - first + JUMP_MARGIN))
     }
@@ -543,8 +561,13 @@ export function MessageList(): JSX.Element {
   const measureDivider = useCallback(() => {
     const el = scrollRef.current
     const line = el?.querySelector<HTMLElement>('.new-divider')
-    if (!el || !line) {
-      setDividerAbove(false)
+    if (!el) return
+    if (!line) {
+      // Not drawn is not the same as not there. A conversation opened with a
+      // long unread run is at its end, and its line is up in the log beyond
+      // what is built - which is exactly when the bar is wanted.
+      const { index, start } = dividerRef.current
+      setDividerAbove(index >= 0 && index < start)
       return
     }
     // Clearly above, not merely just off the top: with the line a few pixels
@@ -556,7 +579,18 @@ export function MessageList(): JSX.Element {
   const toDivider = useCallback((smooth: boolean) => {
     const el = scrollRef.current
     const line = el?.querySelector<HTMLElement>('.new-divider')
-    if (!el || !line) return
+    if (!el) return
+    if (!line) {
+      // In the log and not on the page: build the log back to it, and the
+      // layout effect below scrolls to it once it is there.
+      const { index, length } = dividerRef.current
+      if (index < 0) return
+      anchor(false)
+      setMissedCount(0)
+      wantDividerRef.current = true
+      setShown((n) => Math.max(n, length - index + JUMP_MARGIN))
+      return
+    }
     anchor(false)
     // Going back to the line is not missing anything: what is below is what
     // was already there, not news.
@@ -565,6 +599,13 @@ export function MessageList(): JSX.Element {
     const target = el.scrollTop + line.getBoundingClientRect().top - el.getBoundingClientRect().top - 48
     el.scrollTo({ top: Math.max(0, target), behavior: smooth ? 'smooth' : 'auto' })
   }, [anchor, messages])
+
+  // Whether the line is out of sight, asked as the log changes as well as when
+  // it is scrolled: a conversation opened at its end never scrolls, and is
+  // the one with the most to say about what is above it.
+  useLayoutEffect(() => {
+    measureDivider()
+  }, [bufferId, dividerTs, messages.length, shown, measureDivider])
 
   // Once the line is drawn, start there.
   useLayoutEffect(() => {
@@ -727,10 +768,6 @@ export function MessageList(): JSX.Element {
     window.addEventListener('moho:jump-to-present', go)
     return () => window.removeEventListener('moho:jump-to-present', go)
   }, [])
-
-  // The divider marks the first message newer than the snapshot taken when the
-  // buffer was opened; it deliberately doesn't move as more arrive.
-  const dividerIndex = dividerTs > 0 ? messages.findIndex((m) => m.ts > dividerTs) : -1
 
   return (
     // Whose conversation this is, for everything drawn inside it: a strictly

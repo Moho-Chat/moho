@@ -17,8 +17,11 @@ again and everything is where you left it.
   the same reply, edit, react, search and tag-someone gestures on each — as far as each
   service actually supports them.
 - **A log, not a feed.** Compact IRC-style scrollback with nick colours, markdown and BBCode,
-  spoilers, code blocks, inline images and video, and custom emoji. There's a roomier mode
-  with avatars if you prefer one.
+  spoilers, code blocks, inline images and video, GIFs, YouTube cards, and custom emoji. There
+  are two roomier modes if you prefer one: Comfy, with avatars, and Bubbles.
+- **Made for being open all day.** A quick switcher on Ctrl+K, a tray with the number waiting
+  and your status, Do not disturb that really silences everything, idle detection, and
+  conversations that open where you stopped reading rather than a thousand messages back.
 - **It stays connected.** The daemon keeps IRC registered, Matrix syncing and Tor circuits
   open while the window is shut. Quitting says a proper goodbye rather than dropping the
   socket, so you don't come back to a ghosted nick.
@@ -85,13 +88,18 @@ npm install-scripts approve electron esbuild
 ## Test it
 
 ```bash
-npm test          # the window's unit tests (Vitest)
-npm run test:ui   # layout checks against the real app - popups must stay inside the window
+npm test            # the window's unit tests (Vitest)
+npm run test:ui     # layout checks against the real app - popups must stay inside the window
+npm run test:tray   # the tray: its icon, tooltip, menu, statuses and restart
+npm run test:gif    # GIFs drawn as pictures, and the GIF picker
+npm run test:scroll # scrolling and where a conversation opens
+npm run test:kick   # where Kick event cards sit in each layout
 cd nobilis && cargo test --release
 ```
 
-`test:ui` builds the window, runs it against a scratch home and a fake IRC server, and needs the
-daemon built first. On a machine with no display, run it under `xvfb-run`.
+The `test:` scripts other than `test` build the window, run it against a scratch home and a
+fake IRC server, and need the daemon built first. On a machine with no display, run them under
+`xvfb-run`. `npm run shots` photographs the interface scene by scene, for looking at changes.
 
 ## Run it
 
@@ -107,9 +115,14 @@ npm run deploy
 ```
 
 Other ways out of the box: `npm run pack:dir` for a self-contained `dist/linux-unpacked/`
-directory to run in place, `npm run pack:win` for the Windows installer (cross-built with
-mingw-w64; packaging it also needs wine with 32-bit support), and `makepkg -si` against the
-bundled `PKGBUILD` to install it as an Arch package under `/opt/moho`.
+directory to run in place, `npm run pack:deb` for a Debian package, `npm run pack:win` for the
+Windows installer (cross-built with mingw-w64; packaging it also needs wine with 32-bit
+support), and `makepkg -si` against the bundled `PKGBUILD` to install it as an Arch package
+under `/opt/moho`.
+
+Packaging leaves a lot behind - an AppImage per build, and Rust build output that Cargo never
+cleans up. `npm run deploy` first runs `npm run tidy`, which keeps the newest two AppImages and
+empties `nobilis/target/` once it passes 8 GB.
 
 ---
 

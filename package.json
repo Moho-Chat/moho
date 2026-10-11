@@ -1,8 +1,8 @@
 {
   "name": "moho",
-  "version": "1.0.0-rc.5",
+  "version": "1.0.0",
   "description": "Unified desktop chat client for IRC, Discord, Sneedchat and Matrix",
-  "author": "Salastil",
+  "author": "Salastil <salastil@cock.li>",
   "license": "GPL-3.0-or-later",
   "homepage": "https://github.com/Moho-Chat/moho",
   "repository": {
@@ -24,6 +24,7 @@
     "test:tray": "electron-vite build && node scripts/tray-check.mjs",
     "test:gif": "electron-vite build && node scripts/gif-check.mjs",
     "test:scroll": "electron-vite build && node scripts/scroll-check.mjs",
+    "test:kick": "electron-vite build && node scripts/kick-check.mjs",
     "shots": "electron-vite build && node scripts/ui-shots.mjs",
     "pack": "npm run daemon && npm run build && MOHO_BUILD=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty) electron-builder --linux AppImage",
     "pack:deb": "npm run daemon && npm run build && MOHO_BUILD=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty) electron-builder --linux deb",
@@ -78,7 +79,7 @@
         "AppImage",
         "deb"
       ],
-      "maintainer": "Salastil <salastil@users.noreply.github.com>",
+      "maintainer": "Salastil <salastil@cock.li>",
       "category": "Network",
       "synopsis": "Unified desktop chat client",
       "icon": "resources/icons/moho.png",

@@ -6,9 +6,10 @@ How the two halves fit together, what the daemon speaks, and where it puts thing
 ## Why two parts
 
 - **`nobilis`** (`nobilis/`, Rust) speaks each protocol directly and translates it into a small
-  unified JSON model (accounts, buffers, messages) over a Unix socket. It never exposes
-  protocol-specific concepts to the client; it speaks the unified model, and each backend module
-  happens to be how that model gets populated for a given service.
+  unified JSON model (accounts, buffers, messages) over a Unix socket. What every service has in
+  common - sending, editing, reacting, backlog, search - is one set of calls and events. What
+  only one service has - a Matrix room's power levels, a Discord poll, a Kick prediction - is a
+  call of its own, so a client never has to pretend the services are the same where they are not.
 - **The Electron client** (`src/`) spawns and supervises `nobilis` and renders whatever it reports.
 
 Keeping the protocol work in a separate long-lived daemon means connections, Tor circuits, and
@@ -42,14 +43,29 @@ Three panes: an account-grouped buffer sidebar, the message log, and a member li
 sidebar and member list independently foldable. Closing the window hides it to the tray; nobilis
 keeps running, so connections and unread tracking survive.
 
-- **Message rendering** - an IRC-style log by default, with nick colouring, BBCode and
-  markdown, spoilers, code and quote blocks, inline image/video/YouTube embeds, custom emoji,
-  emotes and stickers (Discord's animated Lottie ones included), reactions, replies, inline
-  edit, and Sneedchat's bundled smilies. "Comfy" groups consecutive messages under one avatar,
-  and "Bubbles" draws them as chat bubbles.
-- **Settings** - a category rail covering General, IRC, Sneedchat, Tor, Discord, Matrix, Kick
+- **Message rendering** - an IRC-style log by default ("Classic"), with nick colouring, BBCode and
+  markdown, spoilers, code and quote blocks, inline image/video embeds, custom emoji, emotes and
+  stickers (Discord's animated Lottie ones included), reactions, replies, inline edit, and
+  Sneedchat's bundled smilies. "Comfy" groups consecutive messages under one avatar, and "Bubbles"
+  draws them as chat bubbles. A link is described by the daemon for every service, not only the
+  ones that do it themselves: a YouTube link becomes a titled card, a Tenor or Giphy link is drawn
+  as the GIF, and a GIF picker sends one from the composer. What somebody did on a Kick stream -
+  KICKs sent, subscriptions gifted and to whom, a raid, a redeemed reward - is drawn as a card.
+- **Settings** - a searchable rail of categories: Accounts and Downloads; General, Appearance,
+  Notifications and Keybinds; a page for each network (IRC, Sneedchat, Tor, Discord, Matrix, Kick);
   and About. Message-kind filters (joins, parts, mode changes) are applied client-side, so toggling
   one takes effect immediately without a reconnect.
+- **Moving around** - Ctrl+K opens a quick switcher over every conversation on every account.
+  A conversation opens at its first unread message when the unread run is short, and at its end,
+  with a bar to go back by, when it is long - as Discord does it. Escape marks the conversation
+  read and Shift+Escape the whole server; a muted conversation stays quiet but still counts the
+  times your name was used in it.
+- **Presence and the tray** - the status menu offers only the statuses each service has (Discord
+  all four, IRC away and back, Matrix online and offline) and sends nothing to a service that
+  has no such thing. Do not disturb silences desktop notifications everywhere and is Discord's
+  real do-not-disturb on Discord. When nothing has been used for a while an account is put on
+  Idle and back, from the system's idle time where it will say and moho's own windows where it
+  will not. The tray draws a number counted by the window by the rule the server rail uses.
 - **Per-protocol join pages** - each service's mechanism is genuinely different (IRC joins by
   channel name, Discord offers the friends list and sends joining, adding a friend and making
   a server to discord.com - see below - Matrix takes a room address
@@ -165,7 +181,8 @@ called `subscribe` for that buffer.
   gateway. Messages with edit/delete/reactions/replies/forwarding, threads and forum posts, slash
   commands with buttons, menus and modal forms, polls that can be voted in, stickers sent and
   drawn, pinned messages, Discord's own search, invites, scheduled events, AutoMod's verdicts,
-  and server and channel mutes read from the account itself.
+  and server and channel mutes - read from the account itself, and set on it when a channel is muted
+  here, so a phone is quiet too.
 
   Voice and video are moho's own connections rather than a library's: voice, the camera and Go
   Live streams - hosted and watched, with sound - over Discord's RTP with DAVE end-to-end
@@ -197,8 +214,9 @@ called `subscribe` for that buffer.
   is a renegotiation rather than a new call.
 - **Kick** - the streaming site's chat, over its Pusher socket. Joins by streamer handle, imports
   the account's follows, and carries the three emote tiers with subscriber gating (and 7TV and
-  BTTV beside them), redemptions, subscriptions, gifted subs and raids, moderation, chat modes,
-  and polls and predictions that can be answered rather than only watched. The stream itself
+  BTTV beside them), KICKs sent to a streamer, redemptions, subscriptions, gifted subs with who
+  received them, raids, moderation, chat modes, and polls and predictions that can be answered
+  rather than only watched. The stream itself
   plays in the window over HLS, with its VODs and clips.
 
 ## On-disk state
@@ -209,6 +227,8 @@ called `subscribe` for that buffer.
 | `~/.config/nobilis/scrollback.db` | SQLite scrollback |
 | `~/.config/nobilis/matrix-crypto/` | Matrix E2EE device keys and Olm sessions |
 | `~/.config/nobilis/voice.toml` | microphone, speakers, volumes and voice processing |
+| `~/.config/nobilis/highlights.toml`, `ignores.toml` | the words that count as a mention, and who is ignored |
+| `~/.config/nobilis/dcc.toml`, `irc-sts.toml` | DCC settings, and the IRC networks that have pinned TLS (STS) |
 | `~/.config/nobilis/tor-state/`, `tor-cache/` | the embedded Tor client's state |
 | `~/.cache/nobilis/` | re-derivable media caches (Matrix media, Discord thumbnails, stickers and sounds, Kick emotes, Sneedchat avatars and attachments), each held to a size and to thirty days, and fetched again when a missing file is looked at - see `nobilis/src/media_cache.rs` |
 | `~/.cache/moho/moho.log` | the app's log, the daemon's included |

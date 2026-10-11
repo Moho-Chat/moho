@@ -1572,6 +1572,208 @@ button.video-tile {
   line-height: 1;
 }
 
+/* What somebody did on a Kick stream - KICKs sent, subscriptions gifted - as
+   the card Kick draws it: a bar down the edge, who and what at the left, and
+   the thing itself at the right. On this client's own surfaces; the accent is
+   the gift's tier (Kick green for an ordinary one), tinted into the plate so a
+   large gift is bigger at a glance without the card leaving the theme. */
+.message-row.has-kick-event {
+  align-items: center;
+}
+
+/* Where the card sits in the log, which is where the picture of the person
+   speaking would: it starts at the picture's edge, in the column a join's mark
+   would have taken, and what is written inside it starts where a name does. So
+   the indent is the picture, the gap after it, and - in a bubble - the
+   bubble's own padding. A message row that is not a person speaking gets no
+   avatar, and a card with none lets the content start at the edge. */
+.message-row.comfy:not(.bubbles).has-kick-event {
+  --kick-lead: var(--avatar);
+  --kick-indent: calc(var(--avatar) + var(--spacing-m));
+}
+
+.message-row.bubbles.system.has-kick-event {
+  --kick-lead: 28px;
+  --kick-indent: calc(28px + var(--spacing-s) + var(--spacing-s));
+  justify-content: flex-start;
+  margin-top: var(--spacing-s);
+}
+
+.message-row.bubbles.system.has-kick-event .message-content {
+  flex: 1 1 auto;
+  max-width: 100%;
+  padding: 0;
+  background: none;
+  text-align: left;
+}
+
+.message-row.classic.has-kick-event,
+.message-row:not(.comfy).has-kick-event {
+  margin-top: var(--spacing-xs);
+}
+
+.message-row.comfy.has-kick-event .message-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.message-row.comfy.has-kick-event .kick-event {
+  position: relative;
+  max-width: min(100%, 560px);
+  /* Less the bar, which is in the card's own edge. */
+  padding-left: calc(var(--kick-indent) - var(--kick-border, 3px));
+}
+
+.message-row.comfy.has-kick-event .kick-event.raid,
+.message-row.comfy.has-kick-event .kick-event.stream {
+  --kick-border: 1px;
+}
+
+/* The mark at the left takes the picture's column - centred on where the
+   picture would be - instead of sitting in the text's way. */
+.message-row.comfy.has-kick-event .kick-event > .kick-event-badge.lead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--kick-lead);
+}
+
+.kick-event {
+  --kick-accent: #53fc18;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-l);
+  min-width: 260px;
+  max-width: min(100%, 520px);
+  padding: var(--spacing-s) var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-left: 3px solid var(--kick-accent);
+  border-radius: var(--corner-radius);
+  background: color-mix(in srgb, var(--kick-accent) 7%, var(--surface-container-high));
+  color: var(--surface-text);
+  font-style: normal;
+}
+
+/* Kick draws a gifted subscription in purple and a raid with no bar at all; a
+   redeemed reward takes the streamer's colour, set inline. */
+.kick-event.gift {
+  --kick-accent: #a970ff;
+  justify-content: flex-start;
+}
+
+.kick-event.redeem,
+.kick-event.subscribe,
+.kick-event.moderation {
+  justify-content: flex-start;
+}
+
+.kick-event.subscribe {
+  --kick-accent: #a970ff;
+}
+
+/* A ban, a timeout, a chat cleared: said in the room's own danger colour. */
+.kick-event.moderation {
+  --kick-accent: var(--danger);
+}
+
+/* The stream going live or ending is a plate like a raid's, and the mark is
+   the part that says which. */
+.kick-event.stream {
+  justify-content: flex-start;
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--radius-pill);
+  padding-inline: var(--spacing-m);
+  background: var(--surface-container-high);
+}
+
+.kick-event.stream.live .kick-event-badge {
+  color: var(--danger);
+}
+
+.kick-event.stream.offline .kick-event-badge {
+  color: var(--text-muted);
+}
+
+.kick-event.raid {
+  justify-content: flex-start;
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--radius-pill);
+  padding-inline: var(--spacing-m);
+  background: var(--surface-container-high);
+}
+
+.kick-event.raid .kick-event-badge {
+  color: var(--text-muted);
+}
+
+.kick-event-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.kick-event-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.kick-event-name {
+  font-weight: var(--weight-bold);
+}
+
+.kick-event-verb {
+  color: var(--text-muted);
+}
+
+.kick-event-amount {
+  font-size: var(--font-size-large, 1.15em);
+  font-variant-numeric: tabular-nums;
+}
+
+.kick-event-message {
+  color: var(--surface-text);
+  overflow-wrap: anywhere;
+}
+
+.kick-event-recipients {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.kick-event-recipient {
+  padding: 0 var(--spacing-s);
+  border-radius: var(--radius-pill);
+  background: var(--surface-container-highest, var(--surface-hover));
+  font-weight: var(--weight-medium);
+}
+
+.kick-event-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--kick-accent);
+}
+
+.kicks-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--kick-accent);
+  color: #0b0e0a;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .message-row.comfy {
   align-items: flex-start;
   padding-top: var(--spacing-xxs);
@@ -1590,7 +1792,8 @@ button.video-tile {
   gap: var(--spacing-m);
 }
 
-.message-row.comfy:not(.bubbles):not(.grouped):not(.system) {
+.message-row.comfy:not(.bubbles):not(.grouped):not(.system),
+.message-row.comfy:not(.bubbles):not(.grouped).has-kick-event {
   margin-top: var(--spacing-l);
 }
 
