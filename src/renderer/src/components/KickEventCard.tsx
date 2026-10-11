@@ -62,7 +62,7 @@ export function KickEventCard({ embed }: { embed: Embed }): JSX.Element | null {
   if (embed.kind === 'raid') {
     return (
       <div className="kick-event raid selectable">
-        <span className="kick-event-badge">
+        <span className="kick-event-badge lead">
           <Icon name="groups" size={20} />
         </span>
         <div className="kick-event-main">
@@ -87,7 +87,7 @@ export function KickEventCard({ embed }: { embed: Embed }): JSX.Element | null {
   if (embed.kind === 'redeem') {
     return (
       <div className="kick-event redeem selectable" style={tint}>
-        <span className="kick-event-badge">
+        <span className="kick-event-badge lead">
           <Icon name="stars" size={22} />
         </span>
         <div className="kick-event-main">
@@ -106,7 +106,7 @@ export function KickEventCard({ embed }: { embed: Embed }): JSX.Element | null {
   const recipients = (embed.description ?? '').split('\n').filter(Boolean)
   return (
     <div className="kick-event gift selectable">
-      <span className="kick-event-badge">
+      <span className="kick-event-badge lead">
         <Icon name="redeem" size={22} />
       </span>
       <div className="kick-event-main">

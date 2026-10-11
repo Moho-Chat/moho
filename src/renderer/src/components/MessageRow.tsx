@@ -833,7 +833,7 @@ function MessageRowBody({
         {/* A join, a part, a topic change: not somebody speaking, so no face -
             but a small mark in the picture's own column, so the line's text
             starts where every other line's does instead of at the edge. */}
-        {mode === 'comfy' && isSystem && (
+        {mode === 'comfy' && isSystem && !kickEvent && (
           <span className="message-avatar system-mark" aria-hidden>
             <Icon name={SYSTEM_MARKS[message.kind] ?? 'info'} size={16} />
           </span>

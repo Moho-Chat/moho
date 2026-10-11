@@ -356,8 +356,8 @@ const SCENES = [
     // What somebody did on a Kick stream: KICKs sent, subscriptions gifted. Put
     // on a channel's messages directly - a stream is not here to do it.
     name: 'kick-events',
-    setup: async (p) => {
-      await setMode(p, 'classic')
+    setup: async (p, mode = 'classic') => {
+      await setMode(p, mode)
       await openChannel(p, '#general')
       await p.evaluate(`(() => {
         const shots = window.__mohoShots
@@ -381,6 +381,8 @@ const SCENES = [
       await sleep(500)
     }
   },
+  { name: 'kick-events-comfy', setup: async (p) => { await SCENES.find((x) => x.name === 'kick-events').setup(p, 'comfy') } },
+  { name: 'kick-events-bubbles', setup: async (p) => { await SCENES.find((x) => x.name === 'kick-events').setup(p, 'bubbles') } },
   { name: 'irc-channel-comfy', setup: async (p) => { await setMode(p, 'comfy'); await openChannel(p, '#general') } },
   {
     // History from several days, scrolled to its start: where date

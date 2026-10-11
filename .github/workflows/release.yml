@@ -290,6 +290,12 @@ jobs:
       - name: scroll check
         run: xvfb-run -a npm run test:scroll
 
+      # Kick event cards: where they sit in each layout, measured against a
+      # chat line beside them - the picture's column, the name's place, and the
+      # air above.
+      - name: kick card check
+        run: xvfb-run -a npm run test:kick
+
       # MOHO_BUILD is computed inside the npm script - a shell assignment on
       # the electron-builder line - so it cannot be injected from out here.
       # The only way to control what the artifact is called is to guarantee
