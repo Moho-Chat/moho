@@ -1,6 +1,7 @@
 # moho
 
 **Every conversation you're in, in one window.**
+<img width="1545" height="912" alt="showcase-screenshot" src="https://github.com/user-attachments/assets/b9dabddb-bb3c-4a71-b872-9ad167ecd400" />
 
 moho is a desktop chat client that speaks IRC, Discord, Matrix, Kick and Sneedchat at the
 same time. One buffer list down the side, one log in the middle, one set of habits — whether
