@@ -18,6 +18,16 @@ export function useStore(): typeof store {
   return store
 }
 
+/**
+ * Whether the log is drawn in the comfy family (comfy, and bubbles with it) as
+ * against classic. The lists beside it follow: comfy has faces and a line of
+ * what somebody is doing, classic is names, as on IRC.
+ */
+export function useComfy(): boolean {
+  const [mode] = usePref<'classic' | 'comfy' | 'bubbles'>('display.messageMode', 'comfy')
+  return mode !== 'classic'
+}
+
 /** Everything waiting on a yes or a no, from every service. */
 export function useInvitations(): Invitation[] {
   const rooms = useChat((s) => s.matrixInvites)

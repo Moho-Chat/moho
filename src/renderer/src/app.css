@@ -2546,6 +2546,36 @@ img.composer-emoji {
   opacity: 0.45;
 }
 
+.nick-row.comfy {
+  gap: var(--spacing-s);
+  padding: 4px var(--spacing-s);
+}
+
+/* The name over what they are doing, in one column that gives way to the
+   badge at the right rather than pushing it off. */
+.nick-text,
+.buffer-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+/* A game, a track, or words they wrote: small, under the name, with a picture
+   only where there is a kind of thing to show. */
+.activity-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: var(--font-size-small);
+}
+
+.activity-line .icon {
+  flex: none;
+}
+
 .nick-prefix {
   color: var(--surface-variant-text);
   flex: none;

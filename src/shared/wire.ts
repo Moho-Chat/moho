@@ -633,6 +633,14 @@ export interface Profile {
   pending?: boolean
 }
 
+/** What somebody is doing, as a line under their name. */
+export interface Activity {
+  /** Decides the little picture before it: a gamepad, a note, or none. */
+  kind: 'game' | 'music' | 'custom'
+  /** The game, the track, or the words. */
+  text: string
+}
+
 export interface Member {
   nick: string
   prefix?: string
@@ -667,11 +675,11 @@ export interface Member {
    */
   status?: string
   /**
-   * What is said beside the presence dot where the dot cannot say it: the game
-   * somebody is playing, or a state that shares a colour with another (Steam's
-   * Busy and Snooze). Absent when the dot is the whole answer.
+   * What they are doing, said under their name: a game, a track, or a status
+   * they wrote themselves. Only where the service says; absent when the dot is
+   * the whole answer.
    */
-  statusText?: string | null
+  activity?: Activity | null
   /** Their picture, where the service has one in its member list. */
   avatarUrl?: string
 }

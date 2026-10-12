@@ -7,8 +7,10 @@ import { bufferMenuEntries } from '../lib/buffermenu'
 import { UserFooter } from './UserFooter'
 import { VoiceChannels } from './VoiceChannels'
 import { VoicePanel } from './VoicePanel'
-import { dmStatusText, presenceClass, presenceLabel } from '../lib/presence'
-import { useChat, useIdSetPref, useInvitations, useMapPref, usePref, useStore } from '../state/hooks'
+import { presenceClass, presenceLabel } from '../lib/presence'
+import { activityLabel, dmActivity } from '../lib/activity'
+import { ActivityLine } from './ActivityLine'
+import { useChat, useComfy, useIdSetPref, useInvitations, useMapPref, usePref, useStore } from '../state/hooks'
 import {
   compareInBand,
   dmGroup,
@@ -964,8 +966,12 @@ function BufferRow({
   // Whether this channel's stream is the one in the window. Selected down to
   // a boolean for the same reason as `live` above.
   const watched = useChat((s) => s.watching?.bufferId === buffer.id)
-  // What the person is doing, for the tooltip: the game, or "Busy".
-  const doing = useChat((s) => dmStatusText(buffer, s.presenceByBuffer))
+  // What the person is doing: under their name in comfy, and in the tooltip
+  // either way. Selected as the one object rather than a copy of it, so the row
+  // redraws when it changes and not on every presence update in the window.
+  const activity = useChat((s) => dmActivity(buffer, s.presenceByBuffer))
+  const comfy = useComfy()
+  const doing = activity ? activityLabel(activity) : undefined
 
   // Under an account header the row's own kind is what's worth showing (a
   // channel vs a DM vs the server buffer). A pinned row has no header above
@@ -1075,7 +1081,14 @@ function BufferRow({
         title={link ? `${buffer.name} — ${link.detail}` : draggable ? `${buffer.name} — drag onto a heading to file it` : doing ? `${buffer.name} — ${doing}` : buffer.name}
       >
         {leading}
-        <span className="ellipsis buffer-name">{rowName}</span>
+        {comfy && activity ? (
+          <span className="buffer-text">
+            <span className="ellipsis buffer-name">{rowName}</span>
+            <ActivityLine activity={activity} />
+          </span>
+        ) : (
+          <span className="ellipsis buffer-name">{rowName}</span>
+        )}
         {/* So a conversation with no unread count and no traffic in it is
             explained rather than merely quiet: it is being read elsewhere. */}
         {/* Still filling in - a Matrix room between joining it and the server

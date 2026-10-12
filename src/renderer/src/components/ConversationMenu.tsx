@@ -6,7 +6,7 @@ import { ReasonPrompt } from './ReasonPrompt'
 import { Avatar } from './Avatar'
 import { bufferMenuEntries } from '../lib/buffermenu'
 import { dmStatus } from './BufferList'
-import { dmStatusText } from '../lib/presence'
+import { activityLabel, dmActivity } from '../lib/activity'
 import { bufferDisplayName, classes } from '../lib/util'
 import { useChat, useStore } from '../state/hooks'
 import { useIdSetPref, useMapPref, usePref } from '../state/hooks'
@@ -52,7 +52,8 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
 
   const account = accounts.find((a) => a.id === buffer.accountId)
   const name = bufferDisplayName(buffer.name)
-  const statusText = dmStatusText(buffer, presence)
+  const activity = dmActivity(buffer, presence)
+  const statusText = activity ? activityLabel(activity) : undefined
 
   const entries: MenuEntry[] = [
     ...bufferMenuEntries({
