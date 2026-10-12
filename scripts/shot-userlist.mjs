@@ -65,6 +65,13 @@ try {
   await dress()
   await page.evaluate(`window.moho.prefs.set('display.messageMode', 'comfy')`)
   await shot('comfy-channel.png')
+  await page.evaluate(`(() => {
+    const s = window.__mohoShots
+    const channel = s.state().buffers.find((b) => b.id.endsWith('|#ui'))
+    s.patch({ profile: { service: 'irc', accountId: channel.accountId, name: 'onkell', handle: 'onkell', status: 'online', extra: [{ label: 'Client', value: 'moho' }] } })
+  })()`)
+  await shot('profile-card.png')
+  await page.evaluate(`(() => { window.__mohoShots.patch({ profile: null }) })()`)
   await page.evaluate(`(() => { const s = window.__mohoShots; s.store.selectGroup('~dms') })()`)
   await shot('comfy-dms.png')
   // A window is not told about its own preference change, so the new mode is

@@ -1,4 +1,4 @@
-import type { Activity, Member } from '../../../shared/wire'
+import type { Activity, Member, Profile } from '../../../shared/wire'
 import type { BufferEntry } from '../state/store'
 
 /** The picture before the line: a gamepad for a game, a note for a track, none for words. */
@@ -19,4 +19,29 @@ export function dmActivity(buffer: BufferEntry, presence: Record<string, Member[
   if (buffer.kind !== 'dm') return undefined
   const own = presence[buffer.id]
   return (own?.length === 1 && own[0].activity) || undefined
+}
+
+/**
+ * What somebody is doing, for the profile card.
+ *
+ * What the service said in the lookup itself, and otherwise what their
+ * presence already says wherever they are listed: the member lists carry it
+ * for every service, so a card opened from a message needs no second question
+ * to know the game somebody is in.
+ */
+export function profileActivity(
+  profile: Pick<Profile, 'activity' | 'accountId' | 'id' | 'name' | 'handle'>,
+  presence: Record<string, Member[]>,
+  buffers: BufferEntry[]
+): Activity | undefined {
+  if (profile.activity) return profile.activity
+  const names = [profile.name, profile.handle].filter((n): n is string => !!n).map((n) => n.toLowerCase())
+  for (const buffer of buffers) {
+    if (buffer.accountId !== profile.accountId) continue
+    const found = presence[buffer.id]?.find(
+      (m) => m.activity && ((profile.id && m.userId === profile.id) || names.includes(m.nick.toLowerCase()))
+    )
+    if (found?.activity) return found.activity
+  }
+  return undefined
 }

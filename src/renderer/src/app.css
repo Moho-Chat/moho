@@ -7709,6 +7709,35 @@ video.lightbox-media {
 
 /* Label and value on one line, labels aligned, so the card is read down its
    left edge rather than hunted through. */
+.profile-status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  padding: var(--spacing-s);
+  margin-bottom: var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-high);
+}
+
+.profile-section-title {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--font-size-xs, 11px);
+}
+
+.profile-status-presence {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.profile-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+
 .profile-rows {
   display: flex;
   flex-direction: column;

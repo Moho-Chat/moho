@@ -2,8 +2,10 @@ import { Modal } from './Modal'
 import { Avatar } from './Avatar'
 import { Icon, IconButton } from './Icon'
 import { useChat, useStore } from '../state/hooks'
-import { formatFullTime } from '../lib/util'
+import { formatFullTime, serviceLabel } from '../lib/util'
 import { presenceColor, presenceLabel } from '../lib/presence'
+import { profileActivity } from '../lib/activity'
+import { ActivityLine } from './ActivityLine'
 
 /**
  * Who somebody is, whichever service they belong to.
@@ -20,13 +22,20 @@ import { presenceColor, presenceLabel } from '../lib/presence'
  */
 export function ProfileCard(): JSX.Element | null {
   const profile = useChat((s) => s.profile)
+  const presence = useChat((s) => s.presenceByBuffer)
+  const buffers = useChat((s) => s.buffers)
   const store = useStore()
 
   if (!profile) return null
 
+  // Their status, as its own section: how they are showing and what they are
+  // doing. An away message is words they wrote for this, so it stands in for
+  // an activity where the service gave none.
+  const activity = profileActivity(profile, presence, buffers) ?? (profile.away ? ({ kind: 'custom', text: profile.away } as const) : undefined)
+  const hasStatus = !!profile.status || !!activity
+
   const rows: [string, string][] = []
   if (profile.handle && profile.handle !== profile.name) rows.push(['Address', profile.handle])
-  if (profile.away) rows.push(['Away', profile.away])
   if (profile.createdTs) rows.push(['Account made', formatFullTime(profile.createdTs)])
   if (profile.joinedTs) rows.push([joinedLabel(profile.service), formatFullTime(profile.joinedTs)])
   if (profile.lastActiveTs) rows.push(['Last seen', formatFullTime(profile.lastActiveTs)])
@@ -40,7 +49,7 @@ export function ProfileCard(): JSX.Element | null {
           <div className="profile-title">
             <span className="profile-name ellipsis">{profile.name}</span>
             <span className="small muted">
-              {profile.status ? presenceLabel(profile.status) : profile.service}
+              {serviceLabel(profile.service)}
               {profile.isModerator ? ' · moderator here' : ''}
             </span>
           </div>
@@ -63,6 +72,21 @@ export function ProfileCard(): JSX.Element | null {
               </span>
             ))}
           </div>
+        )}
+
+        {/* Status, first of the facts: it is the one that changes while the
+            card is open, and the one somebody opens it to see. */}
+        {hasStatus && (
+          <section className="profile-status" aria-label="Status">
+            <span className="small muted profile-section-title">Status</span>
+            {profile.status && (
+              <span className="profile-status-presence">
+                <span className="profile-status-dot" style={{ background: presenceColor(profile.status) }} />
+                {presenceLabel(profile.status)}
+              </span>
+            )}
+            {activity && <ActivityLine activity={activity} />}
+          </section>
         )}
 
         <dl className="profile-rows">
@@ -121,7 +145,7 @@ export function ProfileCard(): JSX.Element | null {
           </p>
         )}
 
-        {!profile.pending && rows.length === 0 && !profile.roles?.length && !profile.channels?.length && (
+        {!profile.pending && rows.length === 0 && !hasStatus && !profile.roles?.length && !profile.channels?.length && (
           <p className="small muted">
             <Icon name="info" size={14} /> {profile.service} keeps nothing else about them.
           </p>

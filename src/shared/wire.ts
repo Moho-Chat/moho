@@ -625,6 +625,8 @@ export interface Profile {
   away?: string
   /** Presence word - "online", "idle", "dnd", "offline". */
   status?: string
+  /** What they are doing, where the service says: a game, a track, or words they wrote. */
+  activity?: Activity | null
   /** Rooms or channels shared with them, where the service will say. */
   channels?: string[]
   /** Anything else worth showing, already phrased for a person to read. */
