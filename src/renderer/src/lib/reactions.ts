@@ -10,6 +10,8 @@
 export function reactionLabel(emoji: string, unicodeNames: ReadonlyMap<string, string> = new Map()): string {
   const custom = emoji.match(/^<a?:([A-Za-z0-9_~]{2,32}):\d+>$/)
   if (custom) return `:${custom[1]}:`
+  const steam = emoji.match(/^\[steam:(?:emote|sticker):([A-Za-z0-9_-]{1,64})\]$/)
+  if (steam) return `:${steam[1]}:`
   const name = unicodeNames.get(emoji)
   return name ? `:${name}:` : emoji
 }

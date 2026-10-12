@@ -40,6 +40,7 @@ import {
   stripEmbeddedUrls,
   stripQuoteBlocks,
   discordEmojiUrl,
+  steamPictureUrl,
   type ChannelIndex
 } from '../lib/format'
 import {
@@ -384,7 +385,7 @@ function MessageRowBody({
   // messages; IRC has no such concept.
   const canEditDelete =
     !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix')
-  const canReact = service === 'discord' || service === 'matrix'
+  const canReact = service === 'discord' || service === 'matrix' || service === 'steam'
   // Read again after the picker has been used, which is when it changes.
   const quick = useMemo(
     () => quickReactions(store.accountFor(bufferId)?.id),
@@ -1368,7 +1369,10 @@ function MessageRowBody({
             answer. */}
         {!isSystem && !message.pending && !message.failed && (
         <div className="hover-toolbar">
+          {/* Steam reacts with its own emoticons and stickers, so the
+              one-click row of Unicode emoji is not offered there. */}
           {canReact &&
+            service !== 'steam' &&
             quick.map((emoji) => (
               <button
                 key={emoji}
@@ -1564,6 +1568,9 @@ function ReactionPill({
  */
 function ReactionEmoji({ emoji }: { emoji: string }): JSX.Element {
   const media = useMediaUrl()
+  // Steam's, held as a token naming the emoticon or sticker.
+  const steam = emoji.match(/^\[steam:(emote|sticker):([A-Za-z0-9_-]{1,64})\]$/)
+  if (steam) return <img className="reaction-emoji" src={steamPictureUrl(steam[1] as 'emote' | 'sticker', steam[2])} alt={steam[2]} />
   const custom = emoji.match(/^<?a?:?([A-Za-z0-9_~]{2,32}):(\d+)>?$/)
   if (!custom) return <span>{emoji}</span>
   return <img className="reaction-emoji" src={media(discordEmojiUrl(custom[2]))} alt={custom[1]} />

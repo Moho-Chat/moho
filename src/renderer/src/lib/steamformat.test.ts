@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { emojiPreview, formatMessage } from './format'
 import { formatsFor, serialize, wrap, type BoxNode } from './composeFormat'
+import { reactionLabel } from './reactions'
 
 const text = (value: string): BoxNode => ({ nodeType: 3, nodeValue: value, nodeName: '#text', childNodes: [] })
 const el = (nodeName: string, children: BoxNode[], dataset?: Record<string, string>): BoxNode => ({ nodeType: 1, nodeValue: null, nodeName, childNodes: children, dataset })
@@ -57,5 +58,13 @@ describe('what is written for Steam', () => {
   it('sends an emoticon as its name between colons, and only for Steam', () => {
     expect(serialize(el('DIV', [text('hello '), emoticon('steamhappy')]), 'steam')).toBe('hello :steamhappy:')
     expect(serialize(el('DIV', [emoticon('steamhappy')]), 'discord')).toBe('[steam:emote:steamhappy]')
+  })
+})
+
+describe('a reaction with a Steam emoticon', () => {
+  it('is named by the emoticon', () => {
+    expect(reactionLabel('[steam:emote:steamhappy]')).toBe(':steamhappy:')
+    expect(reactionLabel('[steam:sticker:CatSurprise]')).toBe(':CatSurprise:')
+    expect(reactionLabel('[steam:emote:a b]')).toBe('[steam:emote:a b]')
   })
 })
