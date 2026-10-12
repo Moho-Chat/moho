@@ -1,3 +1,4 @@
+# Maintainer: Salastil <salastil@cock.li>
 pkgname=moho-git
 pkgver=r1.268751e
 pkgrel=1
