@@ -7,7 +7,7 @@ import { bufferMenuEntries } from '../lib/buffermenu'
 import { UserFooter } from './UserFooter'
 import { VoiceChannels } from './VoiceChannels'
 import { VoicePanel } from './VoicePanel'
-import { presenceClass, presenceLabel } from '../lib/presence'
+import { dmStatusText, presenceClass, presenceLabel } from '../lib/presence'
 import { useChat, useIdSetPref, useInvitations, useMapPref, usePref, useStore } from '../state/hooks'
 import {
   compareInBand,
@@ -964,6 +964,8 @@ function BufferRow({
   // Whether this channel's stream is the one in the window. Selected down to
   // a boolean for the same reason as `live` above.
   const watched = useChat((s) => s.watching?.bufferId === buffer.id)
+  // What the person is doing, for the tooltip: the game, or "Busy".
+  const doing = useChat((s) => dmStatusText(buffer, s.presenceByBuffer))
 
   // Under an account header the row's own kind is what's worth showing (a
   // channel vs a DM vs the server buffer). A pinned row has no header above
@@ -1070,7 +1072,7 @@ function BufferRow({
           onDragStart()
         }}
         onDragEnd={onDragEnd}
-        title={link ? `${buffer.name} — ${link.detail}` : draggable ? `${buffer.name} — drag onto a heading to file it` : buffer.name}
+        title={link ? `${buffer.name} — ${link.detail}` : draggable ? `${buffer.name} — drag onto a heading to file it` : doing ? `${buffer.name} — ${doing}` : buffer.name}
       >
         {leading}
         <span className="ellipsis buffer-name">{rowName}</span>

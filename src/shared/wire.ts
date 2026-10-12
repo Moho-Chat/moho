@@ -666,6 +666,12 @@ export interface Member {
    * split into online and offline.
    */
   status?: string
+  /**
+   * What is said beside the presence dot where the dot cannot say it: the game
+   * somebody is playing, or a state that shares a colour with another (Steam's
+   * Busy and Snooze). Absent when the dot is the whole answer.
+   */
+  statusText?: string | null
   /** Their picture, where the service has one in its member list. */
   avatarUrl?: string
 }

@@ -6,6 +6,7 @@ import { ReasonPrompt } from './ReasonPrompt'
 import { Avatar } from './Avatar'
 import { bufferMenuEntries } from '../lib/buffermenu'
 import { dmStatus } from './BufferList'
+import { dmStatusText } from '../lib/presence'
 import { bufferDisplayName, classes } from '../lib/util'
 import { useChat, useStore } from '../state/hooks'
 import { useIdSetPref, useMapPref, usePref } from '../state/hooks'
@@ -51,6 +52,7 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
 
   const account = accounts.find((a) => a.id === buffer.accountId)
   const name = bufferDisplayName(buffer.name)
+  const statusText = dmStatusText(buffer, presence)
 
   const entries: MenuEntry[] = [
     ...bufferMenuEntries({
@@ -166,6 +168,9 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
           />
         ) : null}
         <span className="main-header-title ellipsis">{name}</span>
+        {/* What they are doing, beside the name: the game, or a state the dot's
+            colour does not tell apart. */}
+        {statusText && <span className="header-status small muted ellipsis">{statusText}</span>}
       </button>
 
       {buffer.topic && <HeaderTopic topic={buffer.topic} />}

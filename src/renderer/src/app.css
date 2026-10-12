@@ -6871,7 +6871,12 @@ video.lightbox-media {
 }
 
 .header-nameplate .main-header-title {
-  flex: 1;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.header-nameplate .header-status {
+  flex: 1 1 0;
   min-width: 0;
 }
 

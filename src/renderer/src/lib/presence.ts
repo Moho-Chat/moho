@@ -1,3 +1,6 @@
+import type { Member } from '../../../shared/wire'
+import type { BufferEntry } from '../state/store'
+
 /**
  * How a person's availability is shown, in one place.
  *
@@ -69,4 +72,14 @@ export function presenceLabel(status?: string): string {
     default:
       return 'Offline'
   }
+}
+
+/**
+ * What a person is doing beside their dot - the game they are in, "Busy" - for
+ * a conversation with one, where the service says so.
+ */
+export function dmStatusText(buffer: BufferEntry, presence: Record<string, Member[]>): string | undefined {
+  if (buffer.kind !== 'dm') return undefined
+  const own = presence[buffer.id]
+  return (own?.length === 1 && own[0].statusText) || undefined
 }
