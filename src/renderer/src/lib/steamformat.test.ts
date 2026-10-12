@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { emojiPreview, formatMessage } from './format'
+import { emojiPreview, formatMessage, sourcePick } from './format'
 import { formatsFor, serialize, wrap, type BoxNode } from './composeFormat'
 import { reactionLabel } from './reactions'
 
@@ -66,5 +66,17 @@ describe('a reaction with a Steam emoticon', () => {
     expect(reactionLabel('[steam:emote:steamhappy]')).toBe(':steamhappy:')
     expect(reactionLabel('[steam:sticker:CatSurprise]')).toBe(':CatSurprise:')
     expect(reactionLabel('[steam:emote:a b]')).toBe('[steam:emote:a b]')
+  })
+})
+
+describe('picking a Steam emoticon from the picker', () => {
+  it('sends its token, which the box draws and sends as the colon form', () => {
+    const entry = { id: 'steam:steambored', name: 'steambored', url: 'https://community.fastly.steamstatic.com/economy/emoticon/steambored', animated: false, locked: false }
+    const token = sourcePick('steam', entry)
+    expect(token).toBe('[steam:emote:steambored]')
+    expect(emojiPreview(token)?.src).toContain('economy/emoticon/steambored')
+    expect(serialize(el('DIV', [text('hi '), el('IMG', [], { token })]), 'steam')).toBe('hi :steambored:')
+    // Sneedchat's id is its shortcode, and stays that.
+    expect(sourcePick('sneedchat', { ...entry, id: ':lol:' })).toBe(':lol:')
   })
 })

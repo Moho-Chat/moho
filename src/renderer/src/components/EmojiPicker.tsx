@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useLayoutEffect, useMemo, 
 import { createPortal } from 'react-dom'
 import { useMediaUrl } from '../lib/route'
 import { Icon } from './Icon'
-import { discordEmojiUrl, emojiPreview, type SmilieEntry } from '../lib/format'
+import { discordEmojiUrl, emojiPreview, sourcePick, type SmilieEntry } from '../lib/format'
 import { drawableEmoteUrl, onLocalEmotes } from '../lib/emotecache'
 import { LottieSticker } from './LottieSticker'
 import type { CustomEmoji } from '../../../shared/wire'
@@ -811,7 +811,7 @@ export function EmojiPicker({
                   className={`emoji-cell${why ? ' locked' : ''}${art ? '' : ' emoji-token'}`}
                   disabled={!!why}
                   title={why || e.name}
-                  onClick={() => pick(e.id)}
+                  onClick={() => pick(sourcePick(src.service, e))}
                 >
                   {art ? <img src={media(art)} alt={e.name} loading="lazy" /> : e.name}
                 </button>

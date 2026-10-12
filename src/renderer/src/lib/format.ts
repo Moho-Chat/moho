@@ -118,6 +118,17 @@ export function emojiPreview(text: string, smilies: SmilieEntry[] = []): EmojiPr
   return null
 }
 
+/**
+ * What a cell in a service's own section sends back.
+ *
+ * Sneedchat's id is the shortcode itself, so the id is the text. Steam's is a
+ * `steam:name` key, which is no message at all: it was inserted as the words
+ * "steam:steambored". It leaves as the emoticon token, which the box draws.
+ */
+export function sourcePick(service: string, e: { id: string }): string {
+  return service === 'steam' && e.id.startsWith('steam:') ? `[steam:emote:${e.id.slice(6)}]` : e.id
+}
+
 export function escapeHtml(s: string): string {
   // Quotes as well as brackets: the link passes write a URL from the text
   // into an attribute, and a quote in it would end the attribute early.
