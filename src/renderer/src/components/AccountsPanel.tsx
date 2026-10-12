@@ -1216,7 +1216,6 @@ function SteamForm({ onDone }: { onDone: () => void }): JSX.Element {
   const store = useStore()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [session, setSession] = useState<'chat' | 'client'>('chat')
   const [useTor, setUseTor] = useState(false)
   const [busy, setBusy] = useState(false)
   const [loginId, setLoginId] = useState('')
@@ -1282,7 +1281,7 @@ function SteamForm({ onDone }: { onDone: () => void }): JSX.Element {
     setNeeds(null)
     current.current = ''
     void window.moho
-      .rpc<{ loginId: string }>('addSteamAccount', { username, password, session, useTor })
+      .rpc<{ loginId: string }>('addSteamAccount', { username, password, useTor })
       .then((r) => setId(r.loginId))
       .catch((e: Error) => {
         setBusy(false)
@@ -1366,8 +1365,9 @@ function SteamForm({ onDone }: { onDone: () => void }): JSX.Element {
     <div className="add-form">
       <p className="small muted">
         Sign in with your Steam account name — the one you type at the Steam login, not the
-        display name your friends see. Your password goes to Steam and is not kept; moho keeps
-        only the token Steam hands back.
+        display name your friends see. moho signs in as the Steam mobile app's chat, so it runs
+        beside the Steam launcher without signing it out. Your password goes to Steam and is not
+        kept; moho keeps only the token Steam hands back.
       </p>
       <TorSwitch service="steam" on={useTor} onChange={setUseTor} />
       <div className="field-row">
@@ -1396,16 +1396,6 @@ function SteamForm({ onDone }: { onDone: () => void }): JSX.Element {
           />
         </label>
       </div>
-      <SwitchRow
-        title="Replace the Steam desktop client's chat"
-        description={
-          session === 'client'
-            ? 'Signs in the way the desktop client does. Steam allows one of those at a time, so the desktop client is signed out while this is connected.'
-            : 'Signs in as the Steam mobile app does, which can run alongside the desktop client.'
-        }
-        checked={session === 'client'}
-        onChange={(on) => setSession(on ? 'client' : 'chat')}
-      />
       <div className="field-row">
         <button
           type="button"
