@@ -12,11 +12,10 @@ import { useChat, usePref, useStore } from '../state/hooks'
 import { RAIL_TIP, hideRailTip, showRailTip, type RailTipDetail } from '../lib/railtip'
 import { bufferDisplayName, classes, nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
 import { SpaceRooms } from './SpaceRooms'
+import { listInvitations } from '../lib/invitations'
 import {
   isFixedEntry,
-  inviteGroup,
-  friendRequestGroup,
-  isFriendRequestEntry,
+  invitationsGroup,
   orderedGroups,
   railEntries,
   fileInFolder,
@@ -109,7 +108,7 @@ function GroupFace({ group, customIcon }: { group: RailGroup; customIcon?: strin
   // An invitation reads as one rather than as an unfamiliar server: the room
   // usually has no picture and often no name, and initials taken off a raw
   // room id say nothing at all.
-  if (group.kind === 'invite') return <Icon name={isFriendRequestEntry(group.id) ? 'person_add' : 'mark_email_unread'} size={22} />
+  if (group.kind === 'invitations') return <Icon name="mark_email_unread" size={22} />
   if (group.iconUrl) return <img className="rail-icon" src={media(group.iconUrl)} alt="" draggable={false} />
   if (group.kind === 'dms') return <Icon name="forum" size={22} />
   if (group.kind === 'account' && service.mark && service.colour) {
@@ -461,17 +460,10 @@ export function ServerRail(): JSX.Element | null {
   // inbox in the header, which is where the unread count already is, and a
   // permanent tile for it only competed with the servers this column is for.
   if (pinned.length > 0) extras.push(pinnedGroup())
-  // An invitation arrives as its own tile and leaves when it is answered -
-  // it behaves like a new conversation, not like a mark on an account.
-  for (const [accountId, list] of Object.entries(matrixInvites)) {
-    for (const invite of list) extras.push(inviteGroup(accountId, invite))
-  }
-  // Friend requests wait in the same place and are answered the same way.
-  for (const [accountId, list] of Object.entries(friendRequests)) {
-    const service = accounts.find((a) => a.id === accountId)?.service
-    if (!service) continue
-    for (const request of list) extras.push(friendRequestGroup(accountId, service, request))
-  }
+  // Invitations from every service share one tile, which is there while
+  // anything waits on an answer and gone once nothing does.
+  const waiting = listInvitations(matrixInvites, friendRequests, accounts).length
+  if (waiting > 0) extras.push(invitationsGroup(waiting))
   const ordered = orderedGroups([...shown, ...extras], railOrder)
 
   // The rail always draws, even with nothing in it.

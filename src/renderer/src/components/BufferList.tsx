@@ -15,7 +15,7 @@ import {
   DM_GROUP_ID,
   isDirectMessage,
   isMutedBuffer,
-  INVITE_PREFIX,
+  INVITATIONS_GROUP_ID,
   MENTIONS_GROUP_ID,
   PINNED_GROUP_ID,
   pinnedGroup,
@@ -34,6 +34,7 @@ import {
 } from '../lib/util'
 import type { Account, Member } from '../../../shared/wire'
 import { Avatar } from './Avatar'
+import { currentInvitation, listInvitations } from '../lib/invitations'
 import {
   categoryKey,
   reorderCategories,
@@ -72,6 +73,9 @@ export function BufferList(): JSX.Element {
   const voiceSessions = useChat((s) => s.voiceSessions)
   const presence = useChat((s) => s.presenceByBuffer)
   const popouts = useChat((s) => s.popouts)
+  const matrixInvites = useChat((s) => s.matrixInvites)
+  const friendRequests = useChat((s) => s.friendRequests)
+  const activeInvitationKey = useChat((s) => s.activeInvitationKey)
 
   const [pinned, togglePin, isPinned] = useIdSetPref('pinnedBuffers')
   const [muted, toggleMute] = useIdSetPref('mutedBuffers')
@@ -129,12 +133,18 @@ export function BufferList(): JSX.Element {
     return isDirectMessage(open) ? DM_GROUP_ID : open.groupId
   }, [buffers, activeBufferId])
 
-  // An invitation is selected the same way the mentions page is: a rail entry
-  // with no group behind it. Without this the lookup below fails to find it,
-  // falls back to some real group, and the effect writes that back - so
-  // choosing an invitation landed on whichever server happened to be first,
-  // which is exactly what it looked like.
-  const onInvite = activeGroupId.startsWith(INVITE_PREFIX)
+  // The invitations page is selected the same way the mentions page is: a rail
+  // entry with no group behind it. Without this the lookup below fails to find
+  // it, falls back to some real group, and the effect writes that back - so
+  // choosing it landed on whichever server happened to be first. Only while
+  // something is waiting: with nothing left the page has nothing to say, and
+  // falling back is the way off it.
+  const invitations = useMemo(
+    () => listInvitations(matrixInvites, friendRequests, accounts),
+    [matrixInvites, friendRequests, accounts]
+  )
+  const onInvite = activeGroupId === INVITATIONS_GROUP_ID && invitations.length > 0
+  const shownInvitation = currentInvitation(invitations, activeInvitationKey)
 
   const activeGroup =
     onMentionsPage || onInvite
@@ -178,6 +188,7 @@ export function BufferList(): JSX.Element {
     onMentionsPage && voiceSessions.length === 0
       ? undefined
       : (accounts.find((a) => a.id === activeGroup?.accountId) ??
+        (onInvite ? accounts.find((a) => a.id === shownInvitation?.accountId) : undefined) ??
         accounts.find((a) => a.id === activeBuffer?.accountId) ??
         accounts[0])
 
@@ -437,8 +448,29 @@ export function BufferList(): JSX.Element {
         {/* Not on the mentions page, which is deliberately server-less: the
             pane is empty there because there is nothing to list, not because
             something still needs picking. */}
-        {accounts.length > 0 && !activeGroup && !onMentionsPage && (
+        {accounts.length > 0 && !activeGroup && !onMentionsPage && !onInvite && (
           <div className="bufferlist-empty muted small">Select a server on the left.</div>
+        )}
+
+        {onInvite && (
+          <>
+            <div className="group-title">
+              <span className="ellipsis group-title-name">Invitations</span>
+            </div>
+            {invitations.map((invitation) => (
+              <button
+                key={invitation.key}
+                type="button"
+                className={classes('buffer-row', invitation.key === shownInvitation?.key && 'active', 'unread')}
+                title={`${invitation.name} — ${invitation.detail}`}
+                onClick={() => store.selectInvitation(invitation.key)}
+              >
+                <Avatar name={invitation.name} url={invitation.avatarUrl ?? undefined} size={22} accountId={invitation.accountId} />
+                <span className="ellipsis buffer-name">{invitation.name}</span>
+                <ServiceMark icon={serviceIcon(invitation.service)} size={15} />
+              </button>
+            ))}
+          </>
         )}
 
         {activeGroup && (

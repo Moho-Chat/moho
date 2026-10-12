@@ -28,7 +28,8 @@ import { buildSmilieIndex, type SmilieEntry, type SmilieIndex } from '../lib/for
 import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
 import { runExport } from '../lib/exporter'
 import type { ForumPost } from '../lib/forum'
-import { DM_GROUP_ID, isDirectMessage } from '../lib/groups'
+import { DM_GROUP_ID, INVITATIONS_GROUP_ID, isDirectMessage } from '../lib/groups'
+import { listInvitations, type Invitation } from '../lib/invitations'
 import { ircNetworkFor } from '../lib/networks'
 import { parseDeepLink, type IrcLink } from '../../../shared/deeplink'
 import { MatrixCalls, type CallMember, type MatrixCallEvent, type RingingCall } from '../lib/matrixcall'
@@ -679,6 +680,8 @@ export interface ChatState {
   matrixInvites: Record<string, MatrixInvite[]>
   /** Who has asked each account to be their friend, by account. */
   friendRequests: Record<string, FriendRequest[]>
+  /** Which invitation the invitations page is showing. */
+  activeInvitationKey: string
   /**
    * The profile being shown, or null.
    *
@@ -798,6 +801,7 @@ const INITIAL: ChatState = {
   matrixWidgets: {},
   matrixInvites: {},
   friendRequests: {},
+  activeInvitationKey: '',
   profile: null,
   replyingTo: null,
   replyPing: true,
@@ -1474,23 +1478,68 @@ export class ChatStore {
     this.set({ friendRequests: next })
   }
 
-  /** Accepts a friend request, or turns it down. */
-  answerFriendRequest(accountId: string, personId: string, accept: boolean): void {
-    const account = this.state.accounts.find((a) => a.id === accountId)
-    if (account?.service !== 'steam') return
-    void window.moho
-      .rpc('steamAnswerFriendRequest', { accountId, steamid: personId, accept })
-      // Not removed here: the friends list that follows is the confirmation.
-      .catch((e: Error) => this.toast('error', e.message))
+  /**
+   * Answers an invitation, from any service.
+   *
+   * It leaves the list the moment the service has agreed, rather than waiting
+   * for the next sync or friends list to stop mentioning it: a request that
+   * stays after being answered looks like it did not work.
+   *
+   * Accepting then opens what was accepted. A friend request has become a
+   * conversation with that person, and a room invitation the room, so the pane
+   * that was offering it turns into that conversation. It is not there for a
+   * moment - the service has to tell moho about it - so this waits for it.
+   */
+  async answerInvitation(invitation: Invitation, accept: boolean): Promise<void> {
+    const { accountId, id } = invitation
+    try {
+      if (invitation.kind === 'friend') {
+        await window.moho.rpc('steamAnswerFriendRequest', { accountId, steamid: id, accept })
+      } else {
+        await window.moho.rpc(accept ? 'acceptMatrixInvite' : 'declineMatrixInvite', { accountId, roomId: id })
+      }
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+      return
+    }
+    this.set({
+      matrixInvites: {
+        ...this.state.matrixInvites,
+        [accountId]: (this.state.matrixInvites[accountId] ?? []).filter((i) => !(invitation.kind === 'room' && i.roomId === id))
+      },
+      friendRequests: {
+        ...this.state.friendRequests,
+        [accountId]: (this.state.friendRequests[accountId] ?? []).filter((r) => !(invitation.kind === 'friend' && r.id === id))
+      }
+    })
+    if (accept && (await this.openAccepted(invitation))) return
+    // Nothing to open: stay on what is still waiting, or leave the page.
+    const rest = listInvitations(this.state.matrixInvites, this.state.friendRequests, this.state.accounts)
+    if (rest.length === 0 && this.state.activeGroupId === INVITATIONS_GROUP_ID) this.selectGroup(`account:${accountId}`)
   }
 
-  /** Accepts an invitation, or turns it down. */
-  answerMatrixInvite(accountId: string, roomId: string, accept: boolean): void {
-    void window.moho
-      .rpc(accept ? 'acceptMatrixInvite' : 'declineMatrixInvite', { accountId, roomId })
-      // Not removed here: the next sync stops listing it, which is what
-      // actually confirms the server agreed.
-      .catch((e: Error) => this.toast('error', e.message))
+  /** Waits for what an accepted invitation became, and opens it. Whether it did. */
+  private async openAccepted(invitation: Invitation): Promise<boolean> {
+    const found = (): BufferEntry | undefined =>
+      this.state.buffers.find(
+        (b) => b.accountId === invitation.accountId && b.remoteId === invitation.id && (invitation.kind === 'room' || b.kind === 'dm')
+      )
+    for (let waited = 0; waited < 8000; waited += 200) {
+      const buffer = found()
+      if (buffer) {
+        await this.selectBuffer(buffer.id)
+        return true
+      }
+      if (waited % 1000 === 0) await this.refreshBuffers()
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+    return false
+  }
+
+  /** Looks at one invitation, on the page that gathers them. */
+  selectInvitation(key: string): void {
+    this.set({ activeInvitationKey: key })
+    this.selectGroup(INVITATIONS_GROUP_ID)
   }
 
   private groupsTimer: ReturnType<typeof setTimeout> | null = null

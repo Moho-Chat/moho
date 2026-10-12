@@ -7,7 +7,7 @@ import { ForumPane } from './components/ForumPane'
 import { MessageList } from './components/MessageList'
 import { MentionsInbox } from './components/MentionsInbox'
 import { MentionsPage } from './components/MentionsPage'
-import { INVITE_PREFIX, MENTIONS_GROUP_ID } from './lib/groups'
+import { INVITATIONS_GROUP_ID, MENTIONS_GROUP_ID } from './lib/groups'
 import { trayCount } from './lib/traycount'
 import { Composer } from './components/Composer'
 import { MembershipGate } from './components/MembershipGate'
@@ -410,7 +410,7 @@ function Body({
   if (activeGroupId === MENTIONS_GROUP_ID) return <MentionsPage />
   // An invitation stands where the conversation would, because it is the
   // conversation being offered.
-  if (activeGroupId.startsWith(INVITE_PREFIX)) return <InvitePanel groupId={activeGroupId} />
+  if (activeGroupId === INVITATIONS_GROUP_ID) return <InvitePanel />
   // A forum is a list of posts, not a log.
   if (hasBuffer && activeBuffer?.forum) return <ForumPane buffer={activeBuffer} />
   if (hasBuffer) return <MessageList />

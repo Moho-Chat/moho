@@ -60,7 +60,7 @@ export function railConnecting(
   const accountOf = (id: string): Account | undefined => accounts.find((a) => a.id === id)
   const retrying = (b: Buffer): boolean => bufferLink(b, accountOf(b.accountId), details[b.accountId])?.retrying === true
   if (group.kind === 'dms') return buffers.some((b) => b.kind === 'dm' && retrying(b))
-  if (group.kind === 'pinned' || group.kind === 'invite' || !group.accountId) return false
+  if (group.kind === 'pinned' || group.kind === 'invitations' || !group.accountId) return false
   const account = accountOf(group.accountId)
   if (account && account.state === 'connecting') return true
   return buffers.some((b) => b.groupId === group.id && retrying(b))
