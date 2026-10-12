@@ -207,6 +207,12 @@ interface Props {
   accountId?: string
   onSelect: (text: string) => void
   onClose: () => void
+  /**
+   * The service has a short set of its own and nothing else is accepted - Steam
+   * - so there is no Unicode emoji to offer, only what the account was given.
+   * Recent picks that are not from that set are left out too.
+   */
+  fixedSet?: boolean
 }
 
 export function EmojiPicker({
@@ -219,7 +225,8 @@ export function EmojiPicker({
   accountId,
   onSelect,
   onSticker,
-  onClose
+  onClose,
+  fixedSet = false
 }: Props): JSX.Element {
   // The account's emoji and stickers through its route when it is strictly
   // routed (#257) - Discord's come straight off its CDN otherwise.
@@ -250,7 +257,7 @@ export function EmojiPicker({
   /** The cell the arrow keys are on: the search box keeps the focus. */
   const keyed = useRef<HTMLElement | null>(null)
   const [pos, setPos] = useState({ left: 0, top: 0 })
-  const [recent, setRecent] = useState<string[]>(() => readRecent(accountId))
+  const [recent, setRecent] = useState<string[]>(() => readRecent(accountId).filter((r) => !fixedSet || r.startsWith('[steam:')))
   // Everything this account can send, wherever it came from. Asked of the
   // daemon rather than assembled here, because the answer depends on things
   // only it knows - a Nitro subscription, a Kick channel's standing.
@@ -352,8 +359,8 @@ export function EmojiPicker({
   const q = query.trim().toLowerCase()
 
   const unicode = useMemo(
-    () => (q ? COMMON_EMOJI.filter((e) => e.name.includes(q) || e.emoji === q) : COMMON_EMOJI),
-    [q]
+    () => (fixedSet ? [] : q ? COMMON_EMOJI.filter((e) => e.name.includes(q) || e.emoji === q) : COMMON_EMOJI),
+    [q, fixedSet]
   )
   const custom = useMemo(
     () => (q ? customEmoji.filter((e) => e.name.toLowerCase().includes(q)) : customEmoji),

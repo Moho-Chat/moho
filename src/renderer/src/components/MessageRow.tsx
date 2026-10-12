@@ -8,7 +8,7 @@ import { ForwardPicker } from './ForwardPicker'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { MediaEmbed } from './MediaEmbed'
 import { KickEventCard, isKickEvent } from './KickEventCard'
-import { COMMON_EMOJI, EmojiPicker, readRecent } from './EmojiPicker'
+import { COMMON_EMOJI, EmojiPicker, readRecent, type StickerEntry } from './EmojiPicker'
 import { reactionLabel, reactorsSentence } from '../lib/reactions'
 import { UploadMeter } from './UploadMeter'
 import { RichText } from '../lib/richtext'
@@ -386,6 +386,15 @@ function MessageRowBody({
   const canEditDelete =
     !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix')
   const canReact = service === 'discord' || service === 'matrix' || service === 'steam'
+  // Steam's stickers, asked for when the reaction picker opens: it reacts with them too.
+  const [steamStickers, setSteamStickers] = useState<StickerEntry[]>([])
+  useEffect(() => {
+    if (!pickerOpen || service !== 'steam') return
+    void window.moho
+      .rpc<StickerEntry[]>('listSteamStickers', { bufferId })
+      .then(setSteamStickers)
+      .catch(() => setSteamStickers([]))
+  }, [pickerOpen, service, bufferId])
   // Read again after the picker has been used, which is when it changes.
   const quick = useMemo(
     () => quickReactions(store.accountFor(bufferId)?.id),
@@ -1433,6 +1442,19 @@ function MessageRowBody({
           anchor={reactButtonRef.current}
           customEmoji={bufferEmoji}
           accountId={store.accountFor(bufferId)?.id}
+          // Steam reacts with what the account was given and nothing else: its
+          // emoticons, and its stickers on their own tab.
+          bufferId={service === 'steam' ? bufferId : undefined}
+          fixedSet={service === 'steam'}
+          stickers={service === 'steam' ? steamStickers : undefined}
+          onSticker={
+            service === 'steam'
+              ? (sticker) => {
+                  void store.toggleReaction(bufferId, message.id, `[steam:sticker:${sticker.name}]`, true)
+                  setPickerOpen(false)
+                }
+              : undefined
+          }
           onSelect={(emoji) => {
             void store.toggleReaction(bufferId, message.id, emoji, true)
             setPickerOpen(false)
