@@ -382,14 +382,12 @@ interface SteamRequests {
 }
 
 /**
- * Friends on Steam: asking somebody, answering those who asked, and taking
- * back or ending.
+ * Friends on Steam: asking somebody, and taking a request back.
  *
- * Steam makes you friends by one side asking and the other agreeing, so there
- * are three lists of people here rather than one: those who have asked you,
- * those you have asked, and (in the sidebar, as conversations) those who said
- * yes. Accepting is the same act as asking, which is why "Accept" and the add
- * box below are one message to Steam.
+ * Steam makes you friends by one side asking and the other agreeing. Those who
+ * have asked you are not here: each waits as a tile in the server list, beside
+ * a Matrix room's invitations, and is answered there. What is here is the asking,
+ * and the requests still waiting on the other side.
  */
 function SteamJoin({ account }: { account: Account }): JSX.Element {
   const store = useStore()
@@ -431,13 +429,6 @@ function SteamJoin({ account }: { account: Account }): JSX.Element {
       .finally(() => setBusy(false))
   }
 
-  const answer = (p: SteamPerson, accept: boolean): void => {
-    void window.moho
-      .rpc('steamAnswerFriendRequest', { accountId: account.id, steamid: p.steamid, accept })
-      .then(() => store.toast('info', accept ? `You and ${label(p)} are friends` : `Declined ${label(p)}`))
-      .catch((e: Error) => store.toast('error', e.message))
-  }
-
   const withdraw = (p: SteamPerson): void => {
     void window.moho
       .rpc('steamRemoveFriend', { accountId: account.id, steamid: p.steamid })
@@ -465,23 +456,6 @@ function SteamJoin({ account }: { account: Account }): JSX.Element {
         </button>
       </div>
       {!connected && <p className="small muted">Friends can be added once this account is connected.</p>}
-
-      {requests.incoming.length > 0 && (
-        <>
-          <span className="small muted">Asked to be your friend</span>
-          {requests.incoming.map((p) => (
-            <div key={p.steamid} className="field-row">
-              <span className="grow">{label(p)}</span>
-              <button type="button" className="button primary small" onClick={() => answer(p, true)}>
-                Accept
-              </button>
-              <button type="button" className="button subtle small" onClick={() => answer(p, false)}>
-                Decline
-              </button>
-            </div>
-          ))}
-        </>
-      )}
 
       {requests.outgoing.length > 0 && (
         <>

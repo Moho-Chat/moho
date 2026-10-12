@@ -754,6 +754,18 @@ export interface MatrixInvite {
   isDirect: boolean
 }
 
+/**
+ * Somebody who has asked to be this account's friend and is waiting to be
+ * answered. Offered in the rail beside a Matrix room's invitation, because it
+ * is the same kind of thing: a request that expires when it is answered.
+ */
+export interface FriendRequest {
+  /** The service's own id for the person. */
+  id: string
+  name: string | null
+  avatarUrl?: string | null
+}
+
 export interface MatrixVerification {
   accountId: string
   verificationId: string

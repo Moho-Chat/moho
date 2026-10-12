@@ -1,4 +1,4 @@
-import type { MatrixInvite, BufferGroup } from '../../../shared/wire'
+import type { MatrixInvite, FriendRequest, BufferGroup } from '../../../shared/wire'
 import type { BufferEntry } from '../state/store'
 
 /**
@@ -32,6 +32,39 @@ export function readInviteGroupId(groupId: string): { accountId: string; roomId:
   const split = rest.indexOf('|')
   if (split < 0) return null
   return { accountId: rest.slice(0, split), roomId: rest.slice(split + 1) }
+}
+
+/**
+ * What follows the account in an invite entry's id when it stands for a
+ * friend request rather than a room. A request is answered the way an
+ * invitation is - one tile, two buttons, gone once answered - so it is the
+ * same entry with a different thing behind it, which keeps selecting it,
+ * ordering it and drawing it in the one place that already knows how.
+ */
+const FRIEND_MARK = 'friend:'
+
+export function isFriendRequestEntry(groupId: string): boolean {
+  const named = readInviteGroupId(groupId)
+  return !!named && named.roomId.startsWith(FRIEND_MARK)
+}
+
+/** The person a friend-request entry stands for, or null for any other entry. */
+export function readFriendRequestEntry(groupId: string): { accountId: string; personId: string } | null {
+  const named = readInviteGroupId(groupId)
+  if (!named || !named.roomId.startsWith(FRIEND_MARK)) return null
+  return { accountId: named.accountId, personId: named.roomId.slice(FRIEND_MARK.length) }
+}
+
+export function friendRequestGroup(accountId: string, service: string, request: FriendRequest): RailGroup {
+  return {
+    id: inviteGroupId(accountId, `${FRIEND_MARK}${request.id}`),
+    accountId,
+    service,
+    kind: 'invite',
+    name: request.name || request.id,
+    iconUrl: request.avatarUrl ?? undefined,
+    position: -2000
+  } as RailGroup
 }
 
 export function inviteGroup(accountId: string, invite: MatrixInvite): RailGroup {

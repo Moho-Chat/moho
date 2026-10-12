@@ -8,6 +8,7 @@ import type {
   DccTransfer,
   DiscordFriend,
   MatrixInvite,
+  FriendRequest,
   MatrixVerification,
   Member,
   Message,
@@ -676,6 +677,8 @@ export interface ChatState {
   matrixWidgets: Record<string, unknown[]>
   /** Rooms each Matrix account has been invited to and not answered. */
   matrixInvites: Record<string, MatrixInvite[]>
+  /** Who has asked each account to be their friend, by account. */
+  friendRequests: Record<string, FriendRequest[]>
   /**
    * The profile being shown, or null.
    *
@@ -706,6 +709,17 @@ export interface ChatState {
   discordReauthAccountId: string
   sneedChatLoginStatus: string
   matrixLoginStatus: string
+}
+
+/** A person as the daemon reports one in a Steam friend request. */
+interface SteamPerson {
+  steamid: string
+  name: string | null
+  avatarUrl?: string | null
+}
+
+function personToRequest(p: SteamPerson): FriendRequest {
+  return { id: p.steamid, name: p.name, avatarUrl: p.avatarUrl }
 }
 
 export type Toast = ToastItem
@@ -783,6 +797,7 @@ const INITIAL: ChatState = {
   ignoredByAccount: {},
   matrixWidgets: {},
   matrixInvites: {},
+  friendRequests: {},
   profile: null,
   replyingTo: null,
   replyPing: true,
@@ -1414,6 +1429,7 @@ export class ChatStore {
     try {
       this.set({ accounts: await window.moho.rpc<Account[]>('listAccounts') })
       void this.refreshInvites()
+      void this.refreshFriendRequests()
     } catch (e) {
       this.toast('error', `Couldn't list accounts: ${(e as Error).message}`)
     }
@@ -1438,6 +1454,34 @@ export class ChatStore {
         // An older daemon has no such method, and no invites to show.
       }
     }
+  }
+
+  /**
+   * Who has asked each account to be their friend. Steam is the service with
+   * requests today; the state is every service's so the next one only has to
+   * say who asked.
+   */
+  async refreshFriendRequests(): Promise<void> {
+    const next: Record<string, FriendRequest[]> = {}
+    for (const account of this.state.accounts.filter((a) => a.service === 'steam')) {
+      try {
+        const r = await window.moho.rpc<{ incoming: SteamPerson[] }>('steamFriendRequests', { accountId: account.id })
+        next[account.id] = r.incoming.map(personToRequest)
+      } catch {
+        // Not connected yet, or an older daemon: nothing to answer.
+      }
+    }
+    this.set({ friendRequests: next })
+  }
+
+  /** Accepts a friend request, or turns it down. */
+  answerFriendRequest(accountId: string, personId: string, accept: boolean): void {
+    const account = this.state.accounts.find((a) => a.id === accountId)
+    if (account?.service !== 'steam') return
+    void window.moho
+      .rpc('steamAnswerFriendRequest', { accountId, steamid: personId, accept })
+      // Not removed here: the friends list that follows is the confirmation.
+      .catch((e: Error) => this.toast('error', e.message))
   }
 
   /** Accepts an invitation, or turns it down. */
@@ -3622,11 +3666,16 @@ export class ChatStore {
         void this.refreshAccounts()
         break
 
+      case 'steamFriendRequests': {
+        const incoming = ((data.requests as { incoming?: SteamPerson[] } | undefined)?.incoming ?? []).map(personToRequest)
+        this.set({ friendRequests: { ...this.state.friendRequests, [data.accountId as string]: incoming } })
+        break
+      }
       case 'steamFriendRequest': {
         // Said once, by the daemon, when somebody new asks. Answering is on
-        // the Add or join page, so that is where the words point.
+        // the request's own tile in the rail, so that is where the words point.
         const who = (data.request as { name?: string | null; steamid?: string } | undefined) ?? {}
-        this.toast('info', `${who.name || who.steamid || 'Somebody'} wants to be your friend on Steam. Answer it from the + (Add or join a server) button.`)
+        this.toast('info', `${who.name || who.steamid || 'Somebody'} wants to be your friend on Steam. It is waiting in the server list.`)
         break
       }
 

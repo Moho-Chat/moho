@@ -15,6 +15,8 @@ import { SpaceRooms } from './SpaceRooms'
 import {
   isFixedEntry,
   inviteGroup,
+  friendRequestGroup,
+  isFriendRequestEntry,
   orderedGroups,
   railEntries,
   fileInFolder,
@@ -107,7 +109,7 @@ function GroupFace({ group, customIcon }: { group: RailGroup; customIcon?: strin
   // An invitation reads as one rather than as an unfamiliar server: the room
   // usually has no picture and often no name, and initials taken off a raw
   // room id say nothing at all.
-  if (group.kind === 'invite') return <Icon name="mark_email_unread" size={22} />
+  if (group.kind === 'invite') return <Icon name={isFriendRequestEntry(group.id) ? 'person_add' : 'mark_email_unread'} size={22} />
   if (group.iconUrl) return <img className="rail-icon" src={media(group.iconUrl)} alt="" draggable={false} />
   if (group.kind === 'dms') return <Icon name="forum" size={22} />
   if (group.kind === 'account' && service.mark && service.colour) {
@@ -370,6 +372,8 @@ export function ServerRail(): JSX.Element | null {
   // reports a change every time and loops until React gives up.
   const groups = useChat((s) => s.groups)
   const matrixInvites = useChat((s) => s.matrixInvites)
+  const friendRequests = useChat((s) => s.friendRequests)
+  const accounts = useChat((s) => s.accounts)
   const activeGroupId = useChat((s) => s.activeGroupId)
   const activeBufferId = useChat((s) => s.activeBufferId)
   const buffers = useChat((s) => s.buffers)
@@ -461,6 +465,12 @@ export function ServerRail(): JSX.Element | null {
   // it behaves like a new conversation, not like a mark on an account.
   for (const [accountId, list] of Object.entries(matrixInvites)) {
     for (const invite of list) extras.push(inviteGroup(accountId, invite))
+  }
+  // Friend requests wait in the same place and are answered the same way.
+  for (const [accountId, list] of Object.entries(friendRequests)) {
+    const service = accounts.find((a) => a.id === accountId)?.service
+    if (!service) continue
+    for (const request of list) extras.push(friendRequestGroup(accountId, service, request))
   }
   const ordered = orderedGroups([...shown, ...extras], railOrder)
 
