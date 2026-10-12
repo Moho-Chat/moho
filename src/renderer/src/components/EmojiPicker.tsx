@@ -72,6 +72,8 @@ export const COMMON_EMOJI: { emoji: string; name: string }[] = [
  * round and flags animation. Neither is negotiable - the server parses it.
  */
 export function emojiToken(e: CustomEmoji): string {
+  // Steam's, named rather than numbered: the id carries the service.
+  if (e.id.startsWith('steam:')) return `[steam:emote:${e.id.slice(6)}]`
   if (e.url) return `[emote:${e.id}:${e.name}]`
   return `<${e.animated ? 'a' : ''}:${e.name}:${e.id}>`
 }

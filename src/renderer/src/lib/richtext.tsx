@@ -65,7 +65,8 @@ const ALLOWED_CLASSES = new Set([
   'smilie',
   'channel-mention',
   'unknown',
-  'custom-emoji'
+  'custom-emoji',
+  'steam-sticker'
 ])
 
 /** Hex or a plain CSS colour keyword - nothing that could carry a url() or expression. */

@@ -69,6 +69,19 @@ export function kickEmoteUrl(id: string): string {
   return resolveMediaUrl(drawableEmoteUrl(`https://files.kick.com/emotes/${id}/fullsize`))
 }
 
+/**
+ * The picture for one of Steam's emoticons or stickers, by name.
+ *
+ * A name is all a message carries - `[steam:emote:steamhappy]` - and the
+ * picture is a public one at an address built from it, the way Discord's is
+ * built from an id. So it draws for an emoticon this account does not have,
+ * which is the point of one somebody else sent.
+ */
+export function steamPictureUrl(kind: 'emote' | 'sticker', name: string): string {
+  const base = 'https://community.fastly.steamstatic.com/economy/'
+  return resolveMediaUrl(`${base}${kind === 'emote' ? 'emoticon' : 'sticker'}/${encodeURIComponent(name)}`)
+}
+
 /** What something picked out of the emoji list looks like, when it isn't text. */
 export interface EmojiPreview {
   /** Possibly a local path - run it through resolveMediaUrl before use. */
@@ -98,6 +111,8 @@ export function emojiPreview(text: string, smilies: SmilieEntry[] = []): EmojiPr
   if (custom) return { src: discordEmojiUrl(custom[2]), label: `:${custom[1]}:` }
   const kick = text.match(/^\[emote:(\d+):([^\]]{0,64})\]$/)
   if (kick) return { src: kickEmoteUrl(kick[1]), label: `:${kick[2]}:` }
+  const steam = text.match(/^\[steam:(emote|sticker):([A-Za-z0-9_-]{1,64})\]$/)
+  if (steam) return { src: steamPictureUrl(steam[1] as 'emote' | 'sticker', steam[2]), label: `:${steam[2]}:` }
   const smilie = smilies.find((s) => s.aliases?.includes(text))
   if (smilie?.url) return { src: smilie.url, label: smilie.label }
   return null
@@ -448,6 +463,14 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   // half raw tokens, and the tier gates sending, not looking.
   out = out.replace(/\[emote:(\d+):([^\]]{0,64})\]/g, (_m, id: string, name: string) =>
     stow(`<img src="${kickEmoteUrl(id)}" class="custom-emoji" alt=":${name}:">`)
+  )
+
+  // Steam's emoticons and stickers, which arrive as `[steam:emote:name]`. Like
+  // the two above the picture is public and named by the token, so one that
+  // somebody else sent draws whether or not this account has it. A sticker is
+  // drawn larger, as Steam draws it.
+  out = out.replace(/\[steam:(emote|sticker):([A-Za-z0-9_-]{1,64})\]/g, (_m, kind: string, name: string) =>
+    stow(`<img src="${steamPictureUrl(kind as 'emote' | 'sticker', name)}" class="${kind === 'sticker' ? 'custom-emoji steam-sticker' : 'custom-emoji'}" alt=":${name}:">`)
   )
 
   // Discord channel links. What arrives is `<#1393001234568164748>` and

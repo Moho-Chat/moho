@@ -2576,6 +2576,11 @@ img.composer-emoji {
   flex: none;
 }
 
+.steam-sticker {
+  height: 96px;
+  width: auto;
+}
+
 .nick-prefix {
   color: var(--surface-variant-text);
   flex: none;
