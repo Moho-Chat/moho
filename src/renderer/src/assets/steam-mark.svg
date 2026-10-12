@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!-- Steam's mark, drawn as a plain silhouette: a disc, the small gear on its
+       arm, and the cut-out ring for the larger one. -->
+  <path fill="#fff" fill-rule="evenodd" d="M12 1.5A10.5 10.5 0 0 0 1.55 11.1l5.6 2.3a3 3 0 0 1 1.7-.5h.2l2.5-3.6v-.05a4 4 0 1 1 4 4h-.1l-3.55 2.55a3 3 0 0 1-5.95.5L1.8 14.9A10.5 10.5 0 1 0 12 1.5zm-4 17.1-1.3-.55a2.25 2.25 0 1 0 1.25-3.1l1.35.55a1.65 1.65 0 1 1-1.3 3.1zm7.05-6.2a2.65 2.65 0 1 0-2.65-2.65 2.65 2.65 0 0 0 2.65 2.65zm0-.95a1.7 1.7 0 1 1 1.7-1.7 1.7 1.7 0 0 1-1.7 1.7z"/>
+</svg>

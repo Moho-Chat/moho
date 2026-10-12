@@ -2,6 +2,7 @@ import discordSvg from '../assets/discord.svg'
 import sneedchatMark from '../assets/sneedchat.png'
 import matrixSvg from '../assets/matrix-mark.svg'
 import kickSvg from '../assets/kick.svg'
+import steamSvg from '../assets/steam-mark.svg'
 
 /**
  * Discord channel buffers are named "GuildName/#channel" internally - that's
@@ -69,6 +70,8 @@ export function serviceIcon(service: string): ServiceIcon {
       return { mark: discordSvg }
     case 'matrix':
       return { mark: matrixSvg }
+    case 'steam':
+      return { mark: steamSvg }
     case 'irc':
       return { glyph: 'tag' }
     case 'slack':
@@ -100,6 +103,8 @@ export function serviceLabel(service: string): string {
       return 'Sneedchat'
     case 'kick':
       return 'Kick'
+    case 'steam':
+      return 'Steam'
     case 'slack':
       return 'Slack'
     case 'jabber':
