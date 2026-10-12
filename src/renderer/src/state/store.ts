@@ -682,6 +682,8 @@ export interface ChatState {
   friendRequests: Record<string, FriendRequest[]>
   /** Which invitation the invitations page is showing. */
   activeInvitationKey: string
+  /** A question asked about a Steam friend, waiting on an answer in a dialog. */
+  steamDialog: { what: 'nickname' | 'remove' | 'block'; bufferId: string } | null
   /**
    * The profile being shown, or null.
    *
@@ -802,6 +804,7 @@ const INITIAL: ChatState = {
   matrixInvites: {},
   friendRequests: {},
   activeInvitationKey: '',
+  steamDialog: null,
   profile: null,
   replyingTo: null,
   replyPing: true,
@@ -1596,6 +1599,35 @@ export class ChatStore {
       await new Promise((resolve) => setTimeout(resolve, 200))
     }
     return false
+  }
+
+  /** Asks what to do about a Steam friend, in a dialog. */
+  askSteamFriend(what: 'nickname' | 'remove' | 'block', bufferId: string): void {
+    this.set({ steamDialog: { what, bufferId } })
+  }
+
+  closeSteamDialog(): void {
+    this.set({ steamDialog: null })
+  }
+
+  /** Does it: what to call them, ending the friendship, or blocking them. */
+  async doSteamFriend(what: 'nickname' | 'remove' | 'block', bufferId: string, nickname = ''): Promise<void> {
+    const buffer = this.state.buffers.find((b) => b.id === bufferId)
+    this.set({ steamDialog: null })
+    if (!buffer) return
+    try {
+      if (what === 'nickname') {
+        await window.moho.rpc('steamSetNickname', { bufferId, nickname })
+      } else if (what === 'remove') {
+        await window.moho.rpc('steamRemoveFriend', { accountId: buffer.accountId, steamid: buffer.remoteId })
+        this.toast('info', `Removed ${buffer.name}`)
+      } else {
+        await window.moho.rpc('steamBlockFriend', { bufferId, block: true })
+        this.toast('info', `Blocked ${buffer.name}`)
+      }
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
   }
 
   /** Looks at one invitation, on the page that gathers them. */

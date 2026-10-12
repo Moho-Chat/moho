@@ -260,7 +260,7 @@ export function BufferList(): JSX.Element {
   /** The call that sets a mute on the account itself, for a service that keeps one. */
   const accountMute = (accountId: string): string | null => {
     const service = accounts.find((a) => a.id === accountId)?.service
-    return service === 'matrix' ? 'setMatrixRoomMuted' : service === 'discord' ? 'setDiscordChannelMuted' : null
+    return service === 'matrix' ? 'setMatrixRoomMuted' : service === 'discord' ? 'setDiscordChannelMuted' : service === 'steam' ? 'steamSetFriendMuted' : null
   }
   const isEffectivelyMuted = (buffer: BufferEntry): boolean =>
     isMutedBuffer(buffer, muted, mutedGroups)
@@ -1050,7 +1050,8 @@ function BufferRow({
     onMarkRead: () => void store.markBuffersRead([buffer.id]),
     onMarkUnread: account?.service === 'matrix' ? onMarkUnread : undefined,
     onTag: account?.service === 'matrix' ? onTag : undefined,
-    markedUnread: buffer.markedUnread
+    markedUnread: buffer.markedUnread,
+    onSteamFriend: account?.service === 'steam' && buffer.kind === 'dm' && buffer.remoteId ? (what) => store.askSteamFriend(what, buffer.id) : undefined
   })
 
   return (

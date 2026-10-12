@@ -62,6 +62,11 @@ export interface BufferMenuInput {
   markedUnread?: boolean
   /** Clears what is waiting here; offered only while something is. */
   onMarkRead?: () => void
+  /**
+   * What can be done about a Steam friend - what to call them, ending the
+   * friendship, blocking them. Present only on a conversation with one.
+   */
+  onSteamFriend?: (what: 'nickname' | 'remove' | 'block') => void
 }
 
 /** What leaving is called, which depends on what is being left. */
@@ -104,7 +109,8 @@ export function bufferMenuEntries({
   onDock,
   onMarkRead,
   onMarkUnread,
-  markedUnread
+  markedUnread,
+  onSteamFriend
 }: BufferMenuInput): MenuEntry[] {
   return [
     ...(canCall
@@ -235,6 +241,15 @@ export function bufferMenuEntries({
       ? ([
           { separator: true },
           { label: 'Remove from category', icon: 'folder_off', onClick: () => onFile('') },
+          { separator: true }
+        ] as MenuEntry[])
+      : []),
+    ...(onSteamFriend
+      ? ([
+          { separator: true },
+          { label: 'Set nickname…', icon: 'edit', onClick: () => onSteamFriend('nickname') },
+          { label: 'Remove friend', icon: 'person_remove', danger: true, onClick: () => onSteamFriend('remove') },
+          { label: 'Block', icon: 'block', danger: true, onClick: () => onSteamFriend('block') },
           { separator: true }
         ] as MenuEntry[])
       : []),

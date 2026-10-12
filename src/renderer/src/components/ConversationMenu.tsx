@@ -72,9 +72,9 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
       onTogglePin: () => togglePin(buffer.id),
       onToggleMute: () => {
         toggleMute(buffer.id)
-        if (account?.service === 'matrix') {
+        if (account?.service === 'matrix' || account?.service === 'steam') {
           void window.moho
-            .rpc('setMatrixRoomMuted', { bufferId: buffer.id, muted: !isMuted(buffer.id) })
+            .rpc(account.service === 'steam' ? 'steamSetFriendMuted' : 'setMatrixRoomMuted', { bufferId: buffer.id, muted: !isMuted(buffer.id) })
             .catch((e: Error) => store.toast('error', e.message))
         }
       },
@@ -111,7 +111,8 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
         account?.service === 'matrix'
           ? (tag, on) => void store.setRoomTag(buffer.id, tag, on)
           : undefined,
-      markedUnread: buffer.markedUnread
+      markedUnread: buffer.markedUnread,
+      onSteamFriend: account?.service === 'steam' && buffer.kind === 'dm' && buffer.remoteId ? (what) => store.askSteamFriend(what, buffer.id) : undefined
     }),
     { separator: true },
     // Last, and on its own. It is the one entry here that starts something

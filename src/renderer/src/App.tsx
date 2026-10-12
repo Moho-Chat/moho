@@ -14,6 +14,7 @@ import { MembershipGate } from './components/MembershipGate'
 import { NickList } from './components/NickList'
 import { ThreadPanel } from './components/ThreadPanel'
 import { InvitePanel } from './components/InvitePanel'
+import { SteamFriendDialogs } from './components/SteamFriendDialogs'
 import { VerificationDialog } from './components/VerificationDialog'
 import { ProfileCard } from './components/ProfileCard'
 import { ConversationTools } from './components/ConversationTools'
@@ -323,6 +324,7 @@ export default function App(): JSX.Element {
           room you share - and a dialog only the account panel can show is a
           request nobody can answer. */}
       <VerificationDialog />
+      <SteamFriendDialogs />
 
       {/* Over everything: a call arrives while you are looking elsewhere. */}
       <IncomingCallPanel />
