@@ -3624,9 +3624,9 @@ export class ChatStore {
 
       case 'steamFriendRequest': {
         // Said once, by the daemon, when somebody new asks. Answering is on
-        // the account's page, so that is where the words point.
+        // the Add or join page, so that is where the words point.
         const who = (data.request as { name?: string | null; steamid?: string } | undefined) ?? {}
-        this.toast('info', `${who.name || who.steamid || 'Somebody'} wants to be your friend on Steam. Answer in Accounts.`)
+        this.toast('info', `${who.name || who.steamid || 'Somebody'} wants to be your friend on Steam. Answer it from the + (Add or join a server) button.`)
         break
       }
 
