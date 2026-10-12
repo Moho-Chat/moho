@@ -34,6 +34,7 @@ import { Icon, IconButton } from './components/Icon'
 import { ConversationMenu } from './components/ConversationMenu'
 import { watchDelta, watchedKickBuffers } from './lib/kickwatch'
 import { useActiveBuffer, useChat, usePref, usePrefsReady, useStore } from './state/hooks'
+import { useDmCategories } from './state/useDmCategories'
 import { bufferDisplayName, setHourFormat } from './lib/util'
 import type { BufferEntry } from './state/store'
 import { loadLocalEmotes, recoverMissingEmotes } from './lib/emotecache'
@@ -53,6 +54,8 @@ export default function App(): JSX.Element {
   useEscapeLayer(() => store.setActivePanel(''), panelOpen)
   const store = useStore()
   const prefsReady = usePrefsReady()
+  // Every account's direct messages under a heading of its own.
+  useDmCategories()
   const [booted, setBooted] = useState(false)
 
   const accounts = useChat((s) => s.accounts)
