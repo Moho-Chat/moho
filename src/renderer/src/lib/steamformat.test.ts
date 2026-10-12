@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { emojiPreview, formatMessage, sourcePick } from './format'
+import { emojiPreview, formatMessage, sourcePick, steamSameText } from './format'
 import { formatsFor, serialize, wrap, type BoxNode } from './composeFormat'
 import { reactionLabel } from './reactions'
 
@@ -78,5 +78,16 @@ describe('picking a Steam emoticon from the picker', () => {
     expect(serialize(el('DIV', [text('hi '), el('IMG', [], { token })]), 'steam')).toBe('hi :steambored:')
     // Sneedchat's id is its shortcode, and stays that.
     expect(sourcePick('sneedchat', { ...entry, id: ':lol:' })).toBe(':lol:')
+  })
+})
+
+describe('a Steam message is the one just sent', () => {
+  it('matches what was typed to what Steam logged, emoticons and brackets included', () => {
+    expect(steamSameText('hi', 'hi')).toBe(true)
+    expect(steamSameText(':steambored:', '[steam:emote:steambored]')).toBe(true)
+    expect(steamSameText('a :steamhappy: b :steamsad:', 'a [steam:emote:steamhappy] b [steam:emote:steamsad]')).toBe(true)
+    expect(steamSameText('not \\[b]bold', 'not [\u200bb]bold')).toBe(true)
+    expect(steamSameText(':steambored:', '[steam:emote:steamhappy]')).toBe(false)
+    expect(steamSameText('hello', 'hello there')).toBe(false)
   })
 })

@@ -24,7 +24,7 @@ import type {
 } from '../../../shared/wire'
 import { addToast, type ToastAction, type ToastItem } from '../lib/toasts'
 import { ALL_STATUSES, statusesFor, supportsStatus } from '../lib/status'
-import { buildSmilieIndex, type SmilieEntry, type SmilieIndex } from '../lib/format'
+import { buildSmilieIndex, steamSameText, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
 import { runExport } from '../lib/exporter'
 import type { ForumPost } from '../lib/forum'
@@ -848,6 +848,7 @@ const INITIAL: ChatState = {
  */
 function echoMatches(echo: ChatMessage, real: Message): boolean {
   if (echo.pendingBody === real.body) return true
+  if (real.bufferId.startsWith('steam:') && echo.pendingBody !== undefined && steamSameText(echo.pendingBody, real.body)) return true
   // A file is posted as markup the daemon builds - a BBCode image tag on
   // Sneedchat, a bare link on IRC - so what comes back is never what was
   // typed, and usually nothing was typed at all. Matching on the whole body

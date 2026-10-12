@@ -129,6 +129,22 @@ export function sourcePick(service: string, e: { id: string }): string {
   return service === 'steam' && e.id.startsWith('steam:') ? `[steam:emote:${e.id.slice(6)}]` : e.id
 }
 
+/**
+ * Whether what was typed into a Steam conversation is what Steam logged.
+ *
+ * They are never spelled alike when a message holds an emoticon or a bracket:
+ * the box sends `:steambored:` and Steam hands it back as a picture, which the
+ * daemon writes as `[steam:emote:steambored]`; a bracket typed literally leaves
+ * as `\[` and comes back as `[` with an invisible mark after it. Matched
+ * strictly, the message sat grey until it timed out as failed, while its own
+ * echo showed beside it.
+ */
+export function steamSameText(sent: string, logged: string): boolean {
+  const sentForm = sent.replace(/\\\[/g, '[')
+  const loggedForm = logged.replace(/\[steam:emote:([A-Za-z0-9_-]+)\]/g, ':$1:').replace(/\u200b/g, '')
+  return sentForm === loggedForm
+}
+
 export function escapeHtml(s: string): string {
   // Quotes as well as brackets: the link passes write a URL from the text
   // into an attribute, and a quote in it would end the attribute early.
