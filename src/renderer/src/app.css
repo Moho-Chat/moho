@@ -2686,6 +2686,13 @@ img.composer-emoji {
   width: 100%;
 }
 
+.field-row > .grow {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+  overflow-wrap: anywhere;
+}
+
 .field.port {
   flex: 0 0 80px;
 }

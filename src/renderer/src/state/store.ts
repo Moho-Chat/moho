@@ -3622,6 +3622,14 @@ export class ChatStore {
         void this.refreshAccounts()
         break
 
+      case 'steamFriendRequest': {
+        // Said once, by the daemon, when somebody new asks. Answering is on
+        // the account's page, so that is where the words point.
+        const who = (data.request as { name?: string | null; steamid?: string } | undefined) ?? {}
+        this.toast('info', `${who.name || who.steamid || 'Somebody'} wants to be your friend on Steam. Answer in Accounts.`)
+        break
+      }
+
       case 'matrixLoginStatus':
         this.set({ matrixLoginStatus: data.detail || '' })
         // An SSO sign-in arrives with the address of the server's own login
