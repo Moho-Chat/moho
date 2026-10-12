@@ -3,44 +3,23 @@
 **Every conversation you're in, in one window.**
 <img width="1545" height="912" alt="showcase-screenshot" src="https://github.com/user-attachments/assets/b9dabddb-bb3c-4a71-b872-9ad167ecd400" />
 
-moho is a desktop chat client that speaks IRC, Discord, Matrix, Kick and Sneedchat at the
-same time. One buffer list down the side, one log in the middle, one set of habits — whether
-the room is a twenty-year-old IRC channel, a Discord server, an encrypted Matrix room, or a
-stream's chat going past at forty lines a minute.
-
-It isn't five web apps in a trenchcoat. Underneath sits a small Rust daemon that holds the
-connections; the window is just what draws them. Close it and you stay connected. Open it
-again and everything is where you left it.
+moho is a desktop chat client that speaks IRC, Discord, Matrix, Kick and many more protocols at the
+same time. Whether the room is a twenty-year-old IRC channel, a Discord server, an encrypted Matrix room, or a
+stream's chat going past at forty lines a minute you're able to be part of the conversation.
 
 ## What it does
 
-- **Five networks, one place.** IRC, Discord, Matrix, Kick and Sneedchat, side by side, with
+- **Many networks, one place.** IRC, Discord, Matrix, Kick and many more protocols soon, side by side, with
   the same reply, edit, react, search and tag-someone gestures on each — as far as each
   service actually supports them.
-- **A log, not a feed.** Compact IRC-style scrollback with nick colours, markdown and BBCode,
-  spoilers, code blocks, inline images and video, GIFs, YouTube cards, and custom emoji. There
-  are two roomier modes if you prefer one: Comfy, with avatars, and Bubbles.
-- **Made for being open all day.** A quick switcher on Ctrl+K, a tray with the number waiting
-  and your status, Do not disturb that really silences everything, idle detection, and
-  conversations that open where you stopped reading rather than a thousand messages back.
-- **It stays connected.** The daemon keeps IRC registered, Matrix syncing and Tor circuits
-  open while the window is shut. Quitting says a proper goodbye rather than dropping the
-  socket, so you don't come back to a ghosted nick.
 - **Calls.** Voice, camera and screen sharing on Discord and on Matrix, including the group
-  calls Element holds on a media server. On Discord, Go Live streams both ways with sound,
+  calls Element holds on a media server. On Discord, Go Live, streams both ways with sound,
   echo cancellation, volume per person, the soundboard and stage channels. A call can sit in
   the corner or pop out into a window of its own.
 - **Matrix, properly encrypted.** End-to-end encryption with device verification by emoji or
   QR, cross-signing, key backup, and encrypted attachments.
-- **Sneedchat, and Tor where you want it.** The site's proof-of-work gate and its login
-  captcha both handled, and every room you've joined connected at once. Any account on any of
-  the five can go through an embedded Tor client or a SOCKS5 proxy instead of the open internet.
 - **Kick streams in the window.** Watch the stream beside its chat, in the corner or in a
-  window of its own, with VODs, clips, 7TV and BTTV emotes, polls and predictions.
-- **No captchas on Discord, on purpose.** Discord puts joining a server, adding a friend and
-  making a server behind a captcha when they come from anything but its own client, and
-  answering one gets an account flagged for spam. moho opens discord.com for those three
-  instead of putting your account at risk.
+  window of its own, polls, predictions and other interactive methods are functional and at your fingertips. 
 - **Yours.** GPL-3.0, no telemetry, no account with us — your history is a SQLite file on
   your own disk.
 
@@ -50,10 +29,6 @@ Prebuilt Linux and Windows downloads are on the
 [latest release](https://github.com/Moho-Chat/moho/releases/latest); what each version
 changed is in [CHANGELOG.md](CHANGELOG.md). moho tells you in its mentions inbox when a newer
 version is out.
-
-Versions are MAJOR.FEATURE.FIX: a major release, then protocols added and major features,
-then bug and security fixes - 1.1.0 would add a protocol, 1.0.5 is the fifth fix release
-of 1.0.
 
 The AppImage needs `libfuse2` on recent distributions; if it refuses to start, either install
 that or run it with `APPIMAGE_EXTRACT_AND_RUN=1`.
