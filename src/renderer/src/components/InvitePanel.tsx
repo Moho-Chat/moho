@@ -1,6 +1,6 @@
 import { Avatar } from './Avatar'
-import { useChat, useStore } from '../state/hooks'
-import { currentInvitation, listInvitations } from '../lib/invitations'
+import { useChat, useInvitations, useStore } from '../state/hooks'
+import { currentInvitation } from '../lib/invitations'
 import { serviceLabel } from '../lib/util'
 
 /**
@@ -15,11 +15,9 @@ import { serviceLabel } from '../lib/util'
  */
 export function InvitePanel(): JSX.Element | null {
   const store = useStore()
-  const rooms = useChat((s) => s.matrixInvites)
-  const friends = useChat((s) => s.friendRequests)
   const accounts = useChat((s) => s.accounts)
   const key = useChat((s) => s.activeInvitationKey)
-  const invitation = currentInvitation(listInvitations(rooms, friends, accounts), key)
+  const invitation = currentInvitation(useInvitations(), key)
   // Answered, here or in another client. The page leaves with the last one.
   if (!invitation) return null
 
@@ -45,7 +43,9 @@ export function InvitePanel(): JSX.Element | null {
       <p className="small muted invite-panel-note">
         {invitation.kind === 'friend'
           ? 'Accepting makes you friends: the conversation with them opens here, and they can see when you are online. Declining removes the request.'
-          : invitation.direct
+          : invitation.kind === 'verification'
+            ? 'Accepting starts the check: you will be shown emoji to compare with the other side. Only accept one you started or expected. Declining cancels it.'
+            : invitation.direct
             ? 'Accepting starts the conversation and opens it here. Declining leaves it, and the invitation goes away for good.'
             : 'Accepting joins the room and starts syncing it. Declining leaves it, and the invitation goes away for good.'}
       </p>

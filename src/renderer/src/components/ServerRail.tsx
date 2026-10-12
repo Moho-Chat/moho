@@ -8,11 +8,10 @@ import { Modal } from './Modal'
 import { Avatar } from './Avatar'
 import { LeaveConfirm } from './LeaveConfirm'
 import { ircNetworkFor } from '../lib/networks'
-import { useChat, usePref, useStore } from '../state/hooks'
+import { useChat, useInvitations, usePref, useStore } from '../state/hooks'
 import { RAIL_TIP, hideRailTip, showRailTip, type RailTipDetail } from '../lib/railtip'
 import { bufferDisplayName, classes, nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
 import { SpaceRooms } from './SpaceRooms'
-import { listInvitations } from '../lib/invitations'
 import {
   isFixedEntry,
   invitationsGroup,
@@ -370,9 +369,7 @@ export function ServerRail(): JSX.Element | null {
   // the selector's result by identity, so returning a new object each render
   // reports a change every time and loops until React gives up.
   const groups = useChat((s) => s.groups)
-  const matrixInvites = useChat((s) => s.matrixInvites)
-  const friendRequests = useChat((s) => s.friendRequests)
-  const accounts = useChat((s) => s.accounts)
+  const invitations = useInvitations()
   const activeGroupId = useChat((s) => s.activeGroupId)
   const activeBufferId = useChat((s) => s.activeBufferId)
   const buffers = useChat((s) => s.buffers)
@@ -462,8 +459,7 @@ export function ServerRail(): JSX.Element | null {
   if (pinned.length > 0) extras.push(pinnedGroup())
   // Invitations from every service share one tile, which is there while
   // anything waits on an answer and gone once nothing does.
-  const waiting = listInvitations(matrixInvites, friendRequests, accounts).length
-  if (waiting > 0) extras.push(invitationsGroup(waiting))
+  if (invitations.length > 0) extras.push(invitationsGroup(invitations.length))
   const ordered = orderedGroups([...shown, ...extras], railOrder)
 
   // The rail always draws, even with nothing in it.

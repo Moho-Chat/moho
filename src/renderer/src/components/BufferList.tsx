@@ -8,7 +8,7 @@ import { UserFooter } from './UserFooter'
 import { VoiceChannels } from './VoiceChannels'
 import { VoicePanel } from './VoicePanel'
 import { presenceClass, presenceLabel } from '../lib/presence'
-import { useChat, useIdSetPref, useMapPref, usePref, useStore } from '../state/hooks'
+import { useChat, useIdSetPref, useInvitations, useMapPref, usePref, useStore } from '../state/hooks'
 import {
   compareInBand,
   dmGroup,
@@ -34,7 +34,7 @@ import {
 } from '../lib/util'
 import type { Account, Member } from '../../../shared/wire'
 import { Avatar } from './Avatar'
-import { currentInvitation, listInvitations } from '../lib/invitations'
+import { currentInvitation } from '../lib/invitations'
 import {
   categoryKey,
   reorderCategories,
@@ -73,8 +73,6 @@ export function BufferList(): JSX.Element {
   const voiceSessions = useChat((s) => s.voiceSessions)
   const presence = useChat((s) => s.presenceByBuffer)
   const popouts = useChat((s) => s.popouts)
-  const matrixInvites = useChat((s) => s.matrixInvites)
-  const friendRequests = useChat((s) => s.friendRequests)
   const activeInvitationKey = useChat((s) => s.activeInvitationKey)
 
   const [pinned, togglePin, isPinned] = useIdSetPref('pinnedBuffers')
@@ -139,10 +137,7 @@ export function BufferList(): JSX.Element {
   // choosing it landed on whichever server happened to be first. Only while
   // something is waiting: with nothing left the page has nothing to say, and
   // falling back is the way off it.
-  const invitations = useMemo(
-    () => listInvitations(matrixInvites, friendRequests, accounts),
-    [matrixInvites, friendRequests, accounts]
-  )
+  const invitations = useInvitations()
   const onInvite = activeGroupId === INVITATIONS_GROUP_ID && invitations.length > 0
   const shownInvitation = currentInvitation(invitations, activeInvitationKey)
 

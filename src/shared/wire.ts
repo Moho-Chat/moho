@@ -783,6 +783,11 @@ export interface MatrixVerification {
   isSelf?: boolean
   /** Set on an incoming request that has not been answered yet. */
   fromUser?: string
+  /**
+   * Somebody else asked, and it has not been answered: it is waiting on the
+   * Invitations tile rather than showing as a dialog. Cleared once it is.
+   */
+  incoming?: boolean
   fromDevice?: string
 }
 

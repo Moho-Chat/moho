@@ -1,17 +1,20 @@
-import type { Account, FriendRequest, MatrixInvite } from '../../../shared/wire'
+import type { Account, DiscordFriend, FriendRequest, MatrixInvite, MatrixVerification } from '../../../shared/wire'
 
 /**
- * Something waiting on an answer from you: a room somebody invited you to, or
- * somebody asking to be your friend. Every service's are one list, because what
- * they share is that they are offered, answered once, and then gone - not which
- * protocol they came by.
+ * Something waiting on a yes or a no from you: a room somebody invited you to,
+ * somebody asking to be your friend, a session asking to be verified. Every
+ * service's are one list, because what they share is that they are offered,
+ * answered once, and then gone - not which protocol they came by.
+ *
+ * Anything a service asks that has exactly those two answers belongs here, and
+ * not on a page of its own for that service.
  */
 export interface Invitation {
   /** Unique across accounts and kinds; what selection is by. */
   key: string
   accountId: string
   service: string
-  kind: 'room' | 'friend'
+  kind: InvitationKind
   /** The service's own id: a room id, or the person's id. */
   id: string
   name: string
@@ -22,8 +25,22 @@ export interface Invitation {
   direct: boolean
 }
 
-export function invitationKey(accountId: string, kind: 'room' | 'friend', id: string): string {
+export type InvitationKind = 'room' | 'friend' | 'verification'
+
+export function invitationKey(accountId: string, kind: InvitationKind, id: string): string {
   return `${kind}|${accountId}|${id}`
+}
+
+/** What is waiting, by where each service keeps it. */
+export interface InvitationSources {
+  /** Matrix rooms and direct messages somebody invited the account to. */
+  rooms: Record<string, MatrixInvite[]>
+  /** Steam's requests, by account. */
+  friends: Record<string, FriendRequest[]>
+  /** Discord's relationships, by account; the ones somebody sent are requests. */
+  discordFriends: Record<string, DiscordFriend[]>
+  /** A Matrix verification, if somebody has asked and it is not answered. */
+  verification: MatrixVerification | null
 }
 
 /**
@@ -31,14 +48,10 @@ export function invitationKey(accountId: string, kind: 'room' | 'friend', id: st
  * listed and each account's own order within. Requests for an account that is
  * no longer there are dropped rather than shown with nobody to answer as.
  */
-export function listInvitations(
-  rooms: Record<string, MatrixInvite[]>,
-  friends: Record<string, FriendRequest[]>,
-  accounts: Account[]
-): Invitation[] {
+export function listInvitations(sources: InvitationSources, accounts: Account[]): Invitation[] {
   const out: Invitation[] = []
   for (const account of accounts) {
-    for (const invite of rooms[account.id] ?? []) {
+    for (const invite of sources.rooms[account.id] ?? []) {
       out.push({
         key: invitationKey(account.id, 'room', invite.roomId),
         accountId: account.id,
@@ -51,18 +64,37 @@ export function listInvitations(
         direct: invite.isDirect
       })
     }
-    for (const request of friends[account.id] ?? []) {
-      const name = request.name || request.id
+    const people: { id: string; name: string; avatarUrl: string | null }[] = [
+      ...(sources.friends[account.id] ?? []).map((r) => ({ id: r.id, name: r.name || r.id, avatarUrl: r.avatarUrl ?? null })),
+      ...(sources.discordFriends[account.id] ?? [])
+        .filter((f) => f.kind === 'incoming')
+        .map((f) => ({ id: f.userId, name: f.globalName || f.username, avatarUrl: f.avatarUrl ?? null }))
+    ]
+    for (const person of people) {
       out.push({
-        key: invitationKey(account.id, 'friend', request.id),
+        key: invitationKey(account.id, 'friend', person.id),
         accountId: account.id,
         service: account.service,
         kind: 'friend',
-        id: request.id,
-        name,
-        avatarUrl: request.avatarUrl ?? null,
+        ...person,
         detail: 'wants to be your friend',
         direct: true
+      })
+    }
+    const v = sources.verification
+    if (v && v.incoming && v.accountId === account.id) {
+      const who = v.otherUser || v.fromUser || ''
+      const mine = v.isSelf !== false
+      out.push({
+        key: invitationKey(account.id, 'verification', v.verificationId),
+        accountId: account.id,
+        service: account.service,
+        kind: 'verification',
+        id: v.verificationId,
+        name: mine ? 'Another of your sessions' : who || 'Somebody',
+        avatarUrl: null,
+        detail: mine ? `wants to verify${v.otherDevice ? ` (${v.otherDevice})` : ''}` : 'wants to verify with you',
+        direct: false
       })
     }
   }

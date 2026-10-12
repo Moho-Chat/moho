@@ -1476,6 +1476,26 @@ export class ChatStore {
       }
     }
     this.set({ friendRequests: next })
+    // Discord keeps its requests among its friends; the daemon pushes changes,
+    // and this is the first reading, so one that arrived while moho was
+    // closed is waiting on the Invitations tile when it opens.
+    for (const account of this.state.accounts.filter((a) => a.service === 'discord')) {
+      try {
+        const list = await window.moho.rpc<DiscordFriend[]>('listDiscordFriends', { accountId: account.id })
+        this.set({ discordFriends: { ...this.state.discordFriends, [account.id]: list } })
+      } catch {
+        // Not connected yet: the gateway's own push fills it in.
+      }
+    }
+  }
+
+  /** Everything waiting on a yes or a no, as the invitations tile lists it. */
+  pendingInvitations(): Invitation[] {
+    const s = this.state
+    return listInvitations(
+      { rooms: s.matrixInvites, friends: s.friendRequests, discordFriends: s.discordFriends, verification: s.matrixVerification },
+      s.accounts
+    )
   }
 
   /**
@@ -1493,8 +1513,18 @@ export class ChatStore {
   async answerInvitation(invitation: Invitation, accept: boolean): Promise<void> {
     const { accountId, id } = invitation
     try {
-      if (invitation.kind === 'friend') {
-        await window.moho.rpc('steamAnswerFriendRequest', { accountId, steamid: id, accept })
+      if (invitation.kind === 'verification') {
+        await window.moho.rpc(accept ? 'respondMatrixVerification' : 'cancelMatrixVerification', {
+          accountId,
+          verificationId: id,
+          ...(accept ? { accept: true } : {})
+        })
+      } else if (invitation.kind === 'friend') {
+        if (invitation.service === 'discord') {
+          await window.moho.rpc('answerDiscordFriendRequest', { accountId, userId: id, accept })
+        } else {
+          await window.moho.rpc('steamAnswerFriendRequest', { accountId, steamid: id, accept })
+        }
       } else {
         await window.moho.rpc(accept ? 'acceptMatrixInvite' : 'declineMatrixInvite', { accountId, roomId: id })
       }
@@ -1502,7 +1532,22 @@ export class ChatStore {
       this.toast('error', (e as Error).message)
       return
     }
-    this.set({
+    this.set(this.withoutInvitation(invitation))
+    if (!accept && invitation.kind === 'verification') this.set({ matrixVerification: null })
+    // A verification continues in its own dialog once it is accepted, and that
+    // is the whole of what accepting opens.
+    if (accept && invitation.kind !== 'verification' && (await this.openAccepted(invitation))) return
+    // Nothing to open: stay on what is still waiting, or leave the page.
+    if (this.pendingInvitations().length === 0 && this.state.activeGroupId === INVITATIONS_GROUP_ID) {
+      this.selectGroup(`account:${accountId}`)
+    }
+  }
+
+  /** The state with one invitation taken out of every place it is kept. */
+  private withoutInvitation(invitation: Invitation): Partial<ChatState> {
+    const { accountId, id } = invitation
+    const v = this.state.matrixVerification
+    return {
       matrixInvites: {
         ...this.state.matrixInvites,
         [accountId]: (this.state.matrixInvites[accountId] ?? []).filter((i) => !(invitation.kind === 'room' && i.roomId === id))
@@ -1510,16 +1555,33 @@ export class ChatStore {
       friendRequests: {
         ...this.state.friendRequests,
         [accountId]: (this.state.friendRequests[accountId] ?? []).filter((r) => !(invitation.kind === 'friend' && r.id === id))
-      }
-    })
-    if (accept && (await this.openAccepted(invitation))) return
-    // Nothing to open: stay on what is still waiting, or leave the page.
-    const rest = listInvitations(this.state.matrixInvites, this.state.friendRequests, this.state.accounts)
-    if (rest.length === 0 && this.state.activeGroupId === INVITATIONS_GROUP_ID) this.selectGroup(`account:${accountId}`)
+      },
+      discordFriends: {
+        ...this.state.discordFriends,
+        [accountId]: (this.state.discordFriends[accountId] ?? []).filter(
+          (f) => !(invitation.kind === 'friend' && f.userId === id && f.kind === 'incoming')
+        )
+      },
+      // Accepted, the check carries on in its dialog; declined, it is over.
+      matrixVerification: invitation.kind === 'verification' && v?.verificationId === id ? (v.state === 'requested' ? { ...v, incoming: false } : v) : v
+    }
   }
 
   /** Waits for what an accepted invitation became, and opens it. Whether it did. */
   private async openAccepted(invitation: Invitation): Promise<boolean> {
+    // Discord's friends are not conversations until one is opened: asking for
+    // it is what makes the direct message exist, so it does not have to be
+    // waited for.
+    if (invitation.service === 'discord' && invitation.kind === 'friend') {
+      try {
+        const r = await window.moho.rpc<{ bufferId: string }>('openDiscordDm', { accountId: invitation.accountId, userId: invitation.id })
+        await this.refreshBuffers()
+        await this.selectBuffer(r.bufferId)
+        return true
+      } catch {
+        return false
+      }
+    }
     const found = (): BufferEntry | undefined =>
       this.state.buffers.find(
         (b) => b.accountId === invitation.accountId && b.remoteId === invitation.id && (invitation.kind === 'room' || b.kind === 'dm')
@@ -3674,6 +3736,7 @@ export class ChatStore {
             accountId: data.accountId,
             verificationId: data.verificationId,
             state: 'requested',
+            incoming: true,
             otherUser: data.fromUser,
             otherDevice: data.fromDevice,
             isSelf: data.isSelf

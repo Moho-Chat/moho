@@ -16,7 +16,8 @@ import { useChat, useStore } from '../state/hooks'
  */
 export function VerificationDialog(): JSX.Element | null {
   const active = useChat((s) => s.matrixVerification)
-  if (!active) return null
+  // Waiting on an answer, it is on the Invitations tile: this is for the check itself.
+  if (!active || active.incoming) return null
 
   // Keyed on the verification so its QR code is fetched afresh for a new one,
   // rather than a picture of the last session being shown against this one.

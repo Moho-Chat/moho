@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { store, type ChatState } from './store'
+import { listInvitations, type Invitation } from '../lib/invitations'
 
 /**
  * Slice subscription. The selector must return something referentially stable
@@ -15,6 +16,19 @@ export function useChat<T>(selector: (state: ChatState) => T): T {
 
 export function useStore(): typeof store {
   return store
+}
+
+/** Everything waiting on a yes or a no, from every service. */
+export function useInvitations(): Invitation[] {
+  const rooms = useChat((s) => s.matrixInvites)
+  const friends = useChat((s) => s.friendRequests)
+  const discordFriends = useChat((s) => s.discordFriends)
+  const verification = useChat((s) => s.matrixVerification)
+  const accounts = useChat((s) => s.accounts)
+  return useMemo(
+    () => listInvitations({ rooms, friends, discordFriends, verification }, accounts),
+    [rooms, friends, discordFriends, verification, accounts]
+  )
 }
 
 const identity = (s: ChatState): ChatState => s
