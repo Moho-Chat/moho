@@ -333,11 +333,15 @@ export interface KickStream {
    * Where the video is: a signed Amazon IVS playlist, good for watching in
    * this window rather than in a browser tab beside it.
    *
-   * Replaced on every refresh, because the signature in it expires - so
-   * whoever is playing it reads the current one rather than the one they
-   * started with.
+   * Replaced shortly before the signature in it expires, which is about every
+   * seven minutes - so whoever is playing it reads the current one rather
+   * than the one they started with, and does not start over for a new one.
    */
   playbackUrl?: string | null
+  /** Unix seconds the address stops being accepted, where it says. */
+  playbackExpires?: number | null
+  /** The broadcast's own id: a different one is a different stream, even in the same channel. */
+  livestreamId?: number | null
 }
 
 /** One box on a form a Discord bot sent. */
