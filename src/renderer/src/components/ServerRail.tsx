@@ -417,7 +417,8 @@ export function ServerRail(): JSX.Element | null {
   // The tile a drop would merge into, as opposed to land beside.
   const [merging, setMerging] = useState('')
   /** The rail entry a leave has been asked about, pending confirmation. */
-  const [leaving, setLeaving] = useState<RailGroup | null>(null)
+  const leaving = useChat((s) => s.leaveRequest)
+  const setLeaving = (g: { id: string; name: string; kind: string } | null): void => store.requestLeave(g)
   /** The space whose contents are being looked through, if any. */
   const [browsing, setBrowsing] = useState<RailGroup | null>(null)
   /** The Steam chat group whose settings are open, if any. */

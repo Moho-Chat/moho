@@ -457,6 +457,8 @@ export interface ChatState {
   steamRings: SteamRing[]
   /** The Steam voice this window holds, if any: where, and how far it has got. */
   steamVoiceNow: { accountId: string; target: SteamVoiceTarget; phase: SteamVoicePhase } | null
+  /** A group somebody has asked to leave, waiting on the confirmation. */
+  leaveRequest: { id: string; name: string; kind: string } | null
   /**
    * A link waiting for an account to be made for it.
    *
@@ -767,6 +769,7 @@ const INITIAL: ChatState = {
   steamVoiceRooms: {},
   steamRings: [],
   steamVoiceNow: null,
+  leaveRequest: null,
   incomingCalls: [],
   transfers: [],
   minimisedTransfers: [],
@@ -2051,12 +2054,22 @@ export class ChatStore {
    * nothing is removed here on optimism - leaving is the one action where
    * showing it as done before it is would be worse than a moment's delay.
    */
-  async leaveGroup(groupId: string): Promise<void> {
+  async leaveGroup(groupId: string): Promise<boolean> {
+    // A voice room of a Steam group is left with the group: the call would be in a place that is gone.
+    const voice = this.state.steamVoiceNow
+    if (voice?.target.kind === 'room' && groupId.endsWith(`|steamgroup:${voice.target.groupId}`)) await this.steamVoice.stop()
     try {
       await window.moho.rpc('leaveGroup', { groupId })
+      return true
     } catch (e) {
       this.toast('error', `Couldn't leave: ${(e as Error).message}`)
+      return false
     }
+  }
+
+  /** Asks to leave a group, which is confirmed first: it cannot be undone without a new invitation. */
+  requestLeave(group: { id: string; name: string; kind: string } | null): void {
+    this.set({ leaveRequest: group })
   }
 
   /** Asks the log to scroll to a message, and to stop following the tail. */
@@ -5328,6 +5341,15 @@ export class ChatStore {
   }
 
   async closeBuffer(bufferId: string): Promise<void> {
+    // A room of a Steam group cannot be left on its own: being in the group is what puts you in
+    // its rooms. Closing one would only hide it until Steam next mentioned it, so what is offered
+    // is leaving the group, asked about first.
+    const room = this.state.buffers.find((b) => b.id === bufferId)
+    if (room && room.kind === 'channel' && room.groupId?.includes('|steamgroup:')) {
+      const group = this.state.groups.find((g) => g.id === room.groupId)
+      if (group) this.requestLeave({ id: group.id, name: group.name, kind: group.kind })
+      return
+    }
     // Asked before the buffer goes, since afterwards there is nothing to ask.
     const sneedchat = this.accountFor(bufferId)?.service === 'sneedchat'
     try {

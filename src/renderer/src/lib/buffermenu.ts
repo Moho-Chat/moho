@@ -80,6 +80,8 @@ export function leaveLabel(buffer: BufferEntry, service?: string): string {
   if (buffer.kind === 'dm') return service === 'discord' ? 'Close conversation' : 'Leave conversation'
   if (service === 'matrix') return 'Leave room'
   if (service === 'irc') return 'Leave channel'
+  // A room of a Steam group is left by leaving the group.
+  if (service === 'steam') return 'Leave group…'
   if (service === 'discord') return 'Remove from list'
   return 'Close'
 }

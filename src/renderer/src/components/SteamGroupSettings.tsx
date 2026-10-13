@@ -133,6 +133,7 @@ export function SteamGroupSettings({
 type Act = <T>(action: string, extra?: Record<string, unknown>) => Promise<T | undefined>
 
 function General({ group, busy, act, onLeft }: { group: SteamChatGroup; busy: boolean; act: Act; onLeft: () => void }): JSX.Element {
+  const store = useStore()
   const [name, setName] = useState(group.name)
   const [tagline, setTagline] = useState(group.tagline)
   const mayChange = group.mayManage
@@ -200,7 +201,7 @@ function General({ group, busy, act, onLeft }: { group: SteamChatGroup; busy: bo
           danger
           onConfirm={() => {
             // The window's own leave: it takes the rail entry away with it.
-            void window.moho.rpc('leaveGroup', { groupId: group.railId }).then(onLeft).catch(() => {})
+            void store.leaveGroup(group.railId).then((left) => left && onLeft())
           }}
         />
       </div>
