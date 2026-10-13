@@ -1475,9 +1475,10 @@ export class ChatStore {
    * the join panel.
    */
   async refreshInvites(): Promise<void> {
-    for (const account of this.state.accounts.filter((a) => a.service === 'matrix')) {
+    for (const account of this.state.accounts.filter((a) => a.service === 'matrix' || a.service === 'steam')) {
       try {
-        const invites = await window.moho.rpc<MatrixInvite[]>('listMatrixInvites', {
+        // A Steam account's are the groups its friends have invited it to: the same shape, a room.
+        const invites = await window.moho.rpc<MatrixInvite[]>(account.service === 'steam' ? 'steamGroupInvites' : 'listMatrixInvites', {
           accountId: account.id
         })
         this.set({ matrixInvites: { ...this.state.matrixInvites, [account.id]: invites } })
@@ -1539,6 +1540,7 @@ export class ChatStore {
    */
   async answerInvitation(invitation: Invitation, accept: boolean): Promise<void> {
     const { accountId, id } = invitation
+    let steamGroupJoined = ''
     try {
       if (invitation.kind === 'verification') {
         await window.moho.rpc(accept ? 'respondMatrixVerification' : 'cancelMatrixVerification', {
@@ -1552,6 +1554,9 @@ export class ChatStore {
         } else {
           await window.moho.rpc('steamAnswerFriendRequest', { accountId, steamid: id, accept })
         }
+      } else if (invitation.service === 'steam') {
+        const r = await window.moho.rpc<{ groupId?: string }>('steamChatGroupAction', { accountId, groupId: id, action: accept ? 'acceptInvite' : 'dismissInvite' })
+        if (accept && r.groupId) steamGroupJoined = r.groupId
       } else {
         await window.moho.rpc(accept ? 'acceptMatrixInvite' : 'declineMatrixInvite', { accountId, roomId: id })
       }
@@ -1561,9 +1566,11 @@ export class ChatStore {
     }
     this.set(this.withoutInvitation(invitation))
     if (!accept && invitation.kind === 'verification') this.set({ matrixVerification: null })
+    // A Steam group is opened at its first room, which is not found by who it is with.
+    if (steamGroupJoined && (await this.openSteamGroup(steamGroupJoined))) return
     // A verification continues in its own dialog once it is accepted, and that
     // is the whole of what accepting opens.
-    if (accept && invitation.kind !== 'verification' && (await this.openAccepted(invitation))) return
+    if (accept && invitation.kind !== 'verification' && !steamGroupJoined && (await this.openAccepted(invitation))) return
     // Nothing to open: stay on what is still waiting, or leave the page.
     if (this.pendingInvitations().length === 0 && this.state.activeGroupId === INVITATIONS_GROUP_ID) {
       this.selectGroup(`account:${accountId}`)
@@ -1592,6 +1599,21 @@ export class ChatStore {
       // Accepted, the check carries on in its dialog; declined, it is over.
       matrixVerification: invitation.kind === 'verification' && v?.verificationId === id ? (v.state === 'requested' ? { ...v, incoming: false } : v) : v
     }
+  }
+
+  /** Waits for a Steam group just joined to have its rooms, and opens the first. Whether it did. */
+  private async openSteamGroup(railId: string): Promise<boolean> {
+    for (let waited = 0; waited < 8000; waited += 200) {
+      const room = this.state.buffers.find((b) => b.groupId === railId && b.kind === 'channel')
+      if (room) {
+        this.selectGroup(railId)
+        await this.selectBuffer(room.id)
+        return true
+      }
+      if (waited % 1000 === 0) await this.refreshBuffers()
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+    return false
   }
 
   /** Waits for what an accepted invitation became, and opens it. Whether it did. */
@@ -3811,6 +3833,12 @@ export class ChatStore {
         this.set({ profile: answer })
         break
       }
+
+      // A Steam account's friends have invited it to a group, or an invitation has been answered. They are
+      // rooms to be offered, kept with the rest of them.
+      case 'steamGroupInvites':
+        this.set({ matrixInvites: { ...this.state.matrixInvites, [data.accountId as string]: (data.invites as MatrixInvite[]) || [] } })
+        break
 
       case 'matrixInvites':
         this.set({

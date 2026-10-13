@@ -33,6 +33,11 @@ describe('the invitations from every service', () => {
     expect(list[2].detail).toBe('wants to be your friend')
   })
 
+  it('include the groups a Steam friend has invited the account to, as rooms', () => {
+    const steam = listInvitations(sources({ rooms: { 'steam:me': [{ roomId: '78995476', name: 'Raiders', inviter: 'Gabe', avatarUrl: null, isDirect: false }] } }), accounts)
+    expect(steam.map((i) => [i.service, i.kind, i.name, i.detail])).toEqual([['steam', 'room', 'Raiders', 'Gabe invited you to a group chat']])
+  })
+
   it('are told apart by account and kind, so two with the same id are two', () => {
     const twin = listInvitations(sources({ rooms: { 'matrix:@me:x': [{ ...room, roomId: '7' }] }, friends: { 'steam:me': [{ id: '7', name: null }] } }), accounts)
     expect(new Set(twin.map((i) => i.key)).size).toBe(2)

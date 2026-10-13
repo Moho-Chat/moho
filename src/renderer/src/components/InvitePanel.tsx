@@ -47,7 +47,9 @@ export function InvitePanel(): JSX.Element | null {
             ? 'Accepting starts the check: you will be shown emoji to compare with the other side. Only accept one you started or expected. Declining cancels it.'
             : invitation.direct
             ? 'Accepting starts the conversation and opens it here. Declining leaves it, and the invitation goes away for good.'
-            : 'Accepting joins the room and starts syncing it. Declining leaves it, and the invitation goes away for good.'}
+            : invitation.service === 'steam'
+              ? 'Accepting joins the group chat and opens it here. Declining takes the invitation off this list; the message that carried it stays in your conversation with them.'
+              : 'Accepting joins the room and starts syncing it. Declining leaves it, and the invitation goes away for good.'}
       </p>
     </div>
   )

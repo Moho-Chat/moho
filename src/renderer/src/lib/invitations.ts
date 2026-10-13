@@ -60,7 +60,7 @@ export function listInvitations(sources: InvitationSources, accounts: Account[])
         id: invite.roomId,
         name: invite.name,
         avatarUrl: invite.avatarUrl,
-        detail: `${invite.inviter ? `${invite.inviter} invited you` : 'You have been invited'}${invite.isDirect ? ' to a direct message' : ' to this room'}`,
+        detail: `${invite.inviter ? `${invite.inviter} invited you` : 'You have been invited'}${invite.isDirect ? ' to a direct message' : account.service === 'steam' ? ' to a group chat' : ' to this room'}`,
         direct: invite.isDirect
       })
     }
