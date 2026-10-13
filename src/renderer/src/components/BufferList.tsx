@@ -814,7 +814,7 @@ export function BufferList(): JSX.Element {
       {makingFolder && activeGroup && (
         <NamePrompt
           title="New category"
-          detail="Made on Steam: every Steam client of this account shows it."
+          detail="Made on Steam, so it is on this account in every Steam client. Steam's own client only reads its folders when it signs in, so it shows a folder or a move made here after it is restarted."
           placeholder="Name"
           confirmLabel="Create"
           onCancel={() => setMakingFolder(false)}
