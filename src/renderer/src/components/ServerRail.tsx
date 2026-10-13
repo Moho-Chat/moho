@@ -12,6 +12,8 @@ import { useChat, useInvitations, usePref, useStore } from '../state/hooks'
 import { RAIL_TIP, hideRailTip, showRailTip, type RailTipDetail } from '../lib/railtip'
 import { bufferDisplayName, classes, nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
 import { SpaceRooms } from './SpaceRooms'
+import { SteamGroupSettings } from './SteamGroupSettings'
+import { steamGroupOfRail } from '../lib/steamchat'
 import {
   isFixedEntry,
   invitationsGroup,
@@ -75,6 +77,8 @@ interface TileProps {
   onLeave?: () => void
   /** Only a Matrix space has rooms to look through. */
   onBrowse?: () => void
+  /** Only a Steam chat group keeps settings of its own: rooms, roles, invite links. */
+  onSettings?: () => void
   onSelect: () => void
   onDragStart: () => void
   onDragOver: (merge: boolean) => void
@@ -284,6 +288,15 @@ function RailTile(props: TileProps): JSX.Element {
                   } as const
                 ]
               : []),
+            ...(props.onSettings
+              ? [
+                  {
+                    label: 'Group settings',
+                    icon: 'settings',
+                    onClick: props.onSettings
+                  } as const
+                ]
+              : []),
             // Only where there is something to leave. An account's own entry
             // stands for the connection itself, which is disconnected from
             // the accounts pane rather than left.
@@ -407,6 +420,8 @@ export function ServerRail(): JSX.Element | null {
   const [leaving, setLeaving] = useState<RailGroup | null>(null)
   /** The space whose contents are being looked through, if any. */
   const [browsing, setBrowsing] = useState<RailGroup | null>(null)
+  /** The Steam chat group whose settings are open, if any. */
+  const [configuring, setConfiguring] = useState<RailGroup | null>(null)
   /** Hovering the space below the column, which means "put it last". */
   const [tailTarget, setTailTarget] = useState(false)
 
@@ -559,6 +574,7 @@ export function ServerRail(): JSX.Element | null {
           g.kind === 'guild' || g.kind === 'space' ? () => setLeaving(g) : undefined
         }
         onBrowse={g.kind === 'space' ? () => setBrowsing(g) : undefined}
+        onSettings={steamGroupOfRail(g.id) ? () => setConfiguring(g) : undefined}
         unread={t?.unread ?? 0}
         highlight={t?.highlight ?? false}
         mentions={t?.mentions ?? 0}
@@ -732,6 +748,7 @@ export function ServerRail(): JSX.Element | null {
         />
       )}
 
+      {configuring && <SteamGroupSettings accountId={configuring.accountId} railId={configuring.id} onClose={() => setConfiguring(null)} />}
       {browsing && (
         <SpaceRooms
           accountId={browsing.accountId}

@@ -1,3 +1,4 @@
+import { steamRoomIds } from '../lib/steamchat'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
@@ -651,6 +652,17 @@ function MessageRowBody({
               setEditing(true)
             }
           },
+          {
+            label: 'Delete',
+            icon: 'delete',
+            danger: true,
+            onClick: () => void store.deleteMessage(bufferId, message.id)
+          }
+        ] as MenuEntry[])
+      : []),
+    // Your own words in a room of a Steam group can be taken back.
+    ...(service === 'steam' && message.isOwn && steamRoomIds(store.getSnapshot().buffers.find((b) => b.id === bufferId))
+      ? ([
           {
             label: 'Delete',
             icon: 'delete',

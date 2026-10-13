@@ -41,6 +41,7 @@ import { cameraKey, closeFeeds, feedFrame, streamKey as feedStreamKey } from '..
 import { DEFAULT_QUALITY, encodeSettings, sendCamera, shareScreen, type VideoQuality } from '../lib/discordscreen'
 import type { PopoutState } from '../../../shared/ipc'
 import { isNewerVersion } from '../lib/version'
+import { steamRoomIds, type SteamChatGroup } from '../lib/steamchat'
 
 /**
  * The whole client-side model, held in one immutable object that is replaced
@@ -5113,6 +5114,19 @@ export class ChatStore {
   private async refreshMatrixPermissions(bufferId: string): Promise<void> {
     if (this.state.matrixPermissions[bufferId]) return
     const account = this.accountFor(bufferId)
+    // A room of a Steam chat group says what the account's roles allow there.
+    if (account?.service === 'steam') {
+      const ids = steamRoomIds(this.state.buffers.find((b) => b.id === bufferId))
+      if (!ids) return
+      try {
+        const groups = await window.moho.rpc<SteamChatGroup[]>('steamChatGroups', { accountId: account.id, groupId: ids.group })
+        // Not kept when the group is not known yet: asked again at the next opening.
+        if (groups[0]) this.set({ matrixPermissions: { ...this.state.matrixPermissions, [bufferId]: { canRedactOthers: groups[0].mayModerate } } })
+      } catch {
+        /* advisory only */
+      }
+      return
+    }
     if (account?.service !== 'matrix') return
     try {
       const perms = await window.moho.rpc<RoomPermissions>('getMatrixRoomPermissions', {

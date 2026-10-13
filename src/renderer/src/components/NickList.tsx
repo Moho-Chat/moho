@@ -9,6 +9,7 @@ import { classes, hasDirectMessages, nickColor } from '../lib/util'
 import { KickPoints } from './KickPoints'
 import { ReasonPrompt } from './ReasonPrompt'
 import type { Member } from '../../../shared/wire'
+import { steamRoomIds, type SteamChatGroup } from '../lib/steamchat'
 
 /**
  * The member list for the active channel. Two grouping modes, both driven off
@@ -178,8 +179,28 @@ export function NickList(): JSX.Element {
       })
   }, [account?.service, account?.id, buffer?.id])
 
+  // Steam answers from the group: what the account's roles allow there.
+  const [steamPowers, setSteamPowers] = useState<Record<string, boolean>>({})
+  const steamRoom = account?.service === 'steam' ? steamRoomIds(buffer) : null
+  useEffect(() => {
+    setSteamPowers({})
+    if (!steamRoom || !account) return
+    let live = true
+    void window.moho
+      .rpc<SteamChatGroup[]>('steamChatGroups', { accountId: account.id, groupId: steamRoom.group })
+      .then((g) => live && g[0] && setSteamPowers({ canKick: g[0].mayModerate, canBan: g[0].mayModerate, canMute: g[0].mayModerate }))
+      .catch(() => {
+        /* advisory only: no answer means no moderation entries */
+      })
+    return () => {
+      live = false
+    }
+  }, [account?.id, steamRoom?.group])
+
   const perms =
-    account?.service === 'irc'
+    account?.service === 'steam'
+      ? steamPowers
+      : account?.service === 'irc'
       ? ircPermissions(members, account.currentNick)
       : account?.service === 'kick'
         ? kickPermissions(members, account.currentNick)
@@ -355,6 +376,24 @@ export function NickList(): JSX.Element {
                         action: kickAction,
                         minutes: 10
                       })
+                      .catch((e: Error) => store.toast('error', e.message))
+                    return
+                  }
+                  if (account.service === 'steam') {
+                    const group = steamRoomIds(buffer)?.group
+                    if (!group || !member.userId || (action !== 'kick' && action !== 'ban' && action !== 'mute')) return
+                    // Mute is ten minutes, as it is on Discord; kick and ban are
+                    // the group's own.
+                    void window.moho
+                      .rpc('steamChatGroupAction', {
+                        accountId: account.id,
+                        groupId: group,
+                        action,
+                        steamid: member.userId,
+                        seconds: action === 'mute' ? 600 : 0,
+                        banned: true
+                      })
+                      .then(() => store.toast('info', `${action === 'ban' ? 'Banned' : action === 'mute' ? 'Muted' : 'Removed'} ${member.nick}`))
                       .catch((e: Error) => store.toast('error', e.message))
                     return
                   }

@@ -10857,3 +10857,47 @@ html[data-reduce-motion] *::after {
   gap: var(--spacing-s);
   min-width: 0;
 }
+
+/* A Steam chat group's settings: tabs over a scrolling body, as a room's are. */
+.steam-group {
+  width: 560px;
+  max-width: calc(100vw - var(--spacing-xl));
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding: var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: var(--shadow-3);
+}
+
+.steam-group-body {
+  padding-top: var(--spacing-s);
+}
+
+.steam-group-row {
+  align-items: center;
+}
+
+.steam-group-person {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding-bottom: var(--spacing-xs);
+  border-bottom: 1px solid var(--outline-medium);
+}
+
+.steam-group-perms {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) 0 var(--spacing-xs) var(--spacing-m);
+}
+
+.steam-group-x {
+  margin-left: var(--spacing-xs);
+  color: inherit;
+  cursor: pointer;
+}

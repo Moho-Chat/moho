@@ -6,6 +6,7 @@ import { ContextMenu } from './ContextMenu'
 import { RoomSearch } from './RoomSearch'
 import { useChat, useStore } from '../state/hooks'
 import { classes, serviceLabel } from '../lib/util'
+import { steamGroupInviteCode } from '../lib/steamchat'
 import type { Account, DiscordFriend } from '../../../shared/wire'
 
 /**
@@ -454,9 +455,45 @@ function SteamJoin({ account }: { account: Account }): JSX.Element {
 
   const label = (p: SteamPerson): string => p.name || p.steamid
 
+  const [groupLink, setGroupLink] = useState('')
+  const [groupName, setGroupName] = useState('')
+  const joinGroup = (): void => {
+    const typed = groupLink.trim()
+    if (!typed) return
+    setBusy(true)
+    void window.moho
+      .rpc<{ groupId: string; name?: string }>('steamChatGroupAction', { accountId: account.id, action: 'join', invite: typed })
+      .then((r) => {
+        setGroupLink('')
+        store.toast('info', `Joined ${r.name || 'the group'}`)
+        store.selectGroup(r.groupId)
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+  const makeGroup = (): void => {
+    const typed = groupName.trim()
+    if (!typed) return
+    setBusy(true)
+    void window.moho
+      .rpc<{ groupId: string }>('steamChatGroupAction', { accountId: account.id, action: 'create', name: typed })
+      .then((r) => {
+        setGroupName('')
+        store.selectGroup(r.groupId)
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+
   const ask = (): void => {
     const typed = target.trim()
     if (!typed) return
+    // A link to a group, pasted where a friend goes, is joined as the group it is.
+    if (steamGroupInviteCode(typed)) {
+      setGroupLink(typed)
+      setTarget('')
+      return
+    }
     setBusy(true)
     void window.moho
       .rpc<{ steamid: string; name: string | null }>('steamAddFriend', { accountId: account.id, target: typed })
@@ -495,6 +532,41 @@ function SteamJoin({ account }: { account: Account }): JSX.Element {
         </button>
       </div>
       {!connected && <p className="small muted">Friends can be added once this account is connected.</p>}
+
+      <span className="small muted">Join a group</span>
+      <div className="field-row">
+        <input
+          className="text-field"
+          placeholder="An invite link, like s.team/chat/…"
+          spellCheck={false}
+          autoComplete="off"
+          value={groupLink}
+          disabled={!connected || busy}
+          onChange={(e) => setGroupLink(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') joinGroup()
+          }}
+        />
+        <button type="button" className="button" disabled={!connected || busy || !groupLink.trim()} onClick={joinGroup}>
+          Join
+        </button>
+      </div>
+      <span className="small muted">Start a group</span>
+      <div className="field-row">
+        <input
+          className="text-field"
+          placeholder="A name for it"
+          value={groupName}
+          disabled={!connected || busy}
+          onChange={(e) => setGroupName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') makeGroup()
+          }}
+        />
+        <button type="button" className="button" disabled={!connected || busy || !groupName.trim()} onClick={makeGroup}>
+          Create
+        </button>
+      </div>
 
       {requests.outgoing.length > 0 && (
         <>
