@@ -1052,6 +1052,8 @@ const MAX_MESSAGES_IDLE = 200
 /** As many mentions as the inbox will hold; the daemon's own limit matches. */
 const MAX_MENTIONS = 100
 const BACKLOG_PAGE = 200
+/** How long "nothing older" is believed before the top is allowed to ask again. */
+const HISTORY_END_MS = 10 * 60 * 1000
 const SEND_TIMEOUT_MS = 10000
 
 export class ChatStore {
@@ -4821,11 +4823,21 @@ export class ChatStore {
     }
   }
 
+  /**
+   * Where scrolling to the top found nothing older, by conversation: the message that was the oldest
+   * and when. The top is scrolled to over and over, and without this each time asked the service
+   * the same question and was told the same thing. Asked again once it has been a while, since the
+   * answer may only have been "nothing, just now".
+   */
+  private historyEnd = new Map<string, { id: string; at: number }>()
+
   async loadMoreHistory(bufferId: string): Promise<void> {
     if (this.state.loadingMore[bufferId]) return
     const list = this.state.messagesByBuffer[bufferId] || []
     const oldest = list.find((m) => !m.pending)
     if (!oldest) return
+    const end = this.historyEnd.get(bufferId)
+    if (end && end.id === oldest.id && Date.now() - end.at < HISTORY_END_MS) return
 
     this.set({ loadingMore: { ...this.state.loadingMore, [bufferId]: true } })
     try {
@@ -4834,11 +4846,15 @@ export class ChatStore {
         before: oldest.ts,
         limit: BACKLOG_PAGE
       })
-      if (rows.length) {
-        const current = this.state.messagesByBuffer[bufferId] || []
-        const seen = new Set(current.map((m) => m.id))
-        const older = rows.filter((r) => !seen.has(r.id)) as ChatMessage[]
+      const current = this.state.messagesByBuffer[bufferId] || []
+      const seen = new Set(current.map((m) => m.id))
+      const older = rows.filter((r) => !seen.has(r.id)) as ChatMessage[]
+      if (older.length) {
+        this.historyEnd.delete(bufferId)
         this.setMessages(bufferId, [...older, ...current])
+      } else {
+        // Nothing before what is here: not asked again at the next scroll.
+        this.historyEnd.set(bufferId, { id: oldest.id, at: Date.now() })
       }
     } catch (e) {
       this.toast('error', `Couldn't load older messages: ${(e as Error).message}`)
