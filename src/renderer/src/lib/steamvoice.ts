@@ -462,7 +462,12 @@ export class SteamVoice {
         const answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
         const s = this.session
-        await this.hooks.rpc({ op: 'acknowledge', accountId: this.accountId, version: d.version, serverIp: s?.serverIp, serverPort: s?.serverPort, clientIp: s?.clientIp, clientPort: s?.clientPort })
+        // The Steam client sends this and does not look at what comes back, and Steam may well refuse one that
+        // reaches it before the session has joined the chat. The offer is answered either way, so a refusal is
+        // not the end of the call.
+        await this.hooks
+          .rpc({ op: 'acknowledge', accountId: this.accountId, version: d.version, serverIp: s?.serverIp, serverPort: s?.serverPort, clientIp: s?.clientIp, clientPort: s?.clientPort })
+          .catch(() => {})
       }
     } catch (e) {
       this.fail(`Voice renegotiation failed: ${plainFailure((e as Error).message)}`)
