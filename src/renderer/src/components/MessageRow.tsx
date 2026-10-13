@@ -42,6 +42,7 @@ import {
   stripQuoteBlocks,
   discordEmojiUrl,
   steamPictureUrl,
+  steamTokenOf,
   type ChannelIndex
 } from '../lib/format'
 import {
@@ -1592,8 +1593,8 @@ function ReactionPill({
 function ReactionEmoji({ emoji }: { emoji: string }): JSX.Element {
   const media = useMediaUrl()
   // Steam's, held as a token naming the emoticon or sticker.
-  const steam = emoji.match(/^\[steam:(emote|sticker):([A-Za-z0-9_-]{1,64})\]$/)
-  if (steam) return <img className="reaction-emoji" src={steamPictureUrl(steam[1] as 'emote' | 'sticker', steam[2])} alt={steam[2]} />
+  const steam = steamTokenOf(emoji)
+  if (steam) return <img className="reaction-emoji" src={steamPictureUrl(steam.kind, steam.name)} alt={steam.name} />
   const custom = emoji.match(/^<?a?:?([A-Za-z0-9_~]{2,32}):(\d+)>?$/)
   if (!custom) return <span>{emoji}</span>
   return <img className="reaction-emoji" src={media(discordEmojiUrl(custom[2]))} alt={custom[1]} />

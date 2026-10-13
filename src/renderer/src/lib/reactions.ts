@@ -2,6 +2,8 @@
  * What to call a reaction, and who to say gave it.
  */
 
+import { steamTokenOf } from './format'
+
 /**
  * The name to show for a reaction's emoji. A custom one carries its own, in
  * the token it is stored as (`<:name:id>`, or `<a:name:id>` when it moves); a
@@ -10,8 +12,8 @@
 export function reactionLabel(emoji: string, unicodeNames: ReadonlyMap<string, string> = new Map()): string {
   const custom = emoji.match(/^<a?:([A-Za-z0-9_~]{2,32}):\d+>$/)
   if (custom) return `:${custom[1]}:`
-  const steam = emoji.match(/^\[steam:(?:emote|sticker):([A-Za-z0-9_-]{1,64})\]$/)
-  if (steam) return `:${steam[1]}:`
+  const steam = steamTokenOf(emoji)
+  if (steam) return `:${steam.name}:`
   const name = unicodeNames.get(emoji)
   return name ? `:${name}:` : emoji
 }

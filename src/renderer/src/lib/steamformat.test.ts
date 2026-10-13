@@ -139,3 +139,21 @@ describe('a picture sent through Steam', () => {
     expect(markSpoilered(extractMedia(open), open).map((m) => m.spoiler)).toEqual([undefined])
   })
 })
+
+describe('a Steam sticker is named by words', () => {
+  it('draws one whose name has spaces in it, larger, from an address that takes them', () => {
+    const html = formatMessage('[steam:sticker:Nyan GLaDOS]')
+    expect(html).toContain('economy/sticker/Nyan%20GLaDOS')
+    expect(html).toContain('steam-sticker')
+    expect(html).not.toContain('[steam:')
+    expect(emojiPreview('[steam:sticker:Keyboard Headcrab]')?.label).toBe(':Keyboard Headcrab:')
+  })
+  it('keeps an emoticon one word', () => {
+    expect(emojiPreview('[steam:emote:a b]')).toBeNull()
+    expect(formatMessage('[steam:emote:a b]')).not.toContain('<img')
+  })
+  it('is held as a reaction under that name', () => {
+    expect(reactionLabel('[steam:sticker:Nyan GLaDOS]')).toBe(':Nyan GLaDOS:')
+  })
+})
+

@@ -95,6 +95,17 @@ export function steamPictureUrl(kind: 'emote' | 'sticker', name: string): string
   return resolveMediaUrl(`${base}${kind === 'emote' ? 'emoticon' : 'sticker'}/${encodeURIComponent(name)}`)
 }
 
+/**
+ * What a Steam token names. An emoticon is one word; a sticker is Steam's own
+ * name for it, which has spaces in it - `[steam:sticker:Nyan GLaDOS]`.
+ */
+export function steamTokenOf(text: string): { kind: 'emote' | 'sticker'; name: string } | null {
+  const m = text.match(/^\[steam:(emote|sticker):([^\]\r\n"]{1,64})\]$/)
+  if (!m) return null
+  if (m[1] === 'emote' && !/^[A-Za-z0-9_-]+$/.test(m[2])) return null
+  return { kind: m[1] as 'emote' | 'sticker', name: m[2] }
+}
+
 /** What something picked out of the emoji list looks like, when it isn't text. */
 export interface EmojiPreview {
   /** Possibly a local path - run it through resolveMediaUrl before use. */
@@ -124,8 +135,8 @@ export function emojiPreview(text: string, smilies: SmilieEntry[] = []): EmojiPr
   if (custom) return { src: discordEmojiUrl(custom[2]), label: `:${custom[1]}:` }
   const kick = text.match(/^\[emote:(\d+):([^\]]{0,64})\]$/)
   if (kick) return { src: kickEmoteUrl(kick[1]), label: `:${kick[2]}:` }
-  const steam = text.match(/^\[steam:(emote|sticker):([A-Za-z0-9_-]{1,64})\]$/)
-  if (steam) return { src: steamPictureUrl(steam[1] as 'emote' | 'sticker', steam[2]), label: `:${steam[2]}:` }
+  const steam = steamTokenOf(text)
+  if (steam) return { src: steamPictureUrl(steam.kind, steam.name), label: `:${steam.name}:` }
   const smilie = smilies.find((s) => s.aliases?.includes(text))
   if (smilie?.url) return { src: smilie.url, label: smilie.label }
   return null
@@ -519,9 +530,12 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   // the two above the picture is public and named by the token, so one that
   // somebody else sent draws whether or not this account has it. A sticker is
   // drawn larger, as Steam draws it.
-  out = out.replace(/\[steam:(emote|sticker):([A-Za-z0-9_-]{1,64})\]/g, (_m, kind: string, name: string) =>
-    stow(`<img src="${steamPictureUrl(kind as 'emote' | 'sticker', name)}" class="${kind === 'sticker' ? 'custom-emoji steam-sticker' : 'custom-emoji'}" alt=":${name}:">`)
-  )
+  out = out.replace(/\[steam:(emote|sticker):([^\]\r\n]{1,80})\]/g, (m, kind: string, shown: string) => {
+    // Escaped by now, and a name that was written with an ampersand in it is whole again.
+    const name = shown.replace(/&amp;/g, '&')
+    if (!steamTokenOf(`[steam:${kind}:${name}]`)) return m
+    return stow(`<img src="${steamPictureUrl(kind as 'emote' | 'sticker', name)}" class="${kind === 'sticker' ? 'custom-emoji steam-sticker' : 'custom-emoji'}" alt=":${shown}:">`)
+  })
 
   // Discord channel links. What arrives is `<#1393001234568164748>` and
   // nothing else - no name anywhere in the payload - so this is the only
