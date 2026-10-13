@@ -25,7 +25,7 @@ import {
 } from '../lib/mentions'
 import { STAGE_FILES, type StagedFile } from '../lib/staging'
 import { withTone } from '../lib/skintone'
-import { steamFileRefusal } from '../lib/steamfiles'
+import { STEAM_FILE_TYPES, steamFileRefusal } from '../lib/steamfiles'
 import { usePref } from '../state/hooks'
 import { rankShortcodes, shortcodeQuery, unicodeTargets, type ShortcodeTarget } from '../lib/shortcodes'
 
@@ -471,7 +471,10 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
     inputRef.current?.focus()
   }
 
-  const pickAndStage = (): void => void window.moho.pickFile().then((p) => p && stage(p))
+  // Steam takes a short list of kinds of file, so the dialog offers those and
+  // nothing else.
+  const pickAndStage = (): void =>
+    void window.moho.pickFile(service === 'steam' ? STEAM_FILE_TYPES : undefined).then((p) => p && stage(p))
   /**
    * What the "+" holds. A file everywhere it can go; and on Matrix the things
    * that are a message of their own kind rather than text - a place, a poll.

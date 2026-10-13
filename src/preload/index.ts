@@ -156,7 +156,7 @@ const api = {
    */
   pathForFile: (file: File): string => webUtils.getPathForFile(file),
 
-  pickFile: (): Promise<string | null> => ipcRenderer.invoke(IPC.pickFile),
+  pickFile: (extensions?: string[]): Promise<string | null> => ipcRenderer.invoke(IPC.pickFile, extensions),
   /**
    * Answers the main process when it needs a screen or window chosen.
    *

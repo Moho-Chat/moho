@@ -902,10 +902,19 @@ function wireIpc(): void {
     return res.canceled || !res.filePath ? null : res.filePath
   })
 
-  ipcMain.handle(IPC.pickFile, async (e) => {
+  ipcMain.handle(IPC.pickFile, async (e, extensions?: string[]) => {
     const parent = callerWindow(e) ?? mainWindow
     if (!parent) return null
-    const res = await dialog.showOpenDialog(parent, { properties: ['openFile'] })
+    // Where a service takes only some kinds of file, the dialog shows only
+    // those and has no "all files" to widen it: a file that would be refused
+    // is not offered. Extensions only, as the dialog wants them - no dots.
+    const taken = Array.isArray(extensions)
+      ? extensions.filter((x): x is string => typeof x === 'string' && /^[A-Za-z0-9]{1,8}$/.test(x))
+      : []
+    const res = await dialog.showOpenDialog(parent, {
+      properties: ['openFile'],
+      ...(taken.length ? { filters: [{ name: 'Pictures and videos', extensions: taken }] } : {})
+    })
     if (res.canceled || !res.filePaths[0]) return null
     // The renderer draws a thumbnail of what was staged, and that goes back
     // through the guarded media scheme like every other local file. Where
