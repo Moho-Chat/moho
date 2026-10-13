@@ -75,7 +75,7 @@ try {
     await sleep(3000)
   }
   if (!group) throw new Error('the group is not in the window')
-  await sleep(1500)
+  await sleep(4000)
   const click = (text) => ev(`(() => { const e = [...document.querySelectorAll('button, [role=menuitem]')].find((b) => b.textContent.trim().endsWith(${JSON.stringify(text)})); if (!e) return false; e.click(); return true })()`)
   if (way === 'room') {
     // A room's own menu: what it offers is leaving the group.
