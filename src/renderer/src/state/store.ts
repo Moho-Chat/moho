@@ -2638,21 +2638,37 @@ export class ChatStore {
 
   /**
    * Moves a friend's conversation to another of the account's Steam folders, which is a change to the
-   * account on Steam: out of the folder it is drawn under, and into the one it was dropped on. What
-   * comes back says where it now is, so nothing is moved here until Steam has agreed.
+   * account on Steam: out of the folder they are filed under, and into the one chosen - or out of
+   * them all when none is. What comes back says where they now are, so nothing is moved here until
+   * Steam has agreed.
    */
-  moveSteamFriend(bufferId: string, heading: string): void {
+  moveSteamFriend(bufferId: string, toGroup: number | null): void {
     const buffer = this.state.buffers.find((b) => b.id === bufferId)
     if (!buffer || !buffer.remoteId) return
-    const groups = this.state.steamGroups[buffer.accountId] ?? []
-    const shown = (g: SteamGroup): string => g.name.replace(/^Steam - /, '').trim()
-    const to = groups.find((g) => shown(g) === heading)
-    if (!to) return
-    const from = groups.find((g) => g.id !== to.id && shown(g) === buffer.category && g.members.includes(buffer.remoteId!))
+    const friend = buffer.remoteId
+    const groups = [...(this.state.steamGroups[buffer.accountId] ?? [])].sort((a, b) => a.id - b.id)
+    // The one they are drawn under, which is the lowest-numbered of those they are in.
+    const from = groups.find((g) => g.members.includes(friend))
+    const to = toGroup === null ? undefined : groups.find((g) => g.id === toGroup)
+    if (toGroup !== null && !to) return
     const calls: GroupCall[] = []
-    if (from) calls.push({ accountId: buffer.accountId, action: 'remove', groupId: from.id, steamid: buffer.remoteId })
-    if (!to.members.includes(buffer.remoteId)) calls.push({ accountId: buffer.accountId, action: 'add', groupId: to.id, steamid: buffer.remoteId })
+    if (from && from.id !== to?.id) calls.push({ accountId: buffer.accountId, action: 'remove', groupId: from.id, steamid: friend })
+    if (to && !to.members.includes(friend)) calls.push({ accountId: buffer.accountId, action: 'add', groupId: to.id, steamid: friend })
     if (calls.length > 0) this.runSteamGroupCalls(calls)
+  }
+
+  /** Makes a folder on a Steam account, which Steam then tells every client of. */
+  createSteamFolder(accountId: string, name: string): void {
+    this.runSteamGroupCalls([{ accountId, action: 'create', groupId: 0, name }])
+  }
+
+  renameSteamFolder(accountId: string, groupId: number, name: string): void {
+    this.runSteamGroupCalls([{ accountId, action: 'rename', groupId, name }])
+  }
+
+  /** Deletes a folder: the friends in it stay friends, filed under nothing. */
+  deleteSteamFolder(accountId: string, groupId: number): void {
+    this.runSteamGroupCalls([{ accountId, action: 'delete', groupId }])
   }
 
   /** Makes the changes to a Steam account's groups that moho's own headings asked for. */

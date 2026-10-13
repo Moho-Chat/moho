@@ -11,6 +11,8 @@ import { VoicePanel } from './VoicePanel'
 import { presenceClass, presenceLabel } from '../lib/presence'
 import { activityLabel, dmActivity } from '../lib/activity'
 import { ActivityLine } from './ActivityLine'
+import { steamCategoryId, parseSteamCategory } from '../lib/steamgroups'
+import { NamePrompt } from './NamePrompt'
 import { useChat, useComfy, useIdSetPref, useInvitations, useMapPref, usePref, useStore } from '../state/hooks'
 import {
   compareInBand,
@@ -242,26 +244,58 @@ export function BufferList(): JSX.Element {
    * since that is the order the server arranged them in and the reason it
    * supplies one. The gathered pages keep the order they were sorted into.
    */
+  /**
+   * The headings this page draws under its own, and where each conversation is filed.
+   *
+   * A Steam account's own page has Steam's folders for the account, as its own client lists them
+   * (without the "Steam - " some carry), and each friend is under the one Steam has them in:
+   * what Steam says wins over anything filed here, and a change made here is made on Steam. Every
+   * other page has the headings somebody made.
+   */
+  const [naming, setNaming] = useState<{ id: string; name: string } | null>(null)
+  const [makingFolder, setMakingFolder] = useState(false)
+  const steamGroups = useChat((s) => s.steamGroups)
+  const steamFolders = useMemo<CustomCategory[]>(
+    () =>
+      steamPage && activeGroup
+        ? (steamGroups[activeGroup.accountId] ?? [])
+            .map((g) => ({ id: steamCategoryId(activeGroup.accountId, g.id), name: g.name.replace(/^Steam - /, '').trim() }))
+            .sort((a, b) => a.name.localeCompare(b.name))
+        : [],
+    [steamPage, activeGroup, steamGroups]
+  )
+  const myCategories = steamPage ? steamFolders : activeGroup ? (customCats[activeGroup.id] ?? []) : []
+  const viewAssignment = useMemo(() => {
+    if (!steamPage || !activeGroup) return assignment
+    const folders = [...(steamGroups[activeGroup.accountId] ?? [])].sort((a, b) => a.id - b.id)
+    const next = { ...assignment }
+    for (const b of groupBuffers) {
+      if (b.kind !== 'dm' || !b.remoteId) continue
+      const home = folders.find((g) => g.members.includes(b.remoteId!))
+      if (home) next[b.id] = steamCategoryId(activeGroup.accountId, home.id)
+      else delete next[b.id]
+    }
+    return next
+  }, [steamPage, activeGroup, steamGroups, assignment, groupBuffers])
+  /** Files a conversation under a heading: on Steam for a Steam page, in the preferences for the rest. */
+  const fileBuffer = (bufferId: string, categoryId: string): void => {
+    if (steamPage) store.moveSteamFriend(bufferId, parseSteamCategory(categoryId)?.groupId ?? null)
+    else setAssignment(bufferId, categoryId)
+  }
+
   const grouped = useMemo(() => {
     if (!activeGroup) return null
-    const mine = customCats[activeGroup.id] ?? []
-    const list = sections(groupBuffers, mine, assignment, categoryOrder[activeGroup.id] ?? [])
+    const list = sections(groupBuffers, myCategories, viewAssignment, categoryOrder[activeGroup.id] ?? [])
     if (!isPinnedPage && !isDmPage) {
       for (const s of list) {
         s.buffers.sort((a, b) => (a.position || 0) - (b.position || 0))
       }
     }
-    // Steam's folders by name, as its own client lists them, rather than by whoever spoke last.
-    if (steamPage && (categoryOrder[activeGroup.id] ?? []).length === 0) {
-      const folders = list.filter((s) => s.key.startsWith('svc:')).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
-      let next = 0
-      for (let i = 0; i < list.length; i++) if (list[i].key.startsWith('svc:')) list[i] = folders[next++]
-    }
     // A heading with nothing under it is still drawn when it is the user's -
     // they just made it, and a heading that vanishes until something is put
     // in it cannot have anything put in it.
     return list.filter((s) => s.custom || s.buffers.length > 0)
-  }, [activeGroup, isPinnedPage, isDmPage, steamPage, groupBuffers, customCats, assignment, categoryOrder])
+  }, [activeGroup, isPinnedPage, isDmPage, steamPage, groupBuffers, myCategories, viewAssignment, categoryOrder])
 
   // The menu still toggles a buffer's *own* flag independently of a muted
   // rail entry above it, the same way muting a channel inside an
@@ -274,11 +308,9 @@ export function BufferList(): JSX.Element {
   const isEffectivelyMuted = (buffer: BufferEntry): boolean =>
     isMutedBuffer(buffer, muted, mutedGroups)
 
-  const [naming, setNaming] = useState<{ id: string; name: string } | null>(null)
   const { menu: groupMenu, open: openGroupMenuAt, close: closeGroupMenu } = useContextMenu()
   const [catMenu, setCatMenu] = useState<{ x: number; y: number; section: CategorySection } | null>(null)
 
-  const myCategories = activeGroup ? (customCats[activeGroup.id] ?? []) : []
   const writeCategories = (next: CustomCategory[]): void => {
     if (activeGroup) setCustomCats(activeGroup.id, next)
   }
@@ -371,7 +403,7 @@ export function BufferList(): JSX.Element {
       status={dmStatus(b, presence, buffers)}
       onCall={() => void store.callBuffer(b.id)}
       onHangUp={() => void store.leaveVoice(b.accountId)}
-      onFile={(categoryId) => setAssignment(b.id, categoryId)}
+      onFile={(categoryId) => fileBuffer(b.id, categoryId)}
       poppedOut={popouts.open.includes(b.id)}
       onPopOut={() => store.popOut(b.id)}
       onDock={() => store.dock(b.id)}
@@ -380,7 +412,7 @@ export function BufferList(): JSX.Element {
       // Only where there is somewhere to drop it. A list with no headings of
       // your own has nothing a channel could be filed under, and a drag that
       // can only ever be refused is worse than one the row does not offer.
-      draggable={myCategories.length > 0 || steamPage}
+      draggable={myCategories.length > 0}
       lifted={dragging?.kind === 'buffer' && dragging.id === b.id}
       onDragStart={() => beginDrag('buffer', b.id)}
       onDragEnd={endDrag}
@@ -422,8 +454,6 @@ export function BufferList(): JSX.Element {
   const accepts = (section: CategorySection): boolean => {
     const held = draggedRef.current
     if (!held) return false
-    // On a Steam account's page its folders take a friend: the move is made on Steam.
-    if (steamPage && held.kind !== 'category' && section.key.startsWith('svc:')) return true
     return held.kind === 'category' ? section.key !== held.id : section.custom
   }
 
@@ -436,12 +466,8 @@ export function BufferList(): JSX.Element {
       setCategoryOrder(activeGroup.id, reorderCategories(grouped, held.id, section.key))
       return
     }
-    if (steamPage && section.key.startsWith('svc:') && section.name) {
-      store.moveSteamFriend(held.id, section.name)
-      return
-    }
     if (!section.custom) return
-    setAssignment(held.id, section.key)
+    fileBuffer(held.id, section.key)
   }
 
   const hideBuffer = (id: string): void => {
@@ -584,7 +610,10 @@ export function BufferList(): JSX.Element {
                           onChange={(name) => setNaming({ id: naming.id, name })}
                           onCommit={() => {
                             const name = naming.name.trim()
-                            if (name) {
+                            if (name && steamPage && activeGroup) {
+                              const group = parseSteamCategory(naming.id)?.groupId
+                              if (group !== undefined) store.renameSteamFolder(activeGroup.accountId, group, name)
+                            } else if (name) {
                               writeCategories(
                                 myCategories.map((c) => (c.id === naming.id ? { ...c, name } : c))
                               )
@@ -710,6 +739,11 @@ export function BufferList(): JSX.Element {
               label: 'New category',
               icon: 'create_new_folder',
               onClick: () => {
+                // On Steam it is made on Steam, once it has a name.
+                if (steamPage) {
+                  setMakingFolder(true)
+                  return
+                }
                 const id = `cat-${Date.now().toString(36)}`
                 // At the top, not the end. The command was given from the
                 // group's own title at the top of this list, and a heading
@@ -758,12 +792,30 @@ export function BufferList(): JSX.Element {
                     danger: true,
                     // The channels stay; only the heading goes, and they fall back
                     // to wherever the service filed them.
-                    onClick: () => writeCategories(myCategories.filter((c) => c.id !== catMenu.section.key))
+                    onClick: () => {
+                      const group = parseSteamCategory(catMenu.section.key)
+                      if (steamPage && activeGroup && group) store.deleteSteamFolder(activeGroup.accountId, group.groupId)
+                      else writeCategories(myCategories.filter((c) => c.id !== catMenu.section.key))
+                    }
                   }
                 ] as MenuEntry[])
               : [])
           ]}
           onClose={() => setCatMenu(null)}
+        />
+      )}
+
+      {makingFolder && activeGroup && (
+        <NamePrompt
+          title="New category"
+          detail="Made on Steam: every Steam client of this account shows it."
+          placeholder="Name"
+          confirmLabel="Create"
+          onCancel={() => setMakingFolder(false)}
+          onConfirm={(name) => {
+            setMakingFolder(false)
+            store.createSteamFolder(activeGroup.accountId, name)
+          }}
         />
       )}
 

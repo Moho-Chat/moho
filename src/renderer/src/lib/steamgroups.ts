@@ -59,7 +59,7 @@ export interface SteamSyncState {
 /** A change to make on Steam. */
 export interface GroupCall {
   accountId: string
-  action: 'add' | 'remove' | 'rename' | 'delete'
+  action: 'add' | 'remove' | 'rename' | 'delete' | 'create'
   groupId: number
   steamid?: string
   name?: string

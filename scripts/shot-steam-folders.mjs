@@ -58,7 +58,7 @@ try {
   await sleep(500)
   await shot('steam-folders.png')
   console.log('classes:', JSON.stringify(await page.evaluate(`[...document.querySelectorAll('.bufferlist [class*=category]')].filter((e) => e.textContent.trim() === 'expand_morePL').map((e) => e.className + ' ' + e.tagName + ' ' + e.draggable)`)))
-  await page.evaluate(`(() => { const st = window.__mohoShots.store; const orig = st.moveSteamFriend.bind(st); st.moveSteamFriend = (...a) => { window.__moved = a; return orig(...a) }; const run = st.runSteamGroupCalls.bind(st); st.runSteamGroupCalls = (c) => { window.__ran = c; return run(c) } })()`)
+  await page.evaluate(`(() => { const st = window.__mohoShots.store; window.__ranAll = []; const orig = st.moveSteamFriend.bind(st); st.moveSteamFriend = (...a) => { window.__moved = a; return orig(...a) }; const run = st.runSteamGroupCalls.bind(st); st.runSteamGroupCalls = (c) => { window.__ran = c; window.__ranAll.push(...c); return run(c) } })()`)
   // Drag Shaod (Goons) onto the PL heading.
   const moved = await page.evaluate(`(async () => {
     const row = [...document.querySelectorAll('.bufferlist [draggable=true]')].find((e) => e.textContent.trim().endsWith('Shaod') && e.textContent.trim().length < 12)
@@ -80,6 +80,17 @@ try {
   console.log('state:', JSON.stringify(await page.evaluate(`(() => { const st = window.__mohoShots.state(); const b = st.buffers.find((x) => x.id === 'steam:me|Shaod'); return { b: b && [b.remoteId, b.category, b.accountId], g: st.steamGroups } })()`)))
   console.log('moved:', JSON.stringify(await page.evaluate(`[window.__moved, window.__ran]`)))
   console.log('calls:', JSON.stringify(await page.evaluate(`window.__calls`)))
+  // A new folder: named, and made on Steam.
+  await page.evaluate(`(() => { const t = [...document.querySelectorAll('.bufferlist button')].find((b) => b.textContent.includes('Steam - me')); t && t.click() })()`)
+  await sleep(300)
+  await page.evaluate(`(() => { const i = [...document.querySelectorAll('.context-menu button, .context-menu [role=menuitem]')].find((e) => e.textContent.includes('New category')); i && i.click() })()`)
+  await sleep(400)
+  await shot('steam-folders-naming.png')
+  await page.evaluate(`(() => { const inp = document.querySelector('.reason-prompt-box'); if (!inp) return; const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(inp, 'Raiders'); inp.dispatchEvent(new Event('input', { bubbles: true })) })()`)
+  await sleep(300)
+  await page.evaluate(`(() => { const inp = document.querySelector('.reason-prompt-box'); inp && inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })) })()`)
+  await sleep(500)
+  console.log('all calls:', JSON.stringify(await page.evaluate(`window.__ranAll`)))
 } finally {
   await stop()
   irc.close()
