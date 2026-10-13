@@ -6,7 +6,8 @@ const hooks = (rpc: (p: Record<string, unknown>) => Promise<unknown> = async () 
   onChange: () => {},
   toast: () => {},
   muted: () => ({ micMuted: false, deafened: false }),
-  nameOf: (_a: string, s: string) => s
+  nameOf: (_a: string, s: string) => s,
+  mayRing: () => true
 })
 
 describe('Steam voice', () => {
@@ -35,6 +36,15 @@ describe('Steam voice', () => {
     expect(v.rings.map((r) => [r.steamid, r.voiceChatId])).toEqual([['7657', '11'], ['7656', '12']])
     v.handle({ accountId: 'steam:me', kind: 'ended', data: { voiceChatId: '11' } })
     expect(v.rings.map((r) => r.steamid)).toEqual(['7656'])
+  })
+
+  it('does not ring for somebody who may not ring: not a friend, or while the account is busy', () => {
+    const v = new SteamVoice({ ...hooks(), mayRing: (_a, s) => s === '7656' })
+    v.handle({ accountId: 'steam:me', kind: 'callRequested', data: { steamid: '7657', voiceChatId: '11' } })
+    expect(v.rings).toEqual([])
+    v.handle({ accountId: 'steam:me', kind: 'callRequested', data: { steamid: '7656', voiceChatId: '12' } })
+    expect(v.rings.map((r) => r.steamid)).toEqual(['7656'])
+    expect(v.ringFrom('steam:me', '7656')?.voiceChatId).toBe('12')
   })
 
   it('declining a call says no to Steam and takes the ring away', async () => {

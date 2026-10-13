@@ -46,6 +46,11 @@ export interface SteamChatGroup {
   mayManage: boolean
   mayInvite: boolean
   mayChangeRoles: boolean
+  /** Giving roles to people and taking them away: a different permission, and not in a community group's chat. */
+  mayAssignRoles: boolean
+  mayMentionAll: boolean
+  defaultRole: string
+  clan: boolean
   muted: boolean
   notify: number
   permissions: { key: string; label: string }[]
@@ -56,6 +61,13 @@ export interface SteamChatGroup {
 }
 
 /** Notification levels as Steam numbers them, in the order the menu lists them. */
+/** How long a removal keeps somebody out, as the Steam client offers it. */
+export const STEAM_KICK_LENGTHS: { label: string; seconds: number }[] = [
+  { label: 'An hour', seconds: 3600 },
+  { label: 'A day', seconds: 86400 },
+  { label: 'A week', seconds: 604800 }
+]
+
 export const STEAM_NOTIFY_LEVELS: { value: number; label: string }[] = [
   { value: 4, label: 'All messages' },
   { value: 3, label: '@everyone and me' },

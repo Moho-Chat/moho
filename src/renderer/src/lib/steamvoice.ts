@@ -55,6 +55,8 @@ export interface SteamVoiceHooks {
   muted: () => { micMuted: boolean; deafened: boolean }
   /** Who a Steam id is, for the name on a ring. */
   nameOf: (accountId: string, steamid: string) => string
+  /** Whether a call from this person may ring: a friend, while the account is not invisible or busy. */
+  mayRing: (accountId: string, steamid: string) => boolean
 }
 
 /** How long a call may take to connect before it is given up on. */
@@ -372,6 +374,8 @@ export class SteamVoice {
   }
 
   private ring(accountId: string, steamid: string, voiceChatId: string): void {
+    // The Steam client ignores a call from somebody who is not a friend, or while it is invisible or busy.
+    if (!this.hooks.mayRing(accountId, steamid)) return
     // Already talking to them: it is them calling back to be let in again.
     if (this.target?.kind === 'friend' && this.target.steamid === steamid && this.active) {
       void this.hooks.rpc({ op: 'answerCall', accountId, steamid, voiceChatId, accept: true }).catch(() => {})
@@ -379,6 +383,11 @@ export class SteamVoice {
     }
     this.rings = [...this.rings.filter((r) => r.steamid !== steamid), { accountId, steamid, voiceChatId }]
     this.hooks.onChange()
+  }
+
+  /** The ring from this person, if there is one: somebody calling who is then called back is answered instead. */
+  ringFrom(accountId: string, steamid: string): SteamRing | undefined {
+    return this.rings.find((r) => r.accountId === accountId && r.steamid === steamid)
   }
 
   /** Says yes to a call, and joins it. */

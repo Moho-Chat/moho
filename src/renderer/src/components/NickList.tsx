@@ -390,7 +390,7 @@ export function NickList(): JSX.Element {
                         groupId: group,
                         action,
                         steamid: member.userId,
-                        seconds: action === 'mute' ? 600 : 0,
+                        seconds: action === 'mute' ? 600 : 3600,
                         banned: true
                       })
                       .then(() => store.toast('info', `${action === 'ban' ? 'Banned' : action === 'mute' ? 'Muted' : 'Removed'} ${member.nick}`))

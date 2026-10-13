@@ -4,7 +4,7 @@ import { Icon } from './Icon'
 import { Switch, SwitchRow } from './Switch'
 import { ConfirmButton } from './ConfirmButton'
 import { useStore } from '../state/hooks'
-import { STEAM_NOTIFY_LEVELS, steamGroupOfRail, type SteamChatGroup } from '../lib/steamchat'
+import { STEAM_KICK_LENGTHS, STEAM_NOTIFY_LEVELS, steamGroupOfRail, type SteamChatGroup } from '../lib/steamchat'
 
 /**
  * Asks the daemon; or, in a window the screenshot harness started, takes the
@@ -184,6 +184,8 @@ function General({ group, busy, act, onLeft }: { group: SteamChatGroup; busy: bo
             </button>
           ))}
         </div>
+        {/* Separate from the level, as Steam keeps them: being told of everything shows the marker again. */}
+        {group.notify !== 4 && <SwitchRow title="Show unread messages" description="The marker on the group when something was written in it" checked={!group.muted} disabled={busy} onChange={(show) => void act('notify', { muted: !show })} />}
         <p className="small muted">Kept by Steam for your account, so it is the same on your other devices.</p>
       </div>
       <div className="field">
@@ -266,6 +268,7 @@ function Rooms({ group, busy, act }: { group: SteamChatGroup; busy: boolean; act
 function People({ group, busy, act }: { group: SteamChatGroup; busy: boolean; act: Act }): JSX.Element {
   const store = useStore()
   const [bans, setBans] = useState<{ steamid: string; name: string }[] | null>(null)
+  const [kickFor, setKickFor] = useState(3600)
   const roleName = (id: string): string => group.roles.find((r) => r.id === id)?.name ?? id
   const loadBans = (): void => {
     void act<{ bans: { steamid: string; name: string }[] }>('bans').then((r) => r && setBans(r.bans))
@@ -286,7 +289,14 @@ function People({ group, busy, act }: { group: SteamChatGroup; busy: boolean; ac
                   <button type="button" className="button subtle small" disabled={busy} onClick={() => void act('mute', { steamid: m.steamid, seconds: 600 }).then(() => store.toast('info', `Muted ${m.name} for 10 minutes`))}>
                     Mute 10 min
                   </button>
-                  <ConfirmButton label="Remove" question={`Remove ${m.name}?`} confirmLabel="Remove" danger onConfirm={() => void act('kick', { steamid: m.steamid })} />
+                  <select className="text-field small" value={kickFor} aria-label="How long a removal lasts" onChange={(e) => setKickFor(Number(e.target.value))}>
+                    {STEAM_KICK_LENGTHS.map((l) => (
+                      <option key={l.seconds} value={l.seconds}>
+                        {l.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ConfirmButton label="Remove" question={`Remove ${m.name} for ${STEAM_KICK_LENGTHS.find((l) => l.seconds === kickFor)?.label.toLowerCase()}?`} confirmLabel="Remove" danger onConfirm={() => void act('kick', { steamid: m.steamid, seconds: kickFor })} />
                   <ConfirmButton label="Ban" question={`Ban ${m.name}?`} confirmLabel="Ban" danger onConfirm={() => void act('ban', { steamid: m.steamid, banned: true }).then(() => store.toast('info', `Banned ${m.name}`))} />
                 </>
               )}
@@ -296,7 +306,7 @@ function People({ group, busy, act }: { group: SteamChatGroup; busy: boolean; ac
                 {m.roles.map((r) => (
                   <span key={r} className="profile-role small">
                     {roleName(r)}
-                    {group.mayChangeRoles && !own && (
+                    {group.mayAssignRoles && !own && r !== group.defaultRole && (
                       <button type="button" className="steam-group-x" aria-label={`Take ${roleName(r)} from ${m.name}`} onClick={() => void act('takeRole', { steamid: m.steamid, roleId: r })}>
                         ×
                       </button>
@@ -305,7 +315,7 @@ function People({ group, busy, act }: { group: SteamChatGroup; busy: boolean; ac
                 ))}
               </div>
             )}
-            {group.mayChangeRoles && group.roles.some((r) => !m.roles.includes(r.id)) && (
+            {group.mayAssignRoles && group.roles.some((r) => r.id !== group.defaultRole && !m.roles.includes(r.id)) && (
               <select
                 className="text-field small"
                 value=""
@@ -314,7 +324,7 @@ function People({ group, busy, act }: { group: SteamChatGroup; busy: boolean; ac
               >
                 <option value="">Give a role…</option>
                 {group.roles
-                  .filter((r) => !m.roles.includes(r.id))
+                  .filter((r) => r.id !== group.defaultRole && !m.roles.includes(r.id))
                   .map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.name}
@@ -378,7 +388,7 @@ function Roles({ group, busy, act }: { group: SteamChatGroup; busy: boolean; act
           </div>
           {open === r.id && (
             <div className="steam-group-perms">
-              {group.mayChangeRoles && r.name !== 'Member' && (
+              {group.mayChangeRoles && r.id !== group.defaultRole && (
                 <div className="field-row">
                   <input className="text-field" value={name} onChange={(e) => setName(e.target.value)} />
                   <button type="button" className="button small" disabled={busy || !name.trim() || name === r.name} onClick={() => void act('renameRole', { roleId: r.id, name })}>

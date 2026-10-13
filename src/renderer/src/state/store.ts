@@ -1953,7 +1953,12 @@ export class ChatStore {
     onChange: () => this.syncSteamVoice(),
     toast: (kind, message) => this.toast(kind, message),
     muted: () => ({ micMuted: this.state.voicePrefs.micMuted, deafened: this.state.voicePrefs.deafened }),
-    nameOf: (accountId, steamid) => this.state.buffers.find((b) => b.accountId === accountId && b.remoteId === steamid)?.name ?? steamid
+    nameOf: (accountId, steamid) => this.state.buffers.find((b) => b.accountId === accountId && b.remoteId === steamid)?.name ?? steamid,
+    mayRing: (accountId, steamid) => {
+      const account = this.state.accounts.find((a) => a.id === accountId)
+      const friend = this.state.buffers.some((b) => b.accountId === accountId && b.kind === 'dm' && b.remoteId === steamid)
+      return friend && account?.status !== 'invisible' && account?.status !== 'dnd'
+    }
   })
 
   /** Joins the voice of a room of a Steam group. */
@@ -1969,6 +1974,12 @@ export class ChatStore {
   async callSteamFriend(bufferId: string): Promise<void> {
     const buffer = this.state.buffers.find((b) => b.id === bufferId)
     if (!buffer?.remoteId) return
+    // They are already calling: answer that, rather than starting a second call to them.
+    const ringing = this.steamVoice.ringFrom(buffer.accountId, buffer.remoteId)
+    if (ringing) {
+      await this.answerSteamCall(ringing)
+      return
+    }
     await this.steamVoice.start(buffer.accountId, { kind: 'friend', steamid: buffer.remoteId, bufferId, name: bufferDisplayName(buffer.name) })
   }
 
@@ -3444,6 +3455,10 @@ export class ChatStore {
       // happening. The media is the window's; see lib/steamvoice.ts.
       case 'steamVoice':
         this.steamVoice.handle(data as never)
+        break
+      // Removed from a Steam group by somebody else.
+      case 'steamGroupRemoved':
+        this.toast('error', `You were ${data.how} ${data.name}`)
         break
       case 'steamVoiceRooms':
         this.set({ steamVoiceRooms: { ...this.state.steamVoiceRooms, [`${data.accountId}|${data.groupId}`]: data.rooms as SteamVoiceRoom[] } })
