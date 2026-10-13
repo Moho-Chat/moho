@@ -139,6 +139,24 @@ function General({ group, busy, act, onLeft }: { group: SteamChatGroup; busy: bo
   return (
     <>
       <div className="field">
+        <span className="small muted">Picture</span>
+        <div className="field-row steam-group-row">
+          <span className="grow small muted">{group.mayManage ? 'Shown on the rail and in the channel list.' : 'Only those who may change the group can change it.'}</span>
+          {/* Sent to Steam's site and then named to the group; the new picture
+              arrives on the rail when Steam says the group changed. */}
+          <button
+            type="button"
+            className="button subtle small"
+            disabled={!group.mayManage || busy}
+            onClick={() => {
+              void window.moho.pickFile(['jpg', 'jpeg', 'png', 'gif']).then((path) => path && void act('avatar', { path }))
+            }}
+          >
+            Change picture
+          </button>
+        </div>
+      </div>
+      <div className="field">
         <span className="small muted">Name</span>
         <div className="field-row">
           <input className="text-field" value={name} disabled={!mayChange || busy} onChange={(e) => setName(e.target.value)} />
