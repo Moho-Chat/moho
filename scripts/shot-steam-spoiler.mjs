@@ -18,7 +18,7 @@ try {
   await openIrcChannel(page, { port: irc.address().port, nick: 'checker', channels: ['#ui'], waitFor: 'hello there' })
   await page.call('Emulation.setDeviceMetricsOverride', { width: 1000, height: 900, deviceScaleFactor: 1, mobile: false })
   // Steam's addresses answered here: the picture and the clip, whatever the path.
-  await page.call('Fetch.enable', { patterns: [{ urlPattern: '*steamusercontent.com*' }, { urlPattern: '*steamstatic.com*' }] })
+  await page.call('Fetch.enable', { patterns: [{ urlPattern: '*steamusercontent.com*' }, { urlPattern: '*steamstatic.com*' }, { urlPattern: '*example.com*' }] })
   page.on('Fetch.requestPaused', async (e) => {
     const video = e.request.url.includes('/cdn-video/') || e.request.url.includes('cdn.steamusercontent.com')
     const body = fs.readFileSync(video ? clip : picture).toString('base64')
@@ -46,7 +46,9 @@ try {
         m('3', 'a picture sent as a spoiler'), m('4', '||\\n[steam:image:${img(2)}]\\n||'),
         m('5', 'a plain video'), m('6', '\\n[steam:video:${vid(3)}]\\n'),
         m('7', 'a video sent as a spoiler'), m('8', '||\\n[steam:video:${vid(4)}]\\n||'),
-        m('9', 'an emoticon [steam:emote:steamhappy] in a line, then a sticker'), m('10', '[steam:sticker:Nyan GLaDOS]')
+        m('9', 'an emoticon [steam:emote:steamhappy] in a line, then a sticker'), m('10', '[steam:sticker:Nyan GLaDOS]'),
+        m('11', 'a link with words: [look at this](https://links.invalid/a?x=1&y=2) and a bare one https://links.invalid/b, then a picture https://example.com/p.png'),
+        { ...m('12', '[x.salastil.com](http://x.salastil.com)'), embeds: [{ url: 'http://x.salastil.com', title: 'Home', description: 'A privacy-focused Twitter/X frontend', provider: 'x.salastil.com' }] }
       ] }
     })
   })()`)
@@ -57,6 +59,7 @@ try {
     console.log('wrote', name)
   }
   await shot('steam-spoiler-before.png')
+  console.log('links:', JSON.stringify(await page.evaluate(`[...document.querySelectorAll('.message-body a, .message-text a, .message-row a')].map((a) => [a.textContent, a.getAttribute('href')]).filter((l) => l[1] && !l[1].startsWith('spoiler'))`)))
   console.log('covers:', await page.evaluate(`document.querySelectorAll('.spoiler-cover').length`), '| embeds:', await page.evaluate(`document.querySelectorAll('.media-embed-wrap').length`))
   await page.evaluate(`document.querySelector('.spoiler-cover')?.click()`)
   await sleep(500)

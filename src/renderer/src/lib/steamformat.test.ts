@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { emojiPreview, extractMedia, formatMessage, normalizeBBCode, isSteamUpload, markSpoilered, stripEmbeddedUrls, sourcePick, steamSameText } from './format'
+import { emojiPreview, extractMedia, formatMessage, splitTrailingPunctuation, normalizeBBCode, isSteamUpload, markSpoilered, stripEmbeddedUrls, sourcePick, steamSameText } from './format'
 import { formatsFor, serialize, wrap, type BoxNode } from './composeFormat'
 import { reactionLabel } from './reactions'
 
@@ -154,6 +154,23 @@ describe('a Steam sticker is named by words', () => {
   })
   it('is held as a reaction under that name', () => {
     expect(reactionLabel('[steam:sticker:Nyan GLaDOS]')).toBe(':Nyan GLaDOS:')
+  })
+})
+
+describe('a link in a sentence', () => {
+  it('does not take the sentence\'s punctuation', () => {
+    expect(splitTrailingPunctuation('https://x.test/a,')).toEqual(['https://x.test/a', ','])
+    expect(splitTrailingPunctuation('https://x.test/a.')).toEqual(['https://x.test/a', '.'])
+    expect(splitTrailingPunctuation('https://x.test/a?!')).toEqual(['https://x.test/a', '?!'])
+    expect(splitTrailingPunctuation('https://x.test/a)')).toEqual(['https://x.test/a', ')'])
+    expect(splitTrailingPunctuation('https://x.test/Foo_(bar)')).toEqual(['https://x.test/Foo_(bar)', ''])
+    expect(splitTrailingPunctuation('https://x.test/?a=1&amp;b=2')).toEqual(['https://x.test/?a=1&amp;b=2', ''])
+    expect(splitTrailingPunctuation('https://x.test/a?b=1')).toEqual(['https://x.test/a?b=1', ''])
+  })
+  it('is drawn with the punctuation outside it', () => {
+    const html = formatMessage('read https://x.test/a, then https://x.test/b.')
+    expect(html).toContain('<a href="https://x.test/a">https://x.test/a</a>,')
+    expect(html).toContain('<a href="https://x.test/b">https://x.test/b</a>.')
   })
 })
 

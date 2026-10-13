@@ -169,6 +169,29 @@ export function steamSameText(sent: string, logged: string): boolean {
   return sentForm === loggedForm
 }
 
+/**
+ * A link that ends a clause is not a link ending in the clause's punctuation:
+ * "see https://x.test/a, then" links `https://x.test/a`. A closing bracket goes
+ * too, unless the address has the opening one - which is how a Wikipedia page
+ * such as `.../Foo_(bar)` keeps its own. A semicolon stays, because the text is
+ * escaped by now and `&amp;` inside an address ends in one.
+ */
+export function splitTrailingPunctuation(found: string): [string, string] {
+  let address = found
+  let tail = ''
+  for (;;) {
+    const last = address.slice(-1)
+    const opens = (address.match(/\(/g) ?? []).length
+    const closes = (address.match(/\)/g) ?? []).length
+    if (last && '.,:!?\'*'.includes(last) || (last === ')' && closes > opens)) {
+      tail = last + tail
+      address = address.slice(0, -1)
+    } else {
+      return [address, tail]
+    }
+  }
+}
+
 export function escapeHtml(s: string): string {
   // Quotes as well as brackets: the link passes write a URL from the text
   // into an attribute, and a quote in it would end the attribute early.
@@ -619,7 +642,10 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   // something to offer the reader to open (#247). And not into an escaped
   // bracket: `<https://x>` is how Discord suppresses an embed, and arrives
   // here as `&lt;https://x&gt;`.
-  out = out.replace(/((?:https?|ircs?):\/\/(?:(?!&gt;|&lt;|&quot;)[^\s<])+)/g, '<a href="$1">$1</a>')
+  out = out.replace(/((?:https?|ircs?):\/\/(?:(?!&gt;|&lt;|&quot;)[^\s<])+)/g, (_m, found: string) => {
+    const [address, tail] = splitTrailingPunctuation(found)
+    return `<a href="${address}">${address}</a>${tail}`
+  })
 
   // Anything else BBCode-shaped that wasn't recognised (e.g. [USER=..]
   // mentions, [sub]/[sup], a typo'd tag) - stripped rather than shown as
