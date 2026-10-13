@@ -2636,6 +2636,25 @@ export class ChatStore {
       .catch(() => {})
   }
 
+  /**
+   * Moves a friend's conversation to another of the account's Steam folders, which is a change to the
+   * account on Steam: out of the folder it is drawn under, and into the one it was dropped on. What
+   * comes back says where it now is, so nothing is moved here until Steam has agreed.
+   */
+  moveSteamFriend(bufferId: string, heading: string): void {
+    const buffer = this.state.buffers.find((b) => b.id === bufferId)
+    if (!buffer || !buffer.remoteId) return
+    const groups = this.state.steamGroups[buffer.accountId] ?? []
+    const shown = (g: SteamGroup): string => g.name.replace(/^Steam - /, '').trim()
+    const to = groups.find((g) => shown(g) === heading)
+    if (!to) return
+    const from = groups.find((g) => g.id !== to.id && shown(g) === buffer.category && g.members.includes(buffer.remoteId!))
+    const calls: GroupCall[] = []
+    if (from) calls.push({ accountId: buffer.accountId, action: 'remove', groupId: from.id, steamid: buffer.remoteId })
+    if (!to.members.includes(buffer.remoteId)) calls.push({ accountId: buffer.accountId, action: 'add', groupId: to.id, steamid: buffer.remoteId })
+    if (calls.length > 0) this.runSteamGroupCalls(calls)
+  }
+
   /** Makes the changes to a Steam account's groups that moho's own headings asked for. */
   runSteamGroupCalls(calls: GroupCall[]): void {
     for (const call of calls) {

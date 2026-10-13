@@ -166,6 +166,8 @@ export function BufferList(): JSX.Element {
 
   const isPinnedPage = activeGroup?.id === PINNED_GROUP_ID
   const isDmPage = activeGroup?.id === DM_GROUP_ID
+  // A Steam account's own page: its friends sit under the folders Steam keeps for the account.
+  const steamPage = activeGroup?.kind === 'account' && accounts.find((a) => a.id === activeGroup.accountId)?.service === 'steam'
   /**
    * Whose identity the plaque shows.
    *
@@ -249,11 +251,17 @@ export function BufferList(): JSX.Element {
         s.buffers.sort((a, b) => (a.position || 0) - (b.position || 0))
       }
     }
+    // Steam's folders by name, as its own client lists them, rather than by whoever spoke last.
+    if (steamPage && (categoryOrder[activeGroup.id] ?? []).length === 0) {
+      const folders = list.filter((s) => s.key.startsWith('svc:')).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
+      let next = 0
+      for (let i = 0; i < list.length; i++) if (list[i].key.startsWith('svc:')) list[i] = folders[next++]
+    }
     // A heading with nothing under it is still drawn when it is the user's -
     // they just made it, and a heading that vanishes until something is put
     // in it cannot have anything put in it.
     return list.filter((s) => s.custom || s.buffers.length > 0)
-  }, [activeGroup, isPinnedPage, isDmPage, groupBuffers, customCats, assignment, categoryOrder])
+  }, [activeGroup, isPinnedPage, isDmPage, steamPage, groupBuffers, customCats, assignment, categoryOrder])
 
   // The menu still toggles a buffer's *own* flag independently of a muted
   // rail entry above it, the same way muting a channel inside an
@@ -372,7 +380,7 @@ export function BufferList(): JSX.Element {
       // Only where there is somewhere to drop it. A list with no headings of
       // your own has nothing a channel could be filed under, and a drag that
       // can only ever be refused is worse than one the row does not offer.
-      draggable={myCategories.length > 0}
+      draggable={myCategories.length > 0 || steamPage}
       lifted={dragging?.kind === 'buffer' && dragging.id === b.id}
       onDragStart={() => beginDrag('buffer', b.id)}
       onDragEnd={endDrag}
@@ -414,6 +422,8 @@ export function BufferList(): JSX.Element {
   const accepts = (section: CategorySection): boolean => {
     const held = draggedRef.current
     if (!held) return false
+    // On a Steam account's page its folders take a friend: the move is made on Steam.
+    if (steamPage && held.kind !== 'category' && section.key.startsWith('svc:')) return true
     return held.kind === 'category' ? section.key !== held.id : section.custom
   }
 
@@ -424,6 +434,10 @@ export function BufferList(): JSX.Element {
     if (held.kind === 'category') {
       if (held.id === section.key) return
       setCategoryOrder(activeGroup.id, reorderCategories(grouped, held.id, section.key))
+      return
+    }
+    if (steamPage && section.key.startsWith('svc:') && section.name) {
+      store.moveSteamFriend(held.id, section.name)
       return
     }
     if (!section.custom) return
