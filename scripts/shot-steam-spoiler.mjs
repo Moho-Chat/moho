@@ -18,7 +18,7 @@ try {
   await openIrcChannel(page, { port: irc.address().port, nick: 'checker', channels: ['#ui'], waitFor: 'hello there' })
   await page.call('Emulation.setDeviceMetricsOverride', { width: 1000, height: 900, deviceScaleFactor: 1, mobile: false })
   // Steam's addresses answered here: the picture and the clip, whatever the path.
-  await page.call('Fetch.enable', { patterns: [{ urlPattern: '*steamusercontent.com*' }] })
+  await page.call('Fetch.enable', { patterns: [{ urlPattern: '*steamusercontent.com*' }, { urlPattern: '*steamstatic.com*' }] })
   page.on('Fetch.requestPaused', async (e) => {
     const video = e.request.url.includes('/cdn-video/') || e.request.url.includes('cdn.steamusercontent.com')
     const body = fs.readFileSync(video ? clip : picture).toString('base64')
@@ -45,7 +45,8 @@ try {
         m('1', 'a plain picture'), m('2', '\\n[steam:image:${img(1)}]\\n'),
         m('3', 'a picture sent as a spoiler'), m('4', '||\\n[steam:image:${img(2)}]\\n||'),
         m('5', 'a plain video'), m('6', '\\n[steam:video:${vid(3)}]\\n'),
-        m('7', 'a video sent as a spoiler'), m('8', '||\\n[steam:video:${vid(4)}]\\n||')
+        m('7', 'a video sent as a spoiler'), m('8', '||\\n[steam:video:${vid(4)}]\\n||'),
+        m('9', 'an emoticon [steam:emote:steamhappy] in a line, then a sticker'), m('10', '[steam:sticker:Nyan GLaDOS]')
       ] }
     })
   })()`)

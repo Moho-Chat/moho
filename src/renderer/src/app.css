@@ -2576,9 +2576,13 @@ img.composer-emoji {
   flex: none;
 }
 
-.steam-sticker {
-  height: 96px;
+/* Steam draws a sticker as a picture of its own, about the size it is in Steam's
+   own chat. Qualified with the element because `img.custom-emoji` sizes every
+   emoji to the line, and wins over a bare class. */
+img.custom-emoji.steam-sticker {
+  height: 128px;
   width: auto;
+  vertical-align: middle;
 }
 
 .nick-prefix {
