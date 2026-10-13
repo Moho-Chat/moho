@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Account } from '../../../shared/wire'
 import type { BufferEntry } from '../state/store'
 import { dmCategoryId } from './dmcategories'
-import { folderName, parseSteamCategory, seedSteamFolders, steamCategoryId, type SteamGroup } from './steamgroups'
+import { folderName, headingName, parseSteamCategory, seedSteamFolders, steamCategoryId, type SteamGroup } from './steamgroups'
 
 const account = { id: 'steam:me', service: 'steam', displayName: 'me' } as Account
 const dm = (name: string, remoteId: string): BufferEntry => ({ id: `steam:me|${name}`, accountId: 'steam:me', kind: 'dm', name, remoteId }) as BufferEntry
@@ -24,16 +24,18 @@ describe('a Steam folder is named for its id and read back from it', () => {
     expect(parseSteamCategory('sg:nonsense')).toBeNull()
   })
 
-  it('is shown without the "Steam - " some of them carry', () => {
+  it('is shown without the "Steam - " some of them carry, and a heading from it is called protocol, then folder', () => {
     expect(folderName('Steam - Goons')).toBe('Goons')
     expect(folderName('Friends')).toBe('Friends')
+    expect(headingName(account, { id: 1, name: 'Steam - Goons', members: [] })).toBe('Steam - Goons')
+    expect(headingName(account, { id: 3, name: 'Friends', members: [] })).toBe('Steam - Friends')
   })
 })
 
 describe('the direct-messages page starts from an account\'s folders, once', () => {
   it('makes a heading for each, with their friends under it, the first time they are heard', () => {
     const plan = seedSteamFolders([account], buffers, groups([{ id: 7, name: 'Steam - Raiders', members: [GABE] }]), start({ assignment: filed }))!
-    expect(plan.categories.find((c) => c.id === 'sg:steam:me:7')?.name).toBe('Raiders')
+    expect(plan.categories.find((c) => c.id === 'sg:steam:me:7')?.name).toBe('Steam - Raiders')
     expect(plan.assignment['steam:me|Gabe']).toBe('sg:steam:me:7')
     expect(plan.assignment['steam:me|Alyx']).toBe(heading)
     expect(plan.seeded).toEqual(['steam:me'])
@@ -65,15 +67,10 @@ describe('the direct-messages page starts from an account\'s folders, once', () 
     expect(seedSteamFolders([account], buffers, moved, { categories: first.categories, assignment: first.assignment, seeded: first.seeded })).toBeNull()
   })
 
-  it('only marks an account whose page already has headings from its folders, tidying the prefix they were given', () => {
-    const had = [{ id: heading, name: 'Steam - me' }, { id: 'sg:steam:me:7', name: 'Steam - Raiders' }, { id: 'sg:steam:me:8', name: 'Steam - Mine now' }]
-    const plan = seedSteamFolders([account], buffers, groups([{ id: 7, name: 'Steam - Raiders', members: [GABE] }]), {
-      categories: had,
-      assignment: { 'steam:me|Gabe': 'sg:steam:me:7' },
-      seeded: [],
-      followedNames: { 'sg:steam:me:7': 'Steam - Raiders' }
-    })!
-    expect(plan.categories.map((c) => c.name)).toEqual(['Steam - me', 'Raiders', 'Steam - Mine now'])
+  it('only marks an account whose page already has headings from its folders, and leaves them as they are', () => {
+    const had = [{ id: heading, name: 'Steam - me' }, { id: 'sg:steam:me:7', name: 'Steam - Raiders' }, { id: 'sg:steam:me:8', name: 'Mine now' }]
+    const plan = seedSteamFolders([account], buffers, groups([{ id: 7, name: 'Steam - Raiders', members: [GABE] }]), { categories: had, assignment: { 'steam:me|Gabe': 'sg:steam:me:7' }, seeded: [] })!
+    expect(plan.categories.map((c) => c.name)).toEqual(['Steam - me', 'Steam - Raiders', 'Mine now'])
     expect(plan.assignment['steam:me|Gabe']).toBe('sg:steam:me:7')
     expect(plan.seeded).toEqual(['steam:me'])
   })

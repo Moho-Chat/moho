@@ -11,8 +11,6 @@ import { useStore } from './hooks'
 const NO_CATEGORIES: Record<string, CustomCategory[]> = {}
 const NO_ASSIGNMENT: Record<string, string> = {}
 const NO_IDS: string[] = []
-const NO_NAMES: Record<string, string> = {}
-const NO_FOLLOWED: { names?: Record<string, string> } = {}
 
 /**
  * Keeps the direct-messages page sorted by account. See lib/dmcategories.ts
@@ -32,8 +30,6 @@ export function useDmCategories(): void {
   const [filed, setFiled] = usePref<string[]>('dmAutoFiled', NO_IDS)
   const [made, setMade] = usePref<string[]>('dmHeadingsMade', NO_IDS)
   const [seeded, setSeeded] = usePref<string[]>('steamFoldersSeeded', NO_IDS)
-  // What the headings were last called while they were followed, which is only read to tidy them once.
-  const [followed] = usePref<{ names?: Record<string, string> }>('steamGroupSync', NO_FOLLOWED)
 
   // A Steam account's groups, asked for when it connects: it also says them on
   // its own, but not necessarily after this window is listening.
@@ -55,8 +51,7 @@ export function useDmCategories(): void {
     const steam = seedSteamFolders(accounts, buffers, steamGroups, {
       categories: dm?.categories ?? categories[DM_GROUP_ID] ?? [],
       assignment: dm?.assignment ?? assignment,
-      seeded,
-      followedNames: followed.names ?? NO_NAMES
+      seeded
     })
     if (!dm && !steam) return
     const next = steam ?? dm!
@@ -67,5 +62,5 @@ export function useDmCategories(): void {
       setMade(dm.made)
     }
     if (steam) setSeeded(steam.seeded)
-  }, [ready, accounts, buffers, steamGroups, categories, assignment, filed, made, seeded, followed, setCategories, setAssignment, setFiled, setMade, setSeeded])
+  }, [ready, accounts, buffers, steamGroups, categories, assignment, filed, made, seeded, setCategories, setAssignment, setFiled, setMade, setSeeded])
 }

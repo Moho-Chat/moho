@@ -2,6 +2,7 @@ import type { Account } from '../../../shared/wire'
 import type { BufferEntry } from '../state/store'
 import type { CustomCategory } from './categories'
 import { dmCategoryId } from './dmcategories'
+import { serviceLabel } from './util'
 
 /**
  * Steam's friend folders, and the headings on the direct-messages page that start from them.
@@ -55,6 +56,16 @@ export function folderName(name: string): string {
   return name.replace(/^Steam - /, '').trim()
 }
 
+/**
+ * What a heading made from a folder is called on the direct-messages page: the protocol, then the
+ * folder, as that page's headings for an account are ("Steam - Goons"), so a folder is not taken
+ * for another protocol's heading of the same name.
+ */
+export function headingName(account: Pick<Account, 'service'>, group: SteamGroup): string {
+  const name = folderName(group.name) || group.name
+  return `${serviceLabel(account.service)} - ${name}`
+}
+
 export interface SteamSeed {
   categories: CustomCategory[]
   assignment: Record<string, string>
@@ -68,14 +79,13 @@ export interface SteamSeed {
  * account whose folders have been heard: one that has not said yet is not one with none.
  *
  * An account whose page already has headings from its folders - from before this was done once, when
- * they were followed - is only marked, and its headings are left as they are, bar the "Steam - " that
- * had come to be in front of their names while they were being followed.
+ * they were followed - is only marked, and its headings are left as they are.
  */
 export function seedSteamFolders(
   accounts: Account[],
   buffers: BufferEntry[],
   groups: Record<string, SteamGroup[] | undefined>,
-  current: { categories: CustomCategory[]; assignment: Record<string, string>; seeded: string[]; followedNames?: Record<string, string> }
+  current: { categories: CustomCategory[]; assignment: Record<string, string>; seeded: string[] }
 ): SteamSeed | null {
   let categories = current.categories.map((c) => ({ ...c }))
   const assignment = { ...current.assignment }
@@ -87,15 +97,12 @@ export function seedSteamFolders(
     const heard = groups[account.id]
     if (!heard) continue
     const own = `${PREFIX}${account.id}:`
-    const had = categories.filter((c) => c.id.startsWith(own))
-    if (had.length > 0) {
-      for (const c of had) {
-        if (c.name === current.followedNames?.[c.id] && c.name !== folderName(c.name)) c.name = folderName(c.name)
-      }
-    } else {
+    // Headings from its folders already on the page - from before this was done once - are left as
+    // they are: they are the person's.
+    if (!categories.some((c) => c.id.startsWith(own))) {
       const heading = dmCategoryId(account.id)
       const sorted = [...heard].sort((a, b) => a.id - b.id)
-      for (const g of sorted) categories.push({ id: steamCategoryId(account.id, g.id), name: folderName(g.name) || g.name })
+      for (const g of sorted) categories.push({ id: steamCategoryId(account.id, g.id), name: headingName(account, g) })
       for (const b of buffers) {
         if (b.accountId !== account.id || b.kind !== 'dm' || !b.remoteId) continue
         const home = sorted.find((g) => g.members.includes(b.remoteId!))
