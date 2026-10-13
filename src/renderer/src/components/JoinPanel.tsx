@@ -440,8 +440,9 @@ function SteamJoin({ account }: { account: Account }): JSX.Element {
   }
 
   const copy = (text: string): void => {
-    void navigator.clipboard
-      .writeText(text)
+    // Through the main process, as everywhere else in moho: the page's own clipboard is refused here.
+    void window.moho
+      .copyText(text)
       .then(() => store.toast('info', 'Copied'))
       .catch(() => store.toast('error', 'Could not copy'))
   }
