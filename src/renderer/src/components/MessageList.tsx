@@ -7,6 +7,7 @@ import { CallView } from './CallView'
 import { CallStage, RoomCallBar } from './CallStage'
 import { StreamStage } from './StreamStage'
 import { ServiceBanner } from './ServiceBanner'
+import { ConversationNotice } from './ConversationNotice'
 import { RouteAccount, useStrictRoute } from '../lib/route'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, dayLabel, isChatKind, startsNewDay } from '../lib/util'
@@ -778,6 +779,8 @@ export function MessageList(): JSX.Element {
       {/* First, because it explains everything under it: a conversation that
           is not receiving looks like a quiet one otherwise. */}
       <ServiceBanner bufferId={bufferId} />
+      {/* A warning the service put on this conversation, in red, until it is dismissed. */}
+      <ConversationNotice bufferId={bufferId} />
       {/* Above the log and outside the scroller. Who is talking is only
           useful while it can be seen, and a panel that scrolled away with
           the backlog would be gone the moment anybody read anything. */}

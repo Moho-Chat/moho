@@ -143,6 +143,16 @@ export function isNotice(kind: string | undefined): boolean {
 }
 
 /**
+ * A line the service wrote to warn about the conversation itself - Steam's
+ * notice that somebody may not be who they appear to be - drawn in red so it is
+ * not scrolled past. Its own kind. A warning stored before it had one is a
+ * system line with the id Steam's notices are kept under.
+ */
+export function isWarning(kind: string | undefined, id?: string): boolean {
+  return kind === 'warning' || (kind === 'system' && !!id?.startsWith('notice:'))
+}
+
+/**
  * A message sent privately to you rather than to the room it arrived through.
  *
  * Its own kind rather than a flag, because everything that reads a message

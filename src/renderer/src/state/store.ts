@@ -1631,6 +1631,16 @@ export class ChatStore {
     }
   }
 
+  /** Dismisses the warning over a conversation: it goes now, and the service is told. */
+  async dismissNotice(bufferId: string): Promise<void> {
+    this.set({ buffers: this.state.buffers.map((b) => (b.id === bufferId ? { ...b, notice: undefined } : b)) })
+    try {
+      await window.moho.rpc('steamDismissNotice', { bufferId })
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
+  }
+
   /** Looks at one invitation, on the page that gathers them. */
   selectInvitation(key: string): void {
     this.set({ activeInvitationKey: key })
@@ -3954,6 +3964,8 @@ export class ChatStore {
                 ...b,
                 ...data,
                 link: data.link,
+                // As sent, for the same reason: a dismissed warning is left out.
+                notice: data.notice,
                 syncing: data.syncing,
                 topic: data.topic,
                 serverMuted: data.serverMuted ?? false,

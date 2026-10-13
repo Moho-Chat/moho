@@ -54,6 +54,7 @@ import {
   hasDirectMessages,
   isChatKind,
   isNotice,
+  isWarning,
   isReward,
   isWhisper,
   nickColor
@@ -798,6 +799,7 @@ function MessageRowBody({
           message.isHighlight && 'highlight',
           whispered && 'whisper',
           notice && highlightNotices && 'notice',
+          isWarning(message.kind, message.id) && 'warning',
           message.pending && 'pending',
           message.failed && 'failed',
           isSystem && 'system',

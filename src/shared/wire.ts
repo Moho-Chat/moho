@@ -182,6 +182,16 @@ export interface Buffer {
     /** tor | site | chat | refused */
     cause?: string
   }
+  /**
+   * A warning the service has put on this conversation, drawn over it until it
+   * is dismissed - Steam's "this person may not be who they appear to be".
+   * Gone when dismissed, and back if the service raises it again.
+   */
+  notice?: {
+    /** suspicious */
+    kind: string
+    text: string
+  }
 }
 
 /**

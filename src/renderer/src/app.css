@@ -9446,6 +9446,57 @@ video.lightbox-media {
   overflow-wrap: anywhere;
 }
 
+/* A warning the service put on the conversation, over it, in red, until it is
+   dismissed. Louder than the interruption banner above: that is about the
+   connection, and this is about who is on the other end. */
+.notice-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  border-bottom: 1px solid var(--danger);
+  background: color-mix(in srgb, var(--danger) 22%, var(--surface));
+  font-size: var(--font-size-small);
+}
+
+.notice-banner .icon {
+  flex: none;
+  color: var(--danger-text);
+}
+
+.notice-banner-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: var(--weight-semibold);
+}
+
+.notice-banner-dismiss {
+  flex: none;
+  padding: var(--spacing-xs) var(--spacing-m);
+  border-radius: var(--corner-radius-small);
+  background: var(--danger);
+  color: var(--on-accent);
+  font-weight: var(--weight-bold);
+}
+
+.notice-banner-dismiss:hover {
+  background: var(--danger-hover);
+}
+
+/* The same warning, said in the log where it stays: red, so it is not scrolled
+   past, and not the italic grey of an ordinary system line. */
+.message-row.warning {
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.message-row.warning .message-body {
+  color: var(--danger-text);
+  font-style: normal;
+  font-weight: var(--weight-semibold);
+}
+
 /* A rail entry whose service has not answered yet - on start, or after an
    outage. The face dims and a spinner sits over it until it connects. */
 .rail-tile.connecting .rail-face {

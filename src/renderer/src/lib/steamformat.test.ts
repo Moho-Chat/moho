@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { emojiPreview, extractMedia, formatMessage, splitTrailingPunctuation, normalizeBBCode, isSteamUpload, markSpoilered, stripEmbeddedUrls, sourcePick, steamSameText } from './format'
 import { formatsFor, serialize, wrap, type BoxNode } from './composeFormat'
 import { reactionLabel } from './reactions'
+import { isWarning } from './util'
 
 const text = (value: string): BoxNode => ({ nodeType: 3, nodeValue: value, nodeName: '#text', childNodes: [] })
 const el = (nodeName: string, children: BoxNode[], dataset?: Record<string, string>): BoxNode => ({ nodeType: 1, nodeValue: null, nodeName, childNodes: children, dataset })
@@ -185,3 +186,12 @@ describe('the message just sent, when Steam made something of its link', () => {
   })
 })
 
+
+describe('a warning line in a conversation', () => {
+  it('is red whether it is written as a warning or was stored as Steam\'s notice before there was a kind for it', () => {
+    expect(isWarning('warning')).toBe(true)
+    expect(isWarning('system', 'notice:100:1')).toBe(true)
+    expect(isWarning('system', '1790000000:1')).toBe(false)
+    expect(isWarning('chat', 'notice:100:1')).toBe(false)
+  })
+})
