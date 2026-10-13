@@ -62,7 +62,7 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
   // Mute and deafen are the whole client's, for whatever call is up - so
   // shown on a service that has calls, or anywhere while one is running,
   // and not beside an IRC or Kick account with nothing to apply them to.
-  const showVoice = account.service === 'discord' || account.service === 'matrix' || inACall
+  const showVoice = account.service === 'discord' || account.service === 'matrix' || account.service === 'steam' || inACall
 
   return (
     <>

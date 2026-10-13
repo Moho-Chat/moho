@@ -207,10 +207,12 @@ function moveAside(pid) {
  * The built app, against a scratch home, with a debugging port. Returns the
  * page and a `stop()` that takes everything down again.
  */
-export async function launchApp({ env = {}, args = [] } = {}) {
+export async function launchApp({ env = {}, args = [], seed } = {}) {
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'moho-ui-'))
   const run = path.join(scratch, 'run')
   fs.mkdirSync(run, { mode: 0o700 })
+  // Files the app should find on its first start, written into its own home.
+  seed?.(scratch)
   const port = await freePort()
 
   // A CI runner's kernel refuses Chromium's sandbox (Ubuntu 24.04 restricts
@@ -281,7 +283,7 @@ export async function launchApp({ env = {}, args = [] } = {}) {
     await stop()
     throw e
   }
-  return { page, stop, port }
+  return { page, stop, port, scratch }
 }
 
 /**

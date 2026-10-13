@@ -394,6 +394,8 @@ export interface VoiceSession {
   bufferId?: string
   /** A stage channel: speakers and an audience. */
   stage?: boolean
+  /** The rail entry this belongs to, where its id is not a Discord guild's: a Steam group. */
+  railId?: string
 }
 
 export interface ReplyPreview {

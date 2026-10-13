@@ -42,6 +42,7 @@ import { DEFAULT_QUALITY, encodeSettings, sendCamera, shareScreen, type VideoQua
 import type { PopoutState } from '../../../shared/ipc'
 import { isNewerVersion } from '../lib/version'
 import { steamRoomIds, type SteamChatGroup } from '../lib/steamchat'
+import { SteamVoice, type SteamRing, type SteamVoicePhase, type SteamVoiceTarget } from '../lib/steamvoice'
 
 /**
  * The whole client-side model, held in one immutable object that is replaced
@@ -377,6 +378,14 @@ export interface PeekTarget {
   joining?: boolean
 }
 
+/** A Steam group's room that has voice, and who is in it. */
+export interface SteamVoiceRoom {
+  roomId: string
+  bufferId?: string | null
+  name: string
+  members: { userId: string; nick: string; avatarUrl?: string | null; isSelf?: boolean }[]
+}
+
 export interface ChatState {
   /** Who is composing, per buffer, with when to stop believing it. */
   typingByBuffer: Record<string, { nicks: string[]; until: number }>
@@ -442,6 +451,12 @@ export interface ChatState {
   voiceSessions: VoiceSession[]
   /** Conversations ringing right now, newest last. */
   incomingCalls: IncomingCall[]
+  /** The voice rooms of each Steam group and who is in each, keyed by `account|group`. */
+  steamVoiceRooms: Record<string, SteamVoiceRoom[]>
+  /** Steam calls waiting to be answered. */
+  steamRings: SteamRing[]
+  /** The Steam voice this window holds, if any: where, and how far it has got. */
+  steamVoiceNow: { accountId: string; target: SteamVoiceTarget; phase: SteamVoicePhase } | null
   /**
    * A link waiting for an account to be made for it.
    *
@@ -749,6 +764,9 @@ const INITIAL: ChatState = {
   voiceChannels: [],
   voiceGuildId: '',
   voiceSessions: [],
+  steamVoiceRooms: {},
+  steamRings: [],
+  steamVoiceNow: null,
   incomingCalls: [],
   transfers: [],
   minimisedTransfers: [],
@@ -1755,6 +1773,8 @@ export class ChatStore {
     // Applied optimistically: a mute button that waits for a round trip feels
     // broken, and the daemon's reply corrects it either way.
     this.set({ voicePrefs: { ...this.state.voicePrefs, ...next } })
+    // And onto the Steam voice this window holds, which obeys the same buttons.
+    this.steamVoice.applyMute()
     try {
       this.set({ voicePrefs: await window.moho.rpc<VoicePrefs>('setVoiceMuted', next) })
     } catch (e) {
@@ -1892,10 +1912,83 @@ export class ChatStore {
   }
 
   async refreshVoiceSessions(): Promise<void> {
+    // Steam's voice is held in this window and not by the daemon, so it is
+    // added to what the daemon says rather than lost when that is asked for.
+    const steam = this.steamVoiceSession()
     try {
-      this.set({ voiceSessions: await window.moho.rpc<VoiceSession[]>('getVoiceSession') })
+      this.set({ voiceSessions: [...(await window.moho.rpc<VoiceSession[]>('getVoiceSession')), ...steam] })
     } catch {
-      this.set({ voiceSessions: [] })
+      this.set({ voiceSessions: steam })
+    }
+  }
+
+  /** The Steam voice of this window, as the one kind of session every voice surface lists. */
+  private steamVoiceSession(): VoiceSession[] {
+    const v = this.steamVoice
+    const t = v.target
+    if (!v.active || !t) return []
+    return t.kind === 'room'
+      ? [{ accountId: v.accountId, channelId: t.roomId, channelName: t.name, isDirect: false, bufferId: t.bufferId, railId: t.railId }]
+      : [{ accountId: v.accountId, channelId: t.steamid, channelName: t.name, isDirect: true, bufferId: t.bufferId }]
+  }
+
+  /** What Steam's voice is doing changed: show it. */
+  private syncSteamVoice(): void {
+    const v = this.steamVoice
+    const others = this.state.voiceSessions.filter((s) => !s.accountId.startsWith('steam:'))
+    this.set({
+      voiceSessions: [...others, ...this.steamVoiceSession()],
+      steamRings: [...v.rings],
+      steamVoiceNow: v.active && v.target ? { accountId: v.accountId, target: v.target, phase: v.phase } : null
+    })
+  }
+
+  /** The window's own Steam voice, for what changes too fast to keep in state: the level and who is speaking. */
+  get steamVoiceLive(): SteamVoice {
+    return this.steamVoice
+  }
+
+  private steamVoice: SteamVoice = new SteamVoice({
+    rpc: (params) => window.moho.rpc('steamVoice', params),
+    onChange: () => this.syncSteamVoice(),
+    toast: (kind, message) => this.toast(kind, message),
+    muted: () => ({ micMuted: this.state.voicePrefs.micMuted, deafened: this.state.voicePrefs.deafened }),
+    nameOf: (accountId, steamid) => this.state.buffers.find((b) => b.accountId === accountId && b.remoteId === steamid)?.name ?? steamid
+  })
+
+  /** Joins the voice of a room of a Steam group. */
+  async joinSteamVoice(accountId: string, groupId: string, roomId: string): Promise<void> {
+    const buffer = this.state.buffers.find((b) => b.accountId === accountId && b.remoteId === `${groupId}:${roomId}`)
+    const group = this.state.groups.find((g) => g.id === `${accountId}|steamgroup:${groupId}`)
+    if (!buffer || !group) return
+    const room = (this.state.steamVoiceRooms[`${accountId}|${groupId}`] ?? []).find((r) => r.roomId === roomId)
+    await this.steamVoice.start(accountId, { kind: 'room', groupId, roomId, bufferId: buffer.id, name: room?.name ?? bufferDisplayName(buffer.name), groupName: group.name, railId: group.id })
+  }
+
+  /** Calls a Steam friend, from their conversation. */
+  async callSteamFriend(bufferId: string): Promise<void> {
+    const buffer = this.state.buffers.find((b) => b.id === bufferId)
+    if (!buffer?.remoteId) return
+    await this.steamVoice.start(buffer.accountId, { kind: 'friend', steamid: buffer.remoteId, bufferId, name: bufferDisplayName(buffer.name) })
+  }
+
+  async answerSteamCall(ring: SteamRing): Promise<void> {
+    const buffer = this.state.buffers.find((b) => b.accountId === ring.accountId && b.remoteId === ring.steamid)
+    await this.steamVoice.answer(ring, buffer?.id ?? '', buffer ? bufferDisplayName(buffer.name) : ring.steamid)
+    if (buffer) this.selectBuffer(buffer.id)
+  }
+
+  async declineSteamCall(ring: SteamRing): Promise<void> {
+    await this.steamVoice.decline(ring)
+  }
+
+  /** Reads who is in a Steam group's voice rooms, when its channels are shown. */
+  async refreshSteamVoiceRooms(accountId: string, groupId: string): Promise<void> {
+    try {
+      const rooms = await window.moho.rpc<SteamVoiceRoom[]>('steamVoiceRooms', { accountId, groupId })
+      this.set({ steamVoiceRooms: { ...this.state.steamVoiceRooms, [`${accountId}|${groupId}`]: rooms } })
+    } catch {
+      /* none shown */
     }
   }
 
@@ -1990,6 +2083,10 @@ export class ChatStore {
    * resolves it to the channel the call happens in.
    */
   async callBuffer(bufferId: string): Promise<void> {
+    if (this.state.buffers.find((b) => b.id === bufferId)?.accountId.startsWith('steam:')) {
+      await this.callSteamFriend(bufferId)
+      return
+    }
     try {
       await window.moho.rpc('startDiscordCall', { bufferId })
       await this.refreshVoiceSessions()
@@ -2304,6 +2401,10 @@ export class ChatStore {
   }
 
   async leaveVoice(accountId: string): Promise<void> {
+    if (accountId.startsWith('steam:')) {
+      await this.steamVoice.stop()
+      return
+    }
     // What this end was sending goes with it. Left running, the camera light
     // would stay on and the encoder would go on handing frames to a call
     // that has ended.
@@ -3337,6 +3438,15 @@ export class ChatStore {
       // a hangup. The media is this window's; the daemon only carries these.
       case 'matrixCall':
         this.matrixCalls.handle(data as unknown as MatrixCallEvent)
+        break
+
+      // Steam's voice: the server telling this window's WebRTC session what is
+      // happening. The media is the window's; see lib/steamvoice.ts.
+      case 'steamVoice':
+        this.steamVoice.handle(data as never)
+        break
+      case 'steamVoiceRooms':
+        this.set({ steamVoiceRooms: { ...this.state.steamVoiceRooms, [`${data.accountId}|${data.groupId}`]: data.rooms as SteamVoiceRoom[] } })
         break
 
       // Friends, and requests either way, as they change. Discord announces

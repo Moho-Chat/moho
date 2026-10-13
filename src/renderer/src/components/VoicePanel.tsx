@@ -42,6 +42,12 @@ export function VoicePanel(): JSX.Element | null {
         setRtt(staged.rttMs)
         return
       }
+      // A Steam call is held by this window, which is where its level is.
+      if (session.accountId.startsWith('steam:')) {
+        setLevel(store.steamVoiceLive.level)
+        setRtt(store.steamVoiceLive.rttMs)
+        return
+      }
       try {
         const levels = await window.moho.rpc<{ accountId: string; micPeak: number; rttMs?: number | null }[]>(
           'getVoiceLevels'
@@ -60,13 +66,13 @@ export function VoicePanel(): JSX.Element | null {
       if (document.visibilityState === 'visible') void tick()
     }, 150)
     return () => clearInterval(timer)
-  }, [session])
+  }, [session, store])
 
   if (!session) return null
 
   // A one-to-one call has no guild to go back to; its home is the
   // conversation itself, which the DM page holds.
-  const groupId = session.guildId ? `${session.accountId}|guild:${session.guildId}` : DM_GROUP_ID
+  const groupId = session.railId ?? (session.guildId ? `${session.accountId}|guild:${session.guildId}` : DM_GROUP_ID)
   const guildName = session.isDirect ? '' : (groups.find((g) => g.id === groupId)?.name ?? '')
   const fill = levelFill(level)
   const quality = rtt === null ? null : rtt < 80 ? 'good' : rtt < 160 ? 'fair' : 'poor'

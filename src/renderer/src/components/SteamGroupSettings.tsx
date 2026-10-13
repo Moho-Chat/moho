@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Modal } from './Modal'
 import { Icon } from './Icon'
-import { Switch } from './Switch'
+import { Switch, SwitchRow } from './Switch'
 import { ConfirmButton } from './ConfirmButton'
 import { useStore } from '../state/hooks'
 import { STEAM_NOTIFY_LEVELS, steamGroupOfRail, type SteamChatGroup } from '../lib/steamchat'
@@ -190,6 +190,7 @@ function General({ group, busy, act, onLeft }: { group: SteamChatGroup; busy: bo
 
 function Rooms({ group, busy, act }: { group: SteamChatGroup; busy: boolean; act: Act }): JSX.Element {
   const [fresh, setFresh] = useState('')
+  const [withVoice, setWithVoice] = useState(false)
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null)
   return (
     <>
@@ -212,8 +213,9 @@ function Rooms({ group, busy, act }: { group: SteamChatGroup; busy: boolean; act
             </>
           ) : (
             <>
-              <Icon name="tag" size={16} />
+              <Icon name={r.voice ? 'volume_up' : 'tag'} size={16} />
               <span className="grow ellipsis">{r.name || 'General'}</span>
+              {r.voice && <span className="small muted">voice</span>}
               {group.mayManage && (
                 <>
                   <button type="button" className="button subtle small" onClick={() => setEditing({ id: r.id, name: r.name })}>
@@ -229,14 +231,16 @@ function Rooms({ group, busy, act }: { group: SteamChatGroup; busy: boolean; act
         </div>
       ))}
       {group.mayManage && (
-        <div className="field-row">
-          <input className="text-field" placeholder="A new room" value={fresh} onChange={(e) => setFresh(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && fresh.trim() && void act('createRoom', { name: fresh }).then(() => setFresh(''))} />
-          <button type="button" className="button" disabled={busy || !fresh.trim()} onClick={() => void act('createRoom', { name: fresh }).then(() => setFresh(''))}>
-            Add room
-          </button>
-        </div>
+        <>
+          <div className="field-row">
+            <input className="text-field" placeholder="A new room" value={fresh} onChange={(e) => setFresh(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && fresh.trim() && void act('createRoom', { name: fresh, voice: withVoice }).then(() => setFresh(''))} />
+            <button type="button" className="button" disabled={busy || !fresh.trim()} onClick={() => void act('createRoom', { name: fresh, voice: withVoice }).then(() => setFresh(''))}>
+              Add room
+            </button>
+          </div>
+          <SwitchRow title="With voice" description="People in it can talk, as well as write; it is chosen when the room is made" checked={withVoice} onChange={setWithVoice} />
+        </>
       )}
-      <p className="small muted">Voice rooms are Steam&apos;s own client&apos;s: its voice runs over a transport only that client speaks.</p>
     </>
   )
 }
