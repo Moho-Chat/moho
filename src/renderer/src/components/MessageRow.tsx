@@ -1,3 +1,4 @@
+import { steamRoomIds } from '../lib/steamchat'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
@@ -8,7 +9,7 @@ import { ForwardPicker } from './ForwardPicker'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { MediaEmbed } from './MediaEmbed'
 import { KickEventCard, isKickEvent } from './KickEventCard'
-import { COMMON_EMOJI, EmojiPicker, readRecent } from './EmojiPicker'
+import { COMMON_EMOJI, EmojiPicker, readRecent, type StickerEntry } from './EmojiPicker'
 import { reactionLabel, reactorsSentence } from '../lib/reactions'
 import { UploadMeter } from './UploadMeter'
 import { RichText } from '../lib/richtext'
@@ -30,6 +31,7 @@ import {
   embedColor,
   extractCodeBlocks,
   extractMedia,
+  markSpoilered,
   extractQuoteBlocks,
   formatMessage,
   normalizeBBCode,
@@ -40,6 +42,8 @@ import {
   stripEmbeddedUrls,
   stripQuoteBlocks,
   discordEmojiUrl,
+  steamPictureUrl,
+  steamTokenOf,
   type ChannelIndex
 } from '../lib/format'
 import {
@@ -51,6 +55,7 @@ import {
   hasDirectMessages,
   isChatKind,
   isNotice,
+  isWarning,
   isReward,
   isWhisper,
   nickColor
@@ -384,7 +389,16 @@ function MessageRowBody({
   // messages; IRC has no such concept.
   const canEditDelete =
     !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix')
-  const canReact = service === 'discord' || service === 'matrix'
+  const canReact = service === 'discord' || service === 'matrix' || service === 'steam'
+  // Steam's stickers, asked for when the reaction picker opens: it reacts with them too.
+  const [steamStickers, setSteamStickers] = useState<StickerEntry[]>([])
+  useEffect(() => {
+    if (!pickerOpen || service !== 'steam') return
+    void window.moho
+      .rpc<StickerEntry[]>('listSteamStickers', { bufferId })
+      .then(setSteamStickers)
+      .catch(() => setSteamStickers([]))
+  }, [pickerOpen, service, bufferId])
   // Read again after the picker has been used, which is when it changes.
   const quick = useMemo(
     () => quickReactions(store.accountFor(bufferId)?.id),
@@ -459,14 +473,14 @@ function MessageRowBody({
     // this function again and neither of which is re-stored.
     const raw = clearnetLinks(message.body || '')
     const normalized = normalizeBBCode(raw)
-    const media = extractMedia(normalized, {
+    const media = markSpoilered(extractMedia(normalized, {
       contentSniffing,
       sniffed,
       onNeedSniff: (url) => sniffUrl(url, strictRoute),
       // Read from the un-normalised body: the pairing lives in the BBCode,
       // and normalising unwraps both tags into two unrelated bare URLs.
       thumbnails: thumbnailLinks(raw)
-    })
+    }), normalized)
     const codeBlocks = extractCodeBlocks(normalized)
     const quoteBlocks = extractQuoteBlocks(stripCodeBlocks(normalized))
 
@@ -556,7 +570,8 @@ function MessageRowBody({
           }
         ] as MenuEntry[])
       : []),
-    { label: 'Reply', icon: 'reply', onClick: () => reply() },
+    // Steam chat has no replies - a message is a line of text and nothing points at another.
+    ...(service === 'steam' ? [] : ([{ label: 'Reply', icon: 'reply', onClick: () => reply() }] as MenuEntry[])),
     // What was selected when the menu opened, first: right-clicking on
     // highlighted text and finding no Copy is the one thing this menu must not
     // do, having replaced the one the window would have given.
@@ -638,6 +653,17 @@ function MessageRowBody({
               setEditing(true)
             }
           },
+          {
+            label: 'Delete',
+            icon: 'delete',
+            danger: true,
+            onClick: () => void store.deleteMessage(bufferId, message.id)
+          }
+        ] as MenuEntry[])
+      : []),
+    // Your own words in a room of a Steam group can be taken back.
+    ...(service === 'steam' && message.isOwn && steamRoomIds(store.getSnapshot().buffers.find((b) => b.id === bufferId))
+      ? ([
           {
             label: 'Delete',
             icon: 'delete',
@@ -786,6 +812,7 @@ function MessageRowBody({
           message.isHighlight && 'highlight',
           whispered && 'whisper',
           notice && highlightNotices && 'notice',
+          isWarning(message.kind, message.id) && 'warning',
           message.pending && 'pending',
           message.failed && 'failed',
           isSystem && 'system',
@@ -1368,7 +1395,10 @@ function MessageRowBody({
             answer. */}
         {!isSystem && !message.pending && !message.failed && (
         <div className="hover-toolbar">
+          {/* Steam reacts with its own emoticons and stickers, so the
+              one-click row of Unicode emoji is not offered there. */}
           {canReact &&
+            service !== 'steam' &&
             quick.map((emoji) => (
               <button
                 key={emoji}
@@ -1391,9 +1421,11 @@ function MessageRowBody({
               <Icon name="add_reaction" size={15} />
             </button>
           )}
-          <button type="button" className="toolbar-button" title="Reply" onClick={reply}>
-            <Icon name="reply" size={15} />
-          </button>
+          {service !== 'steam' && (
+            <button type="button" className="toolbar-button" title="Reply" onClick={reply}>
+              <Icon name="reply" size={15} />
+            </button>
+          )}
           {canEditDelete && (
             <button
               type="button"
@@ -1429,6 +1461,19 @@ function MessageRowBody({
           anchor={reactButtonRef.current}
           customEmoji={bufferEmoji}
           accountId={store.accountFor(bufferId)?.id}
+          // Steam reacts with what the account was given and nothing else: its
+          // emoticons, and its stickers on their own tab.
+          bufferId={service === 'steam' ? bufferId : undefined}
+          fixedSet={service === 'steam'}
+          stickers={service === 'steam' ? steamStickers : undefined}
+          onSticker={
+            service === 'steam'
+              ? (sticker) => {
+                  void store.toggleReaction(bufferId, message.id, `[steam:sticker:${sticker.name}]`, true)
+                  setPickerOpen(false)
+                }
+              : undefined
+          }
           onSelect={(emoji) => {
             void store.toggleReaction(bufferId, message.id, emoji, true)
             setPickerOpen(false)
@@ -1564,6 +1609,9 @@ function ReactionPill({
  */
 function ReactionEmoji({ emoji }: { emoji: string }): JSX.Element {
   const media = useMediaUrl()
+  // Steam's, held as a token naming the emoticon or sticker.
+  const steam = steamTokenOf(emoji)
+  if (steam) return <img className="reaction-emoji" src={steamPictureUrl(steam.kind, steam.name)} alt={steam.name} />
   const custom = emoji.match(/^<?a?:?([A-Za-z0-9_~]{2,32}):(\d+)>?$/)
   if (!custom) return <span>{emoji}</span>
   return <img className="reaction-emoji" src={media(discordEmojiUrl(custom[2]))} alt={custom[1]} />

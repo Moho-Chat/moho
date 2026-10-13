@@ -615,6 +615,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   // to a name half written.
   const filterMenu = suggestions(query)
   const isMatrix = buffer.accountId.startsWith('matrix:')
+  const isSteam = buffer.accountId.startsWith('steam:')
   const stream = useChat((s) => s.kickStreams)[buffer.id]
   // Whether this window is the one playing this channel. Per window rather
   // than per channel: a popped-out chat is its own window with its own
@@ -949,7 +950,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
         />
       )}
 
-      {isDiscord && isDm && (
+      {(isDiscord || isSteam) && isDm && (
         <IconButton
           name={inCall ? 'call_end' : 'call'}
           title={inCall ? 'Hang up' : `Call ${buffer.name}`}

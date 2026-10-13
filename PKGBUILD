@@ -1,7 +1,7 @@
 pkgname=moho-git
 pkgver=r1.268751e
 pkgrel=1
-pkgdesc="Unified desktop chat client for IRC, Discord, Sneedchat and Matrix"
+pkgdesc="Unified desktop chat client for IRC, Discord, Matrix, Kick, Sneedchat and Steam"
 arch=('x86_64')
 url="https://github.com/Moho-Chat/moho"
 license=('GPL3')

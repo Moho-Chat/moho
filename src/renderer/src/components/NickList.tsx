@@ -1,12 +1,15 @@
+import { activityLabel } from '../lib/activity'
+import { ActivityLine } from './ActivityLine'
 import { useEffect, useMemo, useState } from 'react'
 import { Avatar } from './Avatar'
 import { Icon, IconButton } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
-import { useActiveBuffer, useChat, useIdSetPref, useStore } from '../state/hooks'
+import { useActiveBuffer, useChat, useComfy, useIdSetPref, useStore } from '../state/hooks'
 import { classes, hasDirectMessages, nickColor } from '../lib/util'
 import { KickPoints } from './KickPoints'
 import { ReasonPrompt } from './ReasonPrompt'
 import type { Member } from '../../../shared/wire'
+import { steamRoomIds, type SteamChatGroup } from '../lib/steamchat'
 
 /**
  * The member list for the active channel. Two grouping modes, both driven off
@@ -48,6 +51,7 @@ export type ModerationAction = 'kick' | 'ban' | 'mute' | 'op' | 'deop' | 'voice'
  */
 function memberTitle(member: Member): string {
   const lines = [member.nick]
+  if (member.activity) lines.push(activityLabel(member.activity))
   if (member.account) lines.push(`identified as ${member.account}`)
   if (member.host) lines.push(member.host)
   if (lines.length === 1 && member.userId) return member.userId
@@ -126,6 +130,7 @@ interface DiscordPowers {
 
 export function NickList(): JSX.Element {
   const store = useStore()
+  const comfy = useComfy()
   const buffer = useActiveBuffer()
   const presenceByBuffer = useChat((s) => s.presenceByBuffer)
   const accounts = useChat((s) => s.accounts)
@@ -174,8 +179,28 @@ export function NickList(): JSX.Element {
       })
   }, [account?.service, account?.id, buffer?.id])
 
+  // Steam answers from the group: what the account's roles allow there.
+  const [steamPowers, setSteamPowers] = useState<Record<string, boolean>>({})
+  const steamRoom = account?.service === 'steam' ? steamRoomIds(buffer) : null
+  useEffect(() => {
+    setSteamPowers({})
+    if (!steamRoom || !account) return
+    let live = true
+    void window.moho
+      .rpc<SteamChatGroup[]>('steamChatGroups', { accountId: account.id, groupId: steamRoom.group })
+      .then((g) => live && g[0] && setSteamPowers({ canKick: g[0].mayModerate, canBan: g[0].mayModerate, canMute: false }))
+      .catch(() => {
+        /* advisory only: no answer means no moderation entries */
+      })
+    return () => {
+      live = false
+    }
+  }, [account?.id, steamRoom?.group])
+
   const perms =
-    account?.service === 'irc'
+    account?.service === 'steam'
+      ? steamPowers
+      : account?.service === 'irc'
       ? ircPermissions(members, account.currentNick)
       : account?.service === 'kick'
         ? kickPermissions(members, account.currentNick)
@@ -263,6 +288,7 @@ export function NickList(): JSX.Element {
               <MemberRow
                 key={member.userId || member.nick}
                 member={member}
+                comfy={comfy}
                 blockKey={`${buffer?.accountId}|${member.nick}`}
                 blocked={isBlocked(`${buffer?.accountId}|${member.nick}`)}
                 canOpenDm={hasDirectMessages(account?.service)}
@@ -353,6 +379,24 @@ export function NickList(): JSX.Element {
                       .catch((e: Error) => store.toast('error', e.message))
                     return
                   }
+                  if (account.service === 'steam') {
+                    const group = steamRoomIds(buffer)?.group
+                    if (!group || !member.userId || (action !== 'kick' && action !== 'ban' && action !== 'mute')) return
+                    // Mute is ten minutes, as it is on Discord; kick and ban are
+                    // the group's own.
+                    void window.moho
+                      .rpc('steamChatGroupAction', {
+                        accountId: account.id,
+                        groupId: group,
+                        action,
+                        steamid: member.userId,
+                        seconds: action === 'mute' ? 600 : 3600,
+                        banned: true
+                      })
+                      .then(() => store.toast('info', `${action === 'ban' ? 'Banned' : action === 'mute' ? 'Muted' : 'Removed'} ${member.nick}`))
+                      .catch((e: Error) => store.toast('error', e.message))
+                    return
+                  }
                   if (account.service === 'discord') {
                     // Discord's own three, and "mute" is a timeout there -
                     // the same word this menu uses everywhere, meaning what
@@ -440,6 +484,12 @@ export function NickList(): JSX.Element {
 
 interface MemberRowProps {
   member: Member
+  /**
+   * Comfy draws the list as Discord does - a face on everybody, with what
+   * they are doing under their name - on every service. Classic draws names,
+   * as IRC and Sneedchat always have.
+   */
+  comfy: boolean
   blockKey: string
   blocked: boolean
   /** The protocol can start a conversation from a member list. */
@@ -487,6 +537,7 @@ interface MemberRowProps {
 
 function MemberRow({
   member,
+  comfy,
   blockKey,
   blocked,
   canOpenDm,
@@ -638,24 +689,17 @@ function MemberRow({
     <>
       <button
         type="button"
-        className={classes('nick-row', member.away && 'away', blocked && 'blocked')}
+        className={classes('nick-row', comfy && 'comfy', member.away && 'away', blocked && 'blocked')}
         onContextMenu={open}
         // Who they are is the click, as in Discord, Slack and Element;
         // mentioning is Shift+click and the menu's own entry.
         onClick={(e) => (onProfile && !e.shiftKey ? onProfile() : onMention())}
         title={memberTitle(member)}
       >
-        {/* A face and a dot, where the service has presence to report. The
-            others - IRC, Sneedchat, Kick - are lists of names, and a column
-            of initials on those would be decoration. */}
-        {member.status !== undefined && (
-          <Avatar
-            name={member.nick}
-            url={member.avatarUrl}
-            size={24}
-            status={member.status}
-          />
-        )}
+        {/* A face on everybody in comfy, with a dot where the service has
+            presence to report; classic is a list of names, and a column of
+            initials on those would be decoration. */}
+        {comfy && <Avatar name={member.nick} url={member.avatarUrl} size={32} status={member.status} />}
         {/* IRC's rank is one character and sits in a fixed slot before the
             name. Kick's is a word - "moderator", "subscriber" - which
             overflowed that eight-pixel slot and painted straight over the
@@ -664,9 +708,18 @@ function MemberRow({
         {member.prefix && member.prefix.length === 1 && (
           <span className="nick-prefix">{member.prefix}</span>
         )}
-        <span className="ellipsis" style={{ color: nickColor(member.nick) }}>
-          {member.nick}
-        </span>
+        {comfy ? (
+          <span className="nick-text">
+            <span className="ellipsis" style={{ color: nickColor(member.nick) }}>
+              {member.nick}
+            </span>
+            {member.activity && <ActivityLine activity={member.activity} />}
+          </span>
+        ) : (
+          <span className="ellipsis" style={{ color: nickColor(member.nick) }}>
+            {member.nick}
+          </span>
+        )}
         {member.prefix && member.prefix.length > 1 && (
           <span className={`sender-badge small ${member.prefix}`} title={member.prefix}>
             {shortBadge(member.prefix)}

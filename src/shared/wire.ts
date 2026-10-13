@@ -3,7 +3,7 @@
 
 export interface Account {
   id: string
-  service: 'irc' | 'discord' | 'sneedchat' | 'matrix' | 'kick' | 'jabber' | 'slack'
+  service: 'irc' | 'discord' | 'sneedchat' | 'matrix' | 'kick' | 'steam' | 'jabber' | 'slack'
   displayName: string
   /**
    * How the user is presenting: "online" | "idle". Distinct from
@@ -181,6 +181,16 @@ export interface Buffer {
     detail?: string
     /** tor | site | chat | refused */
     cause?: string
+  }
+  /**
+   * A warning the service has put on this conversation, drawn over it until it
+   * is dismissed - Steam's "this person may not be who they appear to be".
+   * Gone when dismissed, and back if the service raises it again.
+   */
+  notice?: {
+    /** suspicious */
+    kind: string
+    text: string
   }
 }
 
@@ -384,6 +394,8 @@ export interface VoiceSession {
   bufferId?: string
   /** A stage channel: speakers and an audience. */
   stage?: boolean
+  /** The rail entry this belongs to, where its id is not a Discord guild's: a Steam group. */
+  railId?: string
 }
 
 export interface ReplyPreview {
@@ -625,12 +637,24 @@ export interface Profile {
   away?: string
   /** Presence word - "online", "idle", "dnd", "offline". */
   status?: string
+  /** What they are doing, where the service says: a game, a track, or words they wrote. */
+  activity?: Activity | null
   /** Rooms or channels shared with them, where the service will say. */
   channels?: string[]
   /** Anything else worth showing, already phrased for a person to read. */
   extra?: { label: string; value: string }[]
+  /** The names they have had, newest first, where the service keeps them; `when` is the service's own words for the moment. */
+  nameHistory?: { name: string; when: string }[]
   /** Set while the service is still being asked; the card fills in. */
   pending?: boolean
+}
+
+/** What somebody is doing, as a line under their name. */
+export interface Activity {
+  /** Decides the little picture before it: a gamepad, a note, or none. */
+  kind: 'game' | 'music' | 'custom'
+  /** The game, the track, or the words. */
+  text: string
 }
 
 export interface Member {
@@ -666,8 +690,19 @@ export interface Member {
    * split into online and offline.
    */
   status?: string
+  /**
+   * What they are doing, said under their name: a game, a track, or a status
+   * they wrote themselves. Only where the service says; absent when the dot is
+   * the whole answer.
+   */
+  activity?: Activity | null
   /** Their picture, where the service has one in its member list. */
   avatarUrl?: string
+  /** Steam: which kind of client they are on, and when they were last seen (unix seconds). */
+  client?: string
+  lastSeen?: number
+  /** Steam: what the game they are in says about what they are doing. */
+  rich?: string
 }
 
 export interface Protocol {
@@ -754,6 +789,18 @@ export interface MatrixInvite {
   isDirect: boolean
 }
 
+/**
+ * Somebody who has asked to be this account's friend and is waiting to be
+ * answered. Offered in the rail beside a Matrix room's invitation, because it
+ * is the same kind of thing: a request that expires when it is answered.
+ */
+export interface FriendRequest {
+  /** The service's own id for the person. */
+  id: string
+  name: string | null
+  avatarUrl?: string | null
+}
+
 export interface MatrixVerification {
   accountId: string
   verificationId: string
@@ -771,6 +818,11 @@ export interface MatrixVerification {
   isSelf?: boolean
   /** Set on an incoming request that has not been answered yet. */
   fromUser?: string
+  /**
+   * Somebody else asked, and it has not been answered: it is waiting on the
+   * Invitations tile rather than showing as a dialog. Cleared once it is.
+   */
+  incoming?: boolean
   fromDevice?: string
 }
 

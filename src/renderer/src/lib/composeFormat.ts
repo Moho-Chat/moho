@@ -24,7 +24,12 @@ const CAPABILITIES: Record<string, FormatKind[]> = {
   sneedchat: ['bold', 'italic', 'underline', 'strike', 'code', 'spoiler', 'quote', 'color'],
   // Quote is left out of IRC: a quote is a line of its own, and a newline
   // reaching IRC is a malformed message.
-  irc: ['bold', 'italic', 'underline', 'strike', 'code', 'spoiler', 'color']
+  irc: ['bold', 'italic', 'underline', 'strike', 'code', 'spoiler', 'color'],
+  // Steam's friend chat takes no formatting: found against the real service,
+  // which turns [b], [i], [u] and [strike] into literal text and drops [code],
+  // [quote] and [spoiler] to their contents. So there is nothing to offer, and
+  // what it does read - emoticons - is not a format.
+  steam: []
 }
 
 export function formatsFor(service: string | undefined): FormatKind[] {
@@ -195,9 +200,15 @@ export function serialize(root: BoxNode, service: string | undefined): string {
     for (let i = 0; i < node.childNodes.length; i++) {
       const n = node.childNodes[i]
       if (n.nodeType === TEXT_NODE) {
-        out += n.nodeValue ?? ''
+        // Steam reads BBCode, so a bracket somebody typed is escaped: a "[b]"
+        // they meant literally must not turn into bold.
+        out += service === 'steam' ? (n.nodeValue ?? '').replace(/\[/g, '\\[') : (n.nodeValue ?? '')
       } else if (n.nodeName === 'IMG') {
-        out += n.dataset?.token ?? ''
+        const token = n.dataset?.token ?? ''
+        // An emoticon leaves as the name between colons, which is how Steam
+        // is told one was meant.
+        const steam = service === 'steam' ? token.match(/^\[steam:emote:([A-Za-z0-9_-]+)\]$/) : null
+        out += steam ? `:${steam[1]}:` : token
       } else if (n.nodeName === 'BR') {
         out += '\n'
       } else if (n.nodeType === ELEMENT_NODE) {

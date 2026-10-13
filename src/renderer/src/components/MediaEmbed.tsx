@@ -113,7 +113,7 @@ export function MediaEmbed({
   const [seen, setSeen] = useState<{ width: number; height: number } | null>(null)
   const [playing, setPlaying] = useState(false)
   // Hidden until it is clicked, as Discord does with a file sent as a spoiler.
-  const spoiler = !!attachment?.filename?.startsWith(SPOILER_PREFIX)
+  const spoiler = !!attachment?.filename?.startsWith(SPOILER_PREFIX) || !!item?.spoiler
   const [revealed, setRevealed] = useState(false)
   const hidden = spoiler && !revealed
   // What it is called, less the marker: that is not part of the name.

@@ -34,6 +34,19 @@ export interface MediaItem {
    * somebody opens it.
    */
   page?: string
+  /** Sent as a spoiler: hidden until it is clicked. */
+  spoiler?: boolean
+}
+
+/**
+ * Which of these pictures sit inside a `||spoiler||`, and so are hidden the
+ * way the words beside them are. Steam writes a spoilered picture that way;
+ * Discord says it with the file's name instead.
+ */
+export function markSpoilered(items: MediaItem[], text: string): MediaItem[] {
+  if (items.length === 0 || !text.includes('||')) return items
+  const hidden = [...text.matchAll(/\|\|([\s\S]*?)\|\|/g)].map((m) => m[1])
+  return items.map((item) => (hidden.some((h) => h.includes(item.url)) ? { ...item, spoiler: true } : item))
 }
 
 /**
@@ -69,6 +82,30 @@ export function kickEmoteUrl(id: string): string {
   return resolveMediaUrl(drawableEmoteUrl(`https://files.kick.com/emotes/${id}/fullsize`))
 }
 
+/**
+ * The picture for one of Steam's emoticons or stickers, by name.
+ *
+ * A name is all a message carries - `[steam:emote:steamhappy]` - and the
+ * picture is a public one at an address built from it, the way Discord's is
+ * built from an id. So it draws for an emoticon this account does not have,
+ * which is the point of one somebody else sent.
+ */
+export function steamPictureUrl(kind: 'emote' | 'sticker', name: string): string {
+  const base = 'https://community.fastly.steamstatic.com/economy/'
+  return resolveMediaUrl(`${base}${kind === 'emote' ? 'emoticon' : 'sticker'}/${encodeURIComponent(name)}`)
+}
+
+/**
+ * What a Steam token names. An emoticon is one word; a sticker is Steam's own
+ * name for it, which has spaces in it - `[steam:sticker:Nyan GLaDOS]`.
+ */
+export function steamTokenOf(text: string): { kind: 'emote' | 'sticker'; name: string } | null {
+  const m = text.match(/^\[steam:(emote|sticker):([^\]\r\n"]{1,64})\]$/)
+  if (!m) return null
+  if (m[1] === 'emote' && !/^[A-Za-z0-9_-]+$/.test(m[2])) return null
+  return { kind: m[1] as 'emote' | 'sticker', name: m[2] }
+}
+
 /** What something picked out of the emoji list looks like, when it isn't text. */
 export interface EmojiPreview {
   /** Possibly a local path - run it through resolveMediaUrl before use. */
@@ -98,9 +135,68 @@ export function emojiPreview(text: string, smilies: SmilieEntry[] = []): EmojiPr
   if (custom) return { src: discordEmojiUrl(custom[2]), label: `:${custom[1]}:` }
   const kick = text.match(/^\[emote:(\d+):([^\]]{0,64})\]$/)
   if (kick) return { src: kickEmoteUrl(kick[1]), label: `:${kick[2]}:` }
+  const steam = steamTokenOf(text)
+  if (steam) return { src: steamPictureUrl(steam.kind, steam.name), label: `:${steam.name}:` }
   const smilie = smilies.find((s) => s.aliases?.includes(text))
   if (smilie?.url) return { src: smilie.url, label: smilie.label }
   return null
+}
+
+/**
+ * What a cell in a service's own section sends back.
+ *
+ * Sneedchat's id is the shortcode itself, so the id is the text. Steam's is a
+ * `steam:name` key, which is no message at all: it was inserted as the words
+ * "steam:steambored". It leaves as the emoticon token, which the box draws.
+ */
+export function sourcePick(service: string, e: { id: string }): string {
+  return service === 'steam' && e.id.startsWith('steam:') ? `[steam:emote:${e.id.slice(6)}]` : e.id
+}
+
+/**
+ * Whether what was typed into a Steam conversation is what Steam logged.
+ *
+ * They are never spelled alike when a message holds an emoticon or a bracket:
+ * the box sends `:steambored:` and Steam hands it back as a picture, which the
+ * daemon writes as `[steam:emote:steambored]`; a bracket typed literally leaves
+ * as `\[` and comes back as `[` with an invisible mark after it. Matched
+ * strictly, the message sat grey until it timed out as failed, while its own
+ * echo showed beside it.
+ */
+export function steamSameText(sent: string, logged: string): boolean {
+  const sentForm = sent.replace(/\\\[/g, '[')
+  const loggedForm = logged
+    .replace(/\[steam:emote:([A-Za-z0-9_-]+)\]/g, ':$1:')
+    // A link Steam made into a picture or a card comes back as the address, or as
+    // words that link to it - which is what was typed.
+    .replace(/\[steam:(?:image|video):(https?:\/\/[^\s\]]+)\]/g, '$1')
+    .replace(/\[([^\]]+)\]\(https?:\/\/[^\s)]+\)/g, '$1')
+    .replace(/\u200b/g, '')
+    .trim()
+  return sentForm.trim() === loggedForm
+}
+
+/**
+ * A link that ends a clause is not a link ending in the clause's punctuation:
+ * "see https://x.test/a, then" links `https://x.test/a`. A closing bracket goes
+ * too, unless the address has the opening one - which is how a Wikipedia page
+ * such as `.../Foo_(bar)` keeps its own. A semicolon stays, because the text is
+ * escaped by now and `&amp;` inside an address ends in one.
+ */
+export function splitTrailingPunctuation(found: string): [string, string] {
+  let address = found
+  let tail = ''
+  for (;;) {
+    const last = address.slice(-1)
+    const opens = (address.match(/\(/g) ?? []).length
+    const closes = (address.match(/\)/g) ?? []).length
+    if (last && '.,:!?\'*'.includes(last) || (last === ')' && closes > opens)) {
+      tail = last + tail
+      address = address.slice(0, -1)
+    } else {
+      return [address, tail]
+    }
+  }
 }
 
 export function escapeHtml(s: string): string {
@@ -119,6 +215,13 @@ export function escapeHtml(s: string): string {
 export function normalizeBBCode(text: string): string {
   if (!text) return text
   let out = text
+
+  // What Steam sends for a file, as the daemon first stored it, before it
+  // wrote a marker: the tag with its address as an attribute, which was read
+  // as `[img src=ADDRESS ...]ADDRESS` or as the address twice and a stray
+  // `[/video]`. Read into the marker, so what was stored then draws as it does now.
+  out = out.replace(/\[(img|video)\s+src="?(https?:\/\/[^\s"\]]+)"?[^\]]*\](?:\s*\2)?(?:\[\/\1\])?/gi, (_m, tag: string, url: string) => `\n[steam:${tag.toLowerCase() === 'img' ? 'image' : 'video'}:${url}]\n`)
+  out = out.replace(/(https?:\/\/[^\s\]]+)\s*\n\s*\1\[\/video\]/gi, '\n[steam:video:$1]\n')
 
   // [br] -> a real newline, so it flows through the same \n -> <br> step
   // below. Left alone, the catch-all "strip unrecognised BBCode" pass would
@@ -385,6 +488,9 @@ export function ircFormat(text: string, mode: 'render' | 'strip'): string {
 
 export function formatMessage(text: string, opts: FormatOptions = {}): string {
   if (!text) return text
+  // A Steam picture or video named in a line that is not drawing its media - a
+  // quoted reply, a preview - is the address it names.
+  text = text.replace(STEAM_MEDIA_MARK_RE, '$2')
   const revealed = opts.revealedSpoilers || {}
   // First, because the codes are invisible characters sitting anywhere in the
   // line: a colour code inside a URL or between a pair of asterisks would
@@ -449,6 +555,17 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   out = out.replace(/\[emote:(\d+):([^\]]{0,64})\]/g, (_m, id: string, name: string) =>
     stow(`<img src="${kickEmoteUrl(id)}" class="custom-emoji" alt=":${name}:">`)
   )
+
+  // Steam's emoticons and stickers, which arrive as `[steam:emote:name]`. Like
+  // the two above the picture is public and named by the token, so one that
+  // somebody else sent draws whether or not this account has it. A sticker is
+  // drawn larger, as Steam draws it.
+  out = out.replace(/\[steam:(emote|sticker):([^\]\r\n]{1,80})\]/g, (m, kind: string, shown: string) => {
+    // Escaped by now, and a name that was written with an ampersand in it is whole again.
+    const name = shown.replace(/&amp;/g, '&')
+    if (!steamTokenOf(`[steam:${kind}:${name}]`)) return m
+    return stow(`<img src="${steamPictureUrl(kind as 'emote' | 'sticker', name)}" class="${kind === 'sticker' ? 'custom-emoji steam-sticker' : 'custom-emoji'}" alt=":${shown}:">`)
+  })
 
   // Discord channel links. What arrives is `<#1393001234568164748>` and
   // nothing else - no name anywhere in the payload - so this is the only
@@ -532,7 +649,10 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   // something to offer the reader to open (#247). And not into an escaped
   // bracket: `<https://x>` is how Discord suppresses an embed, and arrives
   // here as `&lt;https://x&gt;`.
-  out = out.replace(/((?:https?|ircs?):\/\/(?:(?!&gt;|&lt;|&quot;)[^\s<])+)/g, '<a href="$1">$1</a>')
+  out = out.replace(/((?:https?|ircs?):\/\/(?:(?!&gt;|&lt;|&quot;)[^\s<])+)/g, (_m, found: string) => {
+    const [address, tail] = splitTrailingPunctuation(found)
+    return `<a href="${address}">${address}</a>${tail}`
+  })
 
   // Anything else BBCode-shaped that wasn't recognised (e.g. [USER=..]
   // mentions, [sub]/[sup], a typo'd tag) - stripped rather than shown as
@@ -579,6 +699,24 @@ export function hostnameOf(url: string): string {
  * sniffing for it.
  */
 export const OPAQUE_IMAGE_HOSTS = ['i.ddos.lgbt']
+
+/**
+ * A picture Steam holds for somebody who sent it in chat. Its address has no
+ * file extension anywhere - `.../ugc/<id>/<hash>/` - so it can only be
+ * recognised by where it is kept.
+ */
+const STEAM_UPLOAD_RE = /^https:\/\/(?:images\.steamusercontent\.com|steamuserimages-a\.akamaihd\.net|images\.akamai\.steamstatic\.com)\/ugc\//i
+
+/**
+ * What the daemon writes for a file Steam holds for a sender: `[steam:image:URL]`
+ * or `[steam:video:URL]`. Its address does not say which it is - there is no
+ * extension anywhere in it - so the message does.
+ */
+const STEAM_MEDIA_MARK_RE = /\[steam:(image|video):(https?:\/\/[^\s\]]+)\]/g
+
+export function isSteamUpload(url: string): boolean {
+  return STEAM_UPLOAD_RE.test(url)
+}
 
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|avif)(\?\S*)?$/i
 const VIDEO_EXT_RE = /\.(mp4|webm|mov|mkv|ogv)(\?\S*)?$/i
@@ -679,6 +817,14 @@ export function extractMedia(
   // - two strings, one video - and keying on the string showed it twice.
   const seen = new Set<string>()
 
+  // Steam says what a file is, and these come first so the plain scan below
+  // finds nothing left of them to guess at.
+  for (const m of text.matchAll(STEAM_MEDIA_MARK_RE)) {
+    if (seen.has(m[2])) continue
+    seen.add(m[2])
+    result.push({ url: m[2], kind: m[1] as 'image' | 'video' })
+  }
+
   // What the thumbnails were linked to. Those URLs are in the text as well -
   // inside the `[url=]` that wrapped the picture - and each is the same
   // picture as the thumbnail naming it, so drawing both shows the message
@@ -686,7 +832,7 @@ export function extractMedia(
   const targets = new Set(Object.values(opts.thumbnails ?? {}))
 
   for (const raw of urls) {
-    const url = raw.replace(/[),.;!?]+$/, '')
+    const url = raw.replace(/[),.;!?|]+$/, '')
     const yt = youtubeId(url)
     const identity = yt ? `yt:${yt}` : url
     if (seen.has(identity) || targets.has(url) || isForumUpload(url)) continue
@@ -701,6 +847,9 @@ export function extractMedia(
       seen.add(identity)
       result.push({ url, kind: 'video' })
     } else if (OPAQUE_IMAGE_HOSTS.includes(hostnameOf(url))) {
+      seen.add(identity)
+      result.push({ url, kind: 'image', ...biggerCopy(url, opts.thumbnails) })
+    } else if (isSteamUpload(url)) {
       seen.add(identity)
       result.push({ url, kind: 'image', ...biggerCopy(url, opts.thumbnails) })
     } else if (isGifPage(url)) {
@@ -734,6 +883,8 @@ export function stripEmbeddedUrls(text: string, mediaItems: MediaItem[]): string
   if (!text || mediaItems.length === 0) return text
   let out = text
   for (const item of mediaItems) out = out.split(item.url).join('')
+  // What is left of a Steam marker once its address has been lifted out.
+  out = out.replace(/\[steam:(?:image|video):\]/g, '')
 
   // A link left holding nothing, which is what the wrapper round a thumbnail
   // becomes once the picture it was wrapping has been lifted out and drawn as
@@ -755,6 +906,8 @@ export function stripEmbeddedUrls(text: string, mediaItems: MediaItem[]): string
       if (id && shown.has(id)) out = out.split(raw).join('')
     }
   }
+  // A spoiler that held only a picture is empty now it has been lifted out.
+  out = out.replace(/\|\|\s*\|\|/g, '')
   return out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 

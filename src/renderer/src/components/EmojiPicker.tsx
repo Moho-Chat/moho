@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useLayoutEffect, useMemo, 
 import { createPortal } from 'react-dom'
 import { useMediaUrl } from '../lib/route'
 import { Icon } from './Icon'
-import { discordEmojiUrl, emojiPreview, type SmilieEntry } from '../lib/format'
+import { discordEmojiUrl, emojiPreview, sourcePick, type SmilieEntry } from '../lib/format'
 import { drawableEmoteUrl, onLocalEmotes } from '../lib/emotecache'
 import { LottieSticker } from './LottieSticker'
 import type { CustomEmoji } from '../../../shared/wire'
@@ -72,6 +72,8 @@ export const COMMON_EMOJI: { emoji: string; name: string }[] = [
  * round and flags animation. Neither is negotiable - the server parses it.
  */
 export function emojiToken(e: CustomEmoji): string {
+  // Steam's, named rather than numbered: the id carries the service.
+  if (e.id.startsWith('steam:')) return `[steam:emote:${e.id.slice(6)}]`
   if (e.url) return `[emote:${e.id}:${e.name}]`
   return `<${e.animated ? 'a' : ''}:${e.name}:${e.id}>`
 }
@@ -205,6 +207,12 @@ interface Props {
   accountId?: string
   onSelect: (text: string) => void
   onClose: () => void
+  /**
+   * The service has a short set of its own and nothing else is accepted - Steam
+   * - so there is no Unicode emoji to offer, only what the account was given.
+   * Recent picks that are not from that set are left out too.
+   */
+  fixedSet?: boolean
 }
 
 export function EmojiPicker({
@@ -217,7 +225,8 @@ export function EmojiPicker({
   accountId,
   onSelect,
   onSticker,
-  onClose
+  onClose,
+  fixedSet = false
 }: Props): JSX.Element {
   // The account's emoji and stickers through its route when it is strictly
   // routed (#257) - Discord's come straight off its CDN otherwise.
@@ -248,7 +257,7 @@ export function EmojiPicker({
   /** The cell the arrow keys are on: the search box keeps the focus. */
   const keyed = useRef<HTMLElement | null>(null)
   const [pos, setPos] = useState({ left: 0, top: 0 })
-  const [recent, setRecent] = useState<string[]>(() => readRecent(accountId))
+  const [recent, setRecent] = useState<string[]>(() => readRecent(accountId).filter((r) => !fixedSet || r.startsWith('[steam:')))
   // Everything this account can send, wherever it came from. Asked of the
   // daemon rather than assembled here, because the answer depends on things
   // only it knows - a Nitro subscription, a Kick channel's standing.
@@ -350,8 +359,8 @@ export function EmojiPicker({
   const q = query.trim().toLowerCase()
 
   const unicode = useMemo(
-    () => (q ? COMMON_EMOJI.filter((e) => e.name.includes(q) || e.emoji === q) : COMMON_EMOJI),
-    [q]
+    () => (fixedSet ? [] : q ? COMMON_EMOJI.filter((e) => e.name.includes(q) || e.emoji === q) : COMMON_EMOJI),
+    [q, fixedSet]
   )
   const custom = useMemo(
     () => (q ? customEmoji.filter((e) => e.name.toLowerCase().includes(q)) : customEmoji),
@@ -802,7 +811,7 @@ export function EmojiPicker({
                   className={`emoji-cell${why ? ' locked' : ''}${art ? '' : ' emoji-token'}`}
                   disabled={!!why}
                   title={why || e.name}
-                  onClick={() => pick(e.id)}
+                  onClick={() => pick(sourcePick(src.service, e))}
                 >
                   {art ? <img src={media(art)} alt={e.name} loading="lazy" /> : e.name}
                 </button>

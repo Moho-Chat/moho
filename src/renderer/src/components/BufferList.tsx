@@ -6,16 +6,21 @@ import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { bufferMenuEntries } from '../lib/buffermenu'
 import { UserFooter } from './UserFooter'
 import { VoiceChannels } from './VoiceChannels'
+import { SteamVoiceRooms } from './SteamVoiceRooms'
 import { VoicePanel } from './VoicePanel'
 import { presenceClass, presenceLabel } from '../lib/presence'
-import { useChat, useIdSetPref, useMapPref, usePref, useStore } from '../state/hooks'
+import { activityLabel, dmActivity } from '../lib/activity'
+import { ActivityLine } from './ActivityLine'
+import { steamCategoryId, parseSteamCategory } from '../lib/steamgroups'
+import { NamePrompt } from './NamePrompt'
+import { useChat, useComfy, useIdSetPref, useInvitations, useMapPref, usePref, useStore } from '../state/hooks'
 import {
   compareInBand,
   dmGroup,
   DM_GROUP_ID,
   isDirectMessage,
   isMutedBuffer,
-  INVITE_PREFIX,
+  INVITATIONS_GROUP_ID,
   MENTIONS_GROUP_ID,
   PINNED_GROUP_ID,
   pinnedGroup,
@@ -34,6 +39,7 @@ import {
 } from '../lib/util'
 import type { Account, Member } from '../../../shared/wire'
 import { Avatar } from './Avatar'
+import { currentInvitation } from '../lib/invitations'
 import {
   categoryKey,
   reorderCategories,
@@ -72,6 +78,7 @@ export function BufferList(): JSX.Element {
   const voiceSessions = useChat((s) => s.voiceSessions)
   const presence = useChat((s) => s.presenceByBuffer)
   const popouts = useChat((s) => s.popouts)
+  const activeInvitationKey = useChat((s) => s.activeInvitationKey)
 
   const [pinned, togglePin, isPinned] = useIdSetPref('pinnedBuffers')
   const [muted, toggleMute] = useIdSetPref('mutedBuffers')
@@ -129,12 +136,15 @@ export function BufferList(): JSX.Element {
     return isDirectMessage(open) ? DM_GROUP_ID : open.groupId
   }, [buffers, activeBufferId])
 
-  // An invitation is selected the same way the mentions page is: a rail entry
-  // with no group behind it. Without this the lookup below fails to find it,
-  // falls back to some real group, and the effect writes that back - so
-  // choosing an invitation landed on whichever server happened to be first,
-  // which is exactly what it looked like.
-  const onInvite = activeGroupId.startsWith(INVITE_PREFIX)
+  // The invitations page is selected the same way the mentions page is: a rail
+  // entry with no group behind it. Without this the lookup below fails to find
+  // it, falls back to some real group, and the effect writes that back - so
+  // choosing it landed on whichever server happened to be first. Only while
+  // something is waiting: with nothing left the page has nothing to say, and
+  // falling back is the way off it.
+  const invitations = useInvitations()
+  const onInvite = activeGroupId === INVITATIONS_GROUP_ID && invitations.length > 0
+  const shownInvitation = currentInvitation(invitations, activeInvitationKey)
 
   const activeGroup =
     onMentionsPage || onInvite
@@ -158,6 +168,8 @@ export function BufferList(): JSX.Element {
 
   const isPinnedPage = activeGroup?.id === PINNED_GROUP_ID
   const isDmPage = activeGroup?.id === DM_GROUP_ID
+  // A Steam account's own page: its friends sit under the folders Steam keeps for the account.
+  const steamPage = activeGroup?.kind === 'account' && accounts.find((a) => a.id === activeGroup.accountId)?.service === 'steam'
   /**
    * Whose identity the plaque shows.
    *
@@ -178,6 +190,7 @@ export function BufferList(): JSX.Element {
     onMentionsPage && voiceSessions.length === 0
       ? undefined
       : (accounts.find((a) => a.id === activeGroup?.accountId) ??
+        (onInvite ? accounts.find((a) => a.id === shownInvitation?.accountId) : undefined) ??
         accounts.find((a) => a.id === activeBuffer?.accountId) ??
         accounts[0])
 
@@ -231,10 +244,48 @@ export function BufferList(): JSX.Element {
    * since that is the order the server arranged them in and the reason it
    * supplies one. The gathered pages keep the order they were sorted into.
    */
+  /**
+   * The headings this page draws under its own, and where each conversation is filed.
+   *
+   * A Steam account's own page has Steam's folders for the account, as its own client lists them
+   * (without the "Steam - " some carry), and each friend is under the one Steam has them in:
+   * what Steam says wins over anything filed here, and a change made here is made on Steam. Every
+   * other page has the headings somebody made.
+   */
+  const [naming, setNaming] = useState<{ id: string; name: string } | null>(null)
+  const [makingFolder, setMakingFolder] = useState(false)
+  const steamGroups = useChat((s) => s.steamGroups)
+  const steamFolders = useMemo<CustomCategory[]>(
+    () =>
+      steamPage && activeGroup
+        ? (steamGroups[activeGroup.accountId] ?? [])
+            .map((g) => ({ id: steamCategoryId(activeGroup.accountId, g.id), name: g.name.replace(/^Steam - /, '').trim() }))
+            .sort((a, b) => a.name.localeCompare(b.name))
+        : [],
+    [steamPage, activeGroup, steamGroups]
+  )
+  const myCategories = steamPage ? steamFolders : activeGroup ? (customCats[activeGroup.id] ?? []) : []
+  const viewAssignment = useMemo(() => {
+    if (!steamPage || !activeGroup) return assignment
+    const folders = [...(steamGroups[activeGroup.accountId] ?? [])].sort((a, b) => a.id - b.id)
+    const next = { ...assignment }
+    for (const b of groupBuffers) {
+      if (b.kind !== 'dm' || !b.remoteId) continue
+      const home = folders.find((g) => g.members.includes(b.remoteId!))
+      if (home) next[b.id] = steamCategoryId(activeGroup.accountId, home.id)
+      else delete next[b.id]
+    }
+    return next
+  }, [steamPage, activeGroup, steamGroups, assignment, groupBuffers])
+  /** Files a conversation under a heading: on Steam for a Steam page, in the preferences for the rest. */
+  const fileBuffer = (bufferId: string, categoryId: string): void => {
+    if (steamPage) store.moveSteamFriend(bufferId, parseSteamCategory(categoryId)?.groupId ?? null)
+    else setAssignment(bufferId, categoryId)
+  }
+
   const grouped = useMemo(() => {
     if (!activeGroup) return null
-    const mine = customCats[activeGroup.id] ?? []
-    const list = sections(groupBuffers, mine, assignment, categoryOrder[activeGroup.id] ?? [])
+    const list = sections(groupBuffers, myCategories, viewAssignment, categoryOrder[activeGroup.id] ?? [])
     if (!isPinnedPage && !isDmPage) {
       for (const s of list) {
         s.buffers.sort((a, b) => (a.position || 0) - (b.position || 0))
@@ -244,7 +295,7 @@ export function BufferList(): JSX.Element {
     // they just made it, and a heading that vanishes until something is put
     // in it cannot have anything put in it.
     return list.filter((s) => s.custom || s.buffers.length > 0)
-  }, [activeGroup, isPinnedPage, isDmPage, groupBuffers, customCats, assignment, categoryOrder])
+  }, [activeGroup, isPinnedPage, isDmPage, steamPage, groupBuffers, myCategories, viewAssignment, categoryOrder])
 
   // The menu still toggles a buffer's *own* flag independently of a muted
   // rail entry above it, the same way muting a channel inside an
@@ -252,16 +303,14 @@ export function BufferList(): JSX.Element {
   /** The call that sets a mute on the account itself, for a service that keeps one. */
   const accountMute = (accountId: string): string | null => {
     const service = accounts.find((a) => a.id === accountId)?.service
-    return service === 'matrix' ? 'setMatrixRoomMuted' : service === 'discord' ? 'setDiscordChannelMuted' : null
+    return service === 'matrix' ? 'setMatrixRoomMuted' : service === 'discord' ? 'setDiscordChannelMuted' : service === 'steam' ? 'steamSetFriendMuted' : null
   }
   const isEffectivelyMuted = (buffer: BufferEntry): boolean =>
     isMutedBuffer(buffer, muted, mutedGroups)
 
-  const [naming, setNaming] = useState<{ id: string; name: string } | null>(null)
   const { menu: groupMenu, open: openGroupMenuAt, close: closeGroupMenu } = useContextMenu()
   const [catMenu, setCatMenu] = useState<{ x: number; y: number; section: CategorySection } | null>(null)
 
-  const myCategories = activeGroup ? (customCats[activeGroup.id] ?? []) : []
   const writeCategories = (next: CustomCategory[]): void => {
     if (activeGroup) setCustomCats(activeGroup.id, next)
   }
@@ -354,7 +403,7 @@ export function BufferList(): JSX.Element {
       status={dmStatus(b, presence, buffers)}
       onCall={() => void store.callBuffer(b.id)}
       onHangUp={() => void store.leaveVoice(b.accountId)}
-      onFile={(categoryId) => setAssignment(b.id, categoryId)}
+      onFile={(categoryId) => fileBuffer(b.id, categoryId)}
       poppedOut={popouts.open.includes(b.id)}
       onPopOut={() => store.popOut(b.id)}
       onDock={() => store.dock(b.id)}
@@ -418,7 +467,7 @@ export function BufferList(): JSX.Element {
       return
     }
     if (!section.custom) return
-    setAssignment(held.id, section.key)
+    fileBuffer(held.id, section.key)
   }
 
   const hideBuffer = (id: string): void => {
@@ -437,8 +486,29 @@ export function BufferList(): JSX.Element {
         {/* Not on the mentions page, which is deliberately server-less: the
             pane is empty there because there is nothing to list, not because
             something still needs picking. */}
-        {accounts.length > 0 && !activeGroup && !onMentionsPage && (
+        {accounts.length > 0 && !activeGroup && !onMentionsPage && !onInvite && (
           <div className="bufferlist-empty muted small">Select a server on the left.</div>
+        )}
+
+        {onInvite && (
+          <>
+            <div className="group-title">
+              <span className="ellipsis group-title-name">Invitations</span>
+            </div>
+            {invitations.map((invitation) => (
+              <button
+                key={invitation.key}
+                type="button"
+                className={classes('buffer-row', invitation.key === shownInvitation?.key && 'active', 'unread')}
+                title={`${invitation.name} — ${invitation.detail}`}
+                onClick={() => store.selectInvitation(invitation.key)}
+              >
+                <Avatar name={invitation.name} url={invitation.avatarUrl ?? undefined} size={22} accountId={invitation.accountId} />
+                <span className="ellipsis buffer-name">{invitation.name}</span>
+                <ServiceMark icon={serviceIcon(invitation.service)} size={15} />
+              </button>
+            ))}
+          </>
         )}
 
         {activeGroup && (
@@ -533,14 +603,23 @@ export function BufferList(): JSX.Element {
                   const key = categoryKey(activeGroup.id, section)
                   const folded = isCollapsed(key)
                   return (
-                    <div key={section.key} className="category">
+                    <div
+                      key={section.key}
+                      // A conversation held over a heading that will take it lights the whole
+                      // category, so what is about to happen is the heading and its people
+                      // being added to - not a line that could be read as "put it above".
+                      className={classes('category', dragging?.kind === 'buffer' && overCategory === section.key && 'drop-into')}
+                    >
                       {naming?.id === section.key ? (
                         <CategoryNameField
                           value={naming.name}
                           onChange={(name) => setNaming({ id: naming.id, name })}
                           onCommit={() => {
                             const name = naming.name.trim()
-                            if (name) {
+                            if (name && steamPage && activeGroup) {
+                              const group = parseSteamCategory(naming.id)?.groupId
+                              if (group !== undefined) store.renameSteamFolder(activeGroup.accountId, group, name)
+                            } else if (name) {
                               writeCategories(
                                 myCategories.map((c) => (c.id === naming.id ? { ...c, name } : c))
                               )
@@ -557,7 +636,7 @@ export function BufferList(): JSX.Element {
                             'category-head',
                             'small',
                             dragging?.kind === 'category' && dragging.id === section.key && 'lifted',
-                            overCategory === section.key && 'drop-target'
+                            overCategory === section.key && dragging?.kind !== 'buffer' && 'drop-target'
                           )}
                           onClick={() => toggleCollapsed(key)}
                           onContextMenu={(e) => openCategoryMenu(e, section)}
@@ -640,6 +719,7 @@ export function BufferList(): JSX.Element {
 
             {/* Below the text channels, as everywhere else that has both. */}
             <VoiceChannels group={activeGroup} />
+            <SteamVoiceRooms group={activeGroup} />
           </>
         )}
       </div>
@@ -665,6 +745,11 @@ export function BufferList(): JSX.Element {
               label: 'New category',
               icon: 'create_new_folder',
               onClick: () => {
+                // On Steam it is made on Steam, once it has a name.
+                if (steamPage) {
+                  setMakingFolder(true)
+                  return
+                }
                 const id = `cat-${Date.now().toString(36)}`
                 // At the top, not the end. The command was given from the
                 // group's own title at the top of this list, and a heading
@@ -713,12 +798,30 @@ export function BufferList(): JSX.Element {
                     danger: true,
                     // The channels stay; only the heading goes, and they fall back
                     // to wherever the service filed them.
-                    onClick: () => writeCategories(myCategories.filter((c) => c.id !== catMenu.section.key))
+                    onClick: () => {
+                      const group = parseSteamCategory(catMenu.section.key)
+                      if (steamPage && activeGroup && group) store.deleteSteamFolder(activeGroup.accountId, group.groupId)
+                      else writeCategories(myCategories.filter((c) => c.id !== catMenu.section.key))
+                    }
                   }
                 ] as MenuEntry[])
               : [])
           ]}
           onClose={() => setCatMenu(null)}
+        />
+      )}
+
+      {makingFolder && activeGroup && (
+        <NamePrompt
+          title="New category"
+          detail="Made on Steam, so it is on this account in every Steam client. Steam's own client only reads its folders when it signs in, so it shows a folder or a move made here after it is restarted."
+          placeholder="Name"
+          confirmLabel="Create"
+          onCancel={() => setMakingFolder(false)}
+          onConfirm={(name) => {
+            setMakingFolder(false)
+            store.createSteamFolder(activeGroup.accountId, name)
+          }}
         />
       )}
 
@@ -937,6 +1040,12 @@ function BufferRow({
   // Whether this channel's stream is the one in the window. Selected down to
   // a boolean for the same reason as `live` above.
   const watched = useChat((s) => s.watching?.bufferId === buffer.id)
+  // What the person is doing: under their name in comfy, and in the tooltip
+  // either way. Selected as the one object rather than a copy of it, so the row
+  // redraws when it changes and not on every presence update in the window.
+  const activity = useChat((s) => dmActivity(buffer, s.presenceByBuffer))
+  const comfy = useComfy()
+  const doing = activity ? activityLabel(activity) : undefined
 
   // Under an account header the row's own kind is what's worth showing (a
   // channel vs a DM vs the server buffer). A pinned row has no header above
@@ -980,7 +1089,7 @@ function BufferRow({
   // Calling from the row it belongs to, as well as from the header of the
   // conversation once it is open - the list is where you look for somebody
   // you want to reach, so it is where reaching them should be offered.
-  const canCall = account?.service === 'discord' && buffer.kind === 'dm'
+  const canCall = (account?.service === 'discord' || account?.service === 'steam') && buffer.kind === 'dm'
 
   // The same entries the header's nameplate opens - see lib/buffermenu.ts for
   // why they live there rather than here.
@@ -1015,7 +1124,9 @@ function BufferRow({
     onMarkRead: () => void store.markBuffersRead([buffer.id]),
     onMarkUnread: account?.service === 'matrix' ? onMarkUnread : undefined,
     onTag: account?.service === 'matrix' ? onTag : undefined,
-    markedUnread: buffer.markedUnread
+    markedUnread: buffer.markedUnread,
+    onSteamFriend: account?.service === 'steam' && buffer.kind === 'dm' && buffer.remoteId ? (what) => store.askSteamFriend(what, buffer.id) : undefined,
+    onProfile: account?.service === 'steam' && buffer.kind === 'dm' && buffer.remoteId ? () => store.showProfile(buffer.id, buffer.name, buffer.remoteId) : undefined
   })
 
   return (
@@ -1043,10 +1154,17 @@ function BufferRow({
           onDragStart()
         }}
         onDragEnd={onDragEnd}
-        title={link ? `${buffer.name} — ${link.detail}` : draggable ? `${buffer.name} — drag onto a heading to file it` : buffer.name}
+        title={link ? `${buffer.name} — ${link.detail}` : draggable ? `${buffer.name} — drag onto a heading to file it` : doing ? `${buffer.name} — ${doing}` : buffer.name}
       >
         {leading}
-        <span className="ellipsis buffer-name">{rowName}</span>
+        {comfy && activity ? (
+          <span className="buffer-text">
+            <span className="ellipsis buffer-name">{rowName}</span>
+            <ActivityLine activity={activity} />
+          </span>
+        ) : (
+          <span className="ellipsis buffer-name">{rowName}</span>
+        )}
         {/* So a conversation with no unread count and no traffic in it is
             explained rather than merely quiet: it is being read elsewhere. */}
         {/* Still filling in - a Matrix room between joining it and the server

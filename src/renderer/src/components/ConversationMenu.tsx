@@ -6,6 +6,7 @@ import { ReasonPrompt } from './ReasonPrompt'
 import { Avatar } from './Avatar'
 import { bufferMenuEntries } from '../lib/buffermenu'
 import { dmStatus } from './BufferList'
+import { activityLabel, dmActivity } from '../lib/activity'
 import { bufferDisplayName, classes } from '../lib/util'
 import { useChat, useStore } from '../state/hooks'
 import { useIdSetPref, useMapPref, usePref } from '../state/hooks'
@@ -51,6 +52,8 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
 
   const account = accounts.find((a) => a.id === buffer.accountId)
   const name = bufferDisplayName(buffer.name)
+  const activity = dmActivity(buffer, presence)
+  const statusText = activity ? activityLabel(activity) : undefined
 
   const entries: MenuEntry[] = [
     ...bufferMenuEntries({
@@ -61,7 +64,7 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
       filed: !!assignment[buffer.id],
       inCall: voiceSessions.some((s) => s.bufferId === buffer.id),
       poppedOut: popouts.open.includes(buffer.id),
-      canCall: account?.service === 'discord' && buffer.kind === 'dm',
+      canCall: (account?.service === 'discord' || account?.service === 'steam') && buffer.kind === 'dm',
       live,
       watched,
       autojoins: store.autojoins(buffer.accountId, name),
@@ -69,17 +72,17 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
       onTogglePin: () => togglePin(buffer.id),
       onToggleMute: () => {
         toggleMute(buffer.id)
-        if (account?.service === 'matrix') {
+        if (account?.service === 'matrix' || account?.service === 'steam') {
           void window.moho
-            .rpc('setMatrixRoomMuted', { bufferId: buffer.id, muted: !isMuted(buffer.id) })
+            .rpc(account.service === 'steam' ? 'steamSetFriendMuted' : 'setMatrixRoomMuted', { bufferId: buffer.id, muted: !isMuted(buffer.id) })
             .catch((e: Error) => store.toast('error', e.message))
         }
       },
       onUnmuteAccount:
-        account?.service === 'matrix'
+        account?.service === 'matrix' || account?.service === 'steam'
           ? () =>
               void window.moho
-                .rpc('setMatrixRoomMuted', { bufferId: buffer.id, muted: false })
+                .rpc(account.service === 'steam' ? 'steamSetFriendMuted' : 'setMatrixRoomMuted', { bufferId: buffer.id, muted: false })
                 .catch((e: Error) => store.toast('error', e.message))
           : undefined,
       onToggleAutojoin:
@@ -108,7 +111,9 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
         account?.service === 'matrix'
           ? (tag, on) => void store.setRoomTag(buffer.id, tag, on)
           : undefined,
-      markedUnread: buffer.markedUnread
+      markedUnread: buffer.markedUnread,
+      onSteamFriend: account?.service === 'steam' && buffer.kind === 'dm' && buffer.remoteId ? (what) => store.askSteamFriend(what, buffer.id) : undefined,
+    onProfile: account?.service === 'steam' && buffer.kind === 'dm' && buffer.remoteId ? () => store.showProfile(buffer.id, buffer.name, buffer.remoteId) : undefined
     }),
     { separator: true },
     // Last, and on its own. It is the one entry here that starts something
@@ -166,6 +171,9 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
           />
         ) : null}
         <span className="main-header-title ellipsis">{name}</span>
+        {/* What they are doing, beside the name: the game, or a state the dot's
+            colour does not tell apart. */}
+        {statusText && <span className="header-status small muted ellipsis">{statusText}</span>}
       </button>
 
       {buffer.topic && <HeaderTopic topic={buffer.topic} />}

@@ -1,8 +1,9 @@
 import { useMediaUrl } from '../lib/route'
 import { SwitchRow } from './Switch'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton, ServiceMark } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
+import { SteamAccountTools } from './SteamAccountTools'
 import { IgnoreList } from './IgnoreList'
 import { TunnelAllSwitch } from './settings/Tunnel'
 import { useChat, useConnectionDetail, useMapPref, usePref, useStore } from '../state/hooks'
@@ -23,7 +24,7 @@ import type { Account } from '../../../shared/wire'
  * that gains a backend appears here as soon as it gains a form, and one the
  * daemon stops offering disappears without this file being touched.
  */
-const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick'] as const
+const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam'] as const
 type AddableService = (typeof FORMS)[number]
 
 /** What `listProtocols` answers with. */
@@ -134,6 +135,7 @@ export function AccountsPanel(): JSX.Element {
         {adding === 'sneedchat' && <SneedChatForm />}
         {adding === 'matrix' && <MatrixForm />}
         {adding === 'kick' && <KickForm onDone={() => setAdding(null)} />}
+        {adding === 'steam' && <SteamForm onDone={() => setAdding(null)} />}
         {adding && (
           <button type="button" className="button subtle small" onClick={() => setAdding(null)}>
             Cancel
@@ -455,6 +457,8 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
           {account.service === 'discord' && <DiscordReauth account={account} />}
 
           {account.service === 'matrix' && <MatrixAccountTools account={account} />}
+
+          {account.service === 'steam' && <SteamAccountTools account={account} />}
 
           {account.service === 'sneedchat' && (
             <>
@@ -1188,6 +1192,282 @@ function KickForm({ onDone }: { onDone: () => void }): JSX.Element {
         Signing in opens Kick&apos;s own page in a browser window. Your password goes into their
         form and never passes through moho, and the window is thrown away afterwards.
       </p>
+    </div>
+  )
+}
+
+/** What Steam can ask for to let a sign-in through; any one of them will do. */
+interface SteamOption {
+  kind: 'deviceCode' | 'emailCode' | 'approval' | 'emailApproval'
+  hint?: string
+}
+
+/**
+ * Signing in to Steam.
+ *
+ * A conversation rather than a request, because Steam may want something from
+ * the person's phone or inbox: the daemon answers with a login id and the rest
+ * arrives as events (see nobilis backend/steam/login.rs). So the form has
+ * three shapes - the credentials, then whatever Steam is waiting for, then
+ * nothing, because the account exists and the form closes itself.
+ *
+ * The password is typed here, goes to the daemon once, and is forgotten when
+ * this form is: the account keeps the token Steam hands back, never the
+ * password.
+ */
+function SteamForm({ onDone }: { onDone: () => void }): JSX.Element {
+  const store = useStore()
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [useTor, setUseTor] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [loginId, setLoginId] = useState('')
+  const [detail, setDetail] = useState('')
+  const [needs, setNeeds] = useState<{ options: SteamOption[]; error?: string } | null>(null)
+  const [code, setCode] = useState('')
+  // The picture of the code a phone scans, while a sign-in by scanning waits.
+  const [qr, setQr] = useState<{ path: string; at: number } | null>(null)
+
+  // The id lives in a ref as well as state, because the first event can be
+  // handled before the render that follows the answer to the request that
+  // started the sign-in. Nothing else is signing in from this form, so an
+  // event arriving before the id is known can only be this one's.
+  const current = useRef('')
+  const setId = (id: string): void => {
+    current.current = id
+    setLoginId(id)
+  }
+
+  useEffect(() => {
+    const off = window.moho.onEvent((e) => {
+      const d = e.data as {
+        loginId?: string
+        detail?: string
+        options?: SteamOption[]
+        error?: string
+        success?: boolean
+        path?: string
+      }
+      if (!e.event.startsWith('steamLogin')) return
+      if (current.current && d.loginId !== current.current) return
+      if (e.event === 'steamLoginQr' && d.path) {
+        // The same file is written again when the code is replaced, so the
+        // moment is part of what is drawn.
+        setQr({ path: d.path, at: Date.now() })
+      } else if (e.event === 'steamLoginStatus') {
+        setDetail(d.detail || '')
+      } else if (e.event === 'steamLoginNeeds') {
+        setNeeds({ options: d.options ?? [], error: d.error })
+        setCode('')
+      } else if (e.event === 'steamLoginResult') {
+        setNeeds(null)
+        setQr(null)
+        setId('')
+        setBusy(false)
+        setDetail('')
+        if (d.success) {
+          setPassword('')
+          void store.refreshAccounts()
+          onDone()
+        } else {
+          store.toast('error', d.error || 'Steam sign-in failed')
+        }
+      }
+    })
+    return off
+  }, [onDone, store])
+
+  // Closing the form on a sign-in that is still waiting tells the daemon
+  // nobody is, so it stops asking Steam and frees what it was holding.
+  useEffect(
+    () => () => {
+      if (current.current) void window.moho.rpc('cancelSteamLogin', { loginId: current.current }).catch(() => {})
+    },
+    []
+  )
+
+  const begin = (): void => {
+    setBusy(true)
+    setDetail('')
+    setNeeds(null)
+    current.current = ''
+    void window.moho
+      .rpc<{ loginId: string }>('addSteamAccount', { username, password, useTor })
+      .then((r) => setId(r.loginId))
+      .catch((e: Error) => {
+        setBusy(false)
+        store.toast('error', e.message)
+      })
+  }
+
+  // Signing in by scanning a code with the Steam app: nothing is typed.
+  const beginQr = (): void => {
+    setBusy(true)
+    setDetail('')
+    setNeeds(null)
+    setQr(null)
+    current.current = ''
+    void window.moho
+      .rpc<{ loginId: string }>('addSteamAccountQr', { useTor })
+      .then((r) => setId(r.loginId))
+      .catch((e: Error) => {
+        setBusy(false)
+        store.toast('error', e.message)
+      })
+  }
+
+  const send = (): void => {
+    const typed = code.trim()
+    if (!typed || !loginId) return
+    void window.moho
+      .rpc('submitSteamGuardCode', { loginId, code: typed })
+      .then(() => setDetail('checking the code'))
+      .catch((e: Error) => store.toast('error', e.message))
+  }
+
+  const cancel = (): void => {
+    if (current.current) void window.moho.rpc('cancelSteamLogin', { loginId: current.current }).catch(() => {})
+    setId('')
+    setQr(null)
+    setNeeds(null)
+    setDetail('')
+    setBusy(false)
+  }
+
+  if (qr) {
+    return (
+      <div className="add-form">
+        <p>Scan this with the Steam app on your phone.</p>
+        <p className="small muted">
+          In the app, open Steam Guard and choose the scan option (the QR icon), point the phone
+          at the code, and approve the sign-in. moho keeps only the token Steam hands back.
+        </p>
+        <img className="qr-image" src={resolveMediaUrl(`file://${qr.path}#${qr.at}`)} alt="Steam sign-in QR code" />
+        {detail && <p className="small muted">{detail}…</p>}
+        <div className="field-row">
+          <button type="button" className="button" onClick={cancel}>
+            Cancel sign-in
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const takesCode = !!needs?.options.some((o) => o.kind === 'deviceCode' || o.kind === 'emailCode')
+  const approvals = needs?.options.filter((o) => o.kind === 'approval' || o.kind === 'emailApproval') ?? []
+
+  if (needs) {
+    return (
+      <div className="add-form">
+        <p>Steam wants to check that this is you.</p>
+        {approvals.map((o) => (
+          <p key={o.kind} className="small muted">
+            {o.kind === 'approval'
+              ? `Approve the sign-in in the Steam app on your phone${o.hint ? ` (${o.hint})` : ''}.`
+              : `Approve the sign-in from the email Steam sent${o.hint ? ` to ${o.hint}` : ''}.`}
+          </p>
+        ))}
+        {takesCode && (
+          <label className="field">
+            <span className="small muted">
+              {needs.options.some((o) => o.kind === 'deviceCode')
+                ? 'Code from your Steam Guard authenticator'
+                : 'Code Steam emailed you'}
+            </span>
+            <input
+              className="text-field"
+              autoFocus
+              autoComplete="off"
+              spellCheck={false}
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') send()
+              }}
+            />
+          </label>
+        )}
+        {needs.error && (
+          <div className="warning-note">
+            <Icon name="warning" size={16} />
+            <span>{needs.error}</span>
+          </div>
+        )}
+        {detail && <p className="small muted">{detail}…</p>}
+        <div className="field-row">
+          {takesCode && (
+            <button type="button" className="button primary" disabled={!code.trim()} onClick={send}>
+              Submit code
+            </button>
+          )}
+          <button type="button" className="button" onClick={cancel}>
+            Cancel sign-in
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="add-form">
+      <p className="small muted">
+        Sign in with your Steam account name — the one you type at the Steam login, not the
+        display name your friends see. moho signs in as the Steam mobile app's chat, so it runs
+        beside the Steam launcher without signing it out. Your password goes to Steam and is not
+        kept; moho keeps only the token Steam hands back.
+      </p>
+      <TorSwitch service="steam" on={useTor} onChange={setUseTor} />
+      <div className="field-row">
+        <label className="field">
+          <span className="small muted">Account name</span>
+          <input
+            className="text-field"
+            autoComplete="off"
+            spellCheck={false}
+            value={username}
+            disabled={busy}
+            onChange={(e) => setUsername(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span className="small muted">Password</span>
+          <input
+            className="text-field"
+            type="password"
+            value={password}
+            disabled={busy}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && username.trim() && password && !busy) begin()
+            }}
+          />
+        </label>
+      </div>
+      <div className="field-row">
+        <button
+          type="button"
+          className="button primary"
+          disabled={busy || !username.trim() || !password}
+          onClick={begin}
+        >
+          {busy ? 'Signing in…' : 'Sign in'}
+        </button>
+        <button
+          type="button"
+          className="button subtle"
+          disabled={busy}
+          title="Sign in by scanning a code with the Steam app on your phone, with no password typed here"
+          onClick={beginQr}
+        >
+          Sign in with a QR code
+        </button>
+        {busy && (
+          <button type="button" className="button" onClick={cancel}>
+            Cancel
+          </button>
+        )}
+      </div>
+      {busy && detail && <p className="small muted">{detail}…</p>}
     </div>
   )
 }

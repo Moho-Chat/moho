@@ -3,16 +3,16 @@
 **Every conversation you're in, in one window.**
 <img width="1545" height="912" alt="showcase-screenshot" src="https://github.com/user-attachments/assets/b9dabddb-bb3c-4a71-b872-9ad167ecd400" />
 
-moho is a desktop chat client that speaks IRC, Discord, Matrix, Kick and many more protocols at the
+moho is a desktop chat client that speaks IRC, Discord, Matrix, Kick, Sneedchat, Steam and many more protocols at the
 same time. Whether the room is a twenty-year-old IRC channel, a Discord server, an encrypted Matrix room, or a
 stream's chat going past at forty lines a minute you're able to be part of the conversation.
 
 ## What it does
 
-- **Many networks, one place.** IRC, Discord, Matrix, Kick and many more protocols soon, side by side, with
+- **Many networks, one place.** IRC, Discord, Matrix, Kick, Sneedchat, Steam and many more protocols soon, side by side, with
   the same reply, edit, react, search and tag-someone gestures on each — as far as each
   service actually supports them.
-- **Calls.** Voice, camera and screen sharing on Discord and on Matrix, including the group
+- **Calls.** Voice, camera and screen sharing on Discord and on Matrix, voice rooms and calls on Steam, including the group
   calls Element holds on a media server. On Discord, Go Live, streams both ways with sound,
   echo cancellation, volume per person, the soundboard and stage channels. A call can sit in
   the corner or pop out into a window of its own.
@@ -22,6 +22,21 @@ stream's chat going past at forty lines a minute you're able to be part of the c
   window of its own, polls, predictions and other interactive methods are functional and at your fingertips. 
 - **Yours.** GPL-3.0, no telemetry, no account with us — your history is a SQLite file on
   your own disk.
+
+## Supported protocols
+
+| Protocol | State | What you get |
+| --- | --- | --- |
+| **IRC** | Supported | Channels and queries on any number of networks, with SASL, TLS, DCC file transfers and the IRCv3 capabilities servers offer |
+| **Matrix** | Supported | Rooms, spaces and direct messages, end-to-end encryption with device verification and key backup, Element Call, and signing in by QR code |
+| **Discord** | Supported | Servers, direct messages, forums and threads, voice, video, screen sharing and Go Live with end-to-end encryption, stages and the soundboard |
+| **Kick** | Supported | A streamer's chat beside the stream, with polls, predictions and its events drawn as cards |
+| **Sneedchat** | Supported | The forum's chat rooms, over clearnet or Tor |
+| **Steam** | Supported, fully ported | Friends and direct messages, group chats with rooms, roles and invitations, voice rooms and calls, emoticons, stickers, reactions, pictures and files, friend folders, and signing in by password or by QR code |
+
+Every protocol gets the same window, mentions inbox, search and per-account Tor or SOCKS5 routing.
+How much of each service's own feature set a protocol has is as far as its service lets a
+third-party client go; more protocols are planned.
 
 ## Get it
 

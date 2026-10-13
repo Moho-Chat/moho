@@ -25,6 +25,7 @@ import {
 } from '../lib/mentions'
 import { STAGE_FILES, type StagedFile } from '../lib/staging'
 import { withTone } from '../lib/skintone'
+import { STEAM_FILE_TYPES, steamFileRefusal } from '../lib/steamfiles'
 import { usePref } from '../state/hooks'
 import { rankShortcodes, shortcodeQuery, unicodeTargets, type ShortcodeTarget } from '../lib/shortcodes'
 
@@ -37,7 +38,7 @@ interface StagedAttachment {
   preview?: string
   /** In bytes, once it has been asked. */
   size?: number | null
-  /** Sent hidden behind a spoiler: Discord only. */
+  /** Sent hidden behind a spoiler: Discord and Steam. */
   spoiler: boolean
 }
 
@@ -239,7 +240,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const route = useChat((s) => s.route)
   const routed = tunnelAll || !!account?.useTor
   const media = useMediaUrl(account?.id)
-  const hasStickers = service === 'matrix' || service === 'discord'
+  const hasStickers = service === 'matrix' || service === 'discord' || service === 'steam'
   const formats = formatsFor(service)
   /**
    * The account's stickers, asked for when the picker opens - from either
@@ -249,7 +250,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const loadStickers = (): void => {
     if (!hasStickers || !buffer) return
     void window.moho
-      .rpc<StickerEntry[]>(service === 'discord' ? 'listDiscordStickers' : 'listMatrixStickers', { bufferId: buffer.id })
+      .rpc<StickerEntry[]>(service === 'discord' ? 'listDiscordStickers' : service === 'steam' ? 'listSteamStickers' : 'listMatrixStickers', { bufferId: buffer.id })
       .then(setStickers)
       .catch(() => setStickers([]))
   }
@@ -257,8 +258,9 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   // of an attachment at all, so a file there is uploaded and the link sent -
   // which is what people do by hand on IRC anyway, and is why it is offered
   // here rather than left as the one service where the button is dead.
+  // Steam takes a picture or a short video, and says which and how big.
   const supportsAttachments =
-    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc'
+    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc' || service === 'steam'
 
   // Starting a reply puts the cursor in the box: the next thing anybody does
   // is write the answer.
@@ -436,12 +438,29 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
 
   const stage = (path: string, file?: File): void => {
     const name = fileNameOf(path)
+    // Steam refuses most files, and what it takes is known: said now, at the
+    // box, rather than once the message has gone and failed.
+    if (service === 'steam') {
+      const why = steamFileRefusal(name)
+      if (why) {
+        store.toast('error', why)
+        return
+      }
+    }
     const id = ++seqRef.current
     const isImage = isImageFile(name)
     const preview = file && isImage ? URL.createObjectURL(file) : undefined
     setStaged((s) => [...s, { id, path, name, isImage, spoiler: false, preview }])
     // Its size is the main process's to read; the card says it when it comes.
-    void window.moho.fileSize(path).then((size) => setStaged((s) => s.map((a) => (a.id === id ? { ...a, size } : a))))
+    void window.moho.fileSize(path).then((size) => {
+      const tooBig = service === 'steam' ? steamFileRefusal(name, size ?? undefined) : null
+      if (tooBig) {
+        store.toast('error', tooBig)
+        setStaged((s) => s.filter((a) => a.id !== id))
+        return
+      }
+      setStaged((s) => s.map((a) => (a.id === id ? { ...a, size } : a)))
+    })
   }
   takeFiles.current = (files) => {
     if (!supportsAttachments) {
@@ -452,7 +471,10 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
     inputRef.current?.focus()
   }
 
-  const pickAndStage = (): void => void window.moho.pickFile().then((p) => p && stage(p))
+  // Steam takes a short list of kinds of file, so the dialog offers those and
+  // nothing else.
+  const pickAndStage = (): void =>
+    void window.moho.pickFile(service === 'steam' ? STEAM_FILE_TYPES : undefined).then((p) => p && stage(p))
   /**
    * What the "+" holds. A file everywhere it can go; and on Matrix the things
    * that are a message of their own kind rather than text - a place, a poll.
@@ -527,6 +549,15 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
             batch.filter((att) => att.spoiler).map((att) => att.path)
           )
         }
+      } else if (service === 'steam') {
+        // Steam sends the words and then each file as messages of their own,
+        // all of them from one request, so one upload to watch and a caption
+        // that always comes first.
+        void post(
+          body,
+          staged.map((att) => att.path),
+          staged.filter((att) => att.spoiler).map((att) => att.path)
+        )
       } else {
         staged.forEach((att, i) => {
           void post(i === 0 ? body : '', att.path)
@@ -1017,7 +1048,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
               {/* On the card's corner, and there only while it is pointed at
                   or focused - they would be a dozen buttons otherwise. */}
               <div className="staged-actions">
-                {service === 'discord' && (
+                {(service === 'discord' || service === 'steam') && (
                   <button
                     type="button"
                     className={classes('staged-action', att.spoiler && 'on')}
@@ -1273,7 +1304,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
         {/* GIFs, wherever there is a Discord account to ask for them: the
             picker borrows that account's way of looking, and what it finds can
             be sent in any conversation. */}
-        {!thread && accounts.some((a) => a.service === 'discord') && (
+        {!thread && service !== 'steam' && accounts.some((a) => a.service === 'discord') && (
           <button
             ref={gifButtonRef}
             type="button"
@@ -1293,7 +1324,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
             gesture: an emoji goes into the line being written and a sticker
             is the message. Only where the service has them: Matrix, where a
             pack supplies them, and Discord, where each guild has its own. */}
-        {!thread && (service === 'matrix' || service === 'discord') && (
+        {!thread && (service === 'matrix' || service === 'discord' || service === 'steam') && (
           <button
             ref={stickerButtonRef}
             type="button"
@@ -1367,14 +1398,19 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
           // Only where the service has stickers, which is what decides
           // whether there is a Stickers tab at all.
           stickers={hasStickers ? stickers : undefined}
+          // Steam gives an account a short set of its own and takes nothing else.
+          fixedSet={service === 'steam'}
           onSticker={
             hasStickers
               ? (sticker) => {
                   setStickerPicker(false)
                   setPickerOpen(false)
-                  const sent = sticker.id
-                    ? window.moho.rpc('sendDiscordSticker', { bufferId: buffer.id, stickerId: sticker.id })
-                    : window.moho.rpc('sendMatrixSticker', { bufferId: buffer.id, mxc: sticker.mxc, body: sticker.body })
+                  const sent =
+                    service === 'steam'
+                      ? window.moho.rpc('sendSteamSticker', { bufferId: buffer.id, name: sticker.name })
+                      : sticker.id
+                        ? window.moho.rpc('sendDiscordSticker', { bufferId: buffer.id, stickerId: sticker.id })
+                        : window.moho.rpc('sendMatrixSticker', { bufferId: buffer.id, mxc: sticker.mxc, body: sticker.body })
                   void sent.catch((e: Error) => store.toast('error', e.message))
                 }
               : undefined

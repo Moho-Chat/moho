@@ -62,6 +62,17 @@ export interface BufferMenuInput {
   markedUnread?: boolean
   /** Clears what is waiting here; offered only while something is. */
   onMarkRead?: () => void
+  /**
+   * What can be done about a Steam friend - what to call them, ending the
+   * friendship, blocking them. Present only on a conversation with one.
+   */
+  onSteamFriend?: (what: 'nickname' | 'remove' | 'block') => void
+  /**
+   * Opens the card for the person this conversation is with, the one a name
+   * opens everywhere else. Steam's: a direct message there has no member list
+   * to click a name in, so the way to it is the conversation's own menu.
+   */
+  onProfile?: () => void
 }
 
 /** What leaving is called, which depends on what is being left. */
@@ -69,6 +80,8 @@ export function leaveLabel(buffer: BufferEntry, service?: string): string {
   if (buffer.kind === 'dm') return service === 'discord' ? 'Close conversation' : 'Leave conversation'
   if (service === 'matrix') return 'Leave room'
   if (service === 'irc') return 'Leave channel'
+  // A room of a Steam group is left by leaving the group.
+  if (service === 'steam') return 'Leave group…'
   if (service === 'discord') return 'Remove from list'
   return 'Close'
 }
@@ -104,9 +117,16 @@ export function bufferMenuEntries({
   onDock,
   onMarkRead,
   onMarkUnread,
-  markedUnread
+  markedUnread,
+  onSteamFriend,
+  onProfile
 }: BufferMenuInput): MenuEntry[] {
   return [
+    // First: it is the one that goes and looks at the person, where everything
+    // below acts on the conversation.
+    ...(onProfile
+      ? ([{ label: 'Profile', icon: 'person', onClick: onProfile }, { separator: true }] as MenuEntry[])
+      : []),
     ...(canCall
       ? ([
           inCall
@@ -235,6 +255,15 @@ export function bufferMenuEntries({
       ? ([
           { separator: true },
           { label: 'Remove from category', icon: 'folder_off', onClick: () => onFile('') },
+          { separator: true }
+        ] as MenuEntry[])
+      : []),
+    ...(onSteamFriend
+      ? ([
+          { separator: true },
+          { label: 'Set nickname…', icon: 'edit', onClick: () => onSteamFriend('nickname') },
+          { label: 'Remove friend', icon: 'person_remove', danger: true, onClick: () => onSteamFriend('remove') },
+          { label: 'Block', icon: 'block', danger: true, onClick: () => onSteamFriend('block') },
           { separator: true }
         ] as MenuEntry[])
       : []),

@@ -6,6 +6,7 @@ import { ContextMenu } from './ContextMenu'
 import { RoomSearch } from './RoomSearch'
 import { useChat, useStore } from '../state/hooks'
 import { classes, serviceLabel } from '../lib/util'
+import { steamGroupInviteCode } from '../lib/steamchat'
 import type { Account, DiscordFriend } from '../../../shared/wire'
 
 /**
@@ -44,15 +45,6 @@ const ON_DISCORD_ONLY: { label: string; icon: string; why: string }[] = [
   }
 ]
 
-/** A room this account has been invited to and not yet answered. */
-type MatrixInvite = {
-  roomId: string
-  name: string
-  inviter: string | null
-  avatarUrl: string | null
-  isDirect: boolean
-}
-
 /**
  * Per-protocol join pages rather than one generic "join by name" field: each
  * service's mechanism is genuinely different (IRC joins by channel name,
@@ -84,11 +76,13 @@ export function JoinPanel(): JSX.Element {
         return <KickJoin account={account} />
       case 'sneedchat':
         return <SneedchatRooms account={account} />
+      case 'steam':
+        return <SteamJoin account={account} />
       default:
         return <div className="panel muted">Joining isn&apos;t supported for this service yet.</div>
     }
   })()
-  const joinable = all.filter((a) => ['irc', 'matrix', 'discord', 'kick', 'sneedchat'].includes(a.service))
+  const joinable = all.filter((a) => ['irc', 'matrix', 'discord', 'kick', 'sneedchat', 'steam'].includes(a.service))
 
   return (
     <div className="join-frame">
@@ -367,6 +361,274 @@ function KickJoin({ account }: { account: Account }): JSX.Element {
   )
 }
 
+/** One person in a friend request. */
+interface SteamPerson {
+  steamid: string
+  name: string | null
+  avatarUrl?: string | null
+}
+
+interface SteamRequests {
+  incoming: SteamPerson[]
+  outgoing: SteamPerson[]
+}
+
+/**
+ * Friends on Steam: asking somebody, and taking a request back.
+ *
+ * Steam makes you friends by one side asking and the other agreeing. Those who
+ * have asked you are not here: each waits as a tile in the server list, beside
+ * a Matrix room's invitations, and is answered there. What is here is the asking,
+ * and the requests still waiting on the other side.
+ */
+function SteamJoin({ account }: { account: Account }): JSX.Element {
+  const store = useStore()
+  const [target, setTarget] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [requests, setRequests] = useState<SteamRequests>({ incoming: [], outgoing: [] })
+  const [blocked, setBlocked] = useState<{ steamid: string; name: string }[]>([])
+  const [links, setLinks] = useState<{ token: string; link: string; created: number }[] | null>(null)
+  const connected = account.state === 'connected'
+
+  useEffect(() => {
+    let live = true
+    void window.moho
+      .rpc<SteamRequests>('steamFriendRequests', { accountId: account.id })
+      .then((r) => live && setRequests(r))
+      .catch(() => {})
+    const off = window.moho.onEvent((e) => {
+      if (e.event !== 'steamFriendRequests') return
+      const d = e.data as { accountId?: string; requests?: SteamRequests }
+      if (d.accountId === account.id && d.requests) setRequests(d.requests)
+    })
+    // Who is blocked, and what links have been given out: neither has a place
+    // in the conversation list, so they are here, where friends are added.
+    void window.moho
+      .rpc<{ steamid: string; name: string }[]>('steamBlockedList', { accountId: account.id })
+      .then((b) => live && setBlocked(b))
+      .catch(() => {})
+    const offBlocked = window.moho.onEvent((e) => {
+      if (e.event !== 'steamBlocked') return
+      const d = e.data as { accountId?: string; blocked?: { steamid: string; name: string }[] }
+      if (d.accountId === account.id && d.blocked) setBlocked(d.blocked)
+    })
+    return () => {
+      live = false
+      off()
+      offBlocked()
+    }
+  }, [account.id])
+
+  // The links, once the account is connected: they come from Steam's website.
+  useEffect(() => {
+    if (!connected) return
+    let live = true
+    void window.moho
+      .rpc<{ token: string; link: string; created: number }[]>('steamInviteLinks', { accountId: account.id, action: 'list' })
+      .then((l) => live && setLinks(l))
+      .catch(() => live && setLinks([]))
+    return () => {
+      live = false
+    }
+  }, [account.id, connected])
+
+  const changeLinks = (action: 'create' | 'revoke', token?: string): void => {
+    void window.moho
+      .rpc<{ token: string; link: string; created: number }[]>('steamInviteLinks', { accountId: account.id, action, token })
+      .then(setLinks)
+      .catch((e: Error) => store.toast('error', e.message))
+  }
+
+  const copy = (text: string): void => {
+    // Through the main process, as everywhere else in moho: the page's own clipboard is refused here.
+    void window.moho
+      .copyText(text)
+      .then(() => store.toast('info', 'Copied'))
+      .catch(() => store.toast('error', 'Could not copy'))
+  }
+
+  const unblock = (p: { steamid: string; name: string }): void => {
+    void window.moho
+      .rpc('steamUnblock', { accountId: account.id, steamid: p.steamid })
+      .then(() => store.toast('info', `Unblocked ${p.name}`))
+      .catch((e: Error) => store.toast('error', e.message))
+  }
+
+  const label = (p: SteamPerson): string => p.name || p.steamid
+
+  const [groupLink, setGroupLink] = useState('')
+  const [groupName, setGroupName] = useState('')
+  const joinGroup = (): void => {
+    const typed = groupLink.trim()
+    if (!typed) return
+    setBusy(true)
+    void window.moho
+      .rpc<{ groupId: string; name?: string }>('steamChatGroupAction', { accountId: account.id, action: 'join', invite: typed })
+      .then((r) => {
+        setGroupLink('')
+        store.toast('info', `Joined ${r.name || 'the group'}`)
+        store.selectGroup(r.groupId)
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+  const makeGroup = (): void => {
+    const typed = groupName.trim()
+    if (!typed) return
+    setBusy(true)
+    void window.moho
+      .rpc<{ groupId: string }>('steamChatGroupAction', { accountId: account.id, action: 'create', name: typed })
+      .then((r) => {
+        setGroupName('')
+        store.selectGroup(r.groupId)
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+
+  const ask = (): void => {
+    const typed = target.trim()
+    if (!typed) return
+    // A link to a group, pasted where a friend goes, is joined as the group it is.
+    if (steamGroupInviteCode(typed)) {
+      setGroupLink(typed)
+      setTarget('')
+      return
+    }
+    setBusy(true)
+    void window.moho
+      .rpc<{ steamid: string; name: string | null }>('steamAddFriend', { accountId: account.id, target: typed })
+      .then((r) => {
+        setTarget('')
+        store.toast('info', `Friend request sent to ${r.name || typed}`)
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+
+  const withdraw = (p: SteamPerson): void => {
+    void window.moho
+      .rpc('steamRemoveFriend', { accountId: account.id, steamid: p.steamid })
+      .catch((e: Error) => store.toast('error', e.message))
+  }
+
+  return (
+    <div className="panel join-panel">
+      <span className="small muted">Add a friend</span>
+      <div className="field-row">
+        <input
+          className="text-field"
+          placeholder="Account name, Steam id, friend code or invite link"
+          spellCheck={false}
+          autoComplete="off"
+          value={target}
+          disabled={!connected || busy}
+          onChange={(e) => setTarget(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') ask()
+          }}
+        />
+        <button type="button" className="button" disabled={!connected || busy || !target.trim()} onClick={ask}>
+          Add friend
+        </button>
+      </div>
+      {!connected && <p className="small muted">Friends can be added once this account is connected.</p>}
+
+      <span className="small muted">Join a group</span>
+      <div className="field-row">
+        <input
+          className="text-field"
+          placeholder="An invite link, like s.team/chat/…"
+          spellCheck={false}
+          autoComplete="off"
+          value={groupLink}
+          disabled={!connected || busy}
+          onChange={(e) => setGroupLink(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') joinGroup()
+          }}
+        />
+        <button type="button" className="button" disabled={!connected || busy || !groupLink.trim()} onClick={joinGroup}>
+          Join
+        </button>
+      </div>
+      <span className="small muted">Start a group</span>
+      <div className="field-row">
+        <input
+          className="text-field"
+          placeholder="A name for it"
+          value={groupName}
+          disabled={!connected || busy}
+          onChange={(e) => setGroupName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') makeGroup()
+          }}
+        />
+        <button type="button" className="button" disabled={!connected || busy || !groupName.trim()} onClick={makeGroup}>
+          Create
+        </button>
+      </div>
+
+      {requests.outgoing.length > 0 && (
+        <>
+          <span className="small muted">Waiting for them to accept</span>
+          {requests.outgoing.map((p) => (
+            <div key={p.steamid} className="field-row">
+              <span className="grow">{label(p)}</span>
+              <button type="button" className="button subtle small" onClick={() => withdraw(p)}>
+                Cancel request
+              </button>
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* A link anybody can add this account by, even if it takes no requests
+          from strangers: good for a month, and taken back here. */}
+      {connected && links !== null && (
+        <>
+          <span className="small muted">Your invite links</span>
+          {links.length === 0 && <p className="small muted">None yet. A link lets whoever has it add you, for thirty days.</p>}
+          {links.map((l) => (
+            <div key={l.token} className="field-row">
+              <span className="grow ellipsis" title={l.link}>
+                {l.link}
+              </span>
+              <button type="button" className="button subtle small" onClick={() => copy(l.link)}>
+                Copy
+              </button>
+              <button type="button" className="button subtle small" onClick={() => changeLinks('revoke', l.token)}>
+                Revoke
+              </button>
+            </div>
+          ))}
+          <div className="field-row">
+            <button type="button" className="button subtle small" onClick={() => changeLinks('create')}>
+              Make a link
+            </button>
+          </div>
+        </>
+      )}
+
+      {blocked.length > 0 && (
+        <>
+          <span className="small muted">Blocked</span>
+          {blocked.map((p) => (
+            <div key={p.steamid} className="field-row">
+              <span className="grow ellipsis" title={p.steamid}>
+                {p.name}
+              </span>
+              <button type="button" className="button subtle small" disabled={!connected} onClick={() => unblock(p)}>
+                Unblock
+              </button>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
+
 /**
  * Making a room, or a space.
  *
@@ -465,101 +727,10 @@ function CreateMatrixRoom({ account }: { account: Account }): JSX.Element {
   )
 }
 
-/**
- * Rooms somebody has asked this account to join.
- *
- * Shown above the join field because it is the one thing here that arrived
- * on its own: everything else on this page is a room you already know the
- * name of and went looking for. An invite was invisible until recently -
- * the daemon never read them out of sync - so it is worth being plain about
- * who sent it, since a room with no name of its own shows as its raw id and
- * the inviter is the only part that makes it answerable.
- */
-function MatrixInvites({ account }: { account: Account }): JSX.Element | null {
-  const store = useStore()
-  const [invites, setInvites] = useState<MatrixInvite[]>([])
-  const [answering, setAnswering] = useState<string | null>(null)
-
-  useEffect(() => {
-    const load = (): void => {
-      void window.moho
-        .rpc<MatrixInvite[]>('listMatrixInvites', { accountId: account.id })
-        // An older daemon has no such method, and no invites to show.
-        .then(setInvites)
-        .catch(() => setInvites([]))
-    }
-    load()
-    // The daemon pushes the whole set whenever it changes, so accepting from
-    // another client empties this without anybody refreshing.
-    return window.moho.onEvent((frame) => {
-      if (frame.event !== 'matrixInvites') return
-      const data = frame.data as { accountId: string; invites: MatrixInvite[] }
-      if (data.accountId === account.id) setInvites(data.invites ?? [])
-    })
-  }, [account.id])
-
-  if (invites.length === 0) return null
-
-  const answer = (invite: MatrixInvite, accept: boolean): void => {
-    setAnswering(invite.roomId)
-    void window.moho
-      .rpc(accept ? 'acceptMatrixInvite' : 'declineMatrixInvite', {
-        accountId: account.id,
-        roomId: invite.roomId
-      })
-      // Not removed from the list here: the next sync stops listing it,
-      // which is what actually confirms the server agreed.
-      .catch((e: Error) => store.toast('error', e.message))
-      .finally(() => setAnswering(null))
-  }
-
-  return (
-    <div className="field">
-      <span className="small muted">
-        {invites.length === 1 ? 'You have been invited to' : `You have ${invites.length} invitations`}
-      </span>
-      <div className="invite-list">
-        {invites.map((invite) => (
-          <div className="invite-row" key={invite.roomId}>
-            <div className="invite-what">
-              <span className="invite-name ellipsis">{invite.name}</span>
-              {invite.inviter && (
-                <span className="small muted ellipsis">
-                  from {invite.inviter}
-                  {invite.isDirect ? ' · direct message' : ''}
-                </span>
-              )}
-            </div>
-            <div className="invite-actions">
-              <button
-                type="button"
-                className="button primary"
-                disabled={answering === invite.roomId}
-                onClick={() => answer(invite, true)}
-              >
-                Accept
-              </button>
-              <button
-                type="button"
-                className="button"
-                disabled={answering === invite.roomId}
-                onClick={() => answer(invite, false)}
-              >
-                Decline
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 function MatrixJoin({ account }: { account: Account }): JSX.Element {
   const store = useStore()
   return (
     <div className="panel join-panel">
-      <MatrixInvites account={account} />
       <SubmitField
         label="Join a room or space"
         // A Space is just a room with an m.space creation type, joined through
@@ -762,11 +933,12 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
     if (live) setFriends(live)
   }, [live])
 
-  // Requests are their own list above the friends. They are not people you
-  // can message and they are the thing somebody opened this panel to deal
-  // with, so filtering them by whether they happen to be online - which is
-  // what the toggle below does - would hide the ones that matter most.
-  const waiting = friends.filter((f) => f.kind === 'incoming' || f.kind === 'outgoing')
+  // Requests this account has sent are their own list above the friends: not
+  // people you can message yet, so filtering them by whether they happen to be
+  // online - which is what the toggle below does - would hide them. The ones
+  // sent to this account are not here: they wait on the Invitations tile in
+  // the server list with every other question that wants a yes or a no.
+  const waiting = friends.filter((f) => f.kind === 'outgoing')
   const settled = friends.filter((f) => !f.kind || f.kind === 'friend')
   const shown = onlineOnly ? settled.filter((f) => f.status && f.status !== 'offline') : settled
 
@@ -822,7 +994,7 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
       {waiting.length > 0 && (
         <>
           <div className="join-friends-header">
-            <span className="setting-text">Requests</span>
+            <span className="setting-text">Waiting for them to accept</span>
           </div>
           {waiting.map((f) => (
             <div key={f.userId} className="friend-row request">
@@ -832,18 +1004,8 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
                 <span className="friend-avatar placeholder">{(f.globalName || f.username).slice(0, 1)}</span>
               )}
               <span className="ellipsis">{f.globalName || f.username}</span>
-              <span className="small muted">
-                {f.kind === 'incoming' ? 'wants to be friends' : 'asked, waiting'}
-              </span>
-              {f.kind === 'incoming' && (
-                <button type="button" className="button" onClick={() => answer(f.userId, true)}>
-                  Accept
-                </button>
-              )}
-              {/* Refusing one and taking back your own are the same call, and
-                  read differently enough to be worth different words. */}
               <button type="button" className="button subtle" onClick={() => answer(f.userId, false)}>
-                {f.kind === 'incoming' ? 'Decline' : 'Cancel'}
+                Cancel request
               </button>
             </div>
           ))}

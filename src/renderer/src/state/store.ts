@@ -8,6 +8,7 @@ import type {
   DccTransfer,
   DiscordFriend,
   MatrixInvite,
+  FriendRequest,
   MatrixVerification,
   Member,
   Message,
@@ -23,11 +24,13 @@ import type {
 } from '../../../shared/wire'
 import { addToast, type ToastAction, type ToastItem } from '../lib/toasts'
 import { ALL_STATUSES, statusesFor, supportsStatus } from '../lib/status'
-import { buildSmilieIndex, type SmilieEntry, type SmilieIndex } from '../lib/format'
+import type { SteamGroup, GroupCall } from '../lib/steamgroups'
+import { buildSmilieIndex, steamSameText, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
 import { runExport } from '../lib/exporter'
 import type { ForumPost } from '../lib/forum'
-import { DM_GROUP_ID, isDirectMessage } from '../lib/groups'
+import { DM_GROUP_ID, INVITATIONS_GROUP_ID, isDirectMessage } from '../lib/groups'
+import { listInvitations, type Invitation } from '../lib/invitations'
 import { ircNetworkFor } from '../lib/networks'
 import { parseDeepLink, type IrcLink } from '../../../shared/deeplink'
 import { MatrixCalls, type CallMember, type MatrixCallEvent, type RingingCall } from '../lib/matrixcall'
@@ -38,6 +41,8 @@ import { cameraKey, closeFeeds, feedFrame, streamKey as feedStreamKey } from '..
 import { DEFAULT_QUALITY, encodeSettings, sendCamera, shareScreen, type VideoQuality } from '../lib/discordscreen'
 import type { PopoutState } from '../../../shared/ipc'
 import { isNewerVersion } from '../lib/version'
+import { steamRoomIds, type SteamChatGroup } from '../lib/steamchat'
+import { SteamVoice, type SteamRing, type SteamVoicePhase, type SteamVoiceTarget } from '../lib/steamvoice'
 
 /**
  * The whole client-side model, held in one immutable object that is replaced
@@ -373,6 +378,14 @@ export interface PeekTarget {
   joining?: boolean
 }
 
+/** A Steam group's room that has voice, and who is in it. */
+export interface SteamVoiceRoom {
+  roomId: string
+  bufferId?: string | null
+  name: string
+  members: { userId: string; nick: string; avatarUrl?: string | null; isSelf?: boolean }[]
+}
+
 export interface ChatState {
   /** Who is composing, per buffer, with when to stop believing it. */
   typingByBuffer: Record<string, { nicks: string[]; until: number }>
@@ -438,6 +451,14 @@ export interface ChatState {
   voiceSessions: VoiceSession[]
   /** Conversations ringing right now, newest last. */
   incomingCalls: IncomingCall[]
+  /** The voice rooms of each Steam group and who is in each, keyed by `account|group`. */
+  steamVoiceRooms: Record<string, SteamVoiceRoom[]>
+  /** Steam calls waiting to be answered. */
+  steamRings: SteamRing[]
+  /** The Steam voice this window holds, if any: where, and how far it has got. */
+  steamVoiceNow: { accountId: string; target: SteamVoiceTarget; phase: SteamVoicePhase } | null
+  /** A group somebody has asked to leave, waiting on the confirmation. */
+  leaveRequest: { id: string; name: string; kind: string } | null
   /**
    * A link waiting for an account to be made for it.
    *
@@ -676,6 +697,12 @@ export interface ChatState {
   matrixWidgets: Record<string, unknown[]>
   /** Rooms each Matrix account has been invited to and not answered. */
   matrixInvites: Record<string, MatrixInvite[]>
+  /** Who has asked each account to be their friend, by account. */
+  friendRequests: Record<string, FriendRequest[]>
+  /** Which invitation the invitations page is showing. */
+  activeInvitationKey: string
+  /** A question asked about a Steam friend, waiting on an answer in a dialog. */
+  steamDialog: { what: 'nickname' | 'remove' | 'block'; bufferId: string } | null
   /**
    * The profile being shown, or null.
    *
@@ -684,6 +711,8 @@ export interface ChatState {
    * whatever draws it cannot be the thing that asked.
    */
   profile: Profile | null
+  /** Each Steam account's friend groups as Steam last said them; absent until it has. */
+  steamGroups: Record<string, SteamGroup[]>
   replyingTo: { id: string; from: string; body: string } | null
   /** Whether answering pings the author (Discord's "@ ON"): on for every new reply. */
   replyPing: boolean
@@ -708,6 +737,17 @@ export interface ChatState {
   matrixLoginStatus: string
 }
 
+/** A person as the daemon reports one in a Steam friend request. */
+interface SteamPerson {
+  steamid: string
+  name: string | null
+  avatarUrl?: string | null
+}
+
+function personToRequest(p: SteamPerson): FriendRequest {
+  return { id: p.steamid, name: p.name, avatarUrl: p.avatarUrl }
+}
+
 export type Toast = ToastItem
 
 const INITIAL: ChatState = {
@@ -726,6 +766,10 @@ const INITIAL: ChatState = {
   voiceChannels: [],
   voiceGuildId: '',
   voiceSessions: [],
+  steamVoiceRooms: {},
+  steamRings: [],
+  steamVoiceNow: null,
+  leaveRequest: null,
   incomingCalls: [],
   transfers: [],
   minimisedTransfers: [],
@@ -783,7 +827,11 @@ const INITIAL: ChatState = {
   ignoredByAccount: {},
   matrixWidgets: {},
   matrixInvites: {},
+  friendRequests: {},
+  activeInvitationKey: '',
+  steamDialog: null,
   profile: null,
+  steamGroups: {},
   replyingTo: null,
   replyPing: true,
   editingId: '',
@@ -826,6 +874,7 @@ const INITIAL: ChatState = {
  */
 function echoMatches(echo: ChatMessage, real: Message): boolean {
   if (echo.pendingBody === real.body) return true
+  if (real.bufferId.startsWith('steam:') && echo.pendingBody !== undefined && steamSameText(echo.pendingBody, real.body)) return true
   // A file is posted as markup the daemon builds - a BBCode image tag on
   // Sneedchat, a bare link on IRC - so what comes back is never what was
   // typed, and usually nothing was typed at all. Matching on the whole body
@@ -1003,6 +1052,8 @@ const MAX_MESSAGES_IDLE = 200
 /** As many mentions as the inbox will hold; the daemon's own limit matches. */
 const MAX_MENTIONS = 100
 const BACKLOG_PAGE = 200
+/** How long "nothing older" is believed before the top is allowed to ask again. */
+const HISTORY_END_MS = 10 * 60 * 1000
 const SEND_TIMEOUT_MS = 10000
 
 export class ChatStore {
@@ -1414,6 +1465,7 @@ export class ChatStore {
     try {
       this.set({ accounts: await window.moho.rpc<Account[]>('listAccounts') })
       void this.refreshInvites()
+      void this.refreshFriendRequests()
     } catch (e) {
       this.toast('error', `Couldn't list accounts: ${(e as Error).message}`)
     }
@@ -1428,9 +1480,10 @@ export class ChatStore {
    * the join panel.
    */
   async refreshInvites(): Promise<void> {
-    for (const account of this.state.accounts.filter((a) => a.service === 'matrix')) {
+    for (const account of this.state.accounts.filter((a) => a.service === 'matrix' || a.service === 'steam')) {
       try {
-        const invites = await window.moho.rpc<MatrixInvite[]>('listMatrixInvites', {
+        // A Steam account's are the groups its friends have invited it to: the same shape, a room.
+        const invites = await window.moho.rpc<MatrixInvite[]>(account.service === 'steam' ? 'steamGroupInvites' : 'listMatrixInvites', {
           accountId: account.id
         })
         this.set({ matrixInvites: { ...this.state.matrixInvites, [account.id]: invites } })
@@ -1440,13 +1493,208 @@ export class ChatStore {
     }
   }
 
-  /** Accepts an invitation, or turns it down. */
-  answerMatrixInvite(accountId: string, roomId: string, accept: boolean): void {
-    void window.moho
-      .rpc(accept ? 'acceptMatrixInvite' : 'declineMatrixInvite', { accountId, roomId })
-      // Not removed here: the next sync stops listing it, which is what
-      // actually confirms the server agreed.
-      .catch((e: Error) => this.toast('error', e.message))
+  /**
+   * Who has asked each account to be their friend. Steam is the service with
+   * requests today; the state is every service's so the next one only has to
+   * say who asked.
+   */
+  async refreshFriendRequests(): Promise<void> {
+    const next: Record<string, FriendRequest[]> = {}
+    for (const account of this.state.accounts.filter((a) => a.service === 'steam')) {
+      try {
+        const r = await window.moho.rpc<{ incoming: SteamPerson[] }>('steamFriendRequests', { accountId: account.id })
+        next[account.id] = r.incoming.map(personToRequest)
+      } catch {
+        // Not connected yet, or an older daemon: nothing to answer.
+      }
+    }
+    this.set({ friendRequests: next })
+    // Discord keeps its requests among its friends; the daemon pushes changes,
+    // and this is the first reading, so one that arrived while moho was
+    // closed is waiting on the Invitations tile when it opens.
+    for (const account of this.state.accounts.filter((a) => a.service === 'discord')) {
+      try {
+        const list = await window.moho.rpc<DiscordFriend[]>('listDiscordFriends', { accountId: account.id })
+        this.set({ discordFriends: { ...this.state.discordFriends, [account.id]: list } })
+      } catch {
+        // Not connected yet: the gateway's own push fills it in.
+      }
+    }
+  }
+
+  /** Everything waiting on a yes or a no, as the invitations tile lists it. */
+  pendingInvitations(): Invitation[] {
+    const s = this.state
+    return listInvitations(
+      { rooms: s.matrixInvites, friends: s.friendRequests, discordFriends: s.discordFriends, verification: s.matrixVerification },
+      s.accounts
+    )
+  }
+
+  /**
+   * Answers an invitation, from any service.
+   *
+   * It leaves the list the moment the service has agreed, rather than waiting
+   * for the next sync or friends list to stop mentioning it: a request that
+   * stays after being answered looks like it did not work.
+   *
+   * Accepting then opens what was accepted. A friend request has become a
+   * conversation with that person, and a room invitation the room, so the pane
+   * that was offering it turns into that conversation. It is not there for a
+   * moment - the service has to tell moho about it - so this waits for it.
+   */
+  async answerInvitation(invitation: Invitation, accept: boolean): Promise<void> {
+    const { accountId, id } = invitation
+    let steamGroupJoined = ''
+    try {
+      if (invitation.kind === 'verification') {
+        await window.moho.rpc(accept ? 'respondMatrixVerification' : 'cancelMatrixVerification', {
+          accountId,
+          verificationId: id,
+          ...(accept ? { accept: true } : {})
+        })
+      } else if (invitation.kind === 'friend') {
+        if (invitation.service === 'discord') {
+          await window.moho.rpc('answerDiscordFriendRequest', { accountId, userId: id, accept })
+        } else {
+          await window.moho.rpc('steamAnswerFriendRequest', { accountId, steamid: id, accept })
+        }
+      } else if (invitation.service === 'steam') {
+        const r = await window.moho.rpc<{ groupId?: string }>('steamChatGroupAction', { accountId, groupId: id, action: accept ? 'acceptInvite' : 'dismissInvite' })
+        if (accept && r.groupId) steamGroupJoined = r.groupId
+      } else {
+        await window.moho.rpc(accept ? 'acceptMatrixInvite' : 'declineMatrixInvite', { accountId, roomId: id })
+      }
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+      return
+    }
+    this.set(this.withoutInvitation(invitation))
+    if (!accept && invitation.kind === 'verification') this.set({ matrixVerification: null })
+    // A Steam group is opened at its first room, which is not found by who it is with.
+    if (steamGroupJoined && (await this.openSteamGroup(steamGroupJoined))) return
+    // A verification continues in its own dialog once it is accepted, and that
+    // is the whole of what accepting opens.
+    if (accept && invitation.kind !== 'verification' && !steamGroupJoined && (await this.openAccepted(invitation))) return
+    // Nothing to open: stay on what is still waiting, or leave the page.
+    if (this.pendingInvitations().length === 0 && this.state.activeGroupId === INVITATIONS_GROUP_ID) {
+      this.selectGroup(`account:${accountId}`)
+    }
+  }
+
+  /** The state with one invitation taken out of every place it is kept. */
+  private withoutInvitation(invitation: Invitation): Partial<ChatState> {
+    const { accountId, id } = invitation
+    const v = this.state.matrixVerification
+    return {
+      matrixInvites: {
+        ...this.state.matrixInvites,
+        [accountId]: (this.state.matrixInvites[accountId] ?? []).filter((i) => !(invitation.kind === 'room' && i.roomId === id))
+      },
+      friendRequests: {
+        ...this.state.friendRequests,
+        [accountId]: (this.state.friendRequests[accountId] ?? []).filter((r) => !(invitation.kind === 'friend' && r.id === id))
+      },
+      discordFriends: {
+        ...this.state.discordFriends,
+        [accountId]: (this.state.discordFriends[accountId] ?? []).filter(
+          (f) => !(invitation.kind === 'friend' && f.userId === id && f.kind === 'incoming')
+        )
+      },
+      // Accepted, the check carries on in its dialog; declined, it is over.
+      matrixVerification: invitation.kind === 'verification' && v?.verificationId === id ? (v.state === 'requested' ? { ...v, incoming: false } : v) : v
+    }
+  }
+
+  /** Waits for a Steam group just joined to have its rooms, and opens the first. Whether it did. */
+  private async openSteamGroup(railId: string): Promise<boolean> {
+    for (let waited = 0; waited < 8000; waited += 200) {
+      const room = this.state.buffers.find((b) => b.groupId === railId && b.kind === 'channel')
+      if (room) {
+        this.selectGroup(railId)
+        await this.selectBuffer(room.id)
+        return true
+      }
+      if (waited % 1000 === 0) await this.refreshBuffers()
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+    return false
+  }
+
+  /** Waits for what an accepted invitation became, and opens it. Whether it did. */
+  private async openAccepted(invitation: Invitation): Promise<boolean> {
+    // Discord's friends are not conversations until one is opened: asking for
+    // it is what makes the direct message exist, so it does not have to be
+    // waited for.
+    if (invitation.service === 'discord' && invitation.kind === 'friend') {
+      try {
+        const r = await window.moho.rpc<{ bufferId: string }>('openDiscordDm', { accountId: invitation.accountId, userId: invitation.id })
+        await this.refreshBuffers()
+        await this.selectBuffer(r.bufferId)
+        return true
+      } catch {
+        return false
+      }
+    }
+    const found = (): BufferEntry | undefined =>
+      this.state.buffers.find(
+        (b) => b.accountId === invitation.accountId && b.remoteId === invitation.id && (invitation.kind === 'room' || b.kind === 'dm')
+      )
+    for (let waited = 0; waited < 8000; waited += 200) {
+      const buffer = found()
+      if (buffer) {
+        await this.selectBuffer(buffer.id)
+        return true
+      }
+      if (waited % 1000 === 0) await this.refreshBuffers()
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+    return false
+  }
+
+  /** Asks what to do about a Steam friend, in a dialog. */
+  askSteamFriend(what: 'nickname' | 'remove' | 'block', bufferId: string): void {
+    this.set({ steamDialog: { what, bufferId } })
+  }
+
+  closeSteamDialog(): void {
+    this.set({ steamDialog: null })
+  }
+
+  /** Does it: what to call them, ending the friendship, or blocking them. */
+  async doSteamFriend(what: 'nickname' | 'remove' | 'block', bufferId: string, nickname = ''): Promise<void> {
+    const buffer = this.state.buffers.find((b) => b.id === bufferId)
+    this.set({ steamDialog: null })
+    if (!buffer) return
+    try {
+      if (what === 'nickname') {
+        await window.moho.rpc('steamSetNickname', { bufferId, nickname })
+      } else if (what === 'remove') {
+        await window.moho.rpc('steamRemoveFriend', { accountId: buffer.accountId, steamid: buffer.remoteId })
+        this.toast('info', `Removed ${buffer.name}`)
+      } else {
+        await window.moho.rpc('steamBlockFriend', { bufferId, block: true })
+        this.toast('info', `Blocked ${buffer.name}`)
+      }
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
+  }
+
+  /** Dismisses the warning over a conversation: it goes now, and the service is told. */
+  async dismissNotice(bufferId: string): Promise<void> {
+    this.set({ buffers: this.state.buffers.map((b) => (b.id === bufferId ? { ...b, notice: undefined } : b)) })
+    try {
+      await window.moho.rpc('steamDismissNotice', { bufferId })
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
+  }
+
+  /** Looks at one invitation, on the page that gathers them. */
+  selectInvitation(key: string): void {
+    this.set({ activeInvitationKey: key })
+    this.selectGroup(INVITATIONS_GROUP_ID)
   }
 
   private groupsTimer: ReturnType<typeof setTimeout> | null = null
@@ -1552,6 +1800,8 @@ export class ChatStore {
     // Applied optimistically: a mute button that waits for a round trip feels
     // broken, and the daemon's reply corrects it either way.
     this.set({ voicePrefs: { ...this.state.voicePrefs, ...next } })
+    // And onto the Steam voice this window holds, which obeys the same buttons.
+    this.steamVoice.applyMute()
     try {
       this.set({ voicePrefs: await window.moho.rpc<VoicePrefs>('setVoiceMuted', next) })
     } catch (e) {
@@ -1689,10 +1939,94 @@ export class ChatStore {
   }
 
   async refreshVoiceSessions(): Promise<void> {
+    // Steam's voice is held in this window and not by the daemon, so it is
+    // added to what the daemon says rather than lost when that is asked for.
+    const steam = this.steamVoiceSession()
     try {
-      this.set({ voiceSessions: await window.moho.rpc<VoiceSession[]>('getVoiceSession') })
+      this.set({ voiceSessions: [...(await window.moho.rpc<VoiceSession[]>('getVoiceSession')), ...steam] })
     } catch {
-      this.set({ voiceSessions: [] })
+      this.set({ voiceSessions: steam })
+    }
+  }
+
+  /** The Steam voice of this window, as the one kind of session every voice surface lists. */
+  private steamVoiceSession(): VoiceSession[] {
+    const v = this.steamVoice
+    const t = v.target
+    if (!v.active || !t) return []
+    return t.kind === 'room'
+      ? [{ accountId: v.accountId, channelId: t.roomId, channelName: t.name, isDirect: false, bufferId: t.bufferId, railId: t.railId }]
+      : [{ accountId: v.accountId, channelId: t.steamid, channelName: t.name, isDirect: true, bufferId: t.bufferId }]
+  }
+
+  /** What Steam's voice is doing changed: show it. */
+  private syncSteamVoice(): void {
+    const v = this.steamVoice
+    const others = this.state.voiceSessions.filter((s) => !s.accountId.startsWith('steam:'))
+    this.set({
+      voiceSessions: [...others, ...this.steamVoiceSession()],
+      steamRings: [...v.rings],
+      steamVoiceNow: v.active && v.target ? { accountId: v.accountId, target: v.target, phase: v.phase } : null
+    })
+  }
+
+  /** The window's own Steam voice, for what changes too fast to keep in state: the level and who is speaking. */
+  get steamVoiceLive(): SteamVoice {
+    return this.steamVoice
+  }
+
+  private steamVoice: SteamVoice = new SteamVoice({
+    rpc: (params) => window.moho.rpc('steamVoice', params),
+    onChange: () => this.syncSteamVoice(),
+    toast: (kind, message) => this.toast(kind, message),
+    muted: () => ({ micMuted: this.state.voicePrefs.micMuted, deafened: this.state.voicePrefs.deafened }),
+    nameOf: (accountId, steamid) => this.state.buffers.find((b) => b.accountId === accountId && b.remoteId === steamid)?.name ?? steamid,
+    mayRing: (accountId, steamid) => {
+      const account = this.state.accounts.find((a) => a.id === accountId)
+      const friend = this.state.buffers.some((b) => b.accountId === accountId && b.kind === 'dm' && b.remoteId === steamid)
+      return friend && account?.status !== 'invisible' && account?.status !== 'dnd'
+    }
+  })
+
+  /** Joins the voice of a room of a Steam group. */
+  async joinSteamVoice(accountId: string, groupId: string, roomId: string): Promise<void> {
+    const buffer = this.state.buffers.find((b) => b.accountId === accountId && b.remoteId === `${groupId}:${roomId}`)
+    const group = this.state.groups.find((g) => g.id === `${accountId}|steamgroup:${groupId}`)
+    if (!buffer || !group) return
+    const room = (this.state.steamVoiceRooms[`${accountId}|${groupId}`] ?? []).find((r) => r.roomId === roomId)
+    await this.steamVoice.start(accountId, { kind: 'room', groupId, roomId, bufferId: buffer.id, name: room?.name ?? bufferDisplayName(buffer.name), groupName: group.name, railId: group.id })
+  }
+
+  /** Calls a Steam friend, from their conversation. */
+  async callSteamFriend(bufferId: string): Promise<void> {
+    const buffer = this.state.buffers.find((b) => b.id === bufferId)
+    if (!buffer?.remoteId) return
+    // They are already calling: answer that, rather than starting a second call to them.
+    const ringing = this.steamVoice.ringFrom(buffer.accountId, buffer.remoteId)
+    if (ringing) {
+      await this.answerSteamCall(ringing)
+      return
+    }
+    await this.steamVoice.start(buffer.accountId, { kind: 'friend', steamid: buffer.remoteId, bufferId, name: bufferDisplayName(buffer.name) })
+  }
+
+  async answerSteamCall(ring: SteamRing): Promise<void> {
+    const buffer = this.state.buffers.find((b) => b.accountId === ring.accountId && b.remoteId === ring.steamid)
+    await this.steamVoice.answer(ring, buffer?.id ?? '', buffer ? bufferDisplayName(buffer.name) : ring.steamid)
+    if (buffer) this.selectBuffer(buffer.id)
+  }
+
+  async declineSteamCall(ring: SteamRing): Promise<void> {
+    await this.steamVoice.decline(ring)
+  }
+
+  /** Reads who is in a Steam group's voice rooms, when its channels are shown. */
+  async refreshSteamVoiceRooms(accountId: string, groupId: string): Promise<void> {
+    try {
+      const rooms = await window.moho.rpc<SteamVoiceRoom[]>('steamVoiceRooms', { accountId, groupId })
+      this.set({ steamVoiceRooms: { ...this.state.steamVoiceRooms, [`${accountId}|${groupId}`]: rooms } })
+    } catch {
+      /* none shown */
     }
   }
 
@@ -1722,12 +2056,22 @@ export class ChatStore {
    * nothing is removed here on optimism - leaving is the one action where
    * showing it as done before it is would be worse than a moment's delay.
    */
-  async leaveGroup(groupId: string): Promise<void> {
+  async leaveGroup(groupId: string): Promise<boolean> {
+    // A voice room of a Steam group is left with the group: the call would be in a place that is gone.
+    const voice = this.state.steamVoiceNow
+    if (voice?.target.kind === 'room' && groupId.endsWith(`|steamgroup:${voice.target.groupId}`)) await this.steamVoice.stop()
     try {
       await window.moho.rpc('leaveGroup', { groupId })
+      return true
     } catch (e) {
       this.toast('error', `Couldn't leave: ${(e as Error).message}`)
+      return false
     }
+  }
+
+  /** Asks to leave a group, which is confirmed first: it cannot be undone without a new invitation. */
+  requestLeave(group: { id: string; name: string; kind: string } | null): void {
+    this.set({ leaveRequest: group })
   }
 
   /** Asks the log to scroll to a message, and to stop following the tail. */
@@ -1787,6 +2131,10 @@ export class ChatStore {
    * resolves it to the channel the call happens in.
    */
   async callBuffer(bufferId: string): Promise<void> {
+    if (this.state.buffers.find((b) => b.id === bufferId)?.accountId.startsWith('steam:')) {
+      await this.callSteamFriend(bufferId)
+      return
+    }
     try {
       await window.moho.rpc('startDiscordCall', { bufferId })
       await this.refreshVoiceSessions()
@@ -2101,6 +2449,10 @@ export class ChatStore {
   }
 
   async leaveVoice(accountId: string): Promise<void> {
+    if (accountId.startsWith('steam:')) {
+      await this.steamVoice.stop()
+      return
+    }
     // What this end was sending goes with it. Left running, the camera light
     // would stay on and the encoder would go on handing frames to a call
     // that has ended.
@@ -2311,6 +2663,58 @@ export class ChatStore {
 
   closeProfile(): void {
     this.set({ profile: null })
+  }
+
+  /** Asks what groups a Steam account has, for when it has just connected. */
+  loadSteamGroups(accountId: string): void {
+    void window.moho
+      .rpc<SteamGroup[]>('steamFriendGroups', { accountId })
+      .then((groups) => this.set({ steamGroups: { ...this.state.steamGroups, [accountId]: groups } }))
+      .catch(() => {})
+  }
+
+  /**
+   * Moves a friend's conversation to another of the account's Steam folders, which is a change to the
+   * account on Steam: out of the folder they are filed under, and into the one chosen - or out of
+   * them all when none is. What comes back says where they now are, so nothing is moved here until
+   * Steam has agreed.
+   */
+  moveSteamFriend(bufferId: string, toGroup: number | null): void {
+    const buffer = this.state.buffers.find((b) => b.id === bufferId)
+    if (!buffer || !buffer.remoteId) return
+    const friend = buffer.remoteId
+    const groups = [...(this.state.steamGroups[buffer.accountId] ?? [])].sort((a, b) => a.id - b.id)
+    // The one they are drawn under, which is the lowest-numbered of those they are in.
+    const from = groups.find((g) => g.members.includes(friend))
+    const to = toGroup === null ? undefined : groups.find((g) => g.id === toGroup)
+    if (toGroup !== null && !to) return
+    const calls: GroupCall[] = []
+    if (from && from.id !== to?.id) calls.push({ accountId: buffer.accountId, action: 'remove', groupId: from.id, steamid: friend })
+    if (to && !to.members.includes(friend)) calls.push({ accountId: buffer.accountId, action: 'add', groupId: to.id, steamid: friend })
+    if (calls.length > 0) this.runSteamGroupCalls(calls)
+  }
+
+  /** Makes a folder on a Steam account, which Steam then tells every client of. */
+  createSteamFolder(accountId: string, name: string): void {
+    this.runSteamGroupCalls([{ accountId, action: 'create', groupId: 0, name }])
+  }
+
+  renameSteamFolder(accountId: string, groupId: number, name: string): void {
+    this.runSteamGroupCalls([{ accountId, action: 'rename', groupId, name }])
+  }
+
+  /** Deletes a folder: the friends in it stay friends, filed under nothing. */
+  deleteSteamFolder(accountId: string, groupId: number): void {
+    this.runSteamGroupCalls([{ accountId, action: 'delete', groupId }])
+  }
+
+  /** Makes the changes to a Steam account's groups that moho's own headings asked for. */
+  runSteamGroupCalls(calls: GroupCall[]): void {
+    for (const call of calls) {
+      void window.moho
+        .rpc('steamGroupChange', { accountId: call.accountId, action: call.action, groupId: call.groupId, steamid: call.steamid, name: call.name })
+        .catch((e: Error) => this.toast('error', `Steam did not change the group: ${e.message}`))
+    }
   }
 
   /**
@@ -3119,6 +3523,19 @@ export class ChatStore {
         this.matrixCalls.handle(data as unknown as MatrixCallEvent)
         break
 
+      // Steam's voice: the server telling this window's WebRTC session what is
+      // happening. The media is the window's; see lib/steamvoice.ts.
+      case 'steamVoice':
+        this.steamVoice.handle(data as never)
+        break
+      // Removed from a Steam group by somebody else.
+      case 'steamGroupRemoved':
+        this.toast('error', `You were ${data.how} ${data.name}`)
+        break
+      case 'steamVoiceRooms':
+        this.set({ steamVoiceRooms: { ...this.state.steamVoiceRooms, [`${data.accountId}|${data.groupId}`]: data.rooms as SteamVoiceRoom[] } })
+        break
+
       // Friends, and requests either way, as they change. Discord announces
       // these rather than expecting a client to poll - which is what makes a
       // request that arrives while the panel is open appear in it.
@@ -3418,6 +3835,12 @@ export class ChatStore {
       //
       // Ignored when it is not about whoever is on screen - two lookups in
       // quick succession would otherwise have the slower one win.
+      // Steam says what groups an account has sorted its friends into, or that one changed.
+      case 'steamFriendGroups': {
+        this.set({ steamGroups: { ...this.state.steamGroups, [data.accountId as string]: (data.groups ?? []) as SteamGroup[] } })
+        break
+      }
+
       case 'profile': {
         const answer = data as unknown as Profile
         const open = this.state.profile
@@ -3425,6 +3848,12 @@ export class ChatStore {
         this.set({ profile: answer })
         break
       }
+
+      // A Steam account's friends have invited it to a group, or an invitation has been answered. They are
+      // rooms to be offered, kept with the rest of them.
+      case 'steamGroupInvites':
+        this.set({ matrixInvites: { ...this.state.matrixInvites, [data.accountId as string]: (data.invites as MatrixInvite[]) || [] } })
+        break
 
       case 'matrixInvites':
         this.set({
@@ -3581,6 +4010,7 @@ export class ChatStore {
             accountId: data.accountId,
             verificationId: data.verificationId,
             state: 'requested',
+            incoming: true,
             otherUser: data.fromUser,
             otherDevice: data.fromDevice,
             isSelf: data.isSelf
@@ -3621,6 +4051,19 @@ export class ChatStore {
         }
         void this.refreshAccounts()
         break
+
+      case 'steamFriendRequests': {
+        const incoming = ((data.requests as { incoming?: SteamPerson[] } | undefined)?.incoming ?? []).map(personToRequest)
+        this.set({ friendRequests: { ...this.state.friendRequests, [data.accountId as string]: incoming } })
+        break
+      }
+      case 'steamFriendRequest': {
+        // Said once, by the daemon, when somebody new asks. Answering is on
+        // the request's own tile in the rail, so that is where the words point.
+        const who = (data.request as { name?: string | null; steamid?: string } | undefined) ?? {}
+        this.toast('info', `${who.name || who.steamid || 'Somebody'} wants to be your friend on Steam. It is waiting in the server list.`)
+        break
+      }
 
       case 'matrixLoginStatus':
         this.set({ matrixLoginStatus: data.detail || '' })
@@ -3752,6 +4195,8 @@ export class ChatStore {
                 ...b,
                 ...data,
                 link: data.link,
+                // As sent, for the same reason: a dismissed warning is left out.
+                notice: data.notice,
                 syncing: data.syncing,
                 topic: data.topic,
                 serverMuted: data.serverMuted ?? false,
@@ -4378,11 +4823,21 @@ export class ChatStore {
     }
   }
 
+  /**
+   * Where scrolling to the top found nothing older, by conversation: the message that was the oldest
+   * and when. The top is scrolled to over and over, and without this each time asked the service
+   * the same question and was told the same thing. Asked again once it has been a while, since the
+   * answer may only have been "nothing, just now".
+   */
+  private historyEnd = new Map<string, { id: string; at: number }>()
+
   async loadMoreHistory(bufferId: string): Promise<void> {
     if (this.state.loadingMore[bufferId]) return
     const list = this.state.messagesByBuffer[bufferId] || []
     const oldest = list.find((m) => !m.pending)
     if (!oldest) return
+    const end = this.historyEnd.get(bufferId)
+    if (end && end.id === oldest.id && Date.now() - end.at < HISTORY_END_MS) return
 
     this.set({ loadingMore: { ...this.state.loadingMore, [bufferId]: true } })
     try {
@@ -4391,11 +4846,15 @@ export class ChatStore {
         before: oldest.ts,
         limit: BACKLOG_PAGE
       })
-      if (rows.length) {
-        const current = this.state.messagesByBuffer[bufferId] || []
-        const seen = new Set(current.map((m) => m.id))
-        const older = rows.filter((r) => !seen.has(r.id)) as ChatMessage[]
+      const current = this.state.messagesByBuffer[bufferId] || []
+      const seen = new Set(current.map((m) => m.id))
+      const older = rows.filter((r) => !seen.has(r.id)) as ChatMessage[]
+      if (older.length) {
+        this.historyEnd.delete(bufferId)
         this.setMessages(bufferId, [...older, ...current])
+      } else {
+        // Nothing before what is here: not asked again at the next scroll.
+        this.historyEnd.set(bufferId, { id: oldest.id, at: Date.now() })
       }
     } catch (e) {
       this.toast('error', `Couldn't load older messages: ${(e as Error).message}`)
@@ -4872,6 +5331,19 @@ export class ChatStore {
   private async refreshMatrixPermissions(bufferId: string): Promise<void> {
     if (this.state.matrixPermissions[bufferId]) return
     const account = this.accountFor(bufferId)
+    // A room of a Steam chat group says what the account's roles allow there.
+    if (account?.service === 'steam') {
+      const ids = steamRoomIds(this.state.buffers.find((b) => b.id === bufferId))
+      if (!ids) return
+      try {
+        const groups = await window.moho.rpc<SteamChatGroup[]>('steamChatGroups', { accountId: account.id, groupId: ids.group })
+        // Not kept when the group is not known yet: asked again at the next opening.
+        if (groups[0]) this.set({ matrixPermissions: { ...this.state.matrixPermissions, [bufferId]: { canRedactOthers: groups[0].mayModerate } } })
+      } catch {
+        /* advisory only */
+      }
+      return
+    }
     if (account?.service !== 'matrix') return
     try {
       const perms = await window.moho.rpc<RoomPermissions>('getMatrixRoomPermissions', {
@@ -4885,6 +5357,15 @@ export class ChatStore {
   }
 
   async closeBuffer(bufferId: string): Promise<void> {
+    // A room of a Steam group cannot be left on its own: being in the group is what puts you in
+    // its rooms. Closing one would only hide it until Steam next mentioned it, so what is offered
+    // is leaving the group, asked about first.
+    const room = this.state.buffers.find((b) => b.id === bufferId)
+    if (room && room.kind === 'channel' && room.groupId?.includes('|steamgroup:')) {
+      const group = this.state.groups.find((g) => g.id === room.groupId)
+      if (group) this.requestLeave({ id: group.id, name: group.name, kind: group.kind })
+      return
+    }
     // Asked before the buffer goes, since afterwards there is nothing to ask.
     const sneedchat = this.accountFor(bufferId)?.service === 'sneedchat'
     try {

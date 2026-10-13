@@ -8,13 +8,15 @@ import { Modal } from './Modal'
 import { Avatar } from './Avatar'
 import { LeaveConfirm } from './LeaveConfirm'
 import { ircNetworkFor } from '../lib/networks'
-import { useChat, usePref, useStore } from '../state/hooks'
+import { useChat, useInvitations, usePref, useStore } from '../state/hooks'
 import { RAIL_TIP, hideRailTip, showRailTip, type RailTipDetail } from '../lib/railtip'
 import { bufferDisplayName, classes, nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
 import { SpaceRooms } from './SpaceRooms'
+import { SteamGroupSettings } from './SteamGroupSettings'
+import { steamGroupOfRail } from '../lib/steamchat'
 import {
   isFixedEntry,
-  inviteGroup,
+  invitationsGroup,
   orderedGroups,
   railEntries,
   fileInFolder,
@@ -75,6 +77,8 @@ interface TileProps {
   onLeave?: () => void
   /** Only a Matrix space has rooms to look through. */
   onBrowse?: () => void
+  /** Only a Steam chat group keeps settings of its own: rooms, roles, invite links. */
+  onSettings?: () => void
   onSelect: () => void
   onDragStart: () => void
   onDragOver: (merge: boolean) => void
@@ -107,7 +111,7 @@ function GroupFace({ group, customIcon }: { group: RailGroup; customIcon?: strin
   // An invitation reads as one rather than as an unfamiliar server: the room
   // usually has no picture and often no name, and initials taken off a raw
   // room id say nothing at all.
-  if (group.kind === 'invite') return <Icon name="mark_email_unread" size={22} />
+  if (group.kind === 'invitations') return <Icon name="mark_email_unread" size={22} />
   if (group.iconUrl) return <img className="rail-icon" src={media(group.iconUrl)} alt="" draggable={false} />
   if (group.kind === 'dms') return <Icon name="forum" size={22} />
   if (group.kind === 'account' && service.mark && service.colour) {
@@ -284,6 +288,15 @@ function RailTile(props: TileProps): JSX.Element {
                   } as const
                 ]
               : []),
+            ...(props.onSettings
+              ? [
+                  {
+                    label: 'Group settings',
+                    icon: 'settings',
+                    onClick: props.onSettings
+                  } as const
+                ]
+              : []),
             // Only where there is something to leave. An account's own entry
             // stands for the connection itself, which is disconnected from
             // the accounts pane rather than left.
@@ -369,7 +382,7 @@ export function ServerRail(): JSX.Element | null {
   // the selector's result by identity, so returning a new object each render
   // reports a change every time and loops until React gives up.
   const groups = useChat((s) => s.groups)
-  const matrixInvites = useChat((s) => s.matrixInvites)
+  const invitations = useInvitations()
   const activeGroupId = useChat((s) => s.activeGroupId)
   const activeBufferId = useChat((s) => s.activeBufferId)
   const buffers = useChat((s) => s.buffers)
@@ -404,9 +417,12 @@ export function ServerRail(): JSX.Element | null {
   // The tile a drop would merge into, as opposed to land beside.
   const [merging, setMerging] = useState('')
   /** The rail entry a leave has been asked about, pending confirmation. */
-  const [leaving, setLeaving] = useState<RailGroup | null>(null)
+  const leaving = useChat((s) => s.leaveRequest)
+  const setLeaving = (g: { id: string; name: string; kind: string } | null): void => store.requestLeave(g)
   /** The space whose contents are being looked through, if any. */
   const [browsing, setBrowsing] = useState<RailGroup | null>(null)
+  /** The Steam chat group whose settings are open, if any. */
+  const [configuring, setConfiguring] = useState<RailGroup | null>(null)
   /** Hovering the space below the column, which means "put it last". */
   const [tailTarget, setTailTarget] = useState(false)
 
@@ -457,11 +473,9 @@ export function ServerRail(): JSX.Element | null {
   // inbox in the header, which is where the unread count already is, and a
   // permanent tile for it only competed with the servers this column is for.
   if (pinned.length > 0) extras.push(pinnedGroup())
-  // An invitation arrives as its own tile and leaves when it is answered -
-  // it behaves like a new conversation, not like a mark on an account.
-  for (const [accountId, list] of Object.entries(matrixInvites)) {
-    for (const invite of list) extras.push(inviteGroup(accountId, invite))
-  }
+  // Invitations from every service share one tile, which is there while
+  // anything waits on an answer and gone once nothing does.
+  if (invitations.length > 0) extras.push(invitationsGroup(invitations.length))
   const ordered = orderedGroups([...shown, ...extras], railOrder)
 
   // The rail always draws, even with nothing in it.
@@ -561,6 +575,7 @@ export function ServerRail(): JSX.Element | null {
           g.kind === 'guild' || g.kind === 'space' ? () => setLeaving(g) : undefined
         }
         onBrowse={g.kind === 'space' ? () => setBrowsing(g) : undefined}
+        onSettings={steamGroupOfRail(g.id) ? () => setConfiguring(g) : undefined}
         unread={t?.unread ?? 0}
         highlight={t?.highlight ?? false}
         mentions={t?.mentions ?? 0}
@@ -734,6 +749,7 @@ export function ServerRail(): JSX.Element | null {
         />
       )}
 
+      {configuring && <SteamGroupSettings accountId={configuring.accountId} railId={configuring.id} onClose={() => setConfiguring(null)} />}
       {browsing && (
         <SpaceRooms
           accountId={browsing.accountId}

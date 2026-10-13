@@ -7,13 +7,14 @@ import { ForumPane } from './components/ForumPane'
 import { MessageList } from './components/MessageList'
 import { MentionsInbox } from './components/MentionsInbox'
 import { MentionsPage } from './components/MentionsPage'
-import { INVITE_PREFIX, MENTIONS_GROUP_ID } from './lib/groups'
+import { INVITATIONS_GROUP_ID, MENTIONS_GROUP_ID } from './lib/groups'
 import { trayCount } from './lib/traycount'
 import { Composer } from './components/Composer'
 import { MembershipGate } from './components/MembershipGate'
 import { NickList } from './components/NickList'
 import { ThreadPanel } from './components/ThreadPanel'
 import { InvitePanel } from './components/InvitePanel'
+import { SteamFriendDialogs } from './components/SteamFriendDialogs'
 import { VerificationDialog } from './components/VerificationDialog'
 import { ProfileCard } from './components/ProfileCard'
 import { ConversationTools } from './components/ConversationTools'
@@ -34,6 +35,7 @@ import { Icon, IconButton } from './components/Icon'
 import { ConversationMenu } from './components/ConversationMenu'
 import { watchDelta, watchedKickBuffers } from './lib/kickwatch'
 import { useActiveBuffer, useChat, usePref, usePrefsReady, useStore } from './state/hooks'
+import { useDmCategories } from './state/useDmCategories'
 import { bufferDisplayName, setHourFormat } from './lib/util'
 import type { BufferEntry } from './state/store'
 import { loadLocalEmotes, recoverMissingEmotes } from './lib/emotecache'
@@ -53,6 +55,8 @@ export default function App(): JSX.Element {
   useEscapeLayer(() => store.setActivePanel(''), panelOpen)
   const store = useStore()
   const prefsReady = usePrefsReady()
+  // Every account's direct messages under a heading of its own.
+  useDmCategories()
   const [booted, setBooted] = useState(false)
 
   const accounts = useChat((s) => s.accounts)
@@ -320,6 +324,7 @@ export default function App(): JSX.Element {
           room you share - and a dialog only the account panel can show is a
           request nobody can answer. */}
       <VerificationDialog />
+      <SteamFriendDialogs />
 
       {/* Over everything: a call arrives while you are looking elsewhere. */}
       <IncomingCallPanel />
@@ -410,7 +415,7 @@ function Body({
   if (activeGroupId === MENTIONS_GROUP_ID) return <MentionsPage />
   // An invitation stands where the conversation would, because it is the
   // conversation being offered.
-  if (activeGroupId.startsWith(INVITE_PREFIX)) return <InvitePanel groupId={activeGroupId} />
+  if (activeGroupId === INVITATIONS_GROUP_ID) return <InvitePanel />
   // A forum is a list of posts, not a log.
   if (hasBuffer && activeBuffer?.forum) return <ForumPane buffer={activeBuffer} />
   if (hasBuffer) return <MessageList />

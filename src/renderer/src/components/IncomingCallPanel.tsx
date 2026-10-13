@@ -37,11 +37,25 @@ export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {})
   const store = useStore()
   const calls = useChat((s) => s.incomingCalls)
   const matrix = useChat((s) => s.ringingCall)
+  const steamRings = useChat((s) => s.steamRings)
   const buffers = useChat((s) => s.buffers)
   const accounts = useChat((s) => s.accounts)
   const ringtone = useRef<Ringtone>()
 
   const rings: Ring[] = [
+    ...steamRings.map((ring): Ring => {
+      const buffer = buffers.find((b) => b.accountId === ring.accountId && b.remoteId === ring.steamid)
+      const account = accounts.find((a) => a.id === ring.accountId)
+      return {
+        key: `s:${ring.voiceChatId}`,
+        name: buffer ? bufferDisplayName(buffer.name) : 'Someone',
+        avatarUrl: buffer?.avatarUrl,
+        accountId: ring.accountId,
+        detail: `Incoming call${account ? ` · ${account.displayName || account.id}` : ''}`,
+        answer: () => void store.answerSteamCall(ring),
+        decline: () => void store.declineSteamCall(ring)
+      }
+    }),
     ...calls.map((call): Ring => {
       const buffer = buffers.find((b) => b.id === call.bufferId)
       const account = accounts.find((a) => a.id === call.accountId)

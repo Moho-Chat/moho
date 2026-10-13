@@ -2546,6 +2546,45 @@ img.composer-emoji {
   opacity: 0.45;
 }
 
+.nick-row.comfy {
+  gap: var(--spacing-s);
+  padding: 4px var(--spacing-s);
+}
+
+/* The name over what they are doing, in one column that gives way to the
+   badge at the right rather than pushing it off. */
+.nick-text,
+.buffer-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+/* A game, a track, or words they wrote: small, under the name, with a picture
+   only where there is a kind of thing to show. */
+.activity-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: var(--font-size-small);
+}
+
+.activity-line .icon {
+  flex: none;
+}
+
+/* Steam draws a sticker as a picture of its own, about the size it is in Steam's
+   own chat. Qualified with the element because `img.custom-emoji` sizes every
+   emoji to the line, and wins over a bare class. */
+img.custom-emoji.steam-sticker {
+  height: 128px;
+  width: auto;
+  vertical-align: middle;
+}
+
 .nick-prefix {
   color: var(--surface-variant-text);
   flex: none;
@@ -2684,6 +2723,13 @@ img.composer-emoji {
   display: flex;
   gap: var(--spacing-s);
   width: 100%;
+}
+
+.field-row > .grow {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+  overflow-wrap: anywhere;
 }
 
 .field.port {
@@ -5589,6 +5635,18 @@ video.lightbox-media {
   color: var(--surface-text);
 }
 
+/* A conversation over the heading that will take it: the whole category is lit, heading and
+   rows, since the heading is where it is going to be and not what it is going to be above. */
+.category.drop-into {
+  border-radius: var(--corner-radius-small);
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+.category.drop-into .category-head {
+  color: var(--surface-text);
+}
+
 /* A channel being carried. Faded like the heading, and for the same reason:
    the row stays in place so the list does not reflow under the cursor and
    move the heading being aimed at. */
@@ -6864,7 +6922,12 @@ video.lightbox-media {
 }
 
 .header-nameplate .main-header-title {
-  flex: 1;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.header-nameplate .header-status {
+  flex: 1 1 0;
   min-width: 0;
 }
 
@@ -7667,6 +7730,35 @@ video.lightbox-media {
 
 /* Label and value on one line, labels aligned, so the card is read down its
    left edge rather than hunted through. */
+.profile-status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  padding: var(--spacing-s);
+  margin-bottom: var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-high);
+}
+
+.profile-section-title {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--font-size-xs, 11px);
+}
+
+.profile-status-presence {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.profile-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+
 .profile-rows {
   display: flex;
   flex-direction: column;
@@ -9366,6 +9458,57 @@ video.lightbox-media {
   overflow-wrap: anywhere;
 }
 
+/* A warning the service put on the conversation, over it, in red, until it is
+   dismissed. Louder than the interruption banner above: that is about the
+   connection, and this is about who is on the other end. */
+.notice-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  border-bottom: 1px solid var(--danger);
+  background: color-mix(in srgb, var(--danger) 22%, var(--surface));
+  font-size: var(--font-size-small);
+}
+
+.notice-banner .icon {
+  flex: none;
+  color: var(--danger-text);
+}
+
+.notice-banner-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: var(--weight-semibold);
+}
+
+.notice-banner-dismiss {
+  flex: none;
+  padding: var(--spacing-xs) var(--spacing-m);
+  border-radius: var(--corner-radius-small);
+  background: var(--danger);
+  color: var(--on-accent);
+  font-weight: var(--weight-bold);
+}
+
+.notice-banner-dismiss:hover {
+  background: var(--danger-hover);
+}
+
+/* The same warning, said in the log where it stays: red, so it is not scrolled
+   past, and not the italic grey of an ordinary system line. */
+.message-row.warning {
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.message-row.warning .message-body {
+  color: var(--danger-text);
+  font-style: normal;
+  font-weight: var(--weight-semibold);
+}
+
 /* A rail entry whose service has not answered yet - on start, or after an
    outage. The face dims and a spinner sits over it until it connects. */
 .rail-tile.connecting .rail-face {
@@ -10707,4 +10850,66 @@ html[data-reduce-motion] *::after {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* The names somebody has had, on their card: newest first, each with when. */
+.profile-name-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  width: 100%;
+}
+
+.profile-name-history li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-s);
+  min-width: 0;
+}
+
+/* A Steam chat group's settings: tabs over a scrolling body, as a room's are. */
+.steam-group {
+  width: 560px;
+  max-width: calc(100vw - var(--spacing-xl));
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding: var(--spacing-m);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-high);
+  box-shadow: var(--shadow-3);
+}
+
+.steam-group-body {
+  padding-top: var(--spacing-s);
+}
+
+.steam-group-row {
+  align-items: center;
+}
+
+.steam-group-person {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding-bottom: var(--spacing-xs);
+  border-bottom: 1px solid var(--outline-medium);
+}
+
+.steam-group-perms {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) 0 var(--spacing-xs) var(--spacing-m);
+}
+
+.steam-group-x {
+  margin-left: var(--spacing-xs);
+  color: inherit;
+  cursor: pointer;
 }

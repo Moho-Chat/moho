@@ -17,6 +17,29 @@ Each section has two parts:
   that made it, including dependency updates
   (`node scripts/changelog-deps.mjs <previous tag>` lists those).
 
+## [1.1.0]
+
+### Major features
+
+- **Steam, fully ported:** friends and direct messages, group chats with their rooms, members, roles and permissions, voice rooms and one-to-one voice calls, all in the same window as everything else.
+- **Steam friends:** the friends list with presence and what each person is playing, friend requests and invitations, blocking and unblocking, nicknames, and profile cards; Steam's own friend folders are the headings on the Steam account's own page, made, renamed, deleted and filled on Steam, and what people were last called is kept between runs so a start shows names and not numbers.
+- **Steam messages:** emoticons, stickers and reactions in both directions, pictures and files (spoilers too) into friends and group rooms, mentions with `@name`, `@all` and `@online`, link cards, message history that stops asking once it reaches the start, and Steam's own wording for every refusal.
+- **Steam group chats:** joining by link, a friend's invitation answered from the Invitations tile, leaving, bans, kicks, role giving, notification levels, a group's picture, and the group's voice rooms with who is in them.
+- **Steam voice:** group voice rooms and one-to-one calls over the same relay the Steam client uses, with the speaking indicator, and a call that retries the way the client does when Steam fails it in passing.
+- **Sign in to Steam two ways:** a password with Steam Guard, or a QR code scanned by the Steam phone app; the token Steam hands back is kept, not the password.
+- **One Invitations tile** for everything that waits on a yes or a no, from every service: Matrix rooms, Steam friend requests and group invitations, Discord requests, and verification.
+- **Direct messages sorted under a heading per account** ("Steam - Goons", "Discord - name"), made once and yours to rename, move and delete after that.
+
+### Fixes, patches and changes
+
+- Kick chat moved from Pusher to Kick's realtime service ([moho `042f7b6`](https://github.com/Moho-Chat/moho/commit/042f7b6), [nobilis `c26f968`](https://github.com/Moho-Chat/nobilis/commit/c26f968))
+- Fixed a link at the end of a clause taking the clause's punctuation with it ([moho `0770478`](https://github.com/Moho-Chat/moho/commit/0770478))
+- Fixed Sneedchat members having no pictures ([nobilis `d1d0770`](https://github.com/Moho-Chat/nobilis/commit/d1d0770))
+- The profile card has a Status section ([moho `68684a4`](https://github.com/Moho-Chat/moho/commit/68684a4))
+- Comfy message lists follow Discord's layout on every service, and Classic stays names ([moho `82665ee`](https://github.com/Moho-Chat/moho/commit/82665ee))
+- Dropping a conversation on a category lights the whole category, not a line above it ([moho `0633a2c`](https://github.com/Moho-Chat/moho/commit/0633a2c))
+- Fixed Steam invite links not copying: the page's own clipboard is refused, so they go through the main process like every other copy
+
 ## [1.0.0]
 
 ### Major features

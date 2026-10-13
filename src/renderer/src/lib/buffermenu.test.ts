@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { bufferMenuEntries } from './buffermenu'
+import { bufferMenuEntries, leaveLabel } from './buffermenu'
 
 const noop = (): void => {}
 
@@ -45,5 +45,21 @@ describe('a mute held on the account', () => {
     const entry = entries({}).find((e) => (e.label ?? '').startsWith('Muted on'))
     expect(entry?.label).toBe('Muted on Matrix')
     expect(entry?.disabled).toBe(true)
+  })
+})
+
+describe('what leaving is called', () => {
+  const room = { id: 'b', accountId: 'steam:me', name: 'Raiders/#General', kind: 'channel' } as never
+  const friend = { id: 'b', accountId: 'steam:me', name: 'Gabe', kind: 'dm' } as never
+
+  it('is leaving the group for a room of a Steam group, which cannot be left on its own', () => {
+    expect(leaveLabel(room, 'steam')).toBe('Leave group…')
+  })
+
+  it('is leaving the conversation for a friend, and the same words as before elsewhere', () => {
+    expect(leaveLabel(friend, 'steam')).toBe('Leave conversation')
+    expect(leaveLabel(room, 'matrix')).toBe('Leave room')
+    expect(leaveLabel(room, 'irc')).toBe('Leave channel')
+    expect(leaveLabel(room, 'discord')).toBe('Remove from list')
   })
 })

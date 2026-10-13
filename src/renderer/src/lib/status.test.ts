@@ -14,6 +14,10 @@ describe('the statuses a service has', () => {
     expect(statusesFor('matrix')).toEqual(['online', 'dnd', 'invisible'])
   })
 
+  it('gives Steam online, away and invisible, and moho\'s own do not disturb', () => {
+    expect(statusesFor('steam')).toEqual(['online', 'idle', 'dnd', 'invisible'])
+  })
+
   it('gives Kick and Sneedchat only the one that is moho\'s own', () => {
     expect(statusesFor('kick')).toEqual(['online', 'dnd'])
     expect(statusesFor('sneedchat')).toEqual(['online', 'dnd'])
