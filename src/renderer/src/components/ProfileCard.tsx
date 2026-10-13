@@ -100,6 +100,24 @@ export function ProfileCard(): JSX.Element | null {
           ))}
         </dl>
 
+        {/* What they have been called, where the service keeps it: Steam does,
+            and a friend who renamed is otherwise somebody you no longer recognise. */}
+        {!!profile.nameHistory?.length && (
+          <section className="profile-status" aria-label="Previous names">
+            <span className="small muted profile-section-title">Previous names</span>
+            <ul className="profile-name-history">
+              {profile.nameHistory.map((n) => (
+                <li key={n.name + n.when}>
+                  <span className="ellipsis" title={n.name}>
+                    {n.name}
+                  </span>
+                  {n.when && <span className="small muted">{n.when}</span>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         {/* Shared channels are the useful half of an IRC lookup, and on a
             well-connected nick there are dozens - so they wrap. */}
         {!!profile.channels?.length && (

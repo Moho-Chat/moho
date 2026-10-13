@@ -42,7 +42,7 @@ describe('the menu of a conversation with a Steam friend', () => {
 })
 
 describe('the way to a Steam friend\'s profile', () => {
-  it('is the first thing on the menu of a conversation with one, and says when it is open', () => {
+  it('is the first thing on the menu of a conversation with one', () => {
     let opened = 0
     const entries = bufferMenuEntries({
       buffer, account, muted: false, pinned: false, filed: false, inCall: false, poppedOut: false, canCall: false,
@@ -53,7 +53,6 @@ describe('the way to a Steam friend\'s profile', () => {
     const first = entries[0]
     if ('onClick' in first) first.onClick?.()
     expect(opened).toBe(1)
-    expect(menu({ onProfile: noop, profileOpen: true })[0]).toBe('Hide profile')
   })
 
   it('is not offered where there is no such column', () => {

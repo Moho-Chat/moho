@@ -43,20 +43,21 @@ try {
   // Chosen from the menu, as a person would.
   console.log('clicked Profile:', await page.evaluate(`(() => { const e = [...document.querySelectorAll('[role=menuitem], .context-menu button')].find((x) => x.textContent.trim() === 'Profile'); if (!e) return false; e.click(); return true })()`))
   await sleep(500)
-  // What Steam said, as the daemon would send it.
-  await page.evaluate(`window.__mohoShots.patch({ profilePane: { bufferId: 'steam:me|Gabe', profile: {
-    service: 'steam', accountId: 'steam:me', id: '76561197960265829', name: 'Gabe', createdTs: 1300000000,
+  // What Steam said, as the daemon would send it: the card every service opens.
+  await page.evaluate(`window.__mohoShots.patch({ profile: {
+    service: 'steam', accountId: 'steam:me', id: '76561197960265729', name: 'Gabe', createdTs: 1300000000,
+    status: 'online', activity: { kind: 'game', text: 'Counter-Strike 2' },
     nameHistory: [{ name: 'Gabe Newell', when: '3 Mar, 2019 @ 1:00am' }, { name: 'Valve Gabe', when: '12 Jun, 2012 @ 6:40pm' }],
-    extra: [{ label: 'Steam level', value: '42' }, { label: 'Real name', value: 'Gabe N' }, { label: 'Location', value: 'Bellevue, United States' }, { label: 'Headline', value: 'Hello' }, { label: 'On', value: 'desktop' }]
-  } } })`)
+    extra: [{ label: 'Steam level', value: '42' }, { label: 'Real name', value: 'Gabe N' }, { label: 'Location', value: 'Bellevue, United States' }, { label: 'On', value: 'desktop' }, { label: 'Doing', value: 'Competitive - Dust II' }, { label: 'Headline', value: 'Hello' }]
+  } })`)
   await sleep(500)
   const { data } = await page.call('Page.captureScreenshot', { format: 'png' })
-  fs.writeFileSync(path.join(out, 'steam-profile-pane.png'), Buffer.from(data, 'base64'))
-  console.log('wrote steam-profile-pane.png; pane:', await page.evaluate(`!!document.querySelector('.profile-pane')`))
+  fs.writeFileSync(path.join(out, 'steam-profile-card.png'), Buffer.from(data, 'base64'))
+  console.log('wrote steam-profile-card.png; card:', await page.evaluate(`!!document.querySelector('.profile-card')`), '| previous names:', await page.evaluate(`document.querySelectorAll('.profile-name-history li').length`))
   // Offline: last seen instead of playing.
-  await page.evaluate(`(() => { const s = window.__mohoShots; const st = s.state(); s.patch({ presenceByBuffer: { ...st.presenceByBuffer, 'steam:me|Gabe': [{ nick: 'Gabe', status: 'offline', userId: '76561197960265829', lastSeen: Math.floor(Date.now() / 1000) - 7200 }] } }) })()`)
+  await page.evaluate(`(() => { const s = window.__mohoShots; const st = s.state(); s.patch({ profile: { ...st.profile, status: 'offline', activity: null, lastActiveTs: Math.floor(Date.now() / 1000) - 7200 } }) })()`)
   await sleep(400)
-  console.log('offline text:', JSON.stringify(await page.evaluate(`document.querySelector('.profile-pane [aria-label=Status]')?.innerText`)))
+  console.log('offline card:', JSON.stringify(await page.evaluate(`document.querySelector('.profile-card')?.innerText.replace(/\\n+/g, ' | ').slice(0, 300)`)))
 } finally {
   await stop()
   irc.close()

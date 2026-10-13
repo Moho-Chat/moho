@@ -385,6 +385,8 @@ function SteamJoin({ account }: { account: Account }): JSX.Element {
   const [target, setTarget] = useState('')
   const [busy, setBusy] = useState(false)
   const [requests, setRequests] = useState<SteamRequests>({ incoming: [], outgoing: [] })
+  const [blocked, setBlocked] = useState<{ steamid: string; name: string }[]>([])
+  const [links, setLinks] = useState<{ token: string; link: string; created: number }[] | null>(null)
   const connected = account.state === 'connected'
 
   useEffect(() => {
@@ -398,11 +400,57 @@ function SteamJoin({ account }: { account: Account }): JSX.Element {
       const d = e.data as { accountId?: string; requests?: SteamRequests }
       if (d.accountId === account.id && d.requests) setRequests(d.requests)
     })
+    // Who is blocked, and what links have been given out: neither has a place
+    // in the conversation list, so they are here, where friends are added.
+    void window.moho
+      .rpc<{ steamid: string; name: string }[]>('steamBlockedList', { accountId: account.id })
+      .then((b) => live && setBlocked(b))
+      .catch(() => {})
+    const offBlocked = window.moho.onEvent((e) => {
+      if (e.event !== 'steamBlocked') return
+      const d = e.data as { accountId?: string; blocked?: { steamid: string; name: string }[] }
+      if (d.accountId === account.id && d.blocked) setBlocked(d.blocked)
+    })
     return () => {
       live = false
       off()
+      offBlocked()
     }
   }, [account.id])
+
+  // The links, once the account is connected: they come from Steam's website.
+  useEffect(() => {
+    if (!connected) return
+    let live = true
+    void window.moho
+      .rpc<{ token: string; link: string; created: number }[]>('steamInviteLinks', { accountId: account.id, action: 'list' })
+      .then((l) => live && setLinks(l))
+      .catch(() => live && setLinks([]))
+    return () => {
+      live = false
+    }
+  }, [account.id, connected])
+
+  const changeLinks = (action: 'create' | 'revoke', token?: string): void => {
+    void window.moho
+      .rpc<{ token: string; link: string; created: number }[]>('steamInviteLinks', { accountId: account.id, action, token })
+      .then(setLinks)
+      .catch((e: Error) => store.toast('error', e.message))
+  }
+
+  const copy = (text: string): void => {
+    void navigator.clipboard
+      .writeText(text)
+      .then(() => store.toast('info', 'Copied'))
+      .catch(() => store.toast('error', 'Could not copy'))
+  }
+
+  const unblock = (p: { steamid: string; name: string }): void => {
+    void window.moho
+      .rpc('steamUnblock', { accountId: account.id, steamid: p.steamid })
+      .then(() => store.toast('info', `Unblocked ${p.name}`))
+      .catch((e: Error) => store.toast('error', e.message))
+  }
 
   const label = (p: SteamPerson): string => p.name || p.steamid
 
@@ -432,7 +480,7 @@ function SteamJoin({ account }: { account: Account }): JSX.Element {
       <div className="field-row">
         <input
           className="text-field"
-          placeholder="Account name, Steam id or friend code"
+          placeholder="Account name, Steam id, friend code or invite link"
           spellCheck={false}
           autoComplete="off"
           value={target}
@@ -456,6 +504,49 @@ function SteamJoin({ account }: { account: Account }): JSX.Element {
               <span className="grow">{label(p)}</span>
               <button type="button" className="button subtle small" onClick={() => withdraw(p)}>
                 Cancel request
+              </button>
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* A link anybody can add this account by, even if it takes no requests
+          from strangers: good for a month, and taken back here. */}
+      {connected && links !== null && (
+        <>
+          <span className="small muted">Your invite links</span>
+          {links.length === 0 && <p className="small muted">None yet. A link lets whoever has it add you, for thirty days.</p>}
+          {links.map((l) => (
+            <div key={l.token} className="field-row">
+              <span className="grow ellipsis" title={l.link}>
+                {l.link}
+              </span>
+              <button type="button" className="button subtle small" onClick={() => copy(l.link)}>
+                Copy
+              </button>
+              <button type="button" className="button subtle small" onClick={() => changeLinks('revoke', l.token)}>
+                Revoke
+              </button>
+            </div>
+          ))}
+          <div className="field-row">
+            <button type="button" className="button subtle small" onClick={() => changeLinks('create')}>
+              Make a link
+            </button>
+          </div>
+        </>
+      )}
+
+      {blocked.length > 0 && (
+        <>
+          <span className="small muted">Blocked</span>
+          {blocked.map((p) => (
+            <div key={p.steamid} className="field-row">
+              <span className="grow ellipsis" title={p.steamid}>
+                {p.name}
+              </span>
+              <button type="button" className="button subtle small" disabled={!connected} onClick={() => unblock(p)}>
+                Unblock
               </button>
             </div>
           ))}

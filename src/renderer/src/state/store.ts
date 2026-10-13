@@ -693,12 +693,6 @@ export interface ChatState {
    * whatever draws it cannot be the thing that asked.
    */
   profile: Profile | null
-  /**
-   * A conversation's person, in a column beside it where the member list would
-   * be: a direct message has no list, and this is what stands there instead.
-   * Steam's, so far - the buffer it is open for, and what Steam said.
-   */
-  profilePane: { bufferId: string; profile: Profile | null } | null
   /** Each Steam account's friend groups as Steam last said them; absent until it has. */
   steamGroups: Record<string, SteamGroup[]>
   replyingTo: { id: string; from: string; body: string } | null
@@ -815,7 +809,6 @@ const INITIAL: ChatState = {
   activeInvitationKey: '',
   steamDialog: null,
   profile: null,
-  profilePane: null,
   steamGroups: {},
   replyingTo: null,
   replyPing: true,
@@ -2462,7 +2455,7 @@ export class ChatStore {
     const known = (this.state.messagesByBuffer[bufferId] || []).filter(
       (m) => m.id === rootId || (m.replyTo?.thread && m.replyTo.id === rootId)
     )
-    this.set({ openThread: { bufferId, rootId, messages: known, loading: true }, profilePane: null })
+    this.set({ openThread: { bufferId, rootId, messages: known, loading: true } })
     try {
       const result = (await window.moho.rpc('fetchThread', { bufferId, rootId })) as {
         messages?: ChatMessage[]
@@ -2522,20 +2515,6 @@ export class ChatStore {
     this.set({ profile: null })
   }
 
-  /** Opens the column about the person in this conversation, or closes it if it is open. */
-  toggleProfilePane(bufferId: string): void {
-    if (this.state.profilePane?.bufferId === bufferId) {
-      this.set({ profilePane: null })
-      return
-    }
-    const buffer = this.state.buffers.find((b) => b.id === bufferId)
-    if (!buffer) return
-    // A thread stands in the same place, and two columns beside the
-    // conversation leave it too narrow to read.
-    this.set({ profilePane: { bufferId, profile: null }, openThread: null })
-    void window.moho.rpc('requestProfile', { bufferId, nick: buffer.name }).catch((e: Error) => this.toast('error', e.message))
-  }
-
   /** Asks what groups a Steam account has, for when it has just connected. */
   loadSteamGroups(accountId: string): void {
     void window.moho
@@ -2551,10 +2530,6 @@ export class ChatStore {
         .rpc('steamGroupChange', { accountId: call.accountId, action: call.action, groupId: call.groupId, steamid: call.steamid, name: call.name })
         .catch((e: Error) => this.toast('error', `Steam did not change the group: ${e.message}`))
     }
-  }
-
-  closeProfilePane(): void {
-    if (this.state.profilePane) this.set({ profilePane: null })
   }
 
   /**
@@ -3670,15 +3645,6 @@ export class ChatStore {
 
       case 'profile': {
         const answer = data as unknown as Profile
-        // The column beside a conversation takes its own answer: the person it is open for.
-        const pane = this.state.profilePane
-        if (pane) {
-          const buffer = this.state.buffers.find((b) => b.id === pane.bufferId)
-          if (buffer && answer.accountId === buffer.accountId && (answer.id ? answer.id === buffer.remoteId : answer.name === buffer.name)) {
-            this.set({ profilePane: { bufferId: pane.bufferId, profile: answer } })
-            break
-          }
-        }
         const open = this.state.profile
         if (open && open.name.toLowerCase() !== answer.name.toLowerCase() && !answer.handle?.toLowerCase().includes(open.name.toLowerCase())) break
         this.set({ profile: answer })

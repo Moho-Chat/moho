@@ -10840,67 +10840,8 @@ html[data-reduce-motion] *::after {
   object-fit: cover;
 }
 
-/* The person a direct message is with, in a column where the member list would be. */
-.profile-pane {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-.profile-pane-head {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-s);
-  padding: var(--spacing-s) var(--spacing-m);
-  border-bottom: 1px solid var(--outline);
-}
-
-.profile-pane-title {
-  flex: 1 1 auto;
-  font-weight: var(--weight-semibold);
-}
-
-.profile-pane-scroll {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-m);
-  padding: var(--spacing-m);
-  overflow-y: auto;
-  min-height: 0;
-}
-
-.profile-pane-who {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--spacing-xs);
-  text-align: center;
-}
-
-.profile-pane-name {
-  font-size: var(--font-size-large, 1.15em);
-  font-weight: var(--weight-bold);
-  overflow-wrap: anywhere;
-}
-
-.profile-pane-section {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--spacing-xs);
-  min-width: 0;
-}
-
-.profile-pane-game {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  font-weight: var(--weight-semibold);
-  color: var(--success);
-}
-
-.profile-pane-names {
+/* The names somebody has had, on their card: newest first, each with when. */
+.profile-name-history {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
@@ -10910,20 +10851,9 @@ html[data-reduce-motion] *::after {
   width: 100%;
 }
 
-.profile-pane-names li {
+.profile-name-history li {
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--spacing-s);
   min-width: 0;
-}
-
-.profile-pane-rows .profile-row {
-  grid-template-columns: 1fr;
-  gap: 0;
-}
-
-.profile-pane-rows dd {
-  margin: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  white-space: normal;
 }
