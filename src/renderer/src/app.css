@@ -5635,6 +5635,18 @@ video.lightbox-media {
   color: var(--surface-text);
 }
 
+/* A conversation over the heading that will take it: the whole category is lit, heading and
+   rows, since the heading is where it is going to be and not what it is going to be above. */
+.category.drop-into {
+  border-radius: var(--corner-radius-small);
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+.category.drop-into .category-head {
+  color: var(--surface-text);
+}
+
 /* A channel being carried. Faded like the heading, and for the same reason:
    the row stays in place so the list does not reflow under the cursor and
    move the heading being aimed at. */

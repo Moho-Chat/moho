@@ -603,7 +603,13 @@ export function BufferList(): JSX.Element {
                   const key = categoryKey(activeGroup.id, section)
                   const folded = isCollapsed(key)
                   return (
-                    <div key={section.key} className="category">
+                    <div
+                      key={section.key}
+                      // A conversation held over a heading that will take it lights the whole
+                      // category, so what is about to happen is the heading and its people
+                      // being added to - not a line that could be read as "put it above".
+                      className={classes('category', dragging?.kind === 'buffer' && overCategory === section.key && 'drop-into')}
+                    >
                       {naming?.id === section.key ? (
                         <CategoryNameField
                           value={naming.name}
@@ -630,7 +636,7 @@ export function BufferList(): JSX.Element {
                             'category-head',
                             'small',
                             dragging?.kind === 'category' && dragging.id === section.key && 'lifted',
-                            overCategory === section.key && 'drop-target'
+                            overCategory === section.key && dragging?.kind !== 'buffer' && 'drop-target'
                           )}
                           onClick={() => toggleCollapsed(key)}
                           onContextMenu={(e) => openCategoryMenu(e, section)}

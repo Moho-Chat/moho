@@ -71,11 +71,12 @@ try {
     head.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt }))
     head.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }))
     await wait()
-    head.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }))
-    await wait()
+    window.__finish = () => { head.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt })) }
     return { dragged: true }
   })()`)
   console.log('drag:', JSON.stringify(moved))
+  await shot('steam-folders-drag.png')
+  await page.evaluate(`window.__finish && window.__finish()`)
   await sleep(500)
   console.log('state:', JSON.stringify(await page.evaluate(`(() => { const st = window.__mohoShots.state(); const b = st.buffers.find((x) => x.id === 'steam:me|Shaod'); return { b: b && [b.remoteId, b.category, b.accountId], g: st.steamGroups } })()`)))
   console.log('moved:', JSON.stringify(await page.evaluate(`[window.__moved, window.__ran]`)))
