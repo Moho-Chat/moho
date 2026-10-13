@@ -79,10 +79,10 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
         }
       },
       onUnmuteAccount:
-        account?.service === 'matrix'
+        account?.service === 'matrix' || account?.service === 'steam'
           ? () =>
               void window.moho
-                .rpc('setMatrixRoomMuted', { bufferId: buffer.id, muted: false })
+                .rpc(account.service === 'steam' ? 'steamSetFriendMuted' : 'setMatrixRoomMuted', { bufferId: buffer.id, muted: false })
                 .catch((e: Error) => store.toast('error', e.message))
           : undefined,
       onToggleAutojoin:

@@ -3,6 +3,7 @@ import { SwitchRow } from './Switch'
 import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton, ServiceMark } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
+import { SteamAccountTools } from './SteamAccountTools'
 import { IgnoreList } from './IgnoreList'
 import { TunnelAllSwitch } from './settings/Tunnel'
 import { useChat, useConnectionDetail, useMapPref, usePref, useStore } from '../state/hooks'
@@ -456,6 +457,8 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
           {account.service === 'discord' && <DiscordReauth account={account} />}
 
           {account.service === 'matrix' && <MatrixAccountTools account={account} />}
+
+          {account.service === 'steam' && <SteamAccountTools account={account} />}
 
           {account.service === 'sneedchat' && (
             <>
@@ -1222,6 +1225,8 @@ function SteamForm({ onDone }: { onDone: () => void }): JSX.Element {
   const [detail, setDetail] = useState('')
   const [needs, setNeeds] = useState<{ options: SteamOption[]; error?: string } | null>(null)
   const [code, setCode] = useState('')
+  // The picture of the code a phone scans, while a sign-in by scanning waits.
+  const [qr, setQr] = useState<{ path: string; at: number } | null>(null)
 
   // The id lives in a ref as well as state, because the first event can be
   // handled before the render that follows the answer to the request that
@@ -1241,16 +1246,22 @@ function SteamForm({ onDone }: { onDone: () => void }): JSX.Element {
         options?: SteamOption[]
         error?: string
         success?: boolean
+        path?: string
       }
       if (!e.event.startsWith('steamLogin')) return
       if (current.current && d.loginId !== current.current) return
-      if (e.event === 'steamLoginStatus') {
+      if (e.event === 'steamLoginQr' && d.path) {
+        // The same file is written again when the code is replaced, so the
+        // moment is part of what is drawn.
+        setQr({ path: d.path, at: Date.now() })
+      } else if (e.event === 'steamLoginStatus') {
         setDetail(d.detail || '')
       } else if (e.event === 'steamLoginNeeds') {
         setNeeds({ options: d.options ?? [], error: d.error })
         setCode('')
       } else if (e.event === 'steamLoginResult') {
         setNeeds(null)
+        setQr(null)
         setId('')
         setBusy(false)
         setDetail('')
@@ -1289,6 +1300,22 @@ function SteamForm({ onDone }: { onDone: () => void }): JSX.Element {
       })
   }
 
+  // Signing in by scanning a code with the Steam app: nothing is typed.
+  const beginQr = (): void => {
+    setBusy(true)
+    setDetail('')
+    setNeeds(null)
+    setQr(null)
+    current.current = ''
+    void window.moho
+      .rpc<{ loginId: string }>('addSteamAccountQr', { useTor })
+      .then((r) => setId(r.loginId))
+      .catch((e: Error) => {
+        setBusy(false)
+        store.toast('error', e.message)
+      })
+  }
+
   const send = (): void => {
     const typed = code.trim()
     if (!typed || !loginId) return
@@ -1301,9 +1328,29 @@ function SteamForm({ onDone }: { onDone: () => void }): JSX.Element {
   const cancel = (): void => {
     if (current.current) void window.moho.rpc('cancelSteamLogin', { loginId: current.current }).catch(() => {})
     setId('')
+    setQr(null)
     setNeeds(null)
     setDetail('')
     setBusy(false)
+  }
+
+  if (qr) {
+    return (
+      <div className="add-form">
+        <p>Scan this with the Steam app on your phone.</p>
+        <p className="small muted">
+          In the app, open Steam Guard and choose the scan option (the QR icon), point the phone
+          at the code, and approve the sign-in. moho keeps only the token Steam hands back.
+        </p>
+        <img className="qr-image" src={resolveMediaUrl(`file://${qr.path}#${qr.at}`)} alt="Steam sign-in QR code" />
+        {detail && <p className="small muted">{detail}…</p>}
+        <div className="field-row">
+          <button type="button" className="button" onClick={cancel}>
+            Cancel sign-in
+          </button>
+        </div>
+      </div>
+    )
   }
 
   const takesCode = !!needs?.options.some((o) => o.kind === 'deviceCode' || o.kind === 'emailCode')
@@ -1404,6 +1451,15 @@ function SteamForm({ onDone }: { onDone: () => void }): JSX.Element {
           onClick={begin}
         >
           {busy ? 'Signing in…' : 'Sign in'}
+        </button>
+        <button
+          type="button"
+          className="button subtle"
+          disabled={busy}
+          title="Sign in by scanning a code with the Steam app on your phone, with no password typed here"
+          onClick={beginQr}
+        >
+          Sign in with a QR code
         </button>
         {busy && (
           <button type="button" className="button" onClick={cancel}>
