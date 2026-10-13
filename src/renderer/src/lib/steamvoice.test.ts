@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SteamVoice, browserOf, shapeOffer, speakersOf } from './steamvoice'
+import { AGAIN, SteamVoice, browserOf, plainFailure, shapeOffer, speakersOf } from './steamvoice'
 
 const hooks = (rpc: (p: Record<string, unknown>) => Promise<unknown> = async () => ({})) => ({
   rpc: rpc as never,
@@ -54,6 +54,11 @@ describe('Steam voice', () => {
     await v.decline(v.rings[0])
     expect(v.rings).toEqual([])
     expect(sent).toEqual([{ op: 'answerCall', accountId: 'steam:me', steamid: '7656', voiceChatId: '10', accept: false }])
+  })
+
+  it('takes the mark off a failure that may pass before it is said', () => {
+    expect(plainFailure(`${AGAIN}Steam is not answering just now`)).toBe('Steam is not answering just now')
+    expect(plainFailure('this room has no voice')).toBe('this room has no voice')
   })
 
   it('does nothing about a call it is not in', () => {

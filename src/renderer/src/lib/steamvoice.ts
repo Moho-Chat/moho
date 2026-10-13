@@ -61,6 +61,20 @@ export interface SteamVoiceHooks {
 
 /** How long a call may take to connect before it is given up on. */
 const CONNECT_TIMEOUT_MS = 60_000
+/**
+ * What the daemon puts at the front of a failure that may be gone in a moment, as the Steam client
+ * reads them: it tries again, after a little longer each time, for up to a minute.
+ */
+export const AGAIN = '[again] '
+
+/** How long to wait before each new try: the Steam client's own, quick at first and then slower. */
+const RETRY_DELAYS_MS = [250, 1000, 1000, 5000, 5000, 10000, 10000, 10000, 10000, 10000, 30000]
+
+/** The words of a failure, without the mark that says it may pass. */
+export function plainFailure(message: string): string {
+  return message.startsWith(AGAIN) ? message.slice(AGAIN.length) : message
+}
+
 /** How long somebody has to answer. */
 const RING_TIMEOUT_MS = 300_000
 
@@ -128,6 +142,9 @@ export class SteamVoice {
   private deadline: ReturnType<typeof setTimeout> | null = null
   /** Bumped on every start and stop, so what comes back late for a call that is gone is dropped. */
   private epoch = 0
+  /** How many times this call has been tried again, and when it first began. */
+  private attempt = 0
+  private began = 0
 
   constructor(hooks: SteamVoiceHooks) {
     this.hooks = hooks
@@ -138,8 +155,12 @@ export class SteamVoice {
   }
 
   /** Begins voice in a room, or a call to a friend, on an account. */
-  async start(accountId: string, target: SteamVoiceTarget): Promise<void> {
+  async start(accountId: string, target: SteamVoiceTarget, retrying = false): Promise<void> {
     if (this.active) await this.stop()
+    if (!retrying) {
+      this.attempt = 0
+      this.began = Date.now()
+    }
     const epoch = ++this.epoch
     this.accountId = accountId
     this.target = target
@@ -156,8 +177,27 @@ export class SteamVoice {
       if (epoch !== this.epoch) return
       await this.offer(epoch)
     } catch (e) {
-      if (epoch === this.epoch) this.fail(`Couldn't start voice: ${(e as Error).message}`)
+      this.failed(epoch, e as Error, "Couldn't start voice")
     }
+  }
+
+  /**
+   * A call went wrong: if it may pass, and it is not yet a minute since it began, start it again after
+   * the next of the waits the Steam client uses; otherwise say so. What is late for a call that is gone
+   * is dropped.
+   */
+  private failed(epoch: number, error: Error, what: string): void {
+    if (epoch !== this.epoch) return
+    const target = this.target
+    if (error.message.startsWith(AGAIN) && target && Date.now() - this.began < CONNECT_TIMEOUT_MS) {
+      const account = this.accountId
+      const delay = RETRY_DELAYS_MS[Math.min(this.attempt++, RETRY_DELAYS_MS.length - 1)]
+      this.epoch++
+      this.teardown()
+      setTimeout(() => void this.start(account, target, true), delay)
+      return
+    }
+    this.fail(`${what}: ${plainFailure(error.message)}`)
   }
 
   /** Leaves: a room is left, and a call is hung up on, which ends it for both. */
@@ -295,7 +335,7 @@ export class SteamVoice {
         if (this.accepted) await this.connectData(epoch)
       }
     } catch (e) {
-      if (epoch === this.epoch) this.fail(`Couldn't join voice: ${(e as Error).message}`)
+      this.failed(epoch, e as Error, "Couldn't join voice")
     }
   }
 
@@ -364,7 +404,7 @@ export class SteamVoice {
         if (d.voiceChatId !== this.voiceChatId || this.target?.kind !== 'friend') return
         if (d.accepted) {
           this.accepted = true
-          if (this.phase === 'ringing') void this.connectData(this.epoch).catch((e: Error) => this.fail(`Couldn't join the call: ${e.message}`))
+          if (this.phase === 'ringing') void this.connectData(this.epoch).catch((e: Error) => this.failed(this.epoch, e, "Couldn't join the call"))
         } else {
           this.hooks.toast('info', `${this.target.name} declined`)
           void this.stop()
@@ -397,7 +437,7 @@ export class SteamVoice {
     try {
       await this.hooks.rpc({ op: 'answerCall', accountId: ring.accountId, steamid: ring.steamid, voiceChatId: ring.voiceChatId, accept: true })
     } catch (e) {
-      this.hooks.toast('error', `Couldn't answer: ${(e as Error).message}`)
+      this.hooks.toast('error', `Couldn't answer: ${plainFailure((e as Error).message)}`)
       return
     }
     await this.start(ring.accountId, { kind: 'friend', steamid: ring.steamid, bufferId, name, voiceChatId: ring.voiceChatId })
@@ -425,7 +465,7 @@ export class SteamVoice {
         await this.hooks.rpc({ op: 'acknowledge', accountId: this.accountId, version: d.version, serverIp: s?.serverIp, serverPort: s?.serverPort, clientIp: s?.clientIp, clientPort: s?.clientPort })
       }
     } catch (e) {
-      this.fail(`Voice renegotiation failed: ${(e as Error).message}`)
+      this.fail(`Voice renegotiation failed: ${plainFailure((e as Error).message)}`)
       return
     }
     this.updating = false
