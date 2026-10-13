@@ -24,6 +24,7 @@ import type {
 } from '../../../shared/wire'
 import { addToast, type ToastAction, type ToastItem } from '../lib/toasts'
 import { ALL_STATUSES, statusesFor, supportsStatus } from '../lib/status'
+import type { SteamGroup, GroupCall } from '../lib/steamgroups'
 import { buildSmilieIndex, steamSameText, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
 import { runExport } from '../lib/exporter'
@@ -698,6 +699,8 @@ export interface ChatState {
    * Steam's, so far - the buffer it is open for, and what Steam said.
    */
   profilePane: { bufferId: string; profile: Profile | null } | null
+  /** Each Steam account's friend groups as Steam last said them; absent until it has. */
+  steamGroups: Record<string, SteamGroup[]>
   replyingTo: { id: string; from: string; body: string } | null
   /** Whether answering pings the author (Discord's "@ ON"): on for every new reply. */
   replyPing: boolean
@@ -813,6 +816,7 @@ const INITIAL: ChatState = {
   steamDialog: null,
   profile: null,
   profilePane: null,
+  steamGroups: {},
   replyingTo: null,
   replyPing: true,
   editingId: '',
@@ -2532,6 +2536,23 @@ export class ChatStore {
     void window.moho.rpc('requestProfile', { bufferId, nick: buffer.name }).catch((e: Error) => this.toast('error', e.message))
   }
 
+  /** Asks what groups a Steam account has, for when it has just connected. */
+  loadSteamGroups(accountId: string): void {
+    void window.moho
+      .rpc<SteamGroup[]>('steamFriendGroups', { accountId })
+      .then((groups) => this.set({ steamGroups: { ...this.state.steamGroups, [accountId]: groups } }))
+      .catch(() => {})
+  }
+
+  /** Makes the changes to a Steam account's groups that moho's own headings asked for. */
+  runSteamGroupCalls(calls: GroupCall[]): void {
+    for (const call of calls) {
+      void window.moho
+        .rpc('steamGroupChange', { accountId: call.accountId, action: call.action, groupId: call.groupId, steamid: call.steamid, name: call.name })
+        .catch((e: Error) => this.toast('error', `Steam did not change the group: ${e.message}`))
+    }
+  }
+
   closeProfilePane(): void {
     if (this.state.profilePane) this.set({ profilePane: null })
   }
@@ -3641,6 +3662,12 @@ export class ChatStore {
       //
       // Ignored when it is not about whoever is on screen - two lookups in
       // quick succession would otherwise have the slower one win.
+      // Steam says what groups an account has sorted its friends into, or that one changed.
+      case 'steamFriendGroups': {
+        this.set({ steamGroups: { ...this.state.steamGroups, [data.accountId as string]: (data.groups ?? []) as SteamGroup[] } })
+        break
+      }
+
       case 'profile': {
         const answer = data as unknown as Profile
         // The column beside a conversation takes its own answer: the person it is open for.
