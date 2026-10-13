@@ -188,7 +188,7 @@ export function NickList(): JSX.Element {
     let live = true
     void window.moho
       .rpc<SteamChatGroup[]>('steamChatGroups', { accountId: account.id, groupId: steamRoom.group })
-      .then((g) => live && g[0] && setSteamPowers({ canKick: g[0].mayModerate, canBan: g[0].mayModerate, canMute: g[0].mayModerate }))
+      .then((g) => live && g[0] && setSteamPowers({ canKick: g[0].mayModerate, canBan: g[0].mayModerate, canMute: false }))
       .catch(() => {
         /* advisory only: no answer means no moderation entries */
       })

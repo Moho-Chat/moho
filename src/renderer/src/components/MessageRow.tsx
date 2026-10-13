@@ -570,7 +570,8 @@ function MessageRowBody({
           }
         ] as MenuEntry[])
       : []),
-    { label: 'Reply', icon: 'reply', onClick: () => reply() },
+    // Steam chat has no replies - a message is a line of text and nothing points at another.
+    ...(service === 'steam' ? [] : ([{ label: 'Reply', icon: 'reply', onClick: () => reply() }] as MenuEntry[])),
     // What was selected when the menu opened, first: right-clicking on
     // highlighted text and finding no Copy is the one thing this menu must not
     // do, having replaced the one the window would have given.
@@ -1420,9 +1421,11 @@ function MessageRowBody({
               <Icon name="add_reaction" size={15} />
             </button>
           )}
-          <button type="button" className="toolbar-button" title="Reply" onClick={reply}>
-            <Icon name="reply" size={15} />
-          </button>
+          {service !== 'steam' && (
+            <button type="button" className="toolbar-button" title="Reply" onClick={reply}>
+              <Icon name="reply" size={15} />
+            </button>
+          )}
           {canEditDelete && (
             <button
               type="button"
