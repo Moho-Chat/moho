@@ -174,3 +174,14 @@ describe('a link in a sentence', () => {
   })
 })
 
+describe('the message just sent, when Steam made something of its link', () => {
+  it('is the one that came back as a picture, a video or a card', () => {
+    const png = 'https://upload.wikimedia.org/a/b.png'
+    expect(steamSameText(png, `[steam:image:${png}]`)).toBe(true)
+    expect(steamSameText('https://x.test/v', '[steam:video:https://x.test/v]')).toBe(true)
+    expect(steamSameText('x.salastil.com', '[x.salastil.com](http://x.salastil.com)')).toBe(true)
+    expect(steamSameText('https://x.test/p', 'https://x.test/p')).toBe(true)
+    expect(steamSameText(png, '[steam:image:https://other.test/c.png]')).toBe(false)
+  })
+})
+

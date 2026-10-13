@@ -165,8 +165,15 @@ export function sourcePick(service: string, e: { id: string }): string {
  */
 export function steamSameText(sent: string, logged: string): boolean {
   const sentForm = sent.replace(/\\\[/g, '[')
-  const loggedForm = logged.replace(/\[steam:emote:([A-Za-z0-9_-]+)\]/g, ':$1:').replace(/\u200b/g, '')
-  return sentForm === loggedForm
+  const loggedForm = logged
+    .replace(/\[steam:emote:([A-Za-z0-9_-]+)\]/g, ':$1:')
+    // A link Steam made into a picture or a card comes back as the address, or as
+    // words that link to it - which is what was typed.
+    .replace(/\[steam:(?:image|video):(https?:\/\/[^\s\]]+)\]/g, '$1')
+    .replace(/\[([^\]]+)\]\(https?:\/\/[^\s)]+\)/g, '$1')
+    .replace(/\u200b/g, '')
+    .trim()
+  return sentForm.trim() === loggedForm
 }
 
 /**

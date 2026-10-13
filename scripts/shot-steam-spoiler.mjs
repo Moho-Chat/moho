@@ -48,7 +48,7 @@ try {
         m('7', 'a video sent as a spoiler'), m('8', '||\\n[steam:video:${vid(4)}]\\n||'),
         m('9', 'an emoticon [steam:emote:steamhappy] in a line, then a sticker'), m('10', '[steam:sticker:Nyan GLaDOS]'),
         m('11', 'a link with words: [look at this](https://links.invalid/a?x=1&y=2) and a bare one https://links.invalid/b, then a picture https://example.com/p.png'),
-        { ...m('12', '[x.salastil.com](http://x.salastil.com)'), embeds: [{ url: 'http://x.salastil.com', title: 'Home', description: 'A privacy-focused Twitter/X frontend', provider: 'x.salastil.com' }] }
+        { ...m('12', '[x.salastil.com](http://x.salastil.com)'), embeds: [{ url: 'http://x.salastil.com', title: 'Home', description: 'A privacy-focused Twitter/X frontend', provider: 'x.salastil.com', imageUrl: 'https://community.steamstatic.com/chat/image/abc/share_image' }] }
       ] }
     })
   })()`)
