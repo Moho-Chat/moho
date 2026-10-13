@@ -30,6 +30,7 @@ import {
   embedColor,
   extractCodeBlocks,
   extractMedia,
+  markSpoilered,
   extractQuoteBlocks,
   formatMessage,
   normalizeBBCode,
@@ -469,14 +470,14 @@ function MessageRowBody({
     // this function again and neither of which is re-stored.
     const raw = clearnetLinks(message.body || '')
     const normalized = normalizeBBCode(raw)
-    const media = extractMedia(normalized, {
+    const media = markSpoilered(extractMedia(normalized, {
       contentSniffing,
       sniffed,
       onNeedSniff: (url) => sniffUrl(url, strictRoute),
       // Read from the un-normalised body: the pairing lives in the BBCode,
       // and normalising unwraps both tags into two unrelated bare URLs.
       thumbnails: thumbnailLinks(raw)
-    })
+    }), normalized)
     const codeBlocks = extractCodeBlocks(normalized)
     const quoteBlocks = extractQuoteBlocks(stripCodeBlocks(normalized))
 

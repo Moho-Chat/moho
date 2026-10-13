@@ -34,6 +34,19 @@ export interface MediaItem {
    * somebody opens it.
    */
   page?: string
+  /** Sent as a spoiler: hidden until it is clicked. */
+  spoiler?: boolean
+}
+
+/**
+ * Which of these pictures sit inside a `||spoiler||`, and so are hidden the
+ * way the words beside them are. Steam writes a spoilered picture that way;
+ * Discord says it with the file's name instead.
+ */
+export function markSpoilered(items: MediaItem[], text: string): MediaItem[] {
+  if (items.length === 0 || !text.includes('||')) return items
+  const hidden = [...text.matchAll(/\|\|([\s\S]*?)\|\|/g)].map((m) => m[1])
+  return items.map((item) => (hidden.some((h) => h.includes(item.url)) ? { ...item, spoiler: true } : item))
 }
 
 /**
@@ -161,6 +174,13 @@ export function escapeHtml(s: string): string {
 export function normalizeBBCode(text: string): string {
   if (!text) return text
   let out = text
+
+  // A picture written with its address as an attribute, which is how Steam
+  // writes one sent through its website:
+  // `[img src=ADDRESS thumbnail_src=... width=479]ADDRESS`. The address is
+  // what is wanted, once. Done first so the tag's own attributes are not
+  // mistaken for more links.
+  out = out.replace(/\[img\s+src="?(https?:\/\/[^\s"\]]+)"?[^\]]*\](?:\s*\1)?(?:\[\/img\])?/gi, '\n$1\n')
 
   // [br] -> a real newline, so it flows through the same \n -> <br> step
   // below. Left alone, the catch-all "strip unrecognised BBCode" pass would
@@ -630,6 +650,17 @@ export function hostnameOf(url: string): string {
  */
 export const OPAQUE_IMAGE_HOSTS = ['i.ddos.lgbt']
 
+/**
+ * A picture Steam holds for somebody who sent it in chat. Its address has no
+ * file extension anywhere - `.../ugc/<id>/<hash>/` - so it can only be
+ * recognised by where it is kept.
+ */
+const STEAM_UPLOAD_RE = /^https:\/\/(?:images\.steamusercontent\.com|steamuserimages-a\.akamaihd\.net|images\.akamai\.steamstatic\.com)\/ugc\//i
+
+export function isSteamUpload(url: string): boolean {
+  return STEAM_UPLOAD_RE.test(url)
+}
+
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|avif)(\?\S*)?$/i
 const VIDEO_EXT_RE = /\.(mp4|webm|mov|mkv|ogv)(\?\S*)?$/i
 
@@ -753,6 +784,9 @@ export function extractMedia(
     } else if (OPAQUE_IMAGE_HOSTS.includes(hostnameOf(url))) {
       seen.add(identity)
       result.push({ url, kind: 'image', ...biggerCopy(url, opts.thumbnails) })
+    } else if (isSteamUpload(url)) {
+      seen.add(identity)
+      result.push({ url, kind: 'image', ...biggerCopy(url, opts.thumbnails) })
     } else if (isGifPage(url)) {
       // A page, not a file: see GIF_PAGE_RE. Left as the link it is.
       continue
@@ -805,6 +839,8 @@ export function stripEmbeddedUrls(text: string, mediaItems: MediaItem[]): string
       if (id && shown.has(id)) out = out.split(raw).join('')
     }
   }
+  // A spoiler that held only a picture is empty now it has been lifted out.
+  out = out.replace(/\|\|\s*\|\|/g, '')
   return out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 

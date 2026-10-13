@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { emojiPreview, formatMessage, sourcePick, steamSameText } from './format'
+import { emojiPreview, extractMedia, formatMessage, normalizeBBCode, isSteamUpload, markSpoilered, stripEmbeddedUrls, sourcePick, steamSameText } from './format'
 import { formatsFor, serialize, wrap, type BoxNode } from './composeFormat'
 import { reactionLabel } from './reactions'
 
@@ -89,5 +89,30 @@ describe('a Steam message is the one just sent', () => {
     expect(steamSameText('not \\[b]bold', 'not [\u200bb]bold')).toBe(true)
     expect(steamSameText(':steambored:', '[steam:emote:steamhappy]')).toBe(false)
     expect(steamSameText('hello', 'hello there')).toBe(false)
+  })
+})
+
+describe('a picture sent through Steam', () => {
+  const url = 'https://images.steamusercontent.com/ugc/1269778906054997137/522C3130A7C6AE1FC52CB49820609316A34ECD01/'
+  it('is known by where Steam keeps it, since its address has no extension', () => {
+    expect(isSteamUpload(url)).toBe(true)
+    expect(isSteamUpload('https://example.com/ugc/1/2/')).toBe(false)
+    expect(isSteamUpload('https://images.steamusercontent.com/other/1')).toBe(false)
+  })
+  it('is drawn as a picture', () => {
+    expect(extractMedia(`\n${url}\n`).map((m) => [m.url, m.kind])).toEqual([[url, 'image']])
+  })
+  it('is hidden when Steam sent it as a spoiler, and leaves no empty bars behind', () => {
+    const body = `||\n${url}\n||`
+    const items = markSpoilered(extractMedia(body), body)
+    expect(items.map((m) => m.spoiler)).toEqual([true])
+    expect(stripEmbeddedUrls(body, items)).toBe('')
+    const plain = `${url}`
+    expect(markSpoilered(extractMedia(plain), plain).map((m) => m.spoiler)).toEqual([undefined])
+  })
+  it('is read from the tag as it was stored before the daemon read it', () => {
+    const stored = `[img src=${url} thumbnail_src=${url} srcset="" width=479 height=450]${url}`
+    expect(normalizeBBCode(stored).trim()).toBe(url)
+    expect(extractMedia(normalizeBBCode(stored)).map((m) => m.url)).toEqual([url])
   })
 })
