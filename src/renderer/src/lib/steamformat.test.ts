@@ -102,8 +102,22 @@ describe('a picture sent through Steam', () => {
   it('is drawn as a picture', () => {
     expect(extractMedia(`\n${url}\n`).map((m) => [m.url, m.kind])).toEqual([[url, 'image']])
   })
+  it('is drawn as what the message says it is, a video having no extension to say so', () => {
+    const video = 'https://cdn.steamusercontent.com/ugc/9279387166147417773/0642C6E9889E1C2419DD7F85743538C67DD8CA36/'
+    const items = extractMedia(`\n[steam:video:${video}]\n`)
+    expect(items.map((m) => [m.url, m.kind])).toEqual([[video, 'video']])
+    expect(stripEmbeddedUrls(`hi\n[steam:video:${video}]\n`, items)).toBe('hi')
+    expect(formatMessage(`[steam:video:${video}]`)).toContain('cdn.steamusercontent.com')
+    expect(formatMessage(`[steam:video:${video}]`)).not.toContain('steam:video')
+  })
+  it('is read from how the daemon first stored a video, too', () => {
+    const video = 'https://cdn.steamusercontent.com/ugc/9279387166147417773/0642C6E9889E1C2419DD7F85743538C67DD8CA36/'
+    const stored = `||\n${video}\n${video}[/video]||`
+    const items = markSpoilered(extractMedia(normalizeBBCode(stored)), normalizeBBCode(stored))
+    expect(items.map((m) => [m.kind, m.spoiler])).toEqual([['video', true]])
+  })
   it('is hidden when Steam sent it as a spoiler, and leaves no empty bars behind', () => {
-    const body = `||\n${url}\n||`
+    const body = `||\n[steam:image:${url}]\n||`
     const items = markSpoilered(extractMedia(body), body)
     expect(items.map((m) => m.spoiler)).toEqual([true])
     expect(stripEmbeddedUrls(body, items)).toBe('')
@@ -112,7 +126,16 @@ describe('a picture sent through Steam', () => {
   })
   it('is read from the tag as it was stored before the daemon read it', () => {
     const stored = `[img src=${url} thumbnail_src=${url} srcset="" width=479 height=450]${url}`
-    expect(normalizeBBCode(stored).trim()).toBe(url)
-    expect(extractMedia(normalizeBBCode(stored)).map((m) => m.url)).toEqual([url])
+    expect(normalizeBBCode(stored).trim()).toBe(`[steam:image:${url}]`)
+    expect(extractMedia(normalizeBBCode(stored)).map((m) => [m.url, m.kind])).toEqual([[url, 'image']])
+  })
+  it('hides a picture a Sneedchat or Discord message spoilers, by the same rule', () => {
+    const png = 'https://example.com/a.png'
+    const sneed = normalizeBBCode(`[spoiler][img]${png}[/img][/spoiler]`)
+    expect(markSpoilered(extractMedia(sneed), sneed).map((m) => m.spoiler)).toEqual([true])
+    const discord = `look ||${png}||`
+    expect(markSpoilered(extractMedia(discord), discord).map((m) => m.spoiler)).toEqual([true])
+    const open = `look ${png}`
+    expect(markSpoilered(extractMedia(open), open).map((m) => m.spoiler)).toEqual([undefined])
   })
 })

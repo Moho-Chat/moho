@@ -175,12 +175,12 @@ export function normalizeBBCode(text: string): string {
   if (!text) return text
   let out = text
 
-  // A picture written with its address as an attribute, which is how Steam
-  // writes one sent through its website:
-  // `[img src=ADDRESS thumbnail_src=... width=479]ADDRESS`. The address is
-  // what is wanted, once. Done first so the tag's own attributes are not
-  // mistaken for more links.
-  out = out.replace(/\[img\s+src="?(https?:\/\/[^\s"\]]+)"?[^\]]*\](?:\s*\1)?(?:\[\/img\])?/gi, '\n$1\n')
+  // What Steam sends for a file, as the daemon first stored it, before it
+  // wrote a marker: the tag with its address as an attribute, which was read
+  // as `[img src=ADDRESS ...]ADDRESS` or as the address twice and a stray
+  // `[/video]`. Read into the marker, so what was stored then draws as it does now.
+  out = out.replace(/\[(img|video)\s+src="?(https?:\/\/[^\s"\]]+)"?[^\]]*\](?:\s*\2)?(?:\[\/\1\])?/gi, (_m, tag: string, url: string) => `\n[steam:${tag.toLowerCase() === 'img' ? 'image' : 'video'}:${url}]\n`)
+  out = out.replace(/(https?:\/\/[^\s\]]+)\s*\n\s*\1\[\/video\]/gi, '\n[steam:video:$1]\n')
 
   // [br] -> a real newline, so it flows through the same \n -> <br> step
   // below. Left alone, the catch-all "strip unrecognised BBCode" pass would
@@ -447,6 +447,9 @@ export function ircFormat(text: string, mode: 'render' | 'strip'): string {
 
 export function formatMessage(text: string, opts: FormatOptions = {}): string {
   if (!text) return text
+  // A Steam picture or video named in a line that is not drawing its media - a
+  // quoted reply, a preview - is the address it names.
+  text = text.replace(STEAM_MEDIA_MARK_RE, '$2')
   const revealed = opts.revealedSpoilers || {}
   // First, because the codes are invisible characters sitting anywhere in the
   // line: a colour code inside a URL or between a pair of asterisks would
@@ -657,6 +660,13 @@ export const OPAQUE_IMAGE_HOSTS = ['i.ddos.lgbt']
  */
 const STEAM_UPLOAD_RE = /^https:\/\/(?:images\.steamusercontent\.com|steamuserimages-a\.akamaihd\.net|images\.akamai\.steamstatic\.com)\/ugc\//i
 
+/**
+ * What the daemon writes for a file Steam holds for a sender: `[steam:image:URL]`
+ * or `[steam:video:URL]`. Its address does not say which it is - there is no
+ * extension anywhere in it - so the message does.
+ */
+const STEAM_MEDIA_MARK_RE = /\[steam:(image|video):(https?:\/\/[^\s\]]+)\]/g
+
 export function isSteamUpload(url: string): boolean {
   return STEAM_UPLOAD_RE.test(url)
 }
@@ -760,6 +770,14 @@ export function extractMedia(
   // - two strings, one video - and keying on the string showed it twice.
   const seen = new Set<string>()
 
+  // Steam says what a file is, and these come first so the plain scan below
+  // finds nothing left of them to guess at.
+  for (const m of text.matchAll(STEAM_MEDIA_MARK_RE)) {
+    if (seen.has(m[2])) continue
+    seen.add(m[2])
+    result.push({ url: m[2], kind: m[1] as 'image' | 'video' })
+  }
+
   // What the thumbnails were linked to. Those URLs are in the text as well -
   // inside the `[url=]` that wrapped the picture - and each is the same
   // picture as the thumbnail naming it, so drawing both shows the message
@@ -767,7 +785,7 @@ export function extractMedia(
   const targets = new Set(Object.values(opts.thumbnails ?? {}))
 
   for (const raw of urls) {
-    const url = raw.replace(/[),.;!?]+$/, '')
+    const url = raw.replace(/[),.;!?|]+$/, '')
     const yt = youtubeId(url)
     const identity = yt ? `yt:${yt}` : url
     if (seen.has(identity) || targets.has(url) || isForumUpload(url)) continue
@@ -818,6 +836,8 @@ export function stripEmbeddedUrls(text: string, mediaItems: MediaItem[]): string
   if (!text || mediaItems.length === 0) return text
   let out = text
   for (const item of mediaItems) out = out.split(item.url).join('')
+  // What is left of a Steam marker once its address has been lifted out.
+  out = out.replace(/\[steam:(?:image|video):\]/g, '')
 
   // A link left holding nothing, which is what the wrapper round a thumbnail
   // becomes once the picture it was wrapping has been lifted out and drawn as
