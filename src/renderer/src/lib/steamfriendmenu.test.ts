@@ -40,3 +40,24 @@ describe('the menu of a conversation with a Steam friend', () => {
     expect(labels).not.toContain('Set nickname…')
   })
 })
+
+describe('the way to a Steam friend\'s profile', () => {
+  it('is the first thing on the menu of a conversation with one, and says when it is open', () => {
+    let opened = 0
+    const entries = bufferMenuEntries({
+      buffer, account, muted: false, pinned: false, filed: false, inCall: false, poppedOut: false, canCall: false,
+      live: false, watched: false, onTogglePin: noop, onToggleMute: noop, onHide: noop, onClose: noop, onCall: noop,
+      onHangUp: noop, onFile: noop, onPopOut: noop, onDock: noop, onProfile: () => opened++
+    })
+    expect('label' in entries[0] && entries[0].label).toBe('Profile')
+    const first = entries[0]
+    if ('onClick' in first) first.onClick?.()
+    expect(opened).toBe(1)
+    expect(menu({ onProfile: noop, profileOpen: true })[0]).toBe('Hide profile')
+  })
+
+  it('is not offered where there is no such column', () => {
+    expect(menu()).not.toContain('Profile')
+  })
+})
+

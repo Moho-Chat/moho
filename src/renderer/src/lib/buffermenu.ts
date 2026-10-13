@@ -67,6 +67,13 @@ export interface BufferMenuInput {
    * friendship, blocking them. Present only on a conversation with one.
    */
   onSteamFriend?: (what: 'nickname' | 'remove' | 'block') => void
+  /**
+   * Opens the column about the person this conversation is with. Steam's: a
+   * direct message there has no member list, and this is where who they are,
+   * what they are playing and when they were last about are read.
+   */
+  onProfile?: () => void
+  profileOpen?: boolean
 }
 
 /** What leaving is called, which depends on what is being left. */
@@ -110,9 +117,16 @@ export function bufferMenuEntries({
   onMarkRead,
   onMarkUnread,
   markedUnread,
-  onSteamFriend
+  onSteamFriend,
+  onProfile,
+  profileOpen
 }: BufferMenuInput): MenuEntry[] {
   return [
+    // First: it is the one that goes and looks at the person, where everything
+    // below acts on the conversation.
+    ...(onProfile
+      ? ([{ label: profileOpen ? 'Hide profile' : 'Profile', icon: 'person', onClick: onProfile }, { separator: true }] as MenuEntry[])
+      : []),
     ...(canCall
       ? ([
           inCall

@@ -952,6 +952,7 @@ function BufferRow({
   const { menu, open, close } = useContextMenu()
   const store = useStore()
   const account = accounts.find((a) => a.id === buffer.accountId)
+  const profilePaneOpen = useChat((s) => s.profilePane?.bufferId === buffer.id)
   // A DM's picture comes off the service's CDN; through the route for a
   // strictly routed account (#257).
   const media = useMediaUrl(buffer.accountId)
@@ -1051,7 +1052,9 @@ function BufferRow({
     onMarkUnread: account?.service === 'matrix' ? onMarkUnread : undefined,
     onTag: account?.service === 'matrix' ? onTag : undefined,
     markedUnread: buffer.markedUnread,
-    onSteamFriend: account?.service === 'steam' && buffer.kind === 'dm' && buffer.remoteId ? (what) => store.askSteamFriend(what, buffer.id) : undefined
+    onSteamFriend: account?.service === 'steam' && buffer.kind === 'dm' && buffer.remoteId ? (what) => store.askSteamFriend(what, buffer.id) : undefined,
+    onProfile: account?.service === 'steam' && buffer.kind === 'dm' && buffer.remoteId ? () => store.toggleProfilePane(buffer.id) : undefined,
+    profileOpen: profilePaneOpen
   })
 
   return (

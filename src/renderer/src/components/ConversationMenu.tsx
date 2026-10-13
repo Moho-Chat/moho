@@ -38,6 +38,7 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
   const live = useChat((s) => s.kickStreams[buffer.id]?.live ?? false)
   const presence = useChat((s) => s.presenceByBuffer)
   const buffers = useChat((s) => s.buffers)
+  const profilePaneOpen = useChat((s) => s.profilePane?.bufferId === buffer.id)
   const watched = useChat((s) => s.watching?.bufferId === buffer.id)
 
   const [reporting, setReporting] = useState(false)
@@ -112,7 +113,9 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
           ? (tag, on) => void store.setRoomTag(buffer.id, tag, on)
           : undefined,
       markedUnread: buffer.markedUnread,
-      onSteamFriend: account?.service === 'steam' && buffer.kind === 'dm' && buffer.remoteId ? (what) => store.askSteamFriend(what, buffer.id) : undefined
+      onSteamFriend: account?.service === 'steam' && buffer.kind === 'dm' && buffer.remoteId ? (what) => store.askSteamFriend(what, buffer.id) : undefined,
+    onProfile: account?.service === 'steam' && buffer.kind === 'dm' && buffer.remoteId ? () => store.toggleProfilePane(buffer.id) : undefined,
+    profileOpen: profilePaneOpen
     }),
     { separator: true },
     // Last, and on its own. It is the one entry here that starts something

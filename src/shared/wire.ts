@@ -641,6 +641,8 @@ export interface Profile {
   channels?: string[]
   /** Anything else worth showing, already phrased for a person to read. */
   extra?: { label: string; value: string }[]
+  /** The names they have had, newest first, where the service keeps them; `when` is the service's own words for the moment. */
+  nameHistory?: { name: string; when: string }[]
   /** Set while the service is still being asked; the card fills in. */
   pending?: boolean
 }
@@ -694,6 +696,11 @@ export interface Member {
   activity?: Activity | null
   /** Their picture, where the service has one in its member list. */
   avatarUrl?: string
+  /** Steam: which kind of client they are on, and when they were last seen (unix seconds). */
+  client?: string
+  lastSeen?: number
+  /** Steam: what the game they are in says about what they are doing. */
+  rich?: string
 }
 
 export interface Protocol {

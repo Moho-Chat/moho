@@ -13,6 +13,7 @@ import { Composer } from './components/Composer'
 import { MembershipGate } from './components/MembershipGate'
 import { NickList } from './components/NickList'
 import { ThreadPanel } from './components/ThreadPanel'
+import { ProfilePane } from './components/ProfilePane'
 import { InvitePanel } from './components/InvitePanel'
 import { SteamFriendDialogs } from './components/SteamFriendDialogs'
 import { VerificationDialog } from './components/VerificationDialog'
@@ -176,6 +177,11 @@ export default function App(): JSX.Element {
   }, [booted, allBuffers, accounts, activeBufferId, activePanel, onMentionsPage, peeking, watching])
 
   const openThread = useChat((s) => s.openThread)
+  // The person a Steam conversation is with, in a column where a member list
+  // would be, when it has been asked for here.
+  const profilePane = useChat((s) => s.profilePane)
+  const showProfilePane =
+    !!profilePane && !!buffer && profilePane.bufferId === buffer.id && buffer.kind === 'dm' && activePanel === '' && !onMentionsPage && !peeking
 
   // A stale restored id is harmless: it simply resolves to no buffer and the
   // empty state shows, exactly as it would for "".
@@ -303,6 +309,15 @@ export default function App(): JSX.Element {
           <>
             <div className="divider-v" />
             <ThreadPanel />
+          </>
+        )}
+
+        {!openThread && showProfilePane && buffer && (
+          <>
+            <div className="divider-v" />
+            <div className="nicklist-pane">
+              <ProfilePane bufferId={buffer.id} />
+            </div>
           </>
         )}
 
