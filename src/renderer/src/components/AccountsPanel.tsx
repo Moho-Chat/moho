@@ -1522,7 +1522,7 @@ function TwitchForm({ onDone }: { onDone: () => void }): JSX.Element {
  *
  * Signing in (for one that only reads, or whose sign-in Twitch has stopped accepting; the new sign-in is a
  * Twitch account of its own under the login that approved it, so an anonymous reader is left where it
- * was), opening the channels the account follows, and forgetting the twitch.tv session.
+ * was), opening the channels the account follows.
  *
  * Video needs the website's own session, because Twitch's player takes only a token its own website made: the one
  * moho gets for chat and the official API is refused there. It is not a second sign-in - one window signs in on
@@ -1546,12 +1546,6 @@ function TwitchAccountTools({ account }: { account: Account }): JSX.Element {
     run('follows', async () => {
       const r = await window.moho.rpc<{ count: number }>('syncTwitchFollows', { accountId: account.id, liveOnly })
       store.toast('info', r.count === 0 ? 'You follow no channels that are on air right now' : `Opening ${r.count} channel${r.count === 1 ? '' : 's'}`)
-    })
-
-  const forget = (): void =>
-    run('forget', async () => {
-      await window.moho.rpc('setTwitchWebToken', { accountId: account.id, token: '' })
-      await store.refreshAccounts()
     })
 
   return (
@@ -1591,13 +1585,6 @@ function TwitchAccountTools({ account }: { account: Account }): JSX.Element {
           ? 'Video plays as you: signed in on twitch.tv, so your Turbo or your subscriptions count and their ads are not shown.'
           : 'Video plays without a twitch.tv sign-in, so Twitch puts ads in streams. Signing in again signs in on twitch.tv too, which lets your Turbo or your subscriptions count.'}
       </p>
-      {account.webSession && (
-        <div className="field-row">
-          <button type="button" className="button subtle" disabled={busy !== ''} onClick={forget}>
-            Forget the video sign-in
-          </button>
-        </div>
-      )}
       {account.webSession && (
         <p className="small muted">
           It is your twitch.tv login session, so what it can do is what being signed in there can do. Removing this account
