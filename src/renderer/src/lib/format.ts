@@ -194,6 +194,21 @@ export function sourcePick(service: string, e: { id: string }): string {
 }
 
 /**
+ * Sneedchat's own greentext: the site turns a line that starts with ">" into the same line wrapped in a
+ * green colour tag (`[color=#72ff72]>text`), so what comes back is never what was typed. Taken back to the
+ * plain ">text", which is what the window draws green itself (4chan's, see `.greentext`) and what a sent
+ * message is matched against.
+ */
+export function sneedGreentext(body: string): string {
+  return body.replace(/^\[color=#72ff72\](>[^\n]*?)(?:\[\/color\])?$/gim, '$1')
+}
+
+/** Whether a Sneedchat line that came back is the one that was sent, allowing for the site's greentext. */
+export function sneedSameText(sent: string, logged: string): boolean {
+  return sent.trim() === sneedGreentext(logged).trim()
+}
+
+/**
  * Whether what was typed into a Steam conversation is what Steam logged.
  *
  * They are never spelled alike when a message holds an emoticon or a bracket:
@@ -719,6 +734,11 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   // A literal "\n" is just collapsible whitespace in HTML; a structured
   // multi-line message (a relay bot's author/link/stats/footer post) would
   // otherwise render as one run-together line.
+  // Sneedchat's greentext: a line that starts with ">" is the green of 4chan's. The text is escaped by now, so
+  // the mark is "&gt;"; a line is closed inside itself, so the wrap cannot straddle another.
+  if (opts.isSneedchat) {
+    out = out.split('\n').map((line) => (line.startsWith('&gt;') ? `<span class="greentext">${line}</span>` : line)).join('\n')
+  }
   out = out.replace(/\n/g, '<br>')
   return out
 }

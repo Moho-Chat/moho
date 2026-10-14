@@ -15,6 +15,8 @@ import {
   hostnameOf,
   ircFormat,
   normalizeBBCode,
+  sneedGreentext,
+  sneedSameText,
   stripCodeBlocks,
   stripEmbeddedUrls,
   stripQuoteBlocks,
@@ -335,5 +337,23 @@ describe("Twitch's emotes and cheers in a message", () => {
     expect(emojiPreview('[twitch:nonsense:1:x]')).toBeNull()
     // An id with a slash in it is not an id, and cannot build another address.
     expect(formatMessage('[twitch:emote:../x:y]')).not.toContain('emoticons/v2/..')
+  })
+})
+
+describe("Sneedchat's greentext", () => {
+  it('is a line that starts with ">", in 4chan\'s green, on that line only', () => {
+    const html = formatMessage('plain\n>be me\nstill plain', { isSneedchat: true })
+    expect(html).toBe('plain<br><span class="greentext">&gt;be me</span><br>still plain')
+    // Anywhere else it is just a character.
+    expect(formatMessage('>not green')).not.toContain('greentext')
+  })
+
+  it("is the same thing whether the site wrapped it in its own colour or not, and its echo matches what was sent", () => {
+    expect(sneedGreentext('[color=#72ff72]>archlinuxwoman')).toBe('>archlinuxwoman')
+    expect(sneedGreentext('[color=#72ff72]>a\nb')).toBe('>a\nb')
+    expect(sneedGreentext('[color=#72ff72]>wrapped[/color]')).toBe('>wrapped')
+    expect(sneedGreentext('[color=#ff0000]red stays')).toBe('[color=#ff0000]red stays')
+    expect(sneedSameText('>archlinuxwoman', '[color=#72ff72]>archlinuxwoman')).toBe(true)
+    expect(sneedSameText('hello', '[color=#72ff72]>hello')).toBe(false)
   })
 })

@@ -11074,3 +11074,8 @@ html[data-reduce-motion] *::after {
 .kick-event.moderation.soft {
   --kick-accent: var(--primary);
 }
+
+/* Sneedchat's greentext: a line that starts with ">" in the green 4chan has always used for it. */
+.greentext {
+  color: #789922;
+}

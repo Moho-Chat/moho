@@ -67,7 +67,8 @@ const ALLOWED_CLASSES = new Set([
   'unknown',
   'custom-emoji',
   'steam-sticker',
-  'cheer-amount'
+  'cheer-amount',
+  'greentext'
 ])
 
 /** Hex or a plain CSS colour keyword - nothing that could carry a url() or expression. */

@@ -36,6 +36,7 @@ import {
   formatMessage,
   normalizeBBCode,
   clearnetLinks,
+  sneedGreentext,
   thumbnailLinks,
   youtubeId,
   stripCodeBlocks,
@@ -494,7 +495,8 @@ function MessageRowBody({
     // because it is about what this reader's browser can reach, and it has to
     // hold for an edited line and for backlog alike - both of which arrive at
     // this function again and neither of which is re-stored.
-    const raw = clearnetLinks(message.body || '')
+    // Sneedchat's own greentext is put back to the plain ">" first, so it is one thing however it arrived.
+    const raw = isSneedchat ? sneedGreentext(clearnetLinks(message.body || '')) : clearnetLinks(message.body || '')
     const normalized = normalizeBBCode(raw)
     const media = markSpoilered(extractMedia(normalized, {
       contentSniffing,
@@ -505,7 +507,8 @@ function MessageRowBody({
       thumbnails: thumbnailLinks(raw)
     }), normalized)
     const codeBlocks = extractCodeBlocks(normalized)
-    const quoteBlocks = extractQuoteBlocks(stripCodeBlocks(normalized))
+    // Not on Sneedchat, where a line starting with ">" is greentext and stays in the line it is in.
+    const quoteBlocks = isSneedchat ? [] : extractQuoteBlocks(stripCodeBlocks(normalized))
 
     // The page a GIF was linked from is not shown as well as the GIF: it is the
     // same thing said twice, and is how a posted GIF read as an address.
@@ -514,7 +517,7 @@ function MessageRowBody({
       .map((e) => ({ url: e.url!, kind: 'image' as const }))
     let body = stripEmbeddedUrls(normalized, [...media, ...gifPages])
     body = stripCodeBlocks(body)
-    body = stripQuoteBlocks(body)
+    if (!isSneedchat) body = stripQuoteBlocks(body)
 
     return {
       // A sender's own formatting, where the protocol carried any: Matrix
