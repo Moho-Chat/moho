@@ -44,6 +44,11 @@ const api = {
     return ipcRenderer.invoke(IPC.browserLogin, service, accountId, options)
   },
 
+  /** Signs in to Twitch for chat and video at once, in one window. Resolves when it is done or given up. */
+  twitchSignIn(options: { useTor?: boolean; moderation?: boolean }): Promise<{ ok: boolean; error?: string }> {
+    return ipcRenderer.invoke(IPC.twitchSignIn, options)
+  },
+
   onEvent(cb: (frame: NobilisEvent) => void): () => void {
     const handler = (_e: unknown, frame: NobilisEvent): void => cb(frame)
     ipcRenderer.on(IPC.event, handler)

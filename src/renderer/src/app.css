@@ -10982,20 +10982,6 @@ html[data-reduce-motion] *::after {
   vertical-align: middle;
 }
 
-/* The code Twitch gives to be approved on twitch.tv: read off one screen and
-   typed on another, so it is large and spaced. */
-.twitch-code {
-  align-self: flex-start;
-  padding: 10px 18px;
-  border: 1px solid var(--surface-variant-text);
-  border-radius: var(--radius-xs);
-  font-family: var(--font-mono);
-  font-size: 28px;
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.28em;
-  user-select: all;
-}
-
 /* Over the picture while the stream is playing one of Twitch's ads: said, because a picture that
    changes to something else for half a minute with nothing to say why looks like a fault. */
 .stream-ad {

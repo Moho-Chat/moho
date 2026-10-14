@@ -176,7 +176,18 @@ let openWindow: BrowserWindow | null = null
  * be signing in, and the second would inherit the first's half-finished
  * session.
  */
-export async function browserLogin(service: string): Promise<LoginOutcome> {
+export async function browserLogin(
+  service: string,
+  options?: {
+    /**
+     * Keeps the window open once the credential is captured, for a flow that goes on in it: called with the
+     * credential and the window, and the window closes when what it returns settles. Twitch's: signing in on
+     * twitch.tv and then, in the same window and the same session, approving the code that gives the chat
+     * connection its token.
+     */
+    hold?: (value: string, win: BrowserWindow) => Promise<void>
+  }
+): Promise<LoginOutcome> {
   const flow = LOGIN_FLOWS[service]
   if (!flow) return { ok: false, error: `No browser sign-in is defined for ${service}` }
   if (openWindow && !openWindow.isDestroyed()) {
@@ -255,7 +266,18 @@ export async function browserLogin(service: string): Promise<LoginOutcome> {
       TIMEOUT_MS
     )
 
+    let holding = false
     watch(ses, win, flow, (value) => {
+      if (options?.hold) {
+        // The credential shows up more than once as cookies change; the flow is told once.
+        if (holding) return
+        holding = true
+        void options
+          .hold(value, win)
+          .then(() => finish({ ok: true, value }))
+          .catch((e: Error) => finish({ ok: false, error: e.message }))
+        return
+      }
       // Read before finishing, because finishing destroys the window - and
       // best-effort, because this is a nicety and the credential is not.
       const also = flow.alsoRead

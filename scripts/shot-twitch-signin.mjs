@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Opens the Accounts pane in a scratch moho, starts a Twitch sign-in and photographs the code it shows,
- * then cancels it. Nothing is approved, so no account is signed in and nothing is saved.
+ * Opens the Accounts pane in a scratch moho and starts a Twitch sign-in: checks that one window of twitch.tv's
+ * login opens (nothing is typed into it), then closes that window as a person giving up would, and checks the
+ * form comes back with nothing saved. No account is signed in.
  *
  *   node scripts/shot-twitch-signin.mjs <output directory>
  */
@@ -12,7 +13,7 @@ import { launchApp, sleep } from './lib/harness.mjs'
 
 const out = process.argv[2] ?? '.'
 fs.mkdirSync(out, { recursive: true })
-const { page, stop } = await launchApp({ env: { MOHO_UI_SHOTS: '1' } })
+const { page, stop, port } = await launchApp({ env: { MOHO_UI_SHOTS: '1' } })
 const say = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a)
 const ev = (code) => page.evaluate(code)
 const shot = async (name) => {
@@ -33,12 +34,21 @@ try {
   await sleep(500)
   await shot('twitch-signin-form.png')
   say('sign in', await clickText('button', 'Sign in with Twitch'))
-  for (let i = 0; i < 20 && !(await ev(`!!document.querySelector('.twitch-code')`)); i++) await sleep(500)
-  say('code shown', await ev(`JSON.stringify({ code: document.querySelector('.twitch-code')?.textContent, buttons: [...document.querySelectorAll('.add-form button')].map((b) => b.textContent.trim()) })`))
-  await shot('twitch-signin-code.png')
-  say('cancel', await clickText('button', 'Cancel sign-in'))
-  await sleep(500)
-  say('back to the form', await ev(`!document.querySelector('.twitch-code') && !!([...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Sign in with Twitch'))`))
+  // The sign-in window is another page of the same app, so the debugging port lists it.
+  const targets = async () => (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).filter((t) => t.type === 'page' && /twitch\.tv/.test(t.url))
+  let found = []
+  for (let i = 0; i < 40 && found.length === 0; i++) {
+    await sleep(500)
+    found = await targets()
+  }
+  say('sign-in window', JSON.stringify(found.map((t) => t.url)))
+  say('waiting text', await ev(`document.querySelector('.add-form')?.textContent.slice(0, 120)`))
+  await shot('twitch-signin-waiting.png')
+  // Giving up, as a person does by closing it.
+  for (const t of found) await fetch(`http://127.0.0.1:${port}/json/close/${t.id}`)
+  await sleep(2000)
+  say('window gone', (await targets()).length === 0)
+  say('back to the form', await ev(`!!([...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Sign in with Twitch'))`))
   say('accounts saved', await ev(`window.__mohoShots.state().accounts.filter((a) => a.service === 'twitch').length`))
 } finally {
   await stop()

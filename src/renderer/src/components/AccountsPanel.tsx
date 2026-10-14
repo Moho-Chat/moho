@@ -1522,12 +1522,13 @@ function TwitchForm({ onDone }: { onDone: () => void }): JSX.Element {
  *
  * Signing in (for one that only reads, or whose sign-in Twitch has stopped accepting; the new sign-in is a
  * Twitch account of its own under the login that approved it, so an anonymous reader is left where it
- * was), opening the channels the account follows, and signing in on twitch.tv for video.
+ * was), opening the channels the account follows, and forgetting the twitch.tv session.
  *
- * Video needs its own sign-in because Twitch's player takes only a token its own website made: the one
- * moho gets for chat and the official API is refused there. It is the person's own website session, and
- * says so - what it can do is what being signed in on twitch.tv can do - and it is what makes their
- * Turbo or their subscriptions count, so ads they are not meant to see are not shown.
+ * Video needs the website's own session, because Twitch's player takes only a token its own website made: the one
+ * moho gets for chat and the official API is refused there. It is not a second sign-in - one window signs in on
+ * twitch.tv and approves the code, and the session it saw on the way is kept with the account (see TwitchSignIn).
+ * It is the person's own website session, and says so - what it can do is what being signed in there can do - and
+ * it is what makes their Turbo or their subscriptions count, so ads they are not meant to see are not shown.
  */
 function TwitchAccountTools({ account }: { account: Account }): JSX.Element {
   const store = useStore()
