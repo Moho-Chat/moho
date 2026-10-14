@@ -718,8 +718,9 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   // are polled as a group by the daemon; this is the one channel on screen,
   // which may not be followed at all, asked about on its own minute.
   const isKick = buffer.accountId.startsWith('kick:')
+  const hasStream = isKick || buffer.accountId.startsWith('twitch:')
   useEffect(() => {
-    if (!isKick || buffer.kind !== 'channel') return
+    if (!hasStream || buffer.kind !== 'channel') return
     const tick = (): void => {
       void window.moho.rpc('refreshKickStream', { bufferId: buffer.id }).catch(() => {
         // Nothing to say: the header keeps the last count it had, which is
@@ -728,7 +729,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
     }
     const timer = setInterval(tick, 60_000)
     return () => clearInterval(timer)
-  }, [isKick, buffer.id, buffer.kind])
+  }, [hasStream, buffer.id, buffer.kind])
 
   const rerun = async (): Promise<void> => {
     setSearching(true)

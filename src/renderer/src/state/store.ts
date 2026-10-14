@@ -342,6 +342,13 @@ export interface KickStream {
   playbackExpires?: number | null
   /** The broadcast's own id: a different one is a different stream, even in the same channel. */
   livestreamId?: number | null
+  /** Twitch only: whether Twitch says ads are not for this account (its Turbo, or a subscription). */
+  adFree?: boolean | null
+  /**
+   * Why a live stream has no picture to offer, in words: subscribers only, blocked where this is
+   * watched from. Absent when there is one, or when the channel is not live.
+   */
+  playbackError?: string | null
 }
 
 /** One box on a form a Discord bot sent. */
@@ -2966,6 +2973,10 @@ export class ChatStore {
     const stream = this.state.kickStreams[bufferId]
     const buffer = this.state.buffers.find((b) => b.id === bufferId)
     if (!buffer) return
+    if (stream?.live && !stream.playbackUrl && stream.playbackError) {
+      this.toast('info', `${bufferDisplayName(buffer.name)}: ${stream.playbackError}`)
+      return
+    }
     if (!stream?.live || !stream.playbackUrl) {
       this.toast('info', `${bufferDisplayName(buffer.name)} is not streaming right now`)
       return

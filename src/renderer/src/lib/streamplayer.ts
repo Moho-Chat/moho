@@ -12,6 +12,8 @@ export interface Rendition {
 
 /** "720p", and "720p60" for one that moves at 60 frames a second, as Kick's own player calls them. */
 export function renditionLabel(r: Rendition): string {
+  // A rendition with no picture is the one Twitch offers for listening: its playlist has no height.
+  if (r.height <= 0) return 'Audio only'
   const fps = r.frameRate && r.frameRate > 30 ? Math.round(r.frameRate) : 0
   return `${r.height}p${fps || ''}`
 }
@@ -24,8 +26,10 @@ export function renditionLabel(r: Rendition): string {
 export function autoCeiling(renditions: Rendition[], ceiling: number): number {
   if (renditions.length === 0 || ceiling <= 0) return -1
   let best = -1
-  let lowest = 0
+  // The shortest picture there is: audio only is not one, and automatic choice never settles on it.
+  let lowest = Math.max(0, renditions.findIndex((r) => r.height > 0))
   renditions.forEach((r, i) => {
+    if (r.height <= 0) return
     if (r.height < renditions[lowest].height) lowest = i
     if (r.height <= ceiling && (best < 0 || r.height > renditions[best].height || (r.height === renditions[best].height && (r.bitrate ?? 0) > (renditions[best].bitrate ?? 0)))) best = i
   })

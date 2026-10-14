@@ -84,6 +84,11 @@ export interface Account {
    * shared while a login did not exist are not simply lost.
    */
   dehydration?: boolean
+  /**
+   * Twitch only: whether this account holds a twitch.tv website session for playing video as the person
+   * (their Turbo, their subscriptions). A yes or a no; the session itself never leaves the daemon.
+   */
+  webSession?: boolean
 }
 
 export interface SneedChatRoom {

@@ -1518,22 +1518,95 @@ function TwitchForm({ onDone }: { onDone: () => void }): JSX.Element {
 }
 
 /**
- * What a Twitch account can be asked to do from its own card: an account that
- * only reads can sign in, and one whose sign-in Twitch has stopped accepting
- * can sign in again. The new sign-in is a Twitch account of its own, under the
- * login that approved it, so an anonymous reader is left where it was.
+ * What a Twitch account can be asked to do from its own card.
+ *
+ * Signing in (for one that only reads, or whose sign-in Twitch has stopped accepting; the new sign-in is a
+ * Twitch account of its own under the login that approved it, so an anonymous reader is left where it
+ * was), opening the channels the account follows, and signing in on twitch.tv for video.
+ *
+ * Video needs its own sign-in because Twitch's player takes only a token its own website made: the one
+ * moho gets for chat and the official API is refused there. It is the person's own website session, and
+ * says so - what it can do is what being signed in on twitch.tv can do - and it is what makes their
+ * Turbo or their subscriptions count, so ads they are not meant to see are not shown.
  */
-function TwitchAccountTools({ account }: { account: Account }): JSX.Element | null {
+function TwitchAccountTools({ account }: { account: Account }): JSX.Element {
+  const store = useStore()
   const refused = account.state === 'auth_failed'
-  if (account.hasPassword && !refused) return null
+  const [busy, setBusy] = useState('')
+
+  const run = (what: string, work: () => Promise<void>): void => {
+    setBusy(what)
+    void work()
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(''))
+  }
+
+  const follows = (liveOnly: boolean): void =>
+    run('follows', async () => {
+      const r = await window.moho.rpc<{ count: number }>('syncTwitchFollows', { accountId: account.id, liveOnly })
+      store.toast('info', r.count === 0 ? 'You follow no channels that are on air right now' : `Opening ${r.count} channel${r.count === 1 ? '' : 's'}`)
+    })
+
+  const videoSignIn = (): void =>
+    run('video', async () => {
+      const r = await window.moho.browserLogin('twitch', account.id, { useTor: account.useTor })
+      if (r.ok) {
+        store.toast('info', 'Signed in on twitch.tv for video')
+        await store.refreshAccounts()
+      } else if (r.error && r.error !== 'cancelled') {
+        throw new Error(r.error)
+      }
+    })
+
+  const forget = (): void =>
+    run('forget', async () => {
+      await window.moho.rpc('setTwitchWebToken', { accountId: account.id, token: '' })
+      await store.refreshAccounts()
+    })
+
   return (
     <div className="account-tools">
+      {(!account.hasPassword || refused) && (
+        <>
+          <p className="small muted">
+            {refused
+              ? 'Twitch no longer accepts this sign-in. Signing in again keeps its channels and settings.'
+              : 'This account only reads. Sign in to send messages and to see the channels you follow.'}
+          </p>
+          <TwitchSignIn useTor={account.useTor} onDone={() => undefined} label={refused ? 'Sign in again' : 'Sign in'} />
+        </>
+      )}
+      {account.hasPassword && !refused && (
+        <div className="field-row">
+          <button type="button" className="button subtle" disabled={busy !== ''} onClick={() => follows(true)} title="Open the channels you follow that are streaming now">
+            Open followed channels that are live
+          </button>
+          <button type="button" className="button subtle" disabled={busy !== ''} onClick={() => follows(false)} title="Open everyone you follow, up to 200">
+            Open everyone I follow
+          </button>
+        </div>
+      )}
       <p className="small muted">
-        {refused
-          ? 'Twitch no longer accepts this sign-in. Signing in again keeps its channels and settings.'
-          : 'This account only reads. Sign in to send messages and to see the channels you follow.'}
+        {account.webSession
+          ? 'Video plays as you: signed in on twitch.tv, so your Turbo or your subscriptions count and their ads are not shown.'
+          : 'Video plays without a twitch.tv sign-in, so Twitch puts ads in streams. Signing in on twitch.tv for video lets your Turbo or your subscriptions count.'}
       </p>
-      <TwitchSignIn useTor={account.useTor} onDone={() => undefined} label={refused ? 'Sign in again' : 'Sign in'} />
+      <div className="field-row">
+        <button type="button" className="button subtle" disabled={busy !== ''} onClick={videoSignIn}>
+          {account.webSession ? 'Sign in on twitch.tv again' : 'Sign in on twitch.tv for video'}
+        </button>
+        {account.webSession && (
+          <button type="button" className="button subtle" disabled={busy !== ''} onClick={forget}>
+            Forget the video sign-in
+          </button>
+        )}
+      </div>
+      {account.webSession && (
+        <p className="small muted">
+          It is your twitch.tv login session, so what it can do is what being signed in there can do. Removing this account
+          forgets it here; to end it on Twitch, use Sign out everywhere in twitch.tv's security settings.
+        </p>
+      )}
     </div>
   )
 }

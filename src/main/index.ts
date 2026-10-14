@@ -29,6 +29,7 @@ import { Notifier } from './notifications'
 import { IdleWatcher } from './idle'
 import { NOTHING_WAITING, trayIconFile, trayMenu, trayTooltip, type TrayState, type TrayStatus } from './tray'
 import { browserLogin, LOGIN_FLOWS } from './browser-login'
+import { answerIntegrity, mintIntegrity } from './twitch-integrity'
 import { EDIT_ACTIONS, IPC, POPOUT_FLAG, UI_SHOTS_FLAG, type EditAction, type EditMenuRequest, type PopoutState } from '../shared/ipc'
 import { clearnetLinks } from '../shared/clearnet'
 import { readCapped, pictureNamedIn } from './imagepage'
@@ -1320,6 +1321,9 @@ app.whenReady().then(() => {
     } else if (frame.event === 'netSettings') {
       void applyTunnel((method, params) => client.request(method, params))
       resetRoute()
+    } else if (frame.event === 'twitchIntegrityNeeded') {
+      // Twitch wants proof that a browser is asking for a stream; only a page of its own can make it.
+      void answerIntegrity(frame.data as { requestId?: string; deviceId?: string }, (method, params) => client.request(method, params))
     }
     send(IPC.event, frame)
   })
@@ -1334,6 +1338,7 @@ app.whenReady().then(() => {
   // For the UI harness, which has no way to look inside a tray: what it shows
   // and offers, and the entries themselves to be clicked. Only when it asks.
   if (process.env.MOHO_UI_SHOTS === '1') {
+    ;(globalThis as Record<string, unknown>).__mohoTwitchIntegrity = { mint: mintIntegrity }
     ;(globalThis as Record<string, unknown>).__mohoTray = {
       update: updateTray,
       idle: (v: boolean | null) => idleWatcher.forceForTesting(v),

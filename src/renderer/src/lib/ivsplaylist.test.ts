@@ -53,3 +53,31 @@ describe('withPrefetch on segments of uneven length', () => {
     expect(withPrefetch(playlist)).toBe(playlist)
   })
 })
+
+describe('withPrefetch on a Twitch playlist', () => {
+  const twitch = [
+    '#EXTM3U',
+    '#EXT-X-VERSION:6',
+    '#EXT-X-TARGETDURATION:5',
+    '#EXT-X-MEDIA-SEQUENCE:100',
+    '#EXTINF:2.000,live',
+    'https://cdn.example/a.mp4',
+    '#EXTINF:2.000,live',
+    'https://cdn.example/b.mp4',
+    '#EXT-X-TWITCH-PREFETCH:https://cdn.example/c.mp4',
+    '#EXT-X-TWITCH-PREFETCH:https://cdn.example/d.mp4',
+    ''
+  ].join('\n')
+
+  it('reads the prefetch lines under Twitch name as segments of the same length', () => {
+    const out = withPrefetch(twitch)
+    expect(out).not.toContain('PREFETCH')
+    expect(out.split('\n').filter((l) => l.startsWith('#EXTINF'))).toEqual(['#EXTINF:2.000,live', '#EXTINF:2.000,live', '#EXTINF:2.000,prefetch', '#EXTINF:2.000,prefetch'])
+    expect(out.trim().endsWith('https://cdn.example/d.mp4')).toBe(true)
+  })
+
+  it('leaves a playlist with none - an ad is playing, and ads are not prefetched - as it is', () => {
+    const ad = twitch.replace(/#EXT-X-TWITCH-PREFETCH:.*\n/g, '').replace(/live/g, 'Amazon|2474283100494')
+    expect(withPrefetch(ad)).toBe(ad)
+  })
+})

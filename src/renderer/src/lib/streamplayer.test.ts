@@ -55,3 +55,23 @@ describe('the captions a stream offers', () => {
     expect(captionTrack(tracks, 'ja')).toBe(0)
   })
 })
+
+describe('a stream that also offers audio alone', () => {
+  const renditions = [
+    { height: 1080, frameRate: 60, bitrate: 7_700_000 },
+    { height: 720, frameRate: 60, bitrate: 3_300_000 },
+    { height: 360, frameRate: 30, bitrate: 600_000 },
+    { height: 0, bitrate: 200_000 }
+  ]
+
+  it('names it as what it is and lists it last', () => {
+    expect(renditionLabel(renditions[3])).toBe('Audio only')
+    expect(menuOrder(renditions).map((r) => r.label)).toEqual(['1080p60', '720p60', '360p', 'Audio only'])
+  })
+
+  it('never lets automatic choice settle on it, however small the picture it is drawn in', () => {
+    expect(autoCeiling(renditions, 720)).toBe(1)
+    // A ceiling below every picture falls back to the shortest picture, not to sound.
+    expect(autoCeiling(renditions, 100)).toBe(2)
+  })
+})

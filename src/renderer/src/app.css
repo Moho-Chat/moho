@@ -10995,3 +10995,24 @@ html[data-reduce-motion] *::after {
   letter-spacing: 0.28em;
   user-select: all;
 }
+
+/* Over the picture while the stream is playing one of Twitch's ads: said, because a picture that
+   changes to something else for half a minute with nothing to say why looks like a fault. */
+.stream-ad {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--on-accent);
+  pointer-events: auto;
+}
+
+.stream-volume {
+  width: 72px;
+  accent-color: var(--primary, currentColor);
+}

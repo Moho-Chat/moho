@@ -11,7 +11,7 @@ import { bufferDisplayName } from '../lib/util'
 import { StageWindow, STREAM_WINDOW_NAME } from './stage/StageWindow'
 
 /**
- * A Kick channel's stream, in the surface a call uses.
+ * A Kick or a Twitch channel's stream, in the surface a call uses.
  *
  * The other half of the picture this window can show. A call is real-time
  * media negotiated with somebody and arrives as a `MediaStream` on
@@ -41,6 +41,9 @@ const AUTO_MAX_HEIGHT = 720
  */
 const LIVE_SYNC_SECONDS = 4
 const LIVE_MAX_LATENCY_SECONDS = 10
+
+/** Where the numbers of captions carried inside the video start, clear of the playlist's own. */
+const IN_VIDEO = 1000
 
 /** The renditions of a player's playlist, as the choices are made from them. */
 function renditionsOf(player: Hls): Rendition[] {
@@ -103,15 +106,26 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
    *  one arrives. */
   const latest = useRef('')
   const [room, setRoom] = useState({ width: 640, height: 260 })
-  const [muted, setMuted] = useState(false)
+  // Remembered between channels and between sessions: turning it down for one
+  // stream and being deafened by the next is how a player loses a person.
+  const [muted, setMuted] = usePref<boolean>('stream.muted', false)
+  const [volume, setVolume] = usePref<number>('stream.volume', 1)
+  /** Seconds left of an ad the stream is playing, or null when it is not playing one. */
+  const [ad, setAd] = useState<number | null>(null)
+  const adRanges = useRef<{ start: number; end: number }[]>([])
   /** What the stream offers, once its playlist has been read. */
   const [choices, setChoices] = useState<Choice[]>([])
-  const [captions, setCaptions] = useState<CaptionTrack[]>([])
+  const [listed, setListed] = useState<CaptionTrack[]>([])
+  /** Captions carried inside the video itself (CEA-608/708), which hls.js draws as text tracks of its own. */
+  const [inVideo, setInVideo] = useState<CaptionTrack[]>([])
+  const captions = [...listed, ...inVideo]
   /** What automatic choice is playing now, for the menu to say. */
   const [playing, setPlaying] = useState('')
   const [menu, setMenu] = useState<'quality' | 'captions' | null>(null)
-  // Remembered between streams: 0 is automatic, and an empty language is captions off.
-  const [quality, setQuality] = usePref<number>('stream.quality', 0)
+  // Remembered between streams, apart for each service because their ladders differ: 0 is automatic, and an
+  // empty language is captions off.
+  const service = useChat((s) => s.accounts.find((a) => a.id === (watching?.accountId ?? ''))?.service)
+  const [quality, setQuality] = usePref<number>(service === 'twitch' ? 'stream.quality.twitch' : 'stream.quality', 0)
   const [captionLanguage, setCaptionLanguage] = usePref<string>('stream.captions', '')
 
   const stream = watching ? streams[watching.bufferId] : undefined
@@ -176,6 +190,8 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
       backBufferLength: 20
     })
     hls.current = player
+    // For the harness that measures how far behind the broadcaster the picture runs; see scripts/watch-stream-stalls.mjs.
+    if (window.moho.uiShots) (window as unknown as { __mohoHls: Hls }).__mohoHls = player
     player.attachMedia(el)
     player.loadSource(latest.current)
 
@@ -194,12 +210,19 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
         player.config.liveMaxLatencyDuration = Math.max(LIVE_MAX_LATENCY_SECONDS, behind * 2.5)
       }
     })
+    // Ads Twitch puts into a stream are marked in its playlist as date ranges of their own, with a start and a
+    // length; which of them the picture is playing is worked out against where the playhead is (see below).
+    player.on(Hls.Events.LEVEL_UPDATED, (_e, data) => {
+      adRanges.current = Object.values(data.details.dateRanges)
+        .filter((r) => r && r.class === 'twitch-stitched-ad')
+        .map((r) => ({ start: r!.startDate.getTime(), end: r!.startDate.getTime() + (r!.duration ?? r!.plannedDuration ?? 0) * 1000 }))
+    })
     player.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => {
       const level = player.levels[data.level]
       if (level) setPlaying(renditionLabel({ height: level.height, frameRate: Number(level.attrs?.['FRAME-RATE']) || undefined }))
     })
     player.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (_e, data) => {
-      setCaptions(data.subtitleTracks.map((t) => ({ id: t.id, name: t.name, lang: t.lang })))
+      setListed(data.subtitleTracks.map((t) => ({ id: t.id, name: t.name, lang: t.lang })))
     })
 
     player.on(Hls.Events.ERROR, (_e, data) => {
@@ -221,14 +244,56 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
       store.stopWatching()
     })
 
+    // Whether the playhead is inside an ad, and how long it has left, said once a second.
+    const adTimer = setInterval(() => {
+      const at = player.playingDate?.getTime()
+      const inside = at === undefined ? undefined : adRanges.current.find((r) => at >= r.start && at < r.end)
+      setAd(inside && at !== undefined ? Math.max(1, Math.ceil((inside.end - at) / 1000)) : null)
+    }, 1000)
+
     return () => {
+      clearInterval(adTimer)
       player.destroy()
       hls.current = null
+      adRanges.current = []
+      setAd(null)
       setChoices([])
-      setCaptions([])
+      setListed([])
+      setInVideo([])
       setPlaying('')
     }
   }, [hasUrl, picture, minimized, store])
+
+  // Captions inside the picture. Twitch lists none in its playlist; a streamer whose encoder sends them
+  // (none of the busiest channels sampled did) has them in the video, and hls.js turns them into text tracks.
+  // Numbered from where the listed ones can never reach, so one choice means one track.
+  useEffect(() => {
+    const el = video.current
+    if (!el || !hasUrl || minimized) return
+    const scan = (): void => {
+      const found: CaptionTrack[] = []
+      for (let i = 0; i < el.textTracks.length; i++) {
+        const t = el.textTracks[i]
+        if (t.kind === 'captions') found.push({ id: IN_VIDEO + i, name: t.label || `Captions ${found.length + 1}`, lang: t.language || undefined })
+      }
+      setInVideo((was) => (JSON.stringify(was) === JSON.stringify(found) ? was : found))
+    }
+    scan()
+    el.textTracks.addEventListener('addtrack', scan)
+    el.textTracks.addEventListener('removetrack', scan)
+    return () => {
+      el.textTracks.removeEventListener('addtrack', scan)
+      el.textTracks.removeEventListener('removetrack', scan)
+    }
+  }, [hasUrl, picture, minimized])
+
+  // The sound as it was left, whenever there is a picture to apply it to.
+  useEffect(() => {
+    const el = video.current
+    if (!el) return
+    el.muted = muted
+    el.volume = Math.min(1, Math.max(0, volume))
+  }, [muted, volume, hasUrl, picture, minimized])
 
   // Which rendition: automatic, or the height that was chosen when this stream offers it.
   useEffect(() => {
@@ -249,9 +314,17 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
     const player = hls.current
     if (!player) return
     const track = captionTrack(captions, captionLanguage, navigator.language)
-    player.subtitleDisplay = track >= 0
-    player.subtitleTrack = track
-  }, [captionLanguage, captions])
+    const own = track >= IN_VIDEO
+    player.subtitleDisplay = track >= 0 && !own
+    player.subtitleTrack = own ? -1 : track
+    // The ones inside the video are shown or hidden on the element itself.
+    const el = video.current
+    if (el) {
+      for (let i = 0; i < el.textTracks.length; i++) {
+        if (el.textTracks[i].kind === 'captions') el.textTracks[i].mode = track === IN_VIDEO + i ? 'showing' : 'disabled'
+      }
+    }
+  }, [captionLanguage, listed, inVideo])
 
   // A stream that has ended is not a picture any more, and the surface should
   // not sit there showing the last frame of it.
@@ -307,10 +380,21 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
             name={muted ? 'volume_off' : 'volume_up'}
             title={muted ? 'Unmute' : 'Mute'}
             className={muted ? 'calling' : undefined}
-            onClick={() => {
-              const next = !muted
-              setMuted(next)
-              if (video.current) video.current.muted = next
+            onClick={() => setMuted(!muted)}
+          />
+          <input
+            type="range"
+            className="stream-volume"
+            min={0}
+            max={1}
+            step={0.05}
+            value={muted ? 0 : volume}
+            aria-label="Volume"
+            title="Volume"
+            onChange={(e) => {
+              const next = Number(e.target.value)
+              setVolume(next)
+              setMuted(next === 0)
             }}
           />
         </>
@@ -319,6 +403,12 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
       <div className={mode === 'window' ? 'video-stage in-window' : 'video-stage'} ref={frame}>
         <div className="video-tile" style={{ width: `${Math.floor(fit.tileWidth)}px` }}>
           <video ref={video} className="video-tile-picture" autoPlay playsInline />
+          {ad !== null && (
+            <div className="stream-ad small" role="status" title="Twitch plays ads in a stream for an account without Turbo or a subscription to the channel">
+              <Icon name="campaign" size={14} />
+              <span>Ad break · {ad} s</span>
+            </div>
+          )}
           {menu === 'quality' && (
             <StreamMenu
               title="Resolution"

@@ -126,6 +126,17 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
         "(document.querySelector('.p-navgroup-user-linkText') || document.querySelector('.p-navgroup-link--user .p-navgroup-linkText'))?.textContent?.trim() || null"
     }
   },
+  twitch: {
+    label: 'Twitch',
+    url: 'https://www.twitch.tv/login',
+    // Nothing: the credential is a cookie the site sets, not a request to read.
+    watch: [],
+    // The website's own session token, which is what Twitch's player calls accept for playing a stream as the
+    // person who signed in - their Turbo, their subscriptions - and which a token from moho's own sign-in
+    // (made for chat and the official API) is not. It goes straight to the daemon, for the account named.
+    capture: { kind: 'cookie', name: 'auth-token', url: 'https://www.twitch.tv' },
+    finish: { method: 'setTwitchWebToken', param: 'token' }
+  },
   kick: {
     label: 'Kick',
     url: 'https://kick.com/',
