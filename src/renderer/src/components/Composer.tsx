@@ -1303,8 +1303,8 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
 
         {/* GIFs, wherever there is a Discord account to ask for them: the
             picker borrows that account's way of looking, and what it finds can
-            be sent in any conversation. */}
-        {!thread && service !== 'steam' && accounts.some((a) => a.service === 'discord') && (
+            be sent in any conversation - except Twitch's, whose chat takes no pictures. */}
+        {!thread && service !== 'steam' && service !== 'twitch' && accounts.some((a) => a.service === 'discord') && (
           <button
             ref={gifButtonRef}
             type="button"

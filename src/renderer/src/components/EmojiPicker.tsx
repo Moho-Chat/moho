@@ -74,6 +74,8 @@ export const COMMON_EMOJI: { emoji: string; name: string }[] = [
 export function emojiToken(e: CustomEmoji): string {
   // Steam's, named rather than numbered: the id carries the service.
   if (e.id.startsWith('steam:')) return `[steam:emote:${e.id.slice(6)}]`
+  // Twitch's, which the daemon names by the token its messages carry: the box draws the picture and Twitch is sent the word.
+  if (e.id.startsWith('[twitch:')) return e.id
   if (e.url) return `[emote:${e.id}:${e.name}]`
   return `<${e.animated ? 'a' : ''}:${e.name}:${e.id}>`
 }
