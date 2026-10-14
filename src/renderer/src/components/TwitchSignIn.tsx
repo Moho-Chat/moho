@@ -65,6 +65,8 @@ export function TwitchSignIn({
   const [detail, setDetail] = useState('')
   const [code, setCode] = useState<Code | null>(null)
   const [left, setLeft] = useState(0)
+  // Chat is signed in and the twitch.tv window for video is open.
+  const [video, setVideo] = useState(false)
 
   // The id lives in a ref as well as state, because the first event can be
   // handled before the render that follows the answer to the request that
@@ -83,6 +85,7 @@ export function TwitchSignIn({
         expiresIn?: number
         scopes?: Scope[]
         success?: boolean
+        account?: { id: string; webSession?: boolean }
         error?: string
       }
       if (current.current && d.loginId !== current.current) return
@@ -97,7 +100,28 @@ export function TwitchSignIn({
         setDetail('')
         if (d.success) {
           void store.refreshAccounts()
-          onDone()
+          const account = d.account
+          // One sign-in covers both halves: the one Twitch's API takes (chat, follows, moderation) and the
+          // twitch.tv one its player takes (video as you, with your Turbo or subscriptions). The second is
+          // the person's own login in a window of twitch.tv; one that already has it is not asked again.
+          if (account && !account.webSession) {
+            setVideo(true)
+            void window.moho
+              .browserLogin('twitch', account.id, { useTor: useTor })
+              .then((r) => {
+                if (r.ok) store.toast('info', 'Signed in to Twitch for chat and video')
+                else if (r.error && r.error !== 'cancelled') store.toast('error', `Signed in for chat, but not for video: ${r.error}`)
+                else store.toast('info', 'Signed in for chat. Video will play with Twitch\'s ads until you sign in again and finish the twitch.tv step.')
+              })
+              .catch((e: Error) => store.toast('error', `Signed in for chat, but not for video: ${e.message}`))
+              .finally(() => {
+                setVideo(false)
+                void store.refreshAccounts()
+                onDone()
+              })
+          } else {
+            onDone()
+          }
         } else {
           store.toast('error', d.error || 'Twitch sign-in failed')
         }
@@ -147,6 +171,17 @@ export function TwitchSignIn({
     setDetail('')
   }
 
+  if (video) {
+    return (
+      <div className="add-form">
+        <p>Signed in. One more step: sign in on twitch.tv in the window that opened, so video plays as you.</p>
+        <p className="small muted">
+          It is your own twitch.tv login, typed there and never seen by moho. It is what makes your Turbo or your subscriptions count, so ads you are not meant to see are not shown. Closing that window skips it; chat works either way.
+        </p>
+      </div>
+    )
+  }
+
   if (code) {
     const minutes = Math.floor(left / 60)
     const seconds = String(left % 60).padStart(2, '0')
@@ -184,7 +219,7 @@ export function TwitchSignIn({
     <>
       <p className="small muted">
         You sign in on twitch.tv, in your own browser - moho never sees your password. It asks to be allowed to:{' '}
-        {(moderation ? [...ASKS, ...MODERATION_ASKS] : ASKS).map((s) => s.why).join(', ')}.
+        {(moderation ? [...ASKS, ...MODERATION_ASKS] : ASKS).map((s) => s.why).join(', ')}. It then opens twitch.tv for you to sign in there too, so video plays as you.
       </p>
       <div className="field-row">
         <button type="button" className="button primary" disabled={busy} onClick={begin}>

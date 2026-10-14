@@ -1547,17 +1547,6 @@ function TwitchAccountTools({ account }: { account: Account }): JSX.Element {
       store.toast('info', r.count === 0 ? 'You follow no channels that are on air right now' : `Opening ${r.count} channel${r.count === 1 ? '' : 's'}`)
     })
 
-  const videoSignIn = (): void =>
-    run('video', async () => {
-      const r = await window.moho.browserLogin('twitch', account.id, { useTor: account.useTor })
-      if (r.ok) {
-        store.toast('info', 'Signed in on twitch.tv for video')
-        await store.refreshAccounts()
-      } else if (r.error && r.error !== 'cancelled') {
-        throw new Error(r.error)
-      }
-    })
-
   const forget = (): void =>
     run('forget', async () => {
       await window.moho.rpc('setTwitchWebToken', { accountId: account.id, token: '' })
@@ -1599,18 +1588,18 @@ function TwitchAccountTools({ account }: { account: Account }): JSX.Element {
       <p className="small muted">
         {account.webSession
           ? 'Video plays as you: signed in on twitch.tv, so your Turbo or your subscriptions count and their ads are not shown.'
-          : 'Video plays without a twitch.tv sign-in, so Twitch puts ads in streams. Signing in on twitch.tv for video lets your Turbo or your subscriptions count.'}
+          : 'Video plays without a twitch.tv sign-in, so Twitch puts ads in streams. Signing in again also signs in on twitch.tv, which lets your Turbo or your subscriptions count.'}
       </p>
-      <div className="field-row">
-        <button type="button" className="button subtle" disabled={busy !== ''} onClick={videoSignIn}>
-          {account.webSession ? 'Sign in on twitch.tv again' : 'Sign in on twitch.tv for video'}
-        </button>
-        {account.webSession && (
+      {account.hasPassword && !refused && !account.webSession && (
+        <TwitchSignIn useTor={account.useTor} onDone={() => undefined} label="Sign in again, with video" />
+      )}
+      {account.webSession && (
+        <div className="field-row">
           <button type="button" className="button subtle" disabled={busy !== ''} onClick={forget}>
             Forget the video sign-in
           </button>
-        )}
-      </div>
+        </div>
+      )}
       {account.webSession && (
         <p className="small muted">
           It is your twitch.tv login session, so what it can do is what being signed in there can do. Removing this account
