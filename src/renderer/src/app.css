@@ -11074,7 +11074,69 @@ html[data-reduce-motion] *::after {
   letter-spacing: 0.06em;
 }
 
-.reward-choice {
-  flex: 1;
-  min-width: 0;
+
+
+/* The emotes a reward offers, as pictures to press: a scrolling grid under a search, inside the armed reward. */
+.reward-confirm {
+  flex-wrap: wrap;
+}
+
+.reward-chooser {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.reward-chooser-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+.reward-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.reward-emote {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 44px;
+  padding: 4px;
+  border-radius: var(--corner-radius-small);
+  background: transparent;
+  color: var(--surface-text);
+}
+
+.reward-emote:hover {
+  background: var(--primary-hover);
+}
+
+.reward-emote.selected {
+  background: var(--primary-hover);
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+.reward-emote img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.reward-emote-caption {
+  font-size: var(--font-size-xxs);
+  line-height: 1.1;
+  text-align: center;
+}
+
+.reward-picked {
+  padding: 0 2px;
 }

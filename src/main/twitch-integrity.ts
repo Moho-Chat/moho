@@ -26,7 +26,7 @@ export interface Integrity {
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
-export async function mintIntegrity(deviceId: string, timeoutMs = 45_000): Promise<Integrity> {
+export async function mintIntegrity(deviceId: string, authToken = '', timeoutMs = 45_000): Promise<Integrity> {
   const partition = `moho-twitch-integrity-${Date.now()}`
   const ses = session.fromPartition(partition)
   await routeSession(ses)
@@ -40,7 +40,7 @@ export async function mintIntegrity(deviceId: string, timeoutMs = 45_000): Promi
     // A page with Twitch's own scripts on it: the bot check is one of them, and it patches fetch.
     await win.loadURL('https://www.twitch.tv/directory')
     const script = `(async () => {
-      const r = await fetch('https://gql.twitch.tv/integrity', { method: 'POST', headers: { 'Client-ID': ${JSON.stringify(SITE_CLIENT_ID)}, 'X-Device-Id': ${JSON.stringify(deviceId)} }, credentials: 'omit' })
+      const r = await fetch('https://gql.twitch.tv/integrity', { method: 'POST', headers: { 'Client-ID': ${JSON.stringify(SITE_CLIENT_ID)}, 'X-Device-Id': ${JSON.stringify(deviceId)}${authToken ? `, Authorization: ${JSON.stringify('OAuth ' + authToken)}` : ''} }, credentials: 'omit' })
       if (r.status !== 200) throw new Error('Twitch answered ' + r.status)
       const j = await r.json()
       if (!j.token) throw new Error('Twitch sent no token')
@@ -67,12 +67,13 @@ export async function mintIntegrity(deviceId: string, timeoutMs = 45_000): Promi
 
 /** Answers the daemon's request: makes the token and hands it over, or says why it could not. */
 export async function answerIntegrity(
-  data: { requestId?: string; deviceId?: string },
+  data: { requestId?: string; deviceId?: string; authToken?: string },
   request: (method: string, params: Record<string, unknown>) => Promise<unknown>
 ): Promise<void> {
   if (!data.requestId || !data.deviceId) return
   try {
-    const made = await mintIntegrity(data.deviceId)
+    // As the account when it names one: Twitch takes for an account's call only a token made as that account.
+    const made = await mintIntegrity(data.deviceId, data.authToken ?? '')
     await request('provideTwitchIntegrity', { requestId: data.requestId, token: made.token, expiration: made.expiration })
   } catch (e) {
     await request('provideTwitchIntegrity', { requestId: data.requestId, error: (e as Error).message }).catch(() => {})

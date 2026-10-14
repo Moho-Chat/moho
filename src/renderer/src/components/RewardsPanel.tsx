@@ -26,7 +26,17 @@ export interface Reward {
   /** Why it cannot be had from here, where that is known beforehand. */
   unavailable?: string | null
   /** What it asks the person to pick from: an emote to unlock. */
-  choices?: { id: string; label: string; image?: string | null }[]
+  choices?: Choice[]
+}
+
+/** One thing a reward asks the person to pick: an emote, or a change to one. */
+export interface Choice {
+  id: string
+  label: string
+  image?: string | null
+  /** For a change to an emote: the emote, and its picture. */
+  group?: string | null
+  groupImage?: string | null
 }
 
 interface Answer {
@@ -56,6 +66,53 @@ export function whyNot(r: Reward, points: number | null, canType: boolean): stri
   if (r.needsInput && !canType) return 'This one asks you to type something, which moho cannot do for this service yet'
   if (points !== null && points < r.cost) return `You have ${points.toLocaleString()} of ${r.cost.toLocaleString()}`
   return ''
+}
+
+/**
+ * The emotes a reward offers, shown as the emotes - pictures to press, with a search - the way the emoji picker shows
+ * them, and not as a list of names. A change to an emote (Modify a Single Emote) is two steps: the emote, then what
+ * to do to it.
+ */
+function EmoteChooser({ choices, picked, onPick }: { choices: Choice[]; picked: string; onPick: (id: string) => void }): JSX.Element {
+  const [filter, setFilter] = useState('')
+  const [base, setBase] = useState<string | null>(null)
+  const grouped = choices.some((c) => c.group)
+  const q = filter.trim().toLowerCase()
+  const bases = useMemo(() => {
+    const seen = new Map<string, string | null | undefined>()
+    for (const c of choices) if (c.group && !seen.has(c.group)) seen.set(c.group, c.groupImage)
+    return [...seen.entries()].map(([name, image]) => ({ name, image }))
+  }, [choices])
+  const cell = (key: string, label: string, image: string | null | undefined, selected: boolean, onClick: () => void, caption?: string): JSX.Element => (
+    <button key={key} type="button" className={classes('reward-emote', selected && 'selected')} title={label} onClick={onClick}>
+      {image ? <img src={image} alt={label} loading="lazy" /> : <span>{label}</span>}
+      {caption && <span className="reward-emote-caption small muted">{caption}</span>}
+    </button>
+  )
+  const inBase = base ? choices.filter((c) => c.group === base) : []
+  return (
+    <div className="reward-chooser">
+      {!(grouped && base) && (
+        <input className="text-field" placeholder="Search emotes" value={filter} spellCheck={false} onChange={(e) => setFilter(e.target.value)} />
+      )}
+      {grouped && base ? (
+        <>
+          <div className="reward-chooser-head small">
+            <button type="button" className="link-button" onClick={() => setBase(null)}>
+              ← {base}
+            </button>
+            <span className="muted">Choose what is done to it</span>
+          </div>
+          <div className="reward-grid">{inBase.map((c) => cell(c.id, c.label, c.image, picked === c.id, () => onPick(c.id), c.label.slice(base.length + 2)))}</div>
+        </>
+      ) : grouped ? (
+        <div className="reward-grid">{bases.filter((b) => !q || b.name.toLowerCase().includes(q)).map((b) => cell(b.name, b.name, b.image, false, () => setBase(b.name)))}</div>
+      ) : (
+        <div className="reward-grid">{choices.filter((c) => !q || c.label.toLowerCase().includes(q)).map((c) => cell(c.id, c.label, c.image, picked === c.id, () => onPick(c.id)))}</div>
+      )}
+      {picked && <div className="small muted reward-picked">{choices.find((c) => c.id === picked)?.label}</div>}
+    </div>
+  )
 }
 
 export function RewardsPanel({
@@ -228,19 +285,7 @@ export function RewardsPanel({
                         }}
                       />
                     )}
-                    {!!r.choices?.length && (
-                      <>
-                        {picked && <img className="reward-image" src={r.choices.find((c) => c.id === picked)?.image ?? ''} alt="" />}
-                        <select className="text-field reward-choice" autoFocus value={picked} onChange={(e) => setPicked(e.target.value)}>
-                          <option value="">Pick one…</option>
-                          {r.choices.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.label}
-                            </option>
-                          ))}
-                        </select>
-                      </>
-                    )}
+                    {!!r.choices?.length && <EmoteChooser choices={r.choices} picked={picked} onPick={setPicked} />}
                     <button type="button" className="button primary" disabled={busy || (r.needsInput && !typed.trim()) || (!!r.choices?.length && !picked)} onClick={() => redeem(r)}>
                       Redeem for {r.cost.toLocaleString()}
                     </button>

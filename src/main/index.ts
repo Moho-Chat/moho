@@ -1333,7 +1333,9 @@ app.whenReady().then(() => {
       feedTwitchSignIn(frame as { event: string; data?: Record<string, unknown> })
     } else if (frame.event === 'twitchIntegrityNeeded') {
       // Twitch wants proof that a browser is asking for a stream; only a page of its own can make it.
-      void answerIntegrity(frame.data as { requestId?: string; deviceId?: string }, (method, params) => client.request(method, params))
+      void answerIntegrity(frame.data as { requestId?: string; deviceId?: string; authToken?: string }, (method, params) => client.request(method, params))
+      // Not forwarded: it carries the session, which only main and the daemon are to hold.
+      return
     }
     send(IPC.event, frame)
   })

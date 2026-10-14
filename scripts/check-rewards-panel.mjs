@@ -37,6 +37,7 @@ try {
         { id: 'r3', title: 'Dance', cost: 50, description: null, enabled: true, paused: true, needsInput: false },
         { id: 'r4', title: 'Costly', cost: 9000, description: null, enabled: true, paused: false, needsInput: false },
         { id: 'a1', title: 'Choose an Emote to Unlock', cost: 480, description: 'Pick a subscriber emote to unlock for 24 hours', enabled: true, paused: false, needsInput: false, choices: [{ id: 'e1', label: 'binxbWut' }, { id: 'e2', label: 'binxbYAP' }] },
+        { id: 'a3', title: 'Modify a Single Emote', cost: 550, description: null, enabled: true, paused: false, needsInput: false, choices: [{ id: 'e1_BW', label: 'binxbWut, black and white', group: 'binxbWut', groupImage: null }, { id: 'e1_SG', label: 'binxbWut, with sunglasses', group: 'binxbWut', groupImage: null }, { id: 'e2_SG', label: 'binxbYAP, with sunglasses', group: 'binxbYAP', groupImage: null }] },
         { id: 'a2', title: 'Sub-only', cost: 350, description: null, enabled: true, paused: false, needsInput: false, unavailable: 'Send this one from twitch.tv chat box' } ] }),
       redeemTwitchReward: (p) => { window.__redeemed.push(p); return { points: 600 } },
       listKickRewards: () => ({ points: 1200, rewards: [ { id: 'k1', title: 'Hydrate', cost: 300, enabled: true, paused: false, needsInput: false }, { id: 'k2', title: 'Type something', cost: 100, enabled: true, paused: false, needsInput: true } ] }),
@@ -66,9 +67,9 @@ try {
   await ev(`${plaque}.click()`)
   await sleep(600)
   check('a panel opens over the chat', await ev(`!!document.querySelector('.switcher.rewards')`))
-  check('it lists the four rewards, cheapest first within the ones that can be had, then the ones that cannot', await ev(`JSON.stringify([...document.querySelectorAll('.reward-row')].map((r) => r.querySelector('.reward-cost').innerText)) === JSON.stringify(['100', '480', '500', '50', '350', '9,000'])`))
+  check('it lists the four rewards, cheapest first within the ones that can be had, then the ones that cannot', await ev(`JSON.stringify([...document.querySelectorAll('.reward-row')].map((r) => r.querySelector('.reward-cost').innerText)) === JSON.stringify(['100', '480', '500', '550', '50', '350', '9,000'])`))
   check('under two headings', await ev(`JSON.stringify([...document.querySelectorAll('.reward-group')].map((h) => h.innerText.toLowerCase())) === JSON.stringify(['available', 'unavailable'])`))
-  check('a paused reward and an unaffordable one are disabled with the reason', await ev(`(() => { const r = [...document.querySelectorAll('.reward-row')]; return !r[0].disabled && !r[1].disabled && !r[2].disabled && r[3].disabled && r[3].innerText.includes('Paused') && r[4].disabled && r[4].innerText.includes('twitch.tv chat box') && r[5].disabled && r[5].innerText.includes('You have 600 of 9,000') })()`))
+  check('a paused reward and an unaffordable one are disabled with the reason', await ev(`(() => { const r = [...document.querySelectorAll('.reward-row')]; return r.slice(0, 4).every((x) => !x.disabled) && r[4].disabled && r[4].innerText.includes('Paused') && r[5].disabled && r[5].innerText.includes('twitch.tv chat box') && r[6].disabled && r[6].innerText.includes('You have 600 of 9,000') })()`))
   await shot('rewards-twitch.png')
   await ev(`document.querySelectorAll('.reward-row')[2].click()`)
   await sleep(300)
@@ -86,12 +87,24 @@ try {
   check('what was typed goes with it', await ev(`window.__redeemed[1]?.input === 'Greg'`))
   await ev(`document.querySelectorAll('.reward-row')[1].click()`)
   await sleep(300)
-  check('an emote unlock shows its choices, and Redeem waits for one', await ev(`!!document.querySelector('.reward-confirm select') && document.querySelector('.reward-confirm .button.primary').disabled && document.querySelectorAll('.reward-confirm option').length === 3`))
-  await ev(`(() => { const s = document.querySelector('.reward-confirm select'); s.value = 'e2'; s.dispatchEvent(new Event('change', { bubbles: true })) })()`)
+  check('an emote unlock shows the emotes to press, with a search, and Redeem waits for one', await ev(`!document.querySelector('.reward-confirm select') && document.querySelectorAll('.reward-confirm .reward-emote').length === 2 && !!document.querySelector('.reward-confirm input[placeholder="Search emotes"]') && document.querySelector('.reward-confirm .button.primary').disabled`))
+  await ev(`document.querySelector('.reward-confirm .reward-emote[title="binxbYAP"]').click()`)
   await sleep(200)
+  check('pressing one picks it', await ev(`!document.querySelector('.reward-confirm .button.primary').disabled && document.querySelector('.reward-emote.selected')?.title === 'binxbYAP'`))
   await ev(`document.querySelector('.reward-confirm .button.primary').click()`)
   await sleep(500)
   check('the emote picked goes with it', await ev(`window.__redeemed[2]?.rewardId === 'a1' && window.__redeemed[2]?.choice === 'e2'`))
+  await ev(`[...document.querySelectorAll('.reward-row')].find((r) => r.innerText.includes('Modify a Single Emote')).click()`)
+  await sleep(300)
+  check('a change to an emote shows the emotes first', await ev(`[...document.querySelectorAll('.reward-confirm .reward-emote')].map((b) => b.title).join() === 'binxbWut,binxbYAP'`))
+  await ev(`document.querySelector('.reward-confirm .reward-emote[title="binxbWut"]').click()`)
+  await sleep(200)
+  check('then what can be done to the one picked', await ev(`[...document.querySelectorAll('.reward-confirm .reward-emote')].map((b) => b.title).join() === 'binxbWut, black and white,binxbWut, with sunglasses'`))
+  await ev(`document.querySelector('.reward-confirm .reward-emote[title="binxbWut, with sunglasses"]').click()`)
+  await sleep(200)
+  await ev(`document.querySelector('.reward-confirm .button.primary').click()`)
+  await sleep(500)
+  check('the change picked goes with it', await ev(`window.__redeemed[3]?.rewardId === 'a3' && window.__redeemed[3]?.choice === 'e1_SG'`))
   await key('Escape')
   await sleep(300)
   check('Escape closes the panel', await ev(`!document.querySelector('.switcher.rewards')`))
