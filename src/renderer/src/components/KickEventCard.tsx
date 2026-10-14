@@ -7,6 +7,9 @@ import type { Embed } from '../../../shared/wire'
 /** The embed kinds the daemon draws as these cards instead of as a link preview. */
 export const KICK_EVENT_KINDS = ['kicks', 'gift-sub', 'raid', 'redeem', 'subscribe', 'moderation', 'stream', 'raid-out']
 
+/** The glyphs of a moderation card that is a penalty: red. The rest (a mode, an unban, a shoutout) are not. */
+const PUNISHING = ['gavel', 'timer_off', 'delete', 'block']
+
 export function isKickEvent(embed: Embed): boolean {
   return !!embed.kind && KICK_EVENT_KINDS.includes(embed.kind)
 }
@@ -162,7 +165,7 @@ export function KickEventCard({ embed, bufferId }: { embed: Embed; bufferId?: st
 
   if (embed.kind === 'moderation') {
     return (
-      <div className="kick-event moderation selectable">
+      <div className={`kick-event moderation selectable${PUNISHING.includes(embed.icon ?? 'gavel') ? '' : ' soft'}`}>
         <span className="kick-event-badge lead">
           <Icon name={embed.icon || 'gavel'} size={20} />
         </span>
@@ -224,6 +227,23 @@ export function KickEventCard({ embed, bufferId }: { embed: Embed; bufferId?: st
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * A line the service wrote rather than somebody saying it - a join, a topic change, a notice about the
+ * conversation - as the same card the events above are, so every protocol's notifications look alike and a
+ * protocol added later gets them by sending a line that is not speech. It carries the words as the log draws
+ * them (links and emoji in place), a mark for what kind of line it was, and takes the red of a warning.
+ */
+export function NotificationCard({ icon, warning, children }: { icon: string; warning?: boolean; children: React.ReactNode }): JSX.Element {
+  return (
+    <div className={`kick-event notification selectable${warning ? ' warning' : ''}`}>
+      <span className="kick-event-badge lead">
+        <Icon name={icon} size={18} />
+      </span>
+      <div className="kick-event-line">{children}</div>
     </div>
   )
 }

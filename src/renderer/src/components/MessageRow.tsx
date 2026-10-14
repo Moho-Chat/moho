@@ -8,7 +8,7 @@ import { EventSource } from './EventSource'
 import { ForwardPicker } from './ForwardPicker'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { MediaEmbed } from './MediaEmbed'
-import { KickEventCard, isKickEvent } from './KickEventCard'
+import { KickEventCard, NotificationCard, isKickEvent } from './KickEventCard'
 import { COMMON_EMOJI, EmojiPicker, readRecent, type StickerEntry } from './EmojiPicker'
 import { reactionLabel, reactorsSentence } from '../lib/reactions'
 import { UploadMeter } from './UploadMeter'
@@ -444,6 +444,9 @@ function MessageRowBody({
   // KICKs sent, or subscriptions gifted: the daemon says which and to whom in
   // a card, and the line of text is what a copy or a search finds.
   const kickEvent = (message.embeds ?? []).find(isKickEvent)
+  // Any other line the service wrote rather than somebody saying it - a join, a topic, a notice - is drawn as the
+  // same card the events are, whatever protocol it came from (see ARCHITECTURE.md, "Notifications are cards").
+  const systemCard = isSystem && !kickEvent && !!message.body
   // Both of the modes that draw an avatar column. Bubbles is otherwise
   // nothing like comfy, but it wants the same picture beside the same first
   // line of a group.
@@ -837,6 +840,36 @@ function MessageRowBody({
     return { claimed, loose: parts.media.filter((m) => !taken.has(m.url)) }
   }, [message.embeds, parts.media])
 
+  /** The words of the line itself: its text with its links, emoji and marks. */
+  const renderBody = (): React.ReactNode =>
+    parts.html && (
+      <span className="message-body selectable" title={message.moderated && !message.moderated.replaced ? removedReason(message) : undefined}>
+        <RichText
+          html={parts.html}
+          // Ours unless the sender sent their own formatting, which
+          // is the one case where a picture it names is a stranger's
+          // server being told this message was read.
+          ownMarkup={!message.html}
+          onRevealSpoiler={(i) => setRevealed((r) => ({ ...r, [i]: true }))}
+          // Following a channel link moves the rail too: the channel
+          // is usually in the same guild, but a cross-guild link is
+          // exactly the case where landing on a list that isn't
+          // showing it would be baffling.
+          onOpenChannel={(id) => void store.selectBuffer(id, true)}
+          onOpenLink={(url) => store.followDeepLink(url)}
+        />
+        {message.edited && (
+          <span
+            className="edited-tag small muted"
+            title={message.editedTs ? `Edited ${formatFullTime(message.editedTs)}` : 'Edited'}
+          >
+            {' '}
+            (edited)
+          </span>
+        )}
+      </span>
+    )
+
   return (
     <>
       <div
@@ -851,7 +884,7 @@ function MessageRowBody({
           message.moderated && (message.moderated.replaced ? 'removed replaced' : 'removed'),
           isSystem && 'system',
           reward && 'reward',
-          kickEvent && 'has-kick-event',
+          (kickEvent || systemCard) && 'has-kick-event',
           grouped && 'grouped',
           fresh && 'fresh',
           comfy && 'comfy',
@@ -894,7 +927,7 @@ function MessageRowBody({
         {/* A join, a part, a topic change: not somebody speaking, so no face -
             but a small mark in the picture's own column, so the line's text
             starts where every other line's does instead of at the edge. */}
-        {mode === 'comfy' && isSystem && !kickEvent && (
+        {mode === 'comfy' && isSystem && !kickEvent && !systemCard && (
           <span className="message-avatar system-mark" aria-hidden>
             <Icon name={SYSTEM_MARKS[message.kind] ?? 'info'} size={16} />
           </span>
@@ -1157,34 +1190,12 @@ function MessageRowBody({
             </div>
           ) : kickEvent ? (
             <KickEventCard embed={kickEvent} bufferId={bufferId} />
+          ) : systemCard ? (
+            <NotificationCard icon={SYSTEM_MARKS[message.kind] ?? 'info'} warning={isWarning(message.kind, message.id)}>
+              {renderBody()}
+            </NotificationCard>
           ) : (
-            parts.html && (
-              <span className="message-body selectable" title={message.moderated && !message.moderated.replaced ? removedReason(message) : undefined}>
-                <RichText
-                  html={parts.html}
-                  // Ours unless the sender sent their own formatting, which
-                  // is the one case where a picture it names is a stranger's
-                  // server being told this message was read.
-                  ownMarkup={!message.html}
-                  onRevealSpoiler={(i) => setRevealed((r) => ({ ...r, [i]: true }))}
-                  // Following a channel link moves the rail too: the channel
-                  // is usually in the same guild, but a cross-guild link is
-                  // exactly the case where landing on a list that isn't
-                  // showing it would be baffling.
-                  onOpenChannel={(id) => void store.selectBuffer(id, true)}
-                  onOpenLink={(url) => store.followDeepLink(url)}
-                />
-                {message.edited && (
-                  <span
-                    className="edited-tag small muted"
-                    title={message.editedTs ? `Edited ${formatFullTime(message.editedTs)}` : 'Edited'}
-                  >
-                    {' '}
-                    (edited)
-                  </span>
-                )}
-              </span>
-            )
+            renderBody()
           )}
 
           {parts.quoteBlocks.map((quote, i) => (

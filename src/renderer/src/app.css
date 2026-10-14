@@ -11043,3 +11043,34 @@ html[data-reduce-motion] *::after {
 .header-nameplate .avatar-badge {
   border-color: var(--surface);
 }
+
+/* A notification the service wrote (a join, a topic, a notice): the same card the events are, quieter - a
+   neutral bar and less room - so a long run of them does not outweigh the conversation. */
+.kick-event.notification {
+  --kick-accent: var(--outline-strong);
+  justify-content: flex-start;
+  min-width: 0;
+  padding-top: var(--spacing-xs);
+  padding-bottom: var(--spacing-xs);
+  gap: var(--spacing-m);
+}
+
+.kick-event.notification .kick-event-line {
+  color: var(--text-muted, var(--surface-variant-text));
+  font-style: italic;
+}
+
+.kick-event.notification.warning {
+  --kick-accent: var(--danger);
+}
+
+.kick-event.notification.warning .kick-event-line {
+  color: var(--danger);
+  font-style: normal;
+}
+
+/* A moderation card that is not a penalty - a room's mode, someone let back, a shoutout - takes the accent of
+   the window rather than the red of a ban. */
+.kick-event.moderation.soft {
+  --kick-accent: var(--primary);
+}
