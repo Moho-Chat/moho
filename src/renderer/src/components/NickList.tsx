@@ -88,10 +88,10 @@ function kickPermissions(members: Member[], me: string): Record<string, boolean>
 /**
  * Why the list says what it says, for the one service where it needs saying.
  */
-function rosterNote(service: string | undefined): string | undefined {
-  return service === 'kick'
-    ? 'Kick has no viewer list — this is everybody who has spoken here recently'
-    : undefined
+function rosterNote(service: string | undefined, total: number, listed: number): string | undefined {
+  if (service !== 'kick') return undefined
+  const base = 'Kick has no viewer list — this counts everybody who has spoken here since you opened it'
+  return total > listed ? `${base}. The ${listed.toLocaleString()} most recent are listed.` : base
 }
 
 /**
@@ -140,6 +140,7 @@ export function NickList(): JSX.Element {
   const [query, setQuery] = useState('')
 
   const members = (buffer && presenceByBuffer[buffer.id]) || []
+  const total = useChat((s) => (buffer ? s.presenceTotalByBuffer[buffer.id] : undefined)) ?? members.length
   const account = buffer && accounts.find((a) => a.id === buffer.accountId)
   // Any protocol that reports presence gets the online/offline split.
   const hasPresence = members.some((m) => m.status !== undefined)
@@ -263,8 +264,8 @@ export function NickList(): JSX.Element {
           // Named for what the list actually is. Kick has no viewer list to
           // ask for - it is built from who has spoken - and calling that
           // "members" would claim to know something nobody here can know.
-          <span className="small muted ellipsis" title={rosterNote(account?.service)}>
-            {members.length} {account?.service === 'kick' ? 'recently talking' : 'members'}
+          <span className="small muted ellipsis" title={rosterNote(account?.service, total, members.length)}>
+            {total.toLocaleString()} {account?.service === 'kick' ? 'recently talking' : 'members'}
           </span>
         )}
         <IconButton

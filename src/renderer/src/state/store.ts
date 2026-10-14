@@ -539,6 +539,8 @@ export interface ChatState {
   joinPanelAccountId: string
   messagesByBuffer: Record<string, ChatMessage[]>
   presenceByBuffer: Record<string, Member[]>
+  /** How many people a roster stands for, where the service says it is more than it lists (Kick). */
+  presenceTotalByBuffer: Record<string, number>
   /** Buffers whose initial backlog fetch has completed. */
   loadedBuffers: Record<string, true>
   loadingMore: Record<string, true>
@@ -790,6 +792,7 @@ const INITIAL: ChatState = {
   joinPanelAccountId: '',
   messagesByBuffer: {},
   presenceByBuffer: {},
+  presenceTotalByBuffer: {},
   loadedBuffers: {},
   loadingMore: {},
   loadingNewer: {},
@@ -3968,7 +3971,8 @@ export class ChatStore {
 
       case 'presenceChange':
         this.set({
-          presenceByBuffer: { ...this.state.presenceByBuffer, [data.bufferId]: data.members }
+          presenceByBuffer: { ...this.state.presenceByBuffer, [data.bufferId]: data.members },
+          presenceTotalByBuffer: { ...this.state.presenceTotalByBuffer, [data.bufferId]: data.total ?? data.members.length }
         })
         break
 
