@@ -167,7 +167,8 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
             name={buffer.name}
             url={buffer.avatarUrl}
             size={24}
-            status={dmStatus(buffer, presence, buffers)}
+            // Twitch has no presence for a whisper's other end; the badge says what it is instead.
+            status={buffer.accountId.startsWith('twitch:') ? undefined : dmStatus(buffer, presence, buffers)}
             badge={buffer.kind === 'dm' ? 'mail' : undefined}
           />
         ) : null}
