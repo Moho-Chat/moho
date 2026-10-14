@@ -11021,7 +11021,7 @@ html[data-reduce-motion] *::after {
 
 /* The rewards panel: the quick switcher's card, with a row per reward and what it costs at the right. */
 .rewards .switcher-input {
-  font-size: var(--font-size-normal);
+  font-size: var(--font-size-medium);
 }
 
 .rewards-balance {
