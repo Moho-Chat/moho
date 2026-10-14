@@ -1,0 +1,98 @@
+#!/usr/bin/env node
+/**
+ * The channel points panel over the chat, for Twitch and for Kick, in a scratch moho with the daemon's answers
+ * stood in for (nothing is contacted, nothing spent): it opens from the plaque, lists the rewards with their
+ * costs, says why one cannot be pressed, needs a second press to spend, asks for the text a reward wants, and
+ * closes on Escape.
+ *
+ *   node scripts/check-rewards-panel.mjs <output directory>
+ */
+import fs from 'node:fs'
+import path from 'node:path'
+import { launchApp, sleep } from './lib/harness.mjs'
+
+const out = process.argv[2] ?? '.'
+fs.mkdirSync(out, { recursive: true })
+const { page, stop } = await launchApp({ env: { MOHO_UI_SHOTS: '1' } })
+const ev = (code) => page.evaluate(code)
+const shot = async (name) => {
+  const { data } = await page.call('Page.captureScreenshot', { format: 'png' })
+  fs.writeFileSync(path.join(out, name), Buffer.from(data, 'base64'))
+}
+const results = []
+const check = (what, ok, detail = '') => {
+  results.push(ok)
+  console.log(ok ? '  ok  ' : '  FAIL', what, detail)
+}
+const key = (k) => page.call('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code: k }).then(() => page.call('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code: k }))
+try {
+  await sleep(2500)
+  await page.call('Emulation.setDeviceMetricsOverride', { width: 1200, height: 800, deviceScaleFactor: 1, mobile: false })
+  await ev(`(() => {
+    window.__redeemed = []
+    window.__rpcFixture = {
+      listTwitchRewards: () => ({ points: 600, name: 'Sloths', rewards: [
+        { id: 'r1', title: 'Drink water', cost: 500, description: null, enabled: true, paused: false, needsInput: false },
+        { id: 'r2', title: 'Say a name', cost: 100, description: 'Who?', enabled: true, paused: false, needsInput: true },
+        { id: 'r3', title: 'Dance', cost: 50, description: null, enabled: true, paused: true, needsInput: false },
+        { id: 'r4', title: 'Costly', cost: 9000, description: null, enabled: true, paused: false, needsInput: false } ] }),
+      redeemTwitchReward: (p) => { window.__redeemed.push(p); return { points: 100 } },
+      listKickRewards: () => ({ points: 1200, rewards: [ { id: 'k1', title: 'Hydrate', cost: 300, enabled: true, paused: false, needsInput: false }, { id: 'k2', title: 'Type something', cost: 100, enabled: true, paused: false, needsInput: true } ] }),
+      redeemKickReward: (p) => { window.__redeemed.push(p); return { points: 900 } },
+      twitchPoints: () => ({ points: 600, name: 'Sloths' }),
+      kickPoints: () => ({ points: 1200 })
+    }
+    const s = window.__mohoShots.store
+    const pic = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#7b5cd6"/></svg>')
+    const accts = [
+      { id: 'twitch:me', service: 'twitch', name: 'me', host: '', port: 0, state: 'connected', hasPassword: true, webSession: true, nick: 'me' },
+      { id: 'kick:me', service: 'kick', name: 'me', host: '', port: 0, state: 'connected', hasPassword: true, nick: 'me' }
+    ]
+    const bufs = [
+      { id: 'twitch:me|xqc', accountId: 'twitch:me', kind: 'channel', name: 'xqc', lastActivityTs: 5, avatarUrl: pic, groupId: 'account:twitch:me' },
+      { id: 'kick:me|spreen', accountId: 'kick:me', kind: 'channel', name: 'spreen', lastActivityTs: 5, avatarUrl: pic, groupId: 'account:kick:me' }
+    ]
+    s.set({ accounts: accts, groups: accts.map((a, i) => ({ id: 'account:' + a.id, accountId: a.id, service: a.service, kind: 'account', name: 'me', position: i })), buffers: bufs, activeBufferId: 'twitch:me|xqc', twitchPoints: { 'twitch:me|xqc': { points: 600, name: 'Sloths' } }, kickPointsByBuffer: { 'kick:me|spreen': 1200 } })
+    s.selectGroup('account:twitch:me')
+  })()`)
+  await sleep(1500)
+
+  console.log('Twitch')
+  const plaque = `document.querySelector('.kick-points-plaque')`
+  check('the plaque shows the balance with the channel\'s name for its points', await ev(`${plaque}?.innerText.includes('600 Sloths')`))
+  await ev(`${plaque}.click()`)
+  await sleep(600)
+  check('a panel opens over the chat', await ev(`!!document.querySelector('.switcher.rewards')`))
+  check('it lists the four rewards with their costs', await ev(`document.querySelectorAll('.reward-row').length === 4 && document.querySelector('.reward-row').innerText.includes('500')`))
+  check('a paused reward and an unaffordable one are disabled with the reason', await ev(`(() => { const r = [...document.querySelectorAll('.reward-row')]; return r[2].disabled && r[2].innerText.includes('Paused') && r[3].disabled && r[3].innerText.includes('You have 600 of 9,000') })()`))
+  await shot('rewards-twitch.png')
+  await ev(`document.querySelectorAll('.reward-row')[0].click()`)
+  await sleep(300)
+  check('the first press arms it and spends nothing', await ev(`!!document.querySelector('.reward-confirm') && window.__redeemed.length === 0`))
+  await ev(`document.querySelector('.reward-confirm .button.primary').click()`)
+  await sleep(500)
+  check('Redeem spends it', await ev(`window.__redeemed.length === 1 && window.__redeemed[0].rewardId === 'r1'`))
+  await ev(`document.querySelectorAll('.reward-row')[1].click()`)
+  await sleep(300)
+  check('a reward that asks for text shows its field, and Redeem waits for it', await ev(`!!document.querySelector('.reward-confirm input') && document.querySelector('.reward-confirm .button.primary').disabled`))
+  await page.call('Input.insertText', { text: 'Greg' })
+  await sleep(200)
+  await ev(`document.querySelector('.reward-confirm .button.primary').click()`)
+  await sleep(500)
+  check('what was typed goes with it', await ev(`window.__redeemed[1]?.input === 'Greg'`))
+  await key('Escape')
+  await sleep(300)
+  check('Escape closes the panel', await ev(`!document.querySelector('.switcher.rewards')`))
+
+  console.log('Kick')
+  await ev(`window.__mohoShots.store.selectGroup('account:kick:me'); window.__mohoShots.store.selectBuffer('kick:me|spreen', true)`)
+  await sleep(1200)
+  await ev(`document.querySelector('.kick-points-plaque')?.click()`)
+  await sleep(600)
+  check('Kick opens the same panel', await ev(`!!document.querySelector('.switcher.rewards') && document.querySelectorAll('.reward-row').length === 2`))
+  check('a Kick reward that asks for text is disabled with a reason', await ev(`(() => { const r = document.querySelectorAll('.reward-row')[1]; return r.disabled && r.innerText.includes('cannot do') })()`))
+  await shot('rewards-kick.png')
+} finally {
+  await stop()
+}
+console.log(results.every(Boolean) ? 'ALL OK' : `${results.filter((r) => !r).length} FAILED`)

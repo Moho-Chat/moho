@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
 import { useChat } from '../state/hooks'
+import { RewardsPanel } from './RewardsPanel'
 
 /**
- * A Twitch channel's points balance.
+ * A Twitch channel's points balance, and the way into the rewards panel (RewardsPanel.tsx) that Kick's plaque opens too.
  *
  * At the foot of the viewer list, where Kick's plaque is. Twitch's points are the person's own twitch.tv
  * session's to see and spend (see nobilis backend/twitch/points.rs), so it is drawn only for an account that has
@@ -15,6 +16,7 @@ const REFRESH_MS = 60_000
 
 export function TwitchPoints({ bufferId }: { bufferId: string }): JSX.Element | null {
   const pushed = useChat((s) => s.twitchPoints[bufferId])
+  const [open, setOpen] = useState(false)
   const [unavailable, setUnavailable] = useState(false)
 
   useEffect(() => {
@@ -36,16 +38,21 @@ export function TwitchPoints({ bufferId }: { bufferId: string }): JSX.Element | 
     }
   }, [bufferId])
 
+  // Closing the channel takes the panel with it.
+  useEffect(() => setOpen(false), [bufferId])
+
   // A channel with no points (or no way to read them) draws nothing rather than a plaque that says nothing.
   if (unavailable && !pushed) return null
   const points = pushed?.points
   const name = pushed?.name || 'points'
   return (
     <div className="kick-points twitch-points">
-      <div className="kick-points-plaque" title={`Your channel ${name} here`}>
+      <button type="button" className={`kick-points-plaque${open ? ' open' : ''}`} title={`Your channel ${name} here, and what they buy`} onClick={() => setOpen(true)}>
         <Icon name="toll" size={15} />
         <span className="ellipsis">{points === null || points === undefined ? 'Points' : `${points.toLocaleString()} ${name === 'points' ? '' : name}`.trim()}</span>
-      </div>
+        <Icon name="redeem" size={15} />
+      </button>
+      {open && <RewardsPanel bufferId={bufferId} service="twitch" onClose={() => setOpen(false)} onBalance={() => undefined} />}
     </div>
   )
 }

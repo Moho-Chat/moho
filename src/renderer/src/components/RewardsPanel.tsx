@@ -1,0 +1,232 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { Icon } from './Icon'
+import { useStore } from '../state/hooks'
+import { classes } from '../lib/util'
+import { useEscapeLayer } from '../lib/layers'
+
+/**
+ * What a channel will trade its points for, in a panel over the chat like the quick switcher (Ctrl+K).
+ *
+ * One panel for every service that has channel points - Kick and Twitch - instead of a menu or a dialog of its
+ * own for each. A reward is a row: its name, what it asks, what it costs. Pressing one arms it (a second press,
+ * or the Redeem button, spends the points; Escape takes it back), so an errant click never costs anything. A
+ * reward that asks the person to type something shows its field when it is armed.
+ */
+export interface Reward {
+  id: string
+  title: string
+  cost: number
+  description?: string | null
+  enabled: boolean
+  paused: boolean
+  needsInput: boolean
+  color?: string | null
+  image?: string | null
+}
+
+interface Answer {
+  rewards: Reward[]
+  points: number | null
+  name?: string | null
+}
+
+/** The daemon's answer - or, in the screenshot harness only, a fixture standing in for it (see SteamGroupSettings). */
+function ask<T>(method: string, params: Record<string, unknown>): Promise<T> {
+  const w = window as unknown as { __mohoShots?: unknown; __rpcFixture?: Record<string, (p: Record<string, unknown>) => unknown> }
+  const stub = w.__mohoShots ? w.__rpcFixture?.[method] : undefined
+  return stub ? Promise.resolve(stub(params) as T) : window.moho.rpc<T>(method, params)
+}
+
+/** How each service lists and redeems, named once here so the panel need not know who it is for. */
+const SERVICES = {
+  kick: { list: 'listKickRewards', redeem: 'redeemKickReward', canType: false },
+  twitch: { list: 'listTwitchRewards', redeem: 'redeemTwitchReward', canType: true }
+} as const
+
+/** Why a reward cannot be pressed, in words; empty when it can. */
+export function whyNot(r: Reward, points: number | null, canType: boolean): string {
+  if (!r.enabled) return 'The streamer has this turned off'
+  if (r.paused) return 'Paused right now'
+  if (r.needsInput && !canType) return 'This one asks you to type something, which moho cannot do for this service yet'
+  if (points !== null && points < r.cost) return `You have ${points.toLocaleString()} of ${r.cost.toLocaleString()}`
+  return ''
+}
+
+export function RewardsPanel({
+  bufferId,
+  service,
+  onClose,
+  onBalance
+}: {
+  bufferId: string
+  service: keyof typeof SERVICES
+  onClose: () => void
+  /** The balance after a redeem, for the plaque behind the panel. */
+  onBalance: (points: number) => void
+}): JSX.Element {
+  const store = useStore()
+  const api = SERVICES[service]
+  const [answer, setAnswer] = useState<Answer | null>(null)
+  const [error, setError] = useState('')
+  const [query, setQuery] = useState('')
+  const [index, setIndex] = useState(0)
+  const [armed, setArmed] = useState<string | null>(null)
+  const [typed, setTyped] = useState('')
+  const [busy, setBusy] = useState(false)
+  const input = useRef<HTMLInputElement>(null)
+  const list = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void ask<Answer>(api.list, { bufferId })
+      .then((a) => !cancelled && setAnswer(a))
+      .catch((e: Error) => !cancelled && setError(e.message))
+    return () => {
+      cancelled = true
+    }
+  }, [api.list, bufferId])
+
+  useEffect(() => input.current?.focus(), [])
+  // Escape takes an armed reward back first, then closes the panel - wherever focus is.
+  useEscapeLayer(() => (armed ? setArmed(null) : onClose()), true)
+
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const all = answer?.rewards ?? []
+    return q ? all.filter((r) => r.title.toLowerCase().includes(q) || (r.description ?? '').toLowerCase().includes(q)) : all
+  }, [answer, query])
+
+  useEffect(() => {
+    list.current?.querySelector('.switcher-row.selected')?.scrollIntoView({ block: 'nearest' })
+  }, [index, shown.length])
+
+  const points = answer?.points ?? null
+  const unit = answer?.name || 'points'
+
+  const redeem = (r: Reward): void => {
+    setBusy(true)
+    void ask<{ points: number | null }>(api.redeem, { bufferId, rewardId: r.id, ...(r.needsInput ? { input: typed } : {}) })
+      .then((a) => {
+        store.toast('info', `Redeemed ${r.title}`)
+        if (a.points !== null && a.points !== undefined) {
+          setAnswer((cur) => (cur ? { ...cur, points: a.points } : cur))
+          onBalance(a.points)
+        }
+        setArmed(null)
+        setTyped('')
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+
+  const press = (r: Reward): void => {
+    if (whyNot(r, points, api.canType) || busy) return
+    if (armed === r.id && (!r.needsInput || typed.trim())) redeem(r)
+    else {
+      setArmed(r.id)
+      setTyped('')
+    }
+  }
+
+  return createPortal(
+    <div className="modal-scrim switcher-scrim" onMouseDown={onClose}>
+      <div className="switcher rewards" role="dialog" aria-modal="true" aria-label="Channel points rewards" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="switcher-field">
+          <Icon name="toll" size={18} />
+          <input
+            ref={input}
+            className="switcher-input"
+            placeholder="Spend channel points on…"
+            value={query}
+            spellCheck={false}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setIndex(0)
+              setArmed(null)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
+                e.preventDefault()
+                setIndex((i) => Math.min(shown.length - 1, i + 1))
+                setArmed(null)
+              } else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
+                e.preventDefault()
+                setIndex((i) => Math.max(0, i - 1))
+                setArmed(null)
+              } else if (e.key === 'Enter' && shown[index]) {
+                e.preventDefault()
+                press(shown[index])
+              }
+            }}
+          />
+          <span className="rewards-balance small" title={`Your ${unit} here`}>
+            {points === null ? '' : `${points.toLocaleString()} ${unit === 'points' ? '' : unit}`.trim()}
+          </span>
+        </div>
+        <div className="switcher-list" ref={list} role="listbox">
+          {error && <div className="switcher-empty muted">{error}</div>}
+          {!error && !answer && <div className="switcher-empty muted">Asking {service === 'kick' ? 'Kick' : 'Twitch'}…</div>}
+          {answer && shown.length === 0 && <div className="switcher-empty muted">{answer.rewards.length === 0 ? 'This channel offers nothing for points.' : 'Nothing by that name.'}</div>}
+          {shown.map((r, i) => {
+            const why = whyNot(r, points, api.canType)
+            const isArmed = armed === r.id
+            return (
+              <div key={r.id} className={classes('reward-item', isArmed && 'armed')}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={i === index}
+                  disabled={!!why || busy}
+                  title={why || r.description || r.title}
+                  className={classes('switcher-row', 'reward-row', i === index && 'selected', why && 'locked')}
+                  onMouseMove={() => i !== index && setIndex(i)}
+                  onClick={() => {
+                    setIndex(i)
+                    press(r)
+                  }}
+                >
+                  <span className="switcher-lead">
+                    {r.image ? <img className="reward-image" src={r.image} alt="" /> : <Icon name="redeem" size={16} color={r.color ?? undefined} />}
+                  </span>
+                  <span className="switcher-title ellipsis">{r.title}</span>
+                  <span className="switcher-where muted small ellipsis">{why || r.description || ''}</span>
+                  <span className="reward-cost small">{r.cost.toLocaleString()}</span>
+                </button>
+                {isArmed && (
+                  <div className="reward-confirm">
+                    {r.needsInput && (
+                      <input
+                        className="text-field"
+                        autoFocus
+                        placeholder={r.description || 'What it asks for'}
+                        value={typed}
+                        maxLength={500}
+                        onChange={(e) => setTyped(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && typed.trim()) redeem(r)
+                        }}
+                      />
+                    )}
+                    <button type="button" className="button primary" disabled={busy || (r.needsInput && !typed.trim())} onClick={() => redeem(r)}>
+                      Redeem for {r.cost.toLocaleString()}
+                    </button>
+                    <button type="button" className="button subtle" onClick={() => setArmed(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+        <div className="switcher-hint muted small">
+          <span>↑↓ to move</span>
+          <span>Enter to choose, again to spend</span>
+          <span>Esc to close</span>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}

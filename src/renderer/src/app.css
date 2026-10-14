@@ -7085,67 +7085,6 @@ video.lightbox-media {
   text-align: left;
 }
 
-/* Capped and scrolling: a channel may offer more rewards than the window is
-   tall, and a list that runs past the top edge is a list with no top. */
-.kick-rewards {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  right: 0;
-  display: flex;
-  flex-direction: column;
-  max-height: min(60vh, 420px);
-  border: 1px solid var(--outline-medium);
-  border-radius: var(--corner-radius) var(--corner-radius) 0 0;
-  background: var(--surface-container-high);
-  box-shadow: var(--shadow-up);
-  overflow: hidden;
-}
-
-.kick-rewards-head {
-  padding: 8px 10px 4px;
-  flex: none;
-}
-
-.kick-rewards-list {
-  overflow-y: auto;
-  padding-bottom: 4px;
-}
-
-.kick-rewards-empty {
-  padding: 6px 10px 10px;
-}
-
-.kick-reward {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 10px;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.kick-reward:hover:not(:disabled) {
-  background: var(--surface-container-highest);
-}
-
-/* Shown rather than hidden, because the list is also how somebody learns what
-   a channel does - but plainly not pressable. */
-.kick-reward:disabled {
-  cursor: default;
-  opacity: 0.45;
-}
-
-.kick-reward-cost {
-  flex: none;
-  font-variant-numeric: tabular-nums;
-  color: var(--primary);
-}
 
 /* --- Exporting a conversation ----------------------------------------- */
 
@@ -11078,4 +11017,52 @@ html[data-reduce-motion] *::after {
 /* Sneedchat's greentext: a line that starts with ">" in the green 4chan has always used for it. */
 .greentext {
   color: #789922;
+}
+
+/* The rewards panel: the quick switcher's card, with a row per reward and what it costs at the right. */
+.rewards .switcher-input {
+  font-size: var(--font-size-normal);
+}
+
+.rewards-balance {
+  flex: none;
+  color: var(--surface-text);
+  white-space: nowrap;
+}
+
+.reward-item.armed {
+  background: var(--surface-container);
+  border-radius: var(--corner-radius-small);
+}
+
+.reward-row.locked {
+  opacity: 0.55;
+}
+
+.reward-image {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.reward-cost {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface-container-highest, var(--surface-container));
+  color: var(--surface-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.reward-confirm {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  padding: var(--spacing-xs) var(--spacing-s) var(--spacing-s) calc(22px + var(--spacing-s) * 2);
+}
+
+.reward-confirm .text-field {
+  flex: 1;
+  min-width: 0;
 }
