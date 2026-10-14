@@ -419,6 +419,29 @@ export interface ReplyPreview {
    * a forward is somebody else's message arriving.
    */
   forwarded?: boolean
+  /**
+   * The message a whole chain of replies grew from, where the service groups
+   * them into a thread (Kick does).
+   *
+   * Unlike `thread`, `id` here is still the message that was answered - this
+   * says which thread that message is part of, and a reply can be both.
+   */
+  threadRoot?: string
+}
+
+/**
+ * A message the service took down and the daemon kept.
+ *
+ * Whether to show it, strike it through or put a notice in its place is the
+ * window's choice (`kick.removedMessages`), so the text is still here.
+ */
+export interface Moderated {
+  /** Whether the service's automatic moderation did it, rather than a person. */
+  ai?: boolean
+  /** The rules it was said to break. */
+  rules?: string[]
+  /** Set by the window, never the daemon: this message's text has been swapped for a notice. */
+  replaced?: boolean
 }
 
 /**
@@ -588,6 +611,8 @@ export interface Message {
    * button below it.
    */
   components?: MessageComponent[]
+  /** Present once the service has removed the message. */
+  moderated?: Moderated
   /** Matrix only - the sender's full MXID, for targeting moderation actions. */
   senderId?: string
   /**

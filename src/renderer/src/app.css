@@ -10942,3 +10942,32 @@ html[data-reduce-motion] *::after {
   color: inherit;
   cursor: pointer;
 }
+
+/* A message the service took down, kept so that what it said can still be read. */
+.message-row.removed .message-body,
+.message-row.removed .message-body * {
+  color: var(--danger-text);
+  text-decoration: line-through;
+}
+/* The notice that stands where the words were: nothing to strike through. */
+.message-row.removed.replaced .message-body,
+.message-row.removed.replaced .message-body * {
+  color: var(--text-muted);
+  font-style: italic;
+  text-decoration: none;
+}
+/* The way into a thread from a reply, at the end of the line it quotes. */
+.reply-preview .reply-thread-open {
+  flex: none;
+  margin-left: auto;
+  padding: 0 4px;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+}
+.reply-preview .reply-thread-open:hover {
+  color: var(--surface-variant-text);
+  background: var(--surface-hover);
+}

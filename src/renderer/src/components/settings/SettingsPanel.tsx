@@ -1222,6 +1222,23 @@ function KickSettings(): JSX.Element {
           defaultValue={true}
         />
       </SettingsSection>
+
+      <SettingsSection
+        title="Messages Kick removes"
+        description="When a moderator or Kick's automatic moderation takes a message down. The text is kept, so you can still see what was said."
+      >
+        <SelectionSetting
+          settingKey="kick.removedMessages"
+          label="Removed messages"
+          description="Struck through in red keeps what was said beside the fact that it is gone"
+          defaultValue="strike"
+          options={[
+            { label: 'Delete', value: 'remove' },
+            { label: 'Strikethrough', value: 'strike' },
+            { label: 'Replace with notice', value: 'replace' }
+          ]}
+        />
+      </SettingsSection>
     </>
   )
 }

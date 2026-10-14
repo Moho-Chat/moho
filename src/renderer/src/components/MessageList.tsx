@@ -12,6 +12,7 @@ import { RouteAccount, useStrictRoute } from '../lib/route'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, dayLabel, isChatKind, startsNewDay } from '../lib/util'
 import type { ChannelIndex } from '../lib/format'
+import { applyRemoved, type RemovedMessages } from '../lib/moderation'
 import type { ChatMessage } from '../state/store'
 
 /**
@@ -234,6 +235,8 @@ export function MessageList(): JSX.Element {
   const [showPolls] = usePref<boolean>('kick.showPolls', true)
   const [showStream] = usePref<boolean>('kick.showStreamEvents', true)
   const [showKickMod] = usePref<boolean>('kick.showModeration', true)
+  // What Kick took down: left out, struck through, or replaced by a notice.
+  const [removedMode] = usePref<RemovedMessages>('kick.removedMessages', 'strike')
   const [showReaders] = usePref<boolean>('matrix.showReadReceipts', true)
   const [blockedNicks] = usePref<string[]>('blockedNicks', [])
   const readers = useChat((s) => s.readersByBuffer)[bufferId]
@@ -256,7 +259,8 @@ export function MessageList(): JSX.Element {
   const threadReplies = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const m of all) {
-      if (m.replyTo?.thread) counts[m.replyTo.id] = (counts[m.replyTo.id] ?? 0) + 1
+      const root = m.replyTo?.thread ? m.replyTo.id : m.replyTo?.threadRoot
+      if (root) counts[root] = (counts[root] ?? 0) + 1
     }
     return counts
   }, [all])
@@ -279,14 +283,17 @@ export function MessageList(): JSX.Element {
       stream: showStream,
       moderation: showKickMod
     }
-    return all.filter((m) => {
-      if (accountId && blockedNicks.includes(`${accountId}|${m.from}`)) return false
-      const kind = m.kind || 'chat'
-      if (isChatKind(kind) || kind === 'system') return true
-      return allowed[kind] !== false
-    })
+    return applyRemoved(
+      all.filter((m) => {
+        if (accountId && blockedNicks.includes(`${accountId}|${m.from}`)) return false
+        const kind = m.kind || 'chat'
+        if (isChatKind(kind) || kind === 'system') return true
+        return allowed[kind] !== false
+      }),
+      removedMode
+    )
   }, [
-    all, accountId, blockedNicks,
+    all, accountId, blockedNicks, removedMode,
     showJoin, showPart, showNick, showTopic, showMode,
     showMxJoin, showMxInvite, showMxKick, showMxQuit,
     showRedemptions, showSubs, showRaids, showPolls, showStream, showKickMod

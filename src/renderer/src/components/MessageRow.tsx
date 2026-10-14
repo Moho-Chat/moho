@@ -61,6 +61,7 @@ import {
   nickColor
 } from '../lib/util'
 import { useEscapeLayer } from '../lib/layers'
+import { removedReason } from '../lib/moderation'
 
 /**
  * A badge, short enough to sit beside a name.
@@ -350,6 +351,9 @@ function MessageRowBody({
   // preview. The object itself, so the row only re-renders when that one
   // message changes.
   const replyId = message.replyTo && !message.replyTo.thread && !message.replyTo.forwarded ? message.replyTo.id : ''
+  // The thread open beside the room, if any: a reply to its first message has
+  // nothing to say that the panel's own heading does not.
+  const openRoot = useChat((s) => s.openThread?.rootId)
   const original = useChat((s) => (replyId ? s.messagesByBuffer[bufferId]?.find((m) => m.id === replyId) : undefined))
   // Which message is open for editing is the window's, not each row's, so
   // Up arrow in the message box can open the last one.
@@ -815,6 +819,7 @@ function MessageRowBody({
           isWarning(message.kind, message.id) && 'warning',
           message.pending && 'pending',
           message.failed && 'failed',
+          message.moderated && (message.moderated.replaced ? 'removed replaced' : 'removed'),
           isSystem && 'system',
           reward && 'reward',
           kickEvent && 'has-kick-event',
@@ -977,6 +982,7 @@ function MessageRowBody({
               the panel's title already says. */}
           {message.replyTo &&
             !(inThread && message.replyTo.thread) &&
+            !(inThread && message.replyTo.id === openRoot) &&
             (message.replyTo.thread && !inThread ? (
               <button
                 type="button"
@@ -1024,6 +1030,21 @@ function MessageRowBody({
                   {message.replyTo.from}
                 </span>
                 <span className="ellipsis">{message.replyTo.body}</span>
+                {/* Kick groups a chain of replies under the message it began
+                    with; a reply is a way into that conversation. */}
+                {!inThread && message.replyTo.threadRoot && (
+                  <button
+                    type="button"
+                    className="reply-thread-open small"
+                    title="Open the thread"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void store.openThreadPanel(bufferId, message.replyTo!.threadRoot!)
+                    }}
+                  >
+                    <Icon name="forum" size={13} />
+                  </button>
+                )}
               </div>
             ))}
 
@@ -1094,7 +1115,7 @@ function MessageRowBody({
             <KickEventCard embed={kickEvent} />
           ) : (
             parts.html && (
-              <span className="message-body selectable">
+              <span className="message-body selectable" title={message.moderated && !message.moderated.replaced ? removedReason(message) : undefined}>
                 <RichText
                   html={parts.html}
                   // Ours unless the sender sent their own formatting, which

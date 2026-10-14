@@ -2607,7 +2607,7 @@ export class ChatStore {
    */
   async openThreadPanel(bufferId: string, rootId: string): Promise<void> {
     const known = (this.state.messagesByBuffer[bufferId] || []).filter(
-      (m) => m.id === rootId || (m.replyTo?.thread && m.replyTo.id === rootId)
+      (m) => m.id === rootId || (m.replyTo?.thread && m.replyTo.id === rootId) || m.replyTo?.threadRoot === rootId
     )
     this.set({ openThread: { bufferId, rootId, messages: known, loading: true } })
     try {
@@ -2636,15 +2636,22 @@ export class ChatStore {
     const open = this.state.openThread
     if (!open || (!body.trim() && !attachment)) return
     const root = open.messages.find((m) => m.id === open.rootId)
+    // Kick answers a message, not a thread, and the daemon quotes whatever it
+    // is told to answer from what it has stored. A thread whose first message
+    // is older than the scrollback still has replies on screen, and answering
+    // the first of those keeps the new one in the same thread.
+    const earliest = !root && this.accountFor(open.bufferId)?.service === 'kick' ? open.messages[0] : undefined
     await this.dispatchSend(
       open.bufferId,
       body,
-      {
-        id: open.rootId,
-        from: root?.from ?? '',
-        body: root?.body ?? '',
-        thread: true
-      },
+      earliest
+        ? { id: earliest.id, from: earliest.from, body: earliest.body }
+        : {
+            id: open.rootId,
+            from: root?.from ?? '',
+            body: root?.body ?? '',
+            thread: true
+          },
       attachment,
       spoilers
     )
@@ -3594,6 +3601,12 @@ export class ChatStore {
           data.bufferId,
           (this.state.messagesByBuffer[data.bufferId] || []).filter((m) => m.id !== data.id)
         )
+        break
+
+      // Kept rather than removed: the daemon says the service took it down and
+      // leaves the words, and what that looks like is the window's to decide.
+      case 'messageModerated':
+        this.mapMessage(data.bufferId, data.id, (m) => ({ ...m, moderated: data.moderated ?? {} }))
         break
 
       case 'reactionsChanged':
