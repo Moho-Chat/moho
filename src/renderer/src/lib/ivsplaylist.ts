@@ -25,12 +25,16 @@ function remember(address: string): void {
   if (ahead.size > 64) ahead.delete(ahead.values().next().value as string)
 }
 
+/** How far apart, in seconds, the longest and shortest segment may be for the next to be taken as their length. */
+const UNIFORM_WITHIN = 0.25
+
 export function withPrefetch(playlist: string, take = 2): string {
   if (take <= 0 || !playlist.includes('#EXT-X-PREFETCH:') || playlist.includes('#EXT-X-ENDLIST')) return playlist
   const lines = playlist.split('\n')
   const kept: string[] = []
   const ahead_: string[] = []
   let length = ''
+  const lengths: number[] = []
   for (const line of lines) {
     const prefetch = /^#EXT-X-PREFETCH:(\S+)/.exec(line.trim())
     if (prefetch) {
@@ -38,11 +42,19 @@ export function withPrefetch(playlist: string, take = 2): string {
       continue
     }
     const segment = /^#EXTINF:([0-9.]+)/.exec(line)
-    if (segment) length = segment[1]
+    if (segment) {
+      length = segment[1]
+      lengths.push(Number(segment[1]))
+    }
     kept.push(line)
   }
   // Nothing to say how long they are if no segment is complete yet.
   if (!length || ahead_.length === 0) return playlist
+  // How long a segment still being made will turn out to be is a guess from the ones before it, and only a
+  // good one where they are all alike. A broadcaster that is not re-encoded by IVS (one that sends its own
+  // segments) has them of 3 to 5 seconds, and a guess of 3 for a segment of 5 leaves a gap the picture then
+  // stops in, every few seconds.
+  if (Math.max(...lengths) - Math.min(...lengths) > UNIFORM_WITHIN) return playlist
   while (kept.length > 0 && kept[kept.length - 1].trim() === '') kept.pop()
   for (const address of ahead_.slice(0, take)) {
     remember(address)

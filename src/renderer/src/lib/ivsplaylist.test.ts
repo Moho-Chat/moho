@@ -46,3 +46,10 @@ describe('a playlist that lists what is being made', () => {
     expect(out).toContain('#EXT-X-PROGRAM-DATE-TIME:2026-10-13T22:58:43.442Z')
   })
 })
+
+describe('withPrefetch on segments of uneven length', () => {
+  it('leaves the playlist as it is when the last segment is no guide to the next', () => {
+    const playlist = ['#EXTM3U', '#EXTINF:3.200,live', 'a.ts', '#EXTINF:5.166,live', 'b.ts', '#EXT-X-PREFETCH:c.ts', ''].join('\n')
+    expect(withPrefetch(playlist)).toBe(playlist)
+  })
+})

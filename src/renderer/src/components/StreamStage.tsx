@@ -185,6 +185,15 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
         /* A picture that will not start is not worth an error dialog. */
       })
     })
+    player.on(Hls.Events.LEVEL_LOADED, (_e, data) => {
+      // Behind by a segment and a half at the least: where they are 5 seconds long, 4 seconds is less than one.
+      const longest = Math.max(0, ...data.details.fragments.map((f) => f.duration))
+      const behind = Math.max(LIVE_SYNC_SECONDS, longest * 1.5)
+      if (player.config.liveSyncDuration !== behind) {
+        player.config.liveSyncDuration = behind
+        player.config.liveMaxLatencyDuration = Math.max(LIVE_MAX_LATENCY_SECONDS, behind * 2.5)
+      }
+    })
     player.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => {
       const level = player.levels[data.level]
       if (level) setPlaying(renditionLabel({ height: level.height, frameRate: Number(level.attrs?.['FRAME-RATE']) || undefined }))
