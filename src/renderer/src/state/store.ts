@@ -4519,6 +4519,7 @@ export class ChatStore {
     void this.refreshMatrixPermissions(bufferId)
 
     const service = this.accountFor(bufferId)?.service
+    if (service === 'twitch') void this.loadTwitchRecent(bufferId)
     if (service === 'sneedchat') void this.fetchSmilies()
     // Both services answer the same question about the open conversation -
     // what can go in a message here that isn't text - so both ask it the same
@@ -4693,6 +4694,31 @@ export class ChatStore {
     lastReadTs[bufferId] = Math.floor(Date.now() / 1000)
     void window.moho.prefs.set('lastReadTs', lastReadTs)
     this.set({ lastReadTs })
+  }
+
+  /** The Twitch channels whose recent past has been asked for this session. */
+  private twitchRecentAsked = new Set<string>()
+
+  /**
+   * A Twitch channel's recent past, once per channel per session, if the person
+   * has said a third-party service may be asked for it (Settings, Twitch).
+   * Twitch keeps no history of its own, so without this a channel opens empty
+   * and fills as people speak. Off by default: it tells somebody else's server
+   * which channel is being opened.
+   */
+  private async loadTwitchRecent(bufferId: string): Promise<void> {
+    if (this.twitchRecentAsked.has(bufferId)) return
+    const prefs = await window.moho.prefs.getAll()
+    if (prefs['twitch.recentHistory'] !== true) return
+    this.twitchRecentAsked.add(bufferId)
+    try {
+      const r = await window.moho.rpc<{ read: number }>('twitchRecentMessages', { bufferId })
+      if (r.read > 0) await this.loadBacklog(bufferId)
+    } catch (e) {
+      // Not worth interrupting anybody over: the channel works, it just starts empty.
+      this.twitchRecentAsked.delete(bufferId)
+      console.debug('twitch recent messages:', (e as Error).message)
+    }
   }
 
   private async loadBacklog(bufferId: string): Promise<void> {

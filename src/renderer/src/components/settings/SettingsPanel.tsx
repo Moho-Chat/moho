@@ -126,6 +126,7 @@ const CATEGORIES: { id: string; label: string; group: string; icon?: string; ser
   { id: 'discord', label: 'Discord', group: 'Networks', service: 'discord' },
   { id: 'matrix', label: 'Matrix', group: 'Networks', service: 'matrix' },
   { id: 'kick', label: 'Kick', group: 'Networks', service: 'kick' },
+  { id: 'twitch', label: 'Twitch', group: 'Networks', service: 'twitch' },
   { id: 'about', label: 'About', group: 'About' }
 ]
 
@@ -244,6 +245,8 @@ function Page({ id }: { id: string }): JSX.Element | null {
       return <DiscordSettings />
     case 'kick':
       return <KickSettings />
+    case 'twitch':
+      return <TwitchSettings />
     case 'about':
       return <AboutSettings />
     default:
@@ -1249,6 +1252,58 @@ function KickSettings(): JSX.Element {
             { label: 'Strikethrough', value: 'strike' },
             { label: 'Replace with notice', value: 'replace' }
           ]}
+        />
+      </SettingsSection>
+    </>
+  )
+}
+
+/**
+ * Twitch. What is here is what the plan (Gitea issue #55) has built so far:
+ * where a channel's recent past comes from, and what is said about signing in.
+ */
+function TwitchSettings(): JSX.Element {
+  return (
+    <>
+      <SettingsSection
+        title="Twitch"
+        description="Channels are opened from the Join panel by name. Twitch's chat is public, so an account that never signs in still reads every channel; signing in adds talking and the channels you follow. Add an account from the Accounts pane."
+      />
+
+      <SettingsSection
+        title="What to show besides chat"
+        description="The same choices as Kick's: one setting covers a kind of event on both services."
+      >
+        <ToggleSetting settingKey="kick.showSubscriptions" label="Show subscriptions and gifted subs" defaultValue={true} />
+        <ToggleSetting settingKey="kick.showRaids" label="Show raids" defaultValue={true} />
+        <ToggleSetting
+          settingKey="kick.showModeration"
+          label="Show timeouts and bans"
+          description="What a moderator did, which everybody in the channel can see happening anyway"
+          defaultValue={true}
+        />
+        <SelectionSetting
+          settingKey="kick.removedMessages"
+          label="Removed messages"
+          description="When a moderator takes a message down. The text is kept, so you can still see what was said."
+          defaultValue="strike"
+          options={[
+            { label: 'Delete', value: 'remove' },
+            { label: 'Strikethrough', value: 'strike' },
+            { label: 'Replace with notice', value: 'replace' }
+          ]}
+        />
+      </SettingsSection>
+
+      <SettingsSection
+        title="Recent messages"
+        description="Twitch keeps no chat history, so a channel you open starts empty and fills as people speak."
+      >
+        <ToggleSetting
+          settingKey="twitch.recentHistory"
+          label="Fill a channel with its recent messages"
+          description="Asks recent-messages.robotty.de, a service run by a third party that remembers each channel's last few hundred lines. It is told which channel you open, through the account's route. Off until you turn it on."
+          defaultValue={false}
         />
       </SettingsSection>
     </>

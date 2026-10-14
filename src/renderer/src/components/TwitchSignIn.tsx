@@ -27,6 +27,7 @@ interface Code {
 const ASKS: Scope[] = [
   { scope: 'chat:read', why: 'read chat' },
   { scope: 'chat:edit', why: 'send messages' },
+  { scope: 'user:write:chat', why: 'hear why Twitch turned a message down' },
   { scope: 'user:read:follows', why: 'list the channels you follow' },
   { scope: 'user:read:emotes', why: 'show the emotes you can use' }
 ]

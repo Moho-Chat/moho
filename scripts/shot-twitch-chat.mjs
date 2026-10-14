@@ -26,6 +26,8 @@ try {
   await sleep(2500)
   await page.call('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false })
   const rpc = (m, p) => ev(`window.moho.rpc(${JSON.stringify(m)}, ${JSON.stringify(p)}).catch((e) => ({ error: String(e.message || e) }))`)
+  // HISTORY=1 turns on the third-party recent messages, which is off until a person says so.
+  if (process.env.HISTORY) await ev(`window.moho.prefs.set('twitch.recentHistory', true)`)
   const added = await rpc('addTwitchAccount', {})
   say('account', JSON.stringify(added))
   await sleep(2500)
@@ -34,6 +36,10 @@ try {
   const id = `${added.accountId}|${channel}`
   await ev(`window.__mohoShots.store.selectBuffer(${JSON.stringify(id)})`)
   say('a channel that does not exist', JSON.stringify(await rpc('joinBuffer', { accountId: added.accountId, name: 'zzzz_no_such_channel_zzzz' })))
+  if (process.env.HISTORY) {
+    await sleep(6000)
+    say('rows six seconds after opening, with the past', await ev(`(window.__mohoShots.state().messagesByBuffer[${JSON.stringify(id)}] || []).length`))
+  }
   await sleep(seconds * 1000)
   say('buffers', await ev(`JSON.stringify(window.__mohoShots.state().buffers.filter((b) => b.accountId === ${JSON.stringify(added.accountId)}).map((b) => ({ id: b.id, modes: b.channelModes })))`))
   say('page', await ev(`JSON.stringify({
