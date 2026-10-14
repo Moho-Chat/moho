@@ -23,6 +23,10 @@ export interface Reward {
   needsInput: boolean
   color?: string | null
   image?: string | null
+  /** Why it cannot be had from here, where that is known beforehand. */
+  unavailable?: string | null
+  /** What it asks the person to pick from: an emote to unlock. */
+  choices?: { id: string; label: string; image?: string | null }[]
 }
 
 interface Answer {
@@ -46,6 +50,7 @@ const SERVICES = {
 
 /** Why a reward cannot be pressed, in words; empty when it can. */
 export function whyNot(r: Reward, points: number | null, canType: boolean): string {
+  if (r.unavailable) return r.unavailable
   if (!r.enabled) return 'The streamer has this turned off'
   if (r.paused) return 'Paused right now'
   if (r.needsInput && !canType) return 'This one asks you to type something, which moho cannot do for this service yet'
@@ -73,6 +78,7 @@ export function RewardsPanel({
   const [index, setIndex] = useState(0)
   const [armed, setArmed] = useState<string | null>(null)
   const [typed, setTyped] = useState('')
+  const [picked, setPicked] = useState('')
   const [busy, setBusy] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   const list = useRef<HTMLDivElement>(null)
@@ -112,7 +118,7 @@ export function RewardsPanel({
 
   const redeem = (r: Reward): void => {
     setBusy(true)
-    void ask<{ points: number | null }>(api.redeem, { bufferId, rewardId: r.id, ...(r.needsInput ? { input: typed } : {}) })
+    void ask<{ points: number | null }>(api.redeem, { bufferId, rewardId: r.id, ...(r.needsInput ? { input: typed } : {}), ...(r.choices?.length ? { choice: picked } : {}) })
       .then((a) => {
         store.toast('info', `Redeemed ${r.title}`)
         if (a.points !== null && a.points !== undefined) {
@@ -121,6 +127,11 @@ export function RewardsPanel({
         }
         setArmed(null)
         setTyped('')
+        setPicked('')
+        // An emote unlock changes what there is left to unlock: asked again.
+        if (r.choices?.length) {
+          void ask<Answer>(api.list, { bufferId }).then(setAnswer).catch(() => undefined)
+        }
       })
       .catch((e: Error) => store.toast('error', e.message))
       .finally(() => setBusy(false))
@@ -128,10 +139,11 @@ export function RewardsPanel({
 
   const press = (r: Reward): void => {
     if (whyNot(r, points, api.canType) || busy) return
-    if (armed === r.id && (!r.needsInput || typed.trim())) redeem(r)
+    if (armed === r.id && (!r.needsInput || typed.trim()) && (!r.choices?.length || picked)) redeem(r)
     else {
       setArmed(r.id)
       setTyped('')
+      setPicked('')
     }
   }
 
@@ -216,7 +228,20 @@ export function RewardsPanel({
                         }}
                       />
                     )}
-                    <button type="button" className="button primary" disabled={busy || (r.needsInput && !typed.trim())} onClick={() => redeem(r)}>
+                    {!!r.choices?.length && (
+                      <>
+                        {picked && <img className="reward-image" src={r.choices.find((c) => c.id === picked)?.image ?? ''} alt="" />}
+                        <select className="text-field reward-choice" autoFocus value={picked} onChange={(e) => setPicked(e.target.value)}>
+                          <option value="">Pick one…</option>
+                          {r.choices.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.label}
+                            </option>
+                          ))}
+                        </select>
+                      </>
+                    )}
+                    <button type="button" className="button primary" disabled={busy || (r.needsInput && !typed.trim()) || (!!r.choices?.length && !picked)} onClick={() => redeem(r)}>
                       Redeem for {r.cost.toLocaleString()}
                     </button>
                     <button type="button" className="button subtle" onClick={() => setArmed(null)}>

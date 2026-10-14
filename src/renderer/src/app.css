@@ -11073,3 +11073,8 @@ html[data-reduce-motion] *::after {
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+
+.reward-choice {
+  flex: 1;
+  min-width: 0;
+}
