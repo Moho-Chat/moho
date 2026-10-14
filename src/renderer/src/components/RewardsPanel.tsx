@@ -91,11 +91,17 @@ export function RewardsPanel({
   // Escape takes an armed reward back first, then closes the panel - wherever focus is.
   useEscapeLayer(() => (armed ? setArmed(null) : onClose()), true)
 
-  const shown = useMemo(() => {
+  // Cheapest first, the ones that can be had now above the ones that cannot (switched off, paused, too dear).
+  const { shown, firstDisabled } = useMemo(() => {
     const q = query.trim().toLowerCase()
     const all = answer?.rewards ?? []
-    return q ? all.filter((r) => r.title.toLowerCase().includes(q) || (r.description ?? '').toLowerCase().includes(q)) : all
-  }, [answer, query])
+    const found = q ? all.filter((r) => r.title.toLowerCase().includes(q) || (r.description ?? '').toLowerCase().includes(q)) : all
+    const byCost = (a: Reward, b: Reward): number => a.cost - b.cost || a.title.localeCompare(b.title)
+    const pressable = (r: Reward): boolean => !whyNot(r, answer?.points ?? null, api.canType)
+    const active = found.filter(pressable).sort(byCost)
+    const disabled = found.filter((r) => !pressable(r)).sort(byCost)
+    return { shown: [...active, ...disabled], firstDisabled: active.length }
+  }, [answer, query, api.canType])
 
   useEffect(() => {
     list.current?.querySelector('.switcher-row.selected')?.scrollIntoView({ block: 'nearest' })
@@ -173,6 +179,8 @@ export function RewardsPanel({
             const isArmed = armed === r.id
             return (
               <div key={r.id} className={classes('reward-item', isArmed && 'armed')}>
+                {i === 0 && firstDisabled > 0 && <div className="reward-group small muted">Available</div>}
+                {i === firstDisabled && shown.length > firstDisabled && <div className="reward-group small muted">Unavailable</div>}
                 <button
                   type="button"
                   role="option"

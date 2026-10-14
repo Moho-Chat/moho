@@ -11066,3 +11066,10 @@ html[data-reduce-motion] *::after {
   flex: 1;
   min-width: 0;
 }
+
+/* The two groups of the rewards panel, each under its own small heading. */
+.reward-group {
+  padding: var(--spacing-s) var(--spacing-s) 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
