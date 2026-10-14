@@ -1224,6 +1224,18 @@ function KickSettings(): JSX.Element {
       </SettingsSection>
 
       <SettingsSection
+        title="Badges"
+        description="Kick's level, founder and event badges, and a channel's own, drawn as pictures beside a name. Moderator, subscriber and the like stay as words."
+      >
+        <ToggleSetting
+          settingKey="kick.showBadgePictures"
+          label="Show badge pictures"
+          description="Loaded from Kick's servers as they are shown"
+          defaultValue={true}
+        />
+      </SettingsSection>
+
+      <SettingsSection
         title="Messages Kick removes"
         description="When a moderator or Kick's automatic moderation takes a message down. The text is kept, so you can still see what was said."
       >

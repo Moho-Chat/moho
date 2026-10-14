@@ -354,6 +354,7 @@ function MessageRowBody({
   // The thread open beside the room, if any: a reply to its first message has
   // nothing to say that the panel's own heading does not.
   const openRoot = useChat((s) => s.openThread?.rootId)
+  const [showBadgePictures] = usePref<boolean>('kick.showBadgePictures', true)
   const original = useChat((s) => (replyId ? s.messagesByBuffer[bufferId]?.find((m) => m.id === replyId) : undefined))
   // Which message is open for editing is the window's, not each row's, so
   // Up arrow in the message box can open the last one.
@@ -933,15 +934,31 @@ function MessageRowBody({
                   {timeLabel}
                 </span>
               )}
-              {message.badges?.map((badge) => (
-                <span
-                  key={badge.type}
-                  className={`sender-badge small ${badge.type}`}
-                  title={badge.count ? `${badge.text} — ${badge.count} months` : badge.text}
-                >
-                  {badgeLabel(badge)}
-                </span>
-              ))}
+              {message.badges?.map((badge) =>
+                badge.image ? (
+                  // Kick's own pictures, unless they are turned off. The tooltip
+                  // and the alt text say what it is for anybody who cannot see it.
+                  showBadgePictures && (
+                    <img
+                      key={badge.type}
+                      className="sender-badge-image"
+                      src={media(badge.image)}
+                      alt={badge.text}
+                      title={badge.text}
+                      loading="lazy"
+                      draggable={false}
+                    />
+                  )
+                ) : (
+                  <span
+                    key={badge.type}
+                    className={`sender-badge small ${badge.type}`}
+                    title={badge.count ? `${badge.text} — ${badge.count} months` : badge.text}
+                  >
+                    {badgeLabel(badge)}
+                  </span>
+                )
+              )}
             </span>
           )}
 

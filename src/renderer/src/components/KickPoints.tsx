@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
-import { useStore } from '../state/hooks'
+import { useChat, useStore } from '../state/hooks'
 import { useEscapeLayer } from '../lib/layers'
 
 /**
@@ -42,6 +42,13 @@ export function KickPoints({ bufferId }: { bufferId: string }): JSX.Element | nu
   const box = useRef<HTMLDivElement>(null)
 
   const [points, setPoints] = useState<number | null>(null)
+
+  // Told by Kick the moment it changes, where the daemon is following it; the
+  // timer below is for a channel that is not live, which is not followed.
+  const pushed = useChat((s) => s.kickPointsByBuffer[bufferId])
+  useEffect(() => {
+    if (pushed !== undefined) setPoints(pushed)
+  }, [pushed])
 
   const refresh = (): void => {
     void window.moho

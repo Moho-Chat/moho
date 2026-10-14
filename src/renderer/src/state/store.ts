@@ -539,6 +539,8 @@ export interface ChatState {
   joinPanelAccountId: string
   messagesByBuffer: Record<string, ChatMessage[]>
   presenceByBuffer: Record<string, Member[]>
+  /** Points the signed-in account has in each Kick channel, as Kick last pushed them. */
+  kickPointsByBuffer: Record<string, number>
   /** How many people a roster stands for, where the service says it is more than it lists (Kick). */
   presenceTotalByBuffer: Record<string, number>
   /** Buffers whose initial backlog fetch has completed. */
@@ -793,6 +795,7 @@ const INITIAL: ChatState = {
   messagesByBuffer: {},
   presenceByBuffer: {},
   presenceTotalByBuffer: {},
+  kickPointsByBuffer: {},
   loadedBuffers: {},
   loadingMore: {},
   loadingNewer: {},
@@ -3608,6 +3611,11 @@ export class ChatStore {
 
       // Kept rather than removed: the daemon says the service took it down and
       // leaves the words, and what that looks like is the window's to decide.
+      // Kick says the balance changed: the five-minute earn, a bet, a reward.
+      case 'kickPoints':
+        this.set({ kickPointsByBuffer: { ...this.state.kickPointsByBuffer, [data.bufferId]: data.points } })
+        break
+
       case 'messageModerated':
         this.mapMessage(data.bufferId, data.id, (m) => ({ ...m, moderated: data.moderated ?? {} }))
         break

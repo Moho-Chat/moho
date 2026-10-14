@@ -10971,3 +10971,13 @@ html[data-reduce-motion] *::after {
   color: var(--surface-variant-text);
   background: var(--surface-hover);
 }
+
+/* A badge Kick sends as a picture, at the height of the line's small text. */
+.sender-badge-image {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-left: var(--spacing-xxs);
+  object-fit: contain;
+  vertical-align: middle;
+}

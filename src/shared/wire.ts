@@ -743,6 +743,11 @@ export interface MessageBadge {
   text: string
   /** Months subscribed, for the badges that count. */
   count?: number
+  /**
+   * A picture to draw it with, for the badges Kick sends as one - level,
+   * event and founder badges, a channel's own. Drawn instead of the word.
+   */
+  image?: string
 }
 
 export interface CustomEmoji {
