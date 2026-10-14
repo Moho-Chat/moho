@@ -369,6 +369,7 @@ function MessageRowBody({
   const openRoot = useChat((s) => s.openThread?.rootId)
   const [showBadgePictures] = usePref<boolean>('kick.showBadgePictures', true)
   const twitchModerator = useChat((s) => s.twitchRights[bufferId] === true)
+  const twitchBlocker = useChat((s) => s.accounts.find((a) => bufferId.startsWith(`${a.id}|`))?.moderation === true)
   const original = useChat((s) => (replyId ? s.messagesByBuffer[bufferId]?.find((m) => m.id === replyId) : undefined))
   // Which message is open for editing is the window's, not each row's, so
   // Up arrow in the message box can open the last one.
@@ -705,6 +706,14 @@ function MessageRowBody({
       ? ([{ separator: true } as MenuEntry] as MenuEntry[])
       : []),
     ...moderationEntries(message, permissions, bufferId, store),
+    // Twitch's own block list, for whoever turned those rights on: server side, so it holds in every
+    // app and channel, which the window's own Ignore does not.
+    ...(twitchBlocker && service === 'twitch' && !message.isOwn && !isSystem && message.from
+      ? ([
+          { label: `Block ${message.from} on Twitch`, icon: 'block', danger: true, onClick: () => twitchAct(store, bufferId, message, 'block', {}, `${message.from} is blocked`) },
+          { label: `Unblock ${message.from}`, icon: 'check_circle', onClick: () => twitchAct(store, bufferId, message, 'unblock', {}, `${message.from} is unblocked`) }
+        ] as MenuEntry[])
+      : []),
     // A Twitch moderator's: only where Twitch said this account is one for the channel, and not for their
     // own lines. Timing out is by the sender's login; removing a message is by its id.
     ...(twitchModerator && service === 'twitch' && !message.isOwn && !isSystem && message.from
@@ -1147,7 +1156,7 @@ function MessageRowBody({
               )}
             </div>
           ) : kickEvent ? (
-            <KickEventCard embed={kickEvent} />
+            <KickEventCard embed={kickEvent} bufferId={bufferId} />
           ) : (
             parts.html && (
               <span className="message-body selectable" title={message.moderated && !message.moderated.replaced ? removedReason(message) : undefined}>
@@ -1673,13 +1682,22 @@ function ReactionEmoji({ emoji }: { emoji: string }): JSX.Element {
   return <img className="reaction-emoji" src={media(discordEmojiUrl(custom[2]))} alt={custom[1]} />
 }
 
+function twitchAct(
+  store: ReturnType<typeof useStore>,
+  bufferId: string,
+  message: ChatMessage,
+  action: string,
+  extra: Record<string, unknown> = {},
+  done?: string
+): void {
+  void window.moho
+    .rpc('twitchModerate', { bufferId, action, login: message.from.toLowerCase(), userId: message.senderId, ...extra })
+    .then(() => done && store.toast('info', done))
+    .catch((e: Error) => store.toast('error', e.message))
+}
+
 function twitchModerationEntries(message: ChatMessage, bufferId: string, store: ReturnType<typeof useStore>): MenuEntry[] {
-  const login = message.from.toLowerCase()
-  const act = (action: string, extra: Record<string, unknown> = {}, done?: string): void =>
-    void window.moho
-      .rpc('twitchModerate', { bufferId, action, login, userId: message.senderId, ...extra })
-      .then(() => done && store.toast('info', done))
-      .catch((e: Error) => store.toast('error', e.message))
+  const act = (action: string, extra: Record<string, unknown> = {}, done?: string): void => twitchAct(store, bufferId, message, action, extra, done)
   const timeout = (label: string, seconds: number): MenuEntry => ({
     label: `Time out ${label}`,
     icon: 'timer',
@@ -1694,6 +1712,7 @@ function twitchModerationEntries(message: ChatMessage, bufferId: string, store: 
     timeout('10 minutes', 600),
     timeout('1 hour', 3600),
     timeout('1 day', 86400),
+    { label: `Shout out ${message.from}`, icon: 'campaign', onClick: () => act('shoutout', {}, `Shouted out ${message.from}`) },
     { label: `Ban ${message.from}`, icon: 'gavel', danger: true, onClick: () => act('ban', {}, `${message.from} banned`) },
     { label: `Unban ${message.from}`, icon: 'lock_open', onClick: () => act('unban', {}, `${message.from} can chat again`) }
   ] as MenuEntry[]

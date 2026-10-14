@@ -262,6 +262,8 @@ export interface LiveCard {
   total?: number | null
   /** What this account stands to get back, where the service says. */
   yourReturn?: number | null
+  /** Shown here but answered on the service's own site: no vote, bet or end buttons. Twitch's. */
+  readOnly?: boolean
   /** "open", "locked", "resolved" - whatever the service calls it. */
   state?: string | null
   /**

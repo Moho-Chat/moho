@@ -1309,12 +1309,17 @@ function TwitchSettings(): JSX.Element {
 
       <SettingsSection
         title="Other emote services"
-        description="BetterTTV, FrankerFaceZ and 7TV are not Twitch's: each is another company's server, asked which emotes a channel has whenever you open it (through the account's route), and its pictures are loaded from it. Without them a chat that uses them reads as plain words."
+        description="BetterTTV, FrankerFaceZ and 7TV are not Twitch's: each is another company's server, asked which emotes a channel has whenever you open it (through the account's route), and its pictures are loaded from it. BetterTTV and 7TV also keep a connection open while a channel is, so an emote added a minute ago appears without reopening it. Without them a chat that uses them reads as plain words."
       >
         <ToggleSetting settingKey="twitch.emotes.bttv" label="BetterTTV" defaultValue={true} />
         <ToggleSetting settingKey="twitch.emotes.ffz" label="FrankerFaceZ" defaultValue={true} />
         <ToggleSetting settingKey="twitch.emotes.seventv" label="7TV" defaultValue={true} />
       </SettingsSection>
+
+      <SettingsSection
+        title="Polls, predictions and raids"
+        description="Shown as they happen, for every channel you have open, from the same live service twitch.tv's own pages use, which needs no account. They can be watched here but not answered: voting, betting and claiming channel points are done on twitch.tv."
+      />
 
       <SettingsSection
         title="Recent messages"

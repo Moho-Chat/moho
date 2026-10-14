@@ -1,10 +1,11 @@
 import { Icon } from './Icon'
+import { useStore } from '../state/hooks'
 import { embedColor } from '../lib/format'
 import { nickColor } from '../lib/util'
 import type { Embed } from '../../../shared/wire'
 
 /** The embed kinds the daemon draws as these cards instead of as a link preview. */
-export const KICK_EVENT_KINDS = ['kicks', 'gift-sub', 'raid', 'redeem', 'subscribe', 'moderation', 'stream']
+export const KICK_EVENT_KINDS = ['kicks', 'gift-sub', 'raid', 'redeem', 'subscribe', 'moderation', 'stream', 'raid-out']
 
 export function isKickEvent(embed: Embed): boolean {
   return !!embed.kind && KICK_EVENT_KINDS.includes(embed.kind)
@@ -30,7 +31,8 @@ function KicksMark({ size = 16 }: { size?: number }): JSX.Element {
  * streamer gave it - a ban, a timeout or a chat cleared, and the stream going
  * live or ending.
  */
-export function KickEventCard({ embed }: { embed: Embed }): JSX.Element | null {
+export function KickEventCard({ embed, bufferId }: { embed: Embed; bufferId?: string }): JSX.Element | null {
+  const store = useStore()
   const who = embed.author
   if (!who) return null
   const name = (colour?: string): JSX.Element => (
@@ -81,6 +83,39 @@ export function KickEventCard({ embed }: { embed: Embed }): JSX.Element | null {
             )}
           </div>
           {embed.description && <div className="kick-event-message">{embed.description}</div>}
+        </div>
+      </div>
+    )
+  }
+
+  // Twitch: the channel being watched is sending its viewers to another (the embed's title is how many, its
+  // description the other channel's login), and the card offers to go along.
+  if (embed.kind === 'raid-out') {
+    const account = bufferId ? store.accountFor(bufferId) : undefined
+    return (
+      <div className="kick-event raid selectable">
+        <span className="kick-event-badge lead">
+          <Icon name="groups" size={20} />
+        </span>
+        <div className="kick-event-main">
+          <div className="kick-event-line">
+            <span className="kick-event-verb">Raiding</span>
+            {name()}
+            {embed.title && (
+              <>
+                <span className="kick-event-verb">with</span>
+                <strong className="kick-event-amount">{embed.title}</strong>
+                <span className="kick-event-verb">{embed.title === '1' ? 'viewer.' : 'viewers.'}</span>
+              </>
+            )}
+          </div>
+          {account && embed.description && (
+            <div className="kick-event-message">
+              <button type="button" className="button subtle" onClick={() => void store.joinAndOpen(account.id, embed.description ?? '')}>
+                Open {who}'s chat
+              </button>
+            </div>
+          )}
         </div>
       </div>
     )

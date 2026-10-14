@@ -149,7 +149,7 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
           {/* Ending it is the streamer's own gesture, and the service refuses
               it for anybody else - so it is offered and allowed to fail there
               rather than guessed at from a role this client may not know. */}
-          {!reviewing && !isPrediction && open && (
+          {!reviewing && !isPrediction && open && !card.readOnly && (
             <IconButton name="delete" size={16} title="End this poll" onClick={() => store.endPoll(card.bufferId, card.id)} />
           )}
           <IconButton
@@ -175,7 +175,7 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
             )}
             // A poll row is the vote; a prediction row only chooses what the
             // points go on, because the amount is the other half of a bet.
-            disabled={reviewing || !open || (!isPrediction && card.hasVoted)}
+            disabled={reviewing || !open || card.readOnly || (!isPrediction && card.hasVoted)}
             onClick={() =>
               isPrediction ? setPicked(option.id) : store.votePoll(card.bufferId, option.id)
             }
@@ -216,7 +216,7 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
       {/* The bet itself. Only while it is taking them, and only where the
           service says what this account has to spend - offering to bet
           points that cannot be counted is offering a button that fails. */}
-      {isPrediction && !reviewing && open && (
+      {isPrediction && !reviewing && open && !card.readOnly && (
         <div className="poll-bet">
           <input
             className="poll-bet-amount"

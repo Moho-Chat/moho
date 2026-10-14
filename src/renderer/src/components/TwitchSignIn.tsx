@@ -40,7 +40,9 @@ const MODERATION_ASKS: Scope[] = [
   { scope: 'moderator:manage:announcements', why: 'make announcements' },
   { scope: 'user:manage:chat_color', why: 'change your name colour' },
   { scope: 'user:manage:whispers', why: 'send whispers' },
-  { scope: 'whispers:read', why: 'read whispers sent to you' }
+  { scope: 'whispers:read', why: 'read whispers sent to you' },
+  { scope: 'moderator:manage:shoutouts', why: 'give shoutouts where you moderate' },
+  { scope: 'user:manage:blocked_users', why: 'block and unblock people' }
 ]
 
 export function TwitchSignIn({

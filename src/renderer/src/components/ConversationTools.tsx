@@ -718,6 +718,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   // are polled as a group by the daemon; this is the one channel on screen,
   // which may not be followed at all, asked about on its own minute.
   const isKick = buffer.accountId.startsWith('kick:')
+  const isTwitch = buffer.accountId.startsWith('twitch:')
   const hasStream = isKick || buffer.accountId.startsWith('twitch:')
   useEffect(() => {
     if (!hasStream || buffer.kind !== 'channel') return
@@ -999,8 +1000,8 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           have polls and no predictions, IRC has neither, and an icon that
           opens an empty list on a service that could never fill it is an
           icon that says the feature is missing rather than absent. */}
-      {(isKick || isMatrix) && <CardHistory buffer={buffer} kind="poll" icon="help" label="Past polls" />}
-      {isKick && <CardHistory buffer={buffer} kind="prediction" icon="casino" label="Past predictions" />}
+      {(isKick || isMatrix || isTwitch) && <CardHistory buffer={buffer} kind="poll" icon="help" label="Past polls" />}
+      {(isKick || isTwitch) && <CardHistory buffer={buffer} kind="prediction" icon="casino" label="Past predictions" />}
 
       {/* An icon until it is being used. A box wide enough to type into is
           the single widest thing in this row, and a header that always
