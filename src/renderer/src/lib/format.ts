@@ -95,21 +95,6 @@ export function twitchEmoteUrl(id: string, animated = false): string {
 }
 
 /**
- * The picture for an emote of BetterTTV, FrankerFaceZ or 7TV, by id: public and built from the id, like
- * Twitch's own, and moving where the emote moves (the picture is the same address either way).
- */
-export function thirdPartyEmoteUrl(provider: string, id: string): string {
-  const safe = encodeURIComponent(id)
-  const url =
-    provider === 'bttv'
-      ? `https://cdn.betterttv.net/emote/${safe}/2x.webp`
-      : provider === 'ffz'
-        ? `https://cdn.frankerfacez.com/emote/${safe}/2`
-        : `https://cdn.7tv.app/emote/${safe}/2x.webp`
-  return resolveMediaUrl(url)
-}
-
-/**
  * The picture for a Twitch cheermote: the prefix's animated picture of the tier the amount reaches. Twitch
  * has tiers at 1, 100, 1,000, 5,000 and 10,000 bits.
  */
@@ -173,8 +158,6 @@ export function emojiPreview(text: string, smilies: SmilieEntry[] = []): EmojiPr
   if (kick) return { src: kickEmoteUrl(kick[1]), label: `:${kick[2]}:` }
   const twitch = text.match(/^\[twitch:(a?emote):([A-Za-z0-9_]+):([^\]]{0,64})\]$/)
   if (twitch) return { src: twitchEmoteUrl(twitch[2], twitch[1] === 'aemote'), label: twitch[3] }
-  const other = text.match(/^\[twitch:(bttv|ffz|7tv):([A-Za-z0-9_]+):([^\]]{0,64})\]$/)
-  if (other) return { src: thirdPartyEmoteUrl(other[1], other[2]), label: other[3] }
   const steam = steamTokenOf(text)
   if (steam) return { src: steamPictureUrl(steam.kind, steam.name), label: `:${steam.name}:` }
   const smilie = smilies.find((s) => s.aliases?.includes(text))
@@ -617,10 +600,9 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   out = out.replace(/\[twitch:(a?emote):([A-Za-z0-9_]+):([^\]]{0,64})\]/g, (_m, kind: string, id: string, name: string) =>
     stow(`<img src="${twitchEmoteUrl(id, kind === 'aemote')}" class="custom-emoji" alt="${name}" title="${name}">`)
   )
-  // The same from BetterTTV, FrankerFaceZ and 7TV, which the daemon found among the words of a message.
-  out = out.replace(/\[twitch:(bttv|ffz|7tv):([A-Za-z0-9_]+):([^\]]{0,64})\]/g, (_m, provider: string, id: string, name: string) =>
-    stow(`<img src="${thirdPartyEmoteUrl(provider, id)}" class="custom-emoji" alt="${name}" title="${name}">`)
-  )
+  // BetterTTV, FrankerFaceZ and 7TV are not drawn (Twitch does not carry them). A line stored while they were
+  // is read as the words it stands for.
+  out = out.replace(/\[twitch:(?:bttv|ffz|7tv):[A-Za-z0-9_]+:([^\]]{0,64})\]/g, '$1')
   // A cheer: its picture and the amount beside it, as Twitch's chat draws one.
   out = out.replace(/\[twitch:cheer:([a-z0-9]+):(\d{1,9})\]/g, (_m, prefix: string, amount: string) =>
     stow(`<img src="${cheerUrl(prefix, Number(amount))}" class="custom-emoji" alt="${prefix}" title="${prefix} ${amount}"><span class="cheer-amount">${amount}</span>`)

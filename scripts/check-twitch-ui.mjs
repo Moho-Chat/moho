@@ -37,7 +37,7 @@ try {
     const m = (i, from, body, extra = {}) => ({ id: 'm' + i, bufferId: 'twitch:me|xqc', from, body, ts: t + i * 20, kind: 'chat', isAction: false, isHighlight: false, isOwn: false, edited: false, ...extra })
     const messages = [
       m(1, 'darkblue', 'a very dark colour name', { senderColor: '#0000FF' }),
-      m(2, 'pinkie', 'with an emote [twitch:emote:25:Kappa] and a third-party [twitch:7tv:01F6MQ33FG000FJ0EQ3WKRX7T4:catJAM] one'),
+      m(2, 'pinkie', 'with an emote [twitch:emote:25:Kappa] and a moving [twitch:aemote:emotesv2_abc:Dance] one'),
       m(3, 'whale', 'cheered [twitch:cheer:cheer:100] for the stream', {}),
       m(4, 'linker', 'see https://example.com/page for details'),
       m(5, 'newbie', 'first message here', { firstMessage: true })
@@ -54,7 +54,7 @@ try {
 
   console.log('Messages')
   check('a very dark name colour is made readable', await ev(`(() => { const e = [...document.querySelectorAll('.message-sender, .message-from, .sender')].find((x) => x.textContent.includes('darkblue')); if (!e) return false; const m = getComputedStyle(e).color.match(/\\d+/g).map(Number); return (0.2126 * m[0] + 0.7152 * m[1] + 0.0722 * m[2]) > 90 })()`))
-  check('an emote and a third-party emote are pictures', (await ev(`document.querySelectorAll('.message-row img[src*="emoticons"], .message-row img[src*="cdn.7tv"], .message-row img.custom-emoji').length`)) >= 2, String(await ev(`[...document.querySelectorAll('.message-row img')].map((i) => i.src.slice(0, 60)).join(' | ')`)))
+  check('emotes are pictures', (await ev(`document.querySelectorAll('.message-row img[src*="emoticons"], .message-row img.custom-emoji').length`)) >= 2, String(await ev(`[...document.querySelectorAll('.message-row img')].map((i) => i.src.slice(0, 60)).join(' | ')`)))
   check('a cheer is drawn with its amount', await ev(`document.body.innerText.includes('100')`))
   check('a link is a link', await ev(`!!document.querySelector('.message-row a[href^="https://example.com"], .message-row .link')`))
   await shot('twitch-messages.png')
@@ -83,7 +83,7 @@ try {
   check('Settings has a Twitch page', clicked)
   await sleep(600)
   const text = await ev(`document.body.innerText`)
-  for (const want of ['What to show besides chat', 'Badges', 'Other emote services', 'BetterTTV', 'FrankerFaceZ', '7TV', 'Polls, predictions and raids', 'Recent messages']) check(`Settings -> Twitch has "${want}"`, text.includes(want))
+  for (const want of ['What to show besides chat', 'Badges', 'Polls, predictions and raids', 'Recent messages']) check(`Settings -> Twitch has "${want}"`, text.includes(want))
   await shot('twitch-settings.png')
 } finally {
   await stop()

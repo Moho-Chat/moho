@@ -220,8 +220,9 @@ called `subscribe` for that buffer.
   plays in the window over HLS, with its VODs and clips.
 
 - **Twitch** - a streamer's chat over Twitch's IRC service (read with no account, sent through the
-  official API), with emotes (Twitch's own, animated ones, and BetterTTV, FrankerFaceZ and 7TV, kept
-  current as they change), badges as pictures, cheers, replies and threads, subscriptions, gifts and
+  official API), with emotes (Twitch's own, animated ones, and the channel's whole set in the picker with the ones the
+  account cannot use greyed out; BetterTTV, FrankerFaceZ and 7TV are browser extensions Twitch does not carry, so
+  they are not drawn), badges as pictures, cheers, replies and threads, subscriptions, gifts and
   raids, raids out, polls and predictions as they happen, moderation, whispers, shoutouts and blocking.
   One sign-in on twitch.tv gives the account its API token and the website session its player takes, so
   the stream plays in the window as the person (their Turbo or subscriptions count) with Twitch's ad

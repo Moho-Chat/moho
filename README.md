@@ -31,7 +31,7 @@ stream's chat going past at forty lines a minute you're able to be part of the c
 | **Matrix** | Supported | Rooms, spaces and direct messages, end-to-end encryption with device verification and key backup, Element Call, and signing in by QR code |
 | **Discord** | Supported | Servers, direct messages, forums and threads, voice, video, screen sharing and Go Live with end-to-end encryption, stages and the soundboard |
 | **Kick** | Supported | A streamer's chat beside the stream, with polls, predictions and its events drawn as cards |
-| **Twitch** | Supported | A streamer's chat beside the stream, with emotes (animated, and BetterTTV, FrankerFaceZ and 7TV), badges, cheers, replies and threads, its events drawn as cards, and moderation and whispers for accounts that turn them on |
+| **Twitch** | Supported | A streamer's chat beside the stream, with emotes (animated, and the channel's own greyed out when you cannot use them), badges, cheers, replies and threads, its events drawn as cards, and moderation and whispers for accounts that turn them on |
 | **Sneedchat** | Supported | The forum's chat rooms, over clearnet or Tor |
 | **Steam** | Supported, fully ported | Friends and direct messages, group chats with rooms, roles and invitations, voice rooms and calls, emoticons, stickers, reactions, pictures and files, friend folders, and signing in by password or by QR code |
 
