@@ -552,8 +552,8 @@ export interface ChatState {
   presenceByBuffer: Record<string, Member[]>
   /** Points the signed-in account has in each Kick channel, as Kick last pushed them. */
   kickPointsByBuffer: Record<string, number>
-  /** A Twitch channel's points as this account last heard: the balance, and the bonus waiting if there is one. */
-  twitchPoints: Record<string, { points: number | null; claimId?: string | null; name?: string | null }>
+  /** A Twitch channel's points as this account last heard: the balance. */
+  twitchPoints: Record<string, { points: number | null; name?: string | null }>
   /** How many people a roster stands for, where the service says it is more than it lists (Kick). */
   presenceTotalByBuffer: Record<string, number>
   /** Buffers whose initial backlog fetch has completed. */
@@ -3987,7 +3987,7 @@ export class ChatStore {
       }
 
       case 'twitchPoints':
-        this.set({ twitchPoints: { ...this.state.twitchPoints, [data.bufferId]: { points: data.points ?? null, claimId: data.claimId ?? null, name: data.name ?? null } } })
+        this.set({ twitchPoints: { ...this.state.twitchPoints, [data.bufferId]: { points: data.points ?? null, name: data.name ?? null } } })
         break
 
       case 'twitchRights':
