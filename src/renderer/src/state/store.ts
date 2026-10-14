@@ -576,6 +576,8 @@ export interface ChatState {
    * most of what a viewer wants to know, were nowhere.
    */
   kickStreams: Record<string, KickStream>
+  /** Whether the account may moderate each Twitch channel it has open, as Twitch last said. */
+  twitchRights: Record<string, boolean>
   /** The poll and prediction running in each channel, by `cardSlot`. */
   livePolls: Record<string, LiveCard>
   /**
@@ -813,6 +815,7 @@ const INITIAL: ChatState = {
   openThread: null,
   matrixPermissions: {},
   kickStreams: {},
+  twitchRights: {},
   livePolls: {},
   pinnedByBuffer: {},
   reviewCard: null,
@@ -3975,6 +3978,10 @@ export class ChatStore {
         break
       }
 
+      case 'twitchRights':
+        this.set({ twitchRights: { ...this.state.twitchRights, [data.bufferId]: !!data.moderator } })
+        break
+
       case 'kickStream': {
         const stream = data as unknown as KickStream
         this.set({ kickStreams: { ...this.state.kickStreams, [stream.bufferId]: stream } })
@@ -4536,7 +4543,7 @@ export class ChatStore {
     // what can go in a message here that isn't text - so both ask it the same
     // way. Kick's answer also depends on who is asking, since it carries which
     // of the streamer's emotes this account is subscribed to.
-    if (service === 'discord' || service === 'kick') void this.fetchBufferEmoji(bufferId)
+    if (service === 'discord' || service === 'kick' || service === 'twitch') void this.fetchBufferEmoji(bufferId)
   }
 
   /**
@@ -4567,7 +4574,10 @@ export class ChatStore {
   }
 
   private async fetchBufferEmoji(bufferId: string): Promise<void> {
-    if (this.state.bufferEmoji[bufferId]) return
+    // Twitch's tables arrive a moment after the channel is joined, so an empty answer is asked again
+    // the next time the channel is opened; the others' empty answer is the answer.
+    const have = this.state.bufferEmoji[bufferId]
+    if (have && (have.length > 0 || this.accountFor(bufferId)?.service !== 'twitch')) return
     try {
       const emoji = await window.moho.rpc<CustomEmoji[]>('listBufferEmoji', { bufferId })
       this.set({ bufferEmoji: { ...this.state.bufferEmoji, [bufferId]: emoji } })

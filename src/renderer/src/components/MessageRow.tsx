@@ -58,7 +58,8 @@ import {
   isWarning,
   isReward,
   isWhisper,
-  nickColor
+  nickColor,
+  readableColor
 } from '../lib/util'
 import { useEscapeLayer } from '../lib/layers'
 import { removedReason } from '../lib/moderation'
@@ -72,6 +73,11 @@ import { removedReason } from '../lib/moderation'
  * being dropped - an unfamiliar badge still says the person has one.
  */
 function badgeLabel(badge: MessageBadge): string {
+  return ROLE_WORDS[badge.type] ?? badge.text.slice(0, 3).toUpperCase()
+}
+
+/** The words that stand for the roles worth looking for in a name's badges. */
+const ROLE_WORDS: Record<string, string> = ((): Record<string, string> => {
   const short: Record<string, string> = {
     broadcaster: 'HOST',
     moderator: 'MOD',
@@ -89,10 +95,13 @@ function badgeLabel(badge: MessageBadge): string {
     // Twitch's: somebody's first message in a channel, and a message mirrored
     // from another channel of a shared chat.
     'first-message': 'NEW',
-    'shared-chat': 'SHARED'
+    'shared-chat': 'SHARED',
+    // A cheer: bits sent with the message.
+    cheer: 'BITS',
+    lead_moderator: 'MOD'
   }
-  return short[badge.type] ?? badge.text.slice(0, 3).toUpperCase()
-}
+  return short
+})()
 
 /** A handful of one-click reactions on the hover toolbar. */
 /** What a line that is not speech is marked with, by the daemon's word for it. */
@@ -359,6 +368,7 @@ function MessageRowBody({
   // nothing to say that the panel's own heading does not.
   const openRoot = useChat((s) => s.openThread?.rootId)
   const [showBadgePictures] = usePref<boolean>('kick.showBadgePictures', true)
+  const twitchModerator = useChat((s) => s.twitchRights[bufferId] === true)
   const original = useChat((s) => (replyId ? s.messagesByBuffer[bufferId]?.find((m) => m.id === replyId) : undefined))
   // Which message is open for editing is the window's, not each row's, so
   // Up arrow in the message box can open the last one.
@@ -695,6 +705,11 @@ function MessageRowBody({
       ? ([{ separator: true } as MenuEntry] as MenuEntry[])
       : []),
     ...moderationEntries(message, permissions, bufferId, store),
+    // A Twitch moderator's: only where Twitch said this account is one for the channel, and not for their
+    // own lines. Timing out is by the sender's login; removing a message is by its id.
+    ...(twitchModerator && service === 'twitch' && !message.isOwn && !isSystem && message.from
+      ? twitchModerationEntries(message, bufferId, store)
+      : []),
     // Telling whoever runs the homeserver. Beside the moderation entries and
     // deliberately not gated like them: those need power in the room and this
     // needs none, which is the point of it - it is the answer available to
@@ -924,7 +939,7 @@ function MessageRowBody({
             <span className="message-byline">
               <span
                 className={classes('message-from', canOpenProfile && 'clickable')}
-                style={{ color: message.senderColor || nickColor(message.from) }}
+                style={{ color: message.senderColor ? readableColor(message.senderColor) : nickColor(message.from) }}
                 onClick={canOpenProfile ? openProfile : undefined}
                 role={canOpenProfile ? 'button' : undefined}
                 title={canOpenProfile ? `Profile of ${message.from}` : undefined}
@@ -939,21 +954,20 @@ function MessageRowBody({
                 </span>
               )}
               {message.badges?.map((badge) =>
-                badge.image ? (
-                  // Kick's own pictures, unless they are turned off. The tooltip
+                badge.image && showBadgePictures ? (
+                  // The service's own pictures, unless they are turned off. The tooltip
                   // and the alt text say what it is for anybody who cannot see it.
-                  showBadgePictures && (
-                    <img
-                      key={badge.type}
-                      className="sender-badge-image"
-                      src={media(badge.image)}
-                      alt={badge.text}
-                      title={badge.text}
-                      loading="lazy"
-                      draggable={false}
-                    />
-                  )
-                ) : (
+                  <img
+                    key={badge.type}
+                    className="sender-badge-image"
+                    src={media(badge.image)}
+                    alt={badge.text}
+                    title={badge.count ? `${badge.text} — ${badge.count} months` : badge.text}
+                    loading="lazy"
+                    draggable={false}
+                  />
+                ) : // Turned off, a badge that has a word for it is that word and one that has none is nothing.
+                badge.image && !(badge.type in ROLE_WORDS) ? null : (
                   <span
                     key={badge.type}
                     className={`sender-badge small ${badge.type}`}
@@ -1045,7 +1059,7 @@ function MessageRowBody({
                   style={
                     message.replyTo.forwarded
                       ? undefined
-                      : { color: original?.senderColor || nickColor(message.replyTo.from) }
+                      : { color: original?.senderColor ? readableColor(original.senderColor) : nickColor(message.replyTo.from) }
                   }
                 >
                   {message.replyTo.from}
@@ -1657,6 +1671,32 @@ function ReactionEmoji({ emoji }: { emoji: string }): JSX.Element {
   const custom = emoji.match(/^<?a?:?([A-Za-z0-9_~]{2,32}):(\d+)>?$/)
   if (!custom) return <span>{emoji}</span>
   return <img className="reaction-emoji" src={media(discordEmojiUrl(custom[2]))} alt={custom[1]} />
+}
+
+function twitchModerationEntries(message: ChatMessage, bufferId: string, store: ReturnType<typeof useStore>): MenuEntry[] {
+  const login = message.from.toLowerCase()
+  const act = (action: string, extra: Record<string, unknown> = {}, done?: string): void =>
+    void window.moho
+      .rpc('twitchModerate', { bufferId, action, login, userId: message.senderId, ...extra })
+      .then(() => done && store.toast('info', done))
+      .catch((e: Error) => store.toast('error', e.message))
+  const timeout = (label: string, seconds: number): MenuEntry => ({
+    label: `Time out ${label}`,
+    icon: 'timer',
+    onClick: () => act('timeout', { seconds }, `${message.from} timed out for ${label}`)
+  })
+  return [
+    { separator: true },
+    ...(message.id
+      ? ([{ label: 'Remove message', icon: 'delete', danger: true, onClick: () => act('delete', { messageId: message.id }) }] as MenuEntry[])
+      : []),
+    timeout('1 minute', 60),
+    timeout('10 minutes', 600),
+    timeout('1 hour', 3600),
+    timeout('1 day', 86400),
+    { label: `Ban ${message.from}`, icon: 'gavel', danger: true, onClick: () => act('ban', {}, `${message.from} banned`) },
+    { label: `Unban ${message.from}`, icon: 'lock_open', onClick: () => act('unban', {}, `${message.from} can chat again`) }
+  ] as MenuEntry[]
 }
 
 function moderationEntries(

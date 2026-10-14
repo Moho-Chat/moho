@@ -32,13 +32,27 @@ const ASKS: Scope[] = [
   { scope: 'user:read:emotes', why: 'show the emotes you can use' }
 ]
 
+/** What turning moderation on adds, said before it is asked for. */
+const MODERATION_ASKS: Scope[] = [
+  { scope: 'moderator:manage:banned_users', why: 'time out, ban and unban where you moderate' },
+  { scope: 'moderator:manage:chat_messages', why: 'remove messages where you moderate' },
+  { scope: 'moderator:manage:chat_settings', why: 'change slow, followers-only, subscribers-only and emote-only modes' },
+  { scope: 'moderator:manage:announcements', why: 'make announcements' },
+  { scope: 'user:manage:chat_color', why: 'change your name colour' },
+  { scope: 'user:manage:whispers', why: 'send whispers' },
+  { scope: 'whispers:read', why: 'read whispers sent to you' }
+]
+
 export function TwitchSignIn({
   useTor,
   onDone,
   label = 'Sign in with Twitch',
+  moderation = false,
   children
 }: {
   useTor: boolean
+  /** Also ask for the rights to moderate and whisper. Only ever on because the person turned it on. */
+  moderation?: boolean
   onDone: () => void
   label?: string
   /** Other things to offer beside the sign-in button, while nothing is waiting. */
@@ -113,7 +127,7 @@ export function TwitchSignIn({
     setDetail('')
     current.current = ''
     void window.moho
-      .rpc<{ loginId: string }>('startTwitchLogin', { useTor })
+      .rpc<{ loginId: string }>('startTwitchLogin', { useTor, moderation })
       .then((r) => {
         current.current = r.loginId
       })
@@ -168,7 +182,7 @@ export function TwitchSignIn({
     <>
       <p className="small muted">
         You sign in on twitch.tv, in your own browser - moho never sees your password. It asks to be allowed to:{' '}
-        {ASKS.map((s) => s.why).join(', ')}.
+        {(moderation ? [...ASKS, ...MODERATION_ASKS] : ASKS).map((s) => s.why).join(', ')}.
       </p>
       <div className="field-row">
         <button type="button" className="button primary" disabled={busy} onClick={begin}>

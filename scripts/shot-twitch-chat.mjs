@@ -47,6 +47,10 @@ try {
     emotes: document.querySelectorAll('.message-row img.custom-emoji').length,
     emotesLoaded: [...document.querySelectorAll('.message-row img.custom-emoji')].filter((i) => i.complete && i.naturalWidth > 0).length,
     badges: [...new Set([...document.querySelectorAll('.message-row .sender-badge')].map((b) => b.textContent))],
+    badgePictures: document.querySelectorAll('.message-row .sender-badge-image').length,
+    badgePicturesLoaded: [...document.querySelectorAll('.message-row .sender-badge-image')].filter((i) => i.complete && i.naturalWidth > 0).length,
+    badgeTitles: [...new Set([...document.querySelectorAll('.message-row .sender-badge-image')].map((i) => i.title))].slice(0, 6),
+    emoteSources: [...new Set([...document.querySelectorAll('.message-row img.custom-emoji')].map((i) => new URL(i.src).hostname))],
     replies: document.querySelectorAll('.message-row .reply-preview').length,
     header: document.querySelector('.nicklist-header span')?.textContent,
     coloured: document.querySelectorAll('.message-row .message-from[style*="color"]').length

@@ -85,6 +85,15 @@ export default function App(): JSX.Element {
   const [zoom] = usePref<number>('appearance.zoom', 1)
   const [density] = usePref<string>('appearance.density', 'cozy')
   const [reduceMotion] = usePref<boolean>('appearance.reduceMotion', false)
+  // Which of BetterTTV, FrankerFaceZ and 7TV the daemon looks for in Twitch chat. Told to it whenever the
+  // window starts and whenever a switch moves: until it hears, all three are on.
+  const [bttv] = usePref<boolean>('twitch.emotes.bttv', true)
+  const [ffz] = usePref<boolean>('twitch.emotes.ffz', true)
+  const [seventv] = usePref<boolean>('twitch.emotes.seventv', true)
+  useEffect(() => {
+    if (!booted) return
+    void window.moho.rpc('setTwitchEmoteProviders', { bttv, ffz, seventv }).catch(() => {})
+  }, [booted, bttv, ffz, seventv])
   const [hourFormat] = usePref<string>('display.hourFormat', '24')
   setHourFormat(hourFormat)
   useEffect(() => window.moho.setZoom(zoom), [zoom])

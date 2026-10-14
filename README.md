@@ -3,13 +3,13 @@
 **Every conversation you're in, in one window.**
 <img width="1545" height="912" alt="showcase-screenshot" src="https://github.com/user-attachments/assets/b9dabddb-bb3c-4a71-b872-9ad167ecd400" />
 
-moho is a desktop chat client that speaks IRC, Discord, Matrix, Kick, Sneedchat, Steam and many more protocols at the
+moho is a desktop chat client that speaks IRC, Discord, Matrix, Kick, Twitch, Sneedchat, Steam and many more protocols at the
 same time. Whether the room is a twenty-year-old IRC channel, a Discord server, an encrypted Matrix room, or a
 stream's chat going past at forty lines a minute you're able to be part of the conversation.
 
 ## What it does
 
-- **Many networks, one place.** IRC, Discord, Matrix, Kick, Sneedchat, Steam and many more protocols soon, side by side, with
+- **Many networks, one place.** IRC, Discord, Matrix, Kick, Twitch, Sneedchat, Steam and many more protocols soon, side by side, with
   the same reply, edit, react, search and tag-someone gestures on each — as far as each
   service actually supports them.
 - **Calls.** Voice, camera and screen sharing on Discord and on Matrix, voice rooms and calls on Steam, including the group
@@ -18,7 +18,7 @@ stream's chat going past at forty lines a minute you're able to be part of the c
   the corner or pop out into a window of its own.
 - **Matrix, properly encrypted.** End-to-end encryption with device verification by emoji or
   QR, cross-signing, key backup, and encrypted attachments.
-- **Kick streams in the window.** Watch the stream beside its chat, in the corner or in a
+- **Kick and Twitch streams in the window.** Watch the stream beside its chat, in the corner or in a
   window of its own, polls, predictions and other interactive methods are functional and at your fingertips. 
 - **Yours.** GPL-3.0, no telemetry, no account with us — your history is a SQLite file on
   your own disk.
@@ -31,6 +31,7 @@ stream's chat going past at forty lines a minute you're able to be part of the c
 | **Matrix** | Supported | Rooms, spaces and direct messages, end-to-end encryption with device verification and key backup, Element Call, and signing in by QR code |
 | **Discord** | Supported | Servers, direct messages, forums and threads, voice, video, screen sharing and Go Live with end-to-end encryption, stages and the soundboard |
 | **Kick** | Supported | A streamer's chat beside the stream, with polls, predictions and its events drawn as cards |
+| **Twitch** | Supported | A streamer's chat beside the stream, with emotes (animated, and BetterTTV, FrankerFaceZ and 7TV), badges, cheers, replies and threads, its events drawn as cards, and moderation and whispers for accounts that turn them on |
 | **Sneedchat** | Supported | The forum's chat rooms, over clearnet or Tor |
 | **Steam** | Supported, fully ported | Friends and direct messages, group chats with rooms, roles and invitations, voice rooms and calls, emoticons, stickers, reactions, pictures and files, friend folders, and signing in by password or by QR code |
 

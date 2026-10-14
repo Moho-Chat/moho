@@ -11016,3 +11016,10 @@ html[data-reduce-motion] *::after {
   width: 72px;
   accent-color: var(--primary, currentColor);
 }
+
+/* The number beside a cheermote, in the colour Twitch draws it. */
+.cheer-amount {
+  margin: 0 4px 0 2px;
+  font-weight: var(--weight-bold);
+  color: var(--mention-edge);
+}

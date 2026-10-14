@@ -89,6 +89,11 @@ export interface Account {
    * (their Turbo, their subscriptions). A yes or a no; the session itself never leaves the daemon.
    */
   webSession?: boolean
+  /**
+   * Twitch only: whether this account was signed in with the rights to moderate (remove messages, time
+   * out, ban, change a room's modes) and to whisper. Off unless the person turned it on.
+   */
+  moderation?: boolean
 }
 
 export interface SneedChatRoom {

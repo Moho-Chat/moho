@@ -1296,6 +1296,27 @@ function TwitchSettings(): JSX.Element {
       </SettingsSection>
 
       <SettingsSection
+        title="Badges"
+        description="Twitch's own pictures beside a name: the channel's subscriber badge, moderator, VIP and the rest. With pictures off, the roles that have a short word are shown as that word."
+      >
+        <ToggleSetting
+          settingKey="kick.showBadgePictures"
+          label="Show badge pictures"
+          description="Loaded from Twitch's servers as they are shown. The same switch as Kick's."
+          defaultValue={true}
+        />
+      </SettingsSection>
+
+      <SettingsSection
+        title="Other emote services"
+        description="BetterTTV, FrankerFaceZ and 7TV are not Twitch's: each is another company's server, asked which emotes a channel has whenever you open it (through the account's route), and its pictures are loaded from it. Without them a chat that uses them reads as plain words."
+      >
+        <ToggleSetting settingKey="twitch.emotes.bttv" label="BetterTTV" defaultValue={true} />
+        <ToggleSetting settingKey="twitch.emotes.ffz" label="FrankerFaceZ" defaultValue={true} />
+        <ToggleSetting settingKey="twitch.emotes.seventv" label="7TV" defaultValue={true} />
+      </SettingsSection>
+
+      <SettingsSection
         title="Recent messages"
         description="Twitch keeps no chat history, so a channel you open starts empty and fills as people speak."
       >

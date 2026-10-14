@@ -62,7 +62,7 @@ export interface ServiceIcon {
  * the same menus, as "Whisper".
  */
 export function hasDirectMessages(service: string | undefined): boolean {
-  return service === 'irc' || service === 'discord' || service === 'matrix'
+  return service === 'irc' || service === 'discord' || service === 'matrix' || service === 'twitch'
 }
 
 export function serviceIcon(service: string): ServiceIcon {
@@ -217,6 +217,49 @@ export function nickColor(nick: string): string {
   let hash = 0
   for (let i = 0; i < nick.length; i++) hash = (hash * 31 + nick.charCodeAt(i)) | 0
   return `hsl(${Math.abs(hash) % 360}, 62%, 68%)`
+}
+
+/**
+ * A name's colour as the service sent it, lightened where it would be hard to read on the dark surface.
+ *
+ * Twitch lets everybody choose theirs and offers pure blue, and a name in #0000FF on near-black is a
+ * dark smear; its own chat adjusts such colours and so does this. A colour that reads well is returned
+ * exactly as it was, and one that cannot be read as a colour (a name, a malformed string) is left alone.
+ * "Reads well" is a contrast ratio of 4.5 against the surface, the usual line for text.
+ */
+export function readableColor(color: string, surface = '#0e1014'): string {
+  const rgb = parseHex(color)
+  const bg = parseHex(surface)
+  if (!rgb || !bg) return color
+  const target = 4.5
+  if (contrast(rgb, bg) >= target) return color
+  // Mixed towards white a little at a time, so the hue stays what the person chose as far as it can.
+  for (let i = 1; i <= 20; i++) {
+    const t = i / 20
+    const lighter: [number, number, number] = [rgb[0] + (255 - rgb[0]) * t, rgb[1] + (255 - rgb[1]) * t, rgb[2] + (255 - rgb[2]) * t]
+    if (contrast(lighter, bg) >= target) return `rgb(${lighter.map(Math.round).join(', ')})`
+  }
+  return '#ffffff'
+}
+
+function parseHex(color: string): [number, number, number] | null {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim())
+  if (!m) return null
+  const h = m[1].length === 3 ? m[1].split('').map((c) => c + c).join('') : m[1]
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
+}
+
+function luminance([r, g, b]: [number, number, number]): number {
+  const lin = (c: number): number => {
+    const s = c / 255
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+}
+
+function contrast(a: [number, number, number], b: [number, number, number]): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+  return (hi + 0.05) / (lo + 0.05)
 }
 
 /**

@@ -1586,6 +1586,16 @@ function TwitchAccountTools({ account }: { account: Account }): JSX.Element {
           </button>
         </div>
       )}
+      {account.hasPassword && !refused && (
+        <>
+          <p className="small muted">
+            {account.moderation
+              ? 'Moderation is on: in channels where you are a moderator you can remove messages, time out, ban and change modes, and whispers work.'
+              : 'Moderation and whispers are off. Turning them on asks Twitch for more rights, and nothing is asked until you do.'}
+          </p>
+          {!account.moderation && <TwitchSignIn useTor={account.useTor} onDone={() => undefined} moderation label="Turn on moderation and whispers" />}
+        </>
+      )}
       <p className="small muted">
         {account.webSession
           ? 'Video plays as you: signed in on twitch.tv, so your Turbo or your subscriptions count and their ads are not shown.'
