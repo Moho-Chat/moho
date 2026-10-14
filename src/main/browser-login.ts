@@ -30,7 +30,16 @@ export type Capture =
   /** A request header the page starts sending - Discord's Authorization. */
   | { kind: 'header'; name: string }
   /** A cookie the service sets - the usual shape for forum software. */
-  | { kind: 'cookie'; name: string; url: string }
+  | {
+      kind: 'cookie'
+      name: string
+      url: string
+      /**
+       * Where the same value is to be had if the named cookie is not there: another cookie holding JSON with
+       * the value under a key. Twitch's page-readable `twilight-user` carries the token its `auth-token` cookie does.
+       */
+      fallback?: { name: string; key: string }
+    }
   /** A parameter on a redirect the service lands on - SSO, mostly. */
   | { kind: 'query'; param: string }
   /**
@@ -134,7 +143,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     // The website's own session token, which is what Twitch's player calls accept for playing a stream as the
     // person who signed in - their Turbo, their subscriptions - and which a token from moho's own sign-in
     // (made for chat and the official API) is not. It goes straight to the daemon, for the account named.
-    capture: { kind: 'cookie', name: 'auth-token', url: 'https://www.twitch.tv' },
+    capture: { kind: 'cookie', name: 'auth-token', url: 'https://www.twitch.tv', fallback: { name: 'twilight-user', key: 'authToken' } },
     finish: { method: 'setTwitchWebToken', param: 'token' }
   },
   kick: {
@@ -186,6 +195,8 @@ export async function browserLogin(
      * connection its token.
      */
     hold?: (value: string, win: BrowserWindow) => Promise<void>
+    /** Said at each step, without any credential in it, for the log. */
+    trace?: (message: string) => void
   }
 ): Promise<LoginOutcome> {
   const flow = LOGIN_FLOWS[service]
@@ -241,6 +252,17 @@ export async function browserLogin(
     e.preventDefault()
     retitle()
   })
+  if (options?.trace) {
+    const trace = options.trace
+    win.webContents.on('did-navigate', (_e, url) => {
+      try {
+        const u = new URL(url)
+        trace(`the window is at ${u.host}${u.pathname}`)
+      } catch {
+        /* not a URL */
+      }
+    })
+  }
   win.webContents.on('did-navigate', retitle)
   win.webContents.on('did-navigate-in-page', retitle)
   retitle()
@@ -272,6 +294,7 @@ export async function browserLogin(
         // The credential shows up more than once as cookies change; the flow is told once.
         if (holding) return
         holding = true
+        options.trace?.('signed in on twitch.tv; the session was found')
         void options
           .hold(value, win)
           .then(() => finish({ ok: true, value }))
@@ -353,14 +376,31 @@ function watch(ses: Session, win: BrowserWindow, flow: LoginFlow, found: (value:
   }
 
   if (flow.capture.kind === 'cookie') {
-    const { name, url } = flow.capture
+    const { name, url, fallback } = flow.capture
     const check = (): void => {
-      void ses.cookies.get({ url, name }).then((cookies) => {
-        const value = cookies[0]?.value
+      void ses.cookies.get({ url }).then((cookies) => {
+        let value = cookies.find((c) => c.name === name)?.value
+        if (!value && fallback) {
+          const holder = cookies.find((c) => c.name === fallback.name)?.value
+          if (holder) {
+            try {
+              const parsed = JSON.parse(decodeURIComponent(holder)) as Record<string, unknown>
+              const token = parsed[fallback.key]
+              if (typeof token === 'string') value = token
+            } catch {
+              /* not JSON yet; the next change will be */
+            }
+          }
+        }
         if (value) found(value)
       })
     }
     ses.cookies.on('changed', check)
+    // Also after each page, in case the sign-in ended in a redirect that the cookie jar's own events did not announce.
+    if (!win.isDestroyed()) {
+      win.webContents.on('did-navigate', check)
+      win.webContents.on('did-finish-load', check)
+    }
     check()
     return
   }

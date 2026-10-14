@@ -1,4 +1,5 @@
 import { browserLogin } from './browser-login'
+import { log } from './log'
 
 /**
  * Signing in to Twitch: one action that gives the account both things it needs.
@@ -24,6 +25,8 @@ interface Waiting {
   codePromise: Promise<string>
   result: ((r: { success: boolean; error?: string }) => void) | null
   resultPromise: Promise<{ success: boolean; error?: string }>
+  /** The code was approved or the sign-in is over: the window may go where it likes. */
+  finished: boolean
 }
 
 let active: Waiting | null = null
@@ -55,6 +58,7 @@ export async function twitchSignIn(request: Request, options: { useTor?: boolean
     gotCode: null,
     codePromise: new Promise<string>((r) => (gotCode = r)),
     result: null,
+    finished: false,
     resultPromise: new Promise((r) => (result = r))
   }
   w.gotCode = gotCode
@@ -68,6 +72,7 @@ export async function twitchSignIn(request: Request, options: { useTor?: boolean
     w.loginId = started.loginId
 
     const outcome = await browserLogin('twitch', {
+      trace: (m) => log.info(`twitch sign-in: ${m}`),
       hold: async (token, win) => {
         // To the daemon, for the account the code is about to become. Never anywhere else.
         await request('setTwitchLoginWebToken', { loginId: w.loginId, token })
@@ -76,9 +81,33 @@ export async function twitchSignIn(request: Request, options: { useTor?: boolean
           w.codePromise,
           new Promise<string>((_, no) => (giveUp = setTimeout(() => no(new Error('Twitch sent no code')), 30_000)))
         ]).finally(() => clearTimeout(giveUp))
-        // Signed in: the same window goes to the page that approves the code, with the code already in it.
-        await win.loadURL(uri)
+        // Signed in. The page is still on its way somewhere (twitch.tv sends a new login to its front page), so
+        // that is let finish before the same window is taken to the page that approves the code - and brought
+        // back to it if the site's own redirect lands after, which would leave the person on the front page.
+        await settled(win)
+        const go = (): void => {
+          log.info('twitch sign-in: taking the window to the approval page')
+          win.loadURL(uri).catch(() => undefined)
+        }
+        go()
+        let tries = 0
+        const wander = (_e: unknown, url: string): void => {
+          let here = ''
+          try {
+            here = new URL(url).pathname
+          } catch {
+            return
+          }
+          if (!here.startsWith('/activate') && !w.finished && tries < 4) {
+            tries++
+            log.info(`twitch sign-in: the window went to ${here}; back to the approval page (${tries})`)
+            setTimeout(go, 600)
+          }
+        }
+        win.webContents.on('did-navigate', wander)
+        win.webContents.on('did-navigate-in-page', wander)
         const done = await w.resultPromise
+        w.finished = true
         if (!done.success) throw new Error(done.error || 'Twitch sign-in failed')
       }
     })
@@ -93,5 +122,15 @@ export async function twitchSignIn(request: Request, options: { useTor?: boolean
     return { ok: false, error: (e as Error).message }
   } finally {
     active = null
+  }
+}
+
+/** Waits for the window's page to finish loading and stay quiet for a moment. */
+async function settled(win: { webContents: { isLoading(): boolean } }): Promise<void> {
+  const quiet = 1500
+  let quietFor = 0
+  for (let waited = 0; waited < 15_000 && quietFor < quiet; waited += 250) {
+    await new Promise((r) => setTimeout(r, 250))
+    quietFor = win.webContents.isLoading() ? 0 : quietFor + 250
   }
 }

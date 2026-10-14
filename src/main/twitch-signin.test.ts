@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // The window itself is Electron's; what is under test is the order of things around it.
 const login = vi.hoisted(() => ({ browserLogin: vi.fn() }))
 vi.mock('./browser-login', () => login)
+vi.mock('./log', () => ({ log: { info: () => undefined } }))
 
 import { feedTwitchSignIn, twitchSignIn } from './twitch-signin'
 
@@ -25,7 +26,7 @@ describe('Twitch sign-in as one action', () => {
     })
     const loaded: string[] = []
     login.browserLogin.mockImplementation(async (_service: string, options: { hold: (v: string, w: unknown) => Promise<void> }) => {
-      const win = { loadURL: async (u: string) => void loaded.push(u) }
+      const win = { loadURL: async (u: string) => void loaded.push(u), webContents: { isLoading: () => false, on: () => undefined } }
       const held = options.hold('web-session', win)
       // Approving it on the page.
       setTimeout(() => feedTwitchSignIn({ event: 'twitchLoginResult', data: { loginId: 'L1', success: true } }), 20)
