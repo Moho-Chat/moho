@@ -50,7 +50,7 @@ export interface SignInOutcome {
   error?: string
 }
 
-export async function twitchSignIn(request: Request, options: { useTor?: boolean; moderation?: boolean }): Promise<SignInOutcome> {
+export async function twitchSignIn(request: Request, options: { useTor?: boolean }): Promise<SignInOutcome> {
   if (active) return { ok: false, error: 'A Twitch sign-in is already under way' }
   let gotCode: (uri: string) => void = () => {}
   let result: (r: { success: boolean; error?: string }) => void = () => {}
@@ -68,8 +68,7 @@ export async function twitchSignIn(request: Request, options: { useTor?: boolean
   active = w
   try {
     const started = (await request('startTwitchLogin', {
-      ...(typeof options.useTor === 'boolean' ? { useTor: options.useTor } : {}),
-      moderation: options.moderation === true
+      ...(typeof options.useTor === 'boolean' ? { useTor: options.useTor } : {})
     })) as { loginId: string }
     w.loginId = started.loginId
 

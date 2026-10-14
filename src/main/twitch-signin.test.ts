@@ -33,11 +33,11 @@ describe('Twitch sign-in as one action', () => {
       await held
       return { ok: true }
     })
-    const outcome = await twitchSignIn(request, { moderation: true })
+    const outcome = await twitchSignIn(request, {})
     expect(outcome).toEqual({ ok: true })
     expect(calls).toEqual(['startTwitchLogin', 'setTwitchLoginWebToken'])
     expect(loaded).toEqual(['https://www.twitch.tv/activate?device-code=ABCD'])
-    expect(request).toHaveBeenCalledWith('startTwitchLogin', { moderation: true })
+    expect(request).toHaveBeenCalledWith('startTwitchLogin', {})
   })
 
   it('ends the daemon\'s wait when the window is closed before the code was approved', async () => {

@@ -26,7 +26,7 @@ const ASKS: Scope[] = [
   { scope: 'user:read:emotes', why: 'show the emotes you can use' }
 ]
 
-/** What turning moderation on adds, said before it is asked for. */
+/** What moderation, whispers and the rest ask for, said before it is asked. */
 const MODERATION_ASKS: Scope[] = [
   { scope: 'moderator:manage:banned_users', why: 'time out, ban and unban where you moderate' },
   { scope: 'moderator:manage:chat_messages', why: 'remove messages where you moderate' },
@@ -43,14 +43,11 @@ export function TwitchSignIn({
   useTor,
   onDone,
   label = 'Sign in with Twitch',
-  moderation = false,
   children
 }: {
   useTor: boolean
   onDone: () => void
   label?: string
-  /** Also ask for the rights to moderate and whisper. Only ever on because the person turned it on. */
-  moderation?: boolean
   /** Other things to offer beside the sign-in button, while nothing is waiting. */
   children?: React.ReactNode
 }): JSX.Element {
@@ -58,7 +55,7 @@ export function TwitchSignIn({
   const [busy, setBusy] = useState(false)
   const [detail, setDetail] = useState('')
   const [userCode, setUserCode] = useState('')
-  const [scopes, setScopes] = useState<Scope[]>(moderation ? [...ASKS, ...MODERATION_ASKS] : ASKS)
+  const [scopes, setScopes] = useState<Scope[]>([...ASKS, ...MODERATION_ASKS])
 
   useEffect(() => {
     const off = window.moho.onEvent((e) => {
@@ -77,7 +74,7 @@ export function TwitchSignIn({
     setBusy(true)
     setDetail('')
     void window.moho
-      .twitchSignIn({ useTor, moderation })
+      .twitchSignIn({ useTor })
       .then((r) => {
         if (r.ok) {
           store.toast('info', 'Signed in to Twitch for chat and video')

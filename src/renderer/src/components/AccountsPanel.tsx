@@ -1576,24 +1576,21 @@ function TwitchAccountTools({ account }: { account: Account }): JSX.Element {
           </button>
         </div>
       )}
-      {account.hasPassword && !refused && (
+      {account.hasPassword && !refused && (!account.moderation || !account.webSession) && (
         <>
           <p className="small muted">
-            {account.moderation
-              ? 'Moderation is on: in channels where you are a moderator you can remove messages, time out, ban and change modes, and whispers work.'
-              : 'Moderation and whispers are off. Turning them on asks Twitch for more rights, and nothing is asked until you do.'}
+            This sign-in was made before {account.moderation ? 'video' : account.webSession ? 'moderation, whispers, shoutouts and blocking' : 'video, moderation, whispers, shoutouts and blocking'}{' '}
+            {account.moderation || account.webSession ? 'was' : 'were'} part of signing in. Signing in again adds {account.moderation || account.webSession ? 'it' : 'them'}, in the same one
+            window; nothing else changes.
           </p>
-          {!account.moderation && <TwitchSignIn useTor={account.useTor} onDone={() => undefined} moderation label="Turn on moderation and whispers" />}
+          <TwitchSignIn useTor={account.useTor} onDone={() => undefined} label="Sign in again" />
         </>
       )}
       <p className="small muted">
         {account.webSession
           ? 'Video plays as you: signed in on twitch.tv, so your Turbo or your subscriptions count and their ads are not shown.'
-          : 'Video plays without a twitch.tv sign-in, so Twitch puts ads in streams. Signing in again also signs in on twitch.tv, which lets your Turbo or your subscriptions count.'}
+          : 'Video plays without a twitch.tv sign-in, so Twitch puts ads in streams. Signing in again signs in on twitch.tv too, which lets your Turbo or your subscriptions count.'}
       </p>
-      {account.hasPassword && !refused && !account.webSession && (
-        <TwitchSignIn useTor={account.useTor} onDone={() => undefined} label="Sign in again, with video" />
-      )}
       {account.webSession && (
         <div className="field-row">
           <button type="button" className="button subtle" disabled={busy !== ''} onClick={forget}>

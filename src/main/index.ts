@@ -1113,10 +1113,9 @@ function wireIpc(): void {
   })
 
   // Twitch's sign-in, both halves in one window (see twitch-signin.ts). Only whether it worked comes back.
-  ipcMain.handle(IPC.twitchSignIn, (_e, options?: { useTor?: boolean; moderation?: boolean }) =>
+  ipcMain.handle(IPC.twitchSignIn, (_e, options?: { useTor?: boolean }) =>
     twitchSignIn((method, params) => client.request(method, params), {
-      useTor: typeof options?.useTor === 'boolean' ? options.useTor : undefined,
-      moderation: options?.moderation === true
+      useTor: typeof options?.useTor === 'boolean' ? options.useTor : undefined
     })
   )
 
