@@ -10981,3 +10981,17 @@ html[data-reduce-motion] *::after {
   object-fit: contain;
   vertical-align: middle;
 }
+
+/* The code Twitch gives to be approved on twitch.tv: read off one screen and
+   typed on another, so it is large and spaced. */
+.twitch-code {
+  align-self: flex-start;
+  padding: 10px 18px;
+  border: 1px solid var(--surface-variant-text);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.28em;
+  user-select: all;
+}

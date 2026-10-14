@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton, ServiceMark } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
 import { SteamAccountTools } from './SteamAccountTools'
+import { TwitchSignIn } from './TwitchSignIn'
 import { IgnoreList } from './IgnoreList'
 import { TunnelAllSwitch } from './settings/Tunnel'
 import { useChat, useConnectionDetail, useMapPref, usePref, useStore } from '../state/hooks'
@@ -24,7 +25,7 @@ import type { Account } from '../../../shared/wire'
  * that gains a backend appears here as soon as it gains a form, and one the
  * daemon stops offering disappears without this file being touched.
  */
-const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam'] as const
+const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch'] as const
 type AddableService = (typeof FORMS)[number]
 
 /** What `listProtocols` answers with. */
@@ -136,6 +137,7 @@ export function AccountsPanel(): JSX.Element {
         {adding === 'matrix' && <MatrixForm />}
         {adding === 'kick' && <KickForm onDone={() => setAdding(null)} />}
         {adding === 'steam' && <SteamForm onDone={() => setAdding(null)} />}
+        {adding === 'twitch' && <TwitchForm onDone={() => setAdding(null)} />}
         {adding && (
           <button type="button" className="button subtle small" onClick={() => setAdding(null)}>
             Cancel
@@ -459,6 +461,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
           {account.service === 'matrix' && <MatrixAccountTools account={account} />}
 
           {account.service === 'steam' && <SteamAccountTools account={account} />}
+          {account.service === 'twitch' && <TwitchAccountTools account={account} />}
 
           {account.service === 'sneedchat' && (
             <>
@@ -1468,6 +1471,69 @@ function SteamForm({ onDone }: { onDone: () => void }): JSX.Element {
         )}
       </div>
       {busy && detail && <p className="small muted">{detail}…</p>}
+    </div>
+  )
+}
+
+/**
+ * Adding a Twitch account: sign in, or only read.
+ *
+ * Twitch's chat is public, so an account that never signs in still reads every
+ * channel it is pointed at - the same choice Kick's form offers. Signing in is
+ * what buys sending, the channels you follow and the emotes you can use.
+ */
+function TwitchForm({ onDone }: { onDone: () => void }): JSX.Element {
+  const store = useStore()
+  const [useTor, setUseTor] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const readOnly = (): void => {
+    setBusy(true)
+    void window.moho
+      .rpc('addTwitchAccount', { useTor })
+      .then(() => {
+        void store.refreshAccounts()
+        onDone()
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <div className="add-form">
+      <TorSwitch service="twitch" on={useTor} onChange={setUseTor} />
+      <TwitchSignIn useTor={useTor} onDone={onDone}>
+        <button
+          type="button"
+          className="button subtle"
+          disabled={busy}
+          title="Read channels without an account. Twitch's chat is public; sending needs a sign-in."
+          onClick={readOnly}
+        >
+          Read without signing in
+        </button>
+      </TwitchSignIn>
+    </div>
+  )
+}
+
+/**
+ * What a Twitch account can be asked to do from its own card: an account that
+ * only reads can sign in, and one whose sign-in Twitch has stopped accepting
+ * can sign in again. The new sign-in is a Twitch account of its own, under the
+ * login that approved it, so an anonymous reader is left where it was.
+ */
+function TwitchAccountTools({ account }: { account: Account }): JSX.Element | null {
+  const refused = account.state === 'auth_failed'
+  if (account.hasPassword && !refused) return null
+  return (
+    <div className="account-tools">
+      <p className="small muted">
+        {refused
+          ? 'Twitch no longer accepts this sign-in. Signing in again keeps its channels and settings.'
+          : 'This account only reads. Sign in to send messages and to see the channels you follow.'}
+      </p>
+      <TwitchSignIn useTor={account.useTor} onDone={() => undefined} label={refused ? 'Sign in again' : 'Sign in'} />
     </div>
   )
 }

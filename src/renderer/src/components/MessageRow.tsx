@@ -85,7 +85,11 @@ function badgeLabel(badge: MessageBadge): string {
     // Not a title like the rest of these - a warning that whoever sent this
     // was using a device nobody has vouched for. Without its own short form
     // the fallback below would abbreviate the explanation into "SEN".
-    unverified: '⚠'
+    unverified: '⚠',
+    // Twitch's: somebody's first message in a channel, and a message mirrored
+    // from another channel of a shared chat.
+    'first-message': 'NEW',
+    'shared-chat': 'SHARED'
   }
   return short[badge.type] ?? badge.text.slice(0, 3).toUpperCase()
 }

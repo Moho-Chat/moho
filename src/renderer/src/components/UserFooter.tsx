@@ -58,7 +58,7 @@ export function UserFooter({ account }: { account?: Account }): JSX.Element {
   const detail = details[account.id]
   // A signed-out Kick account is a reader: it has no presence to show, and
   // "Online" claimed one.
-  const watching = account.service === 'kick' && !account.hasPassword && status !== 'connecting' && status !== 'offline'
+  const watching = (account.service === 'kick' || account.service === 'twitch') && !account.hasPassword && status !== 'connecting' && status !== 'offline'
   // Mute and deafen are the whole client's, for whatever call is up - so
   // shown on a service that has calls, or anywhere while one is running,
   // and not beside an IRC or Kick account with nothing to apply them to.

@@ -83,6 +83,18 @@ export function kickEmoteUrl(id: string): string {
 }
 
 /**
+ * The picture for one of Twitch's own emotes, by id.
+ *
+ * Public and built from the id, like Discord's and Kick's, so it draws for an
+ * emote this account cannot use, which is the point of one somebody else sent.
+ * The dark-background version, at twice the size: chat is drawn on a dark
+ * surface and an emote is a row's height at most.
+ */
+export function twitchEmoteUrl(id: string): string {
+  return resolveMediaUrl(`https://static-cdn.jtvnw.net/emoticons/v2/${encodeURIComponent(id)}/default/dark/2.0`)
+}
+
+/**
  * The picture for one of Steam's emoticons or stickers, by name.
  *
  * A name is all a message carries - `[steam:emote:steamhappy]` - and the
@@ -135,6 +147,8 @@ export function emojiPreview(text: string, smilies: SmilieEntry[] = []): EmojiPr
   if (custom) return { src: discordEmojiUrl(custom[2]), label: `:${custom[1]}:` }
   const kick = text.match(/^\[emote:(\d+):([^\]]{0,64})\]$/)
   if (kick) return { src: kickEmoteUrl(kick[1]), label: `:${kick[2]}:` }
+  const twitch = text.match(/^\[twitch:emote:([A-Za-z0-9_]+):([^\]]{0,64})\]$/)
+  if (twitch) return { src: twitchEmoteUrl(twitch[1]), label: twitch[2] }
   const steam = steamTokenOf(text)
   if (steam) return { src: steamPictureUrl(steam.kind, steam.name), label: `:${steam.name}:` }
   const smilie = smilies.find((s) => s.aliases?.includes(text))
@@ -554,6 +568,13 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   // half raw tokens, and the tier gates sending, not looking.
   out = out.replace(/\[emote:(\d+):([^\]]{0,64})\]/g, (_m, id: string, name: string) =>
     stow(`<img src="${kickEmoteUrl(id)}" class="custom-emoji" alt=":${name}:">`)
+  )
+
+  // Twitch's own emotes, which arrive as `[twitch:emote:25:Kappa]`: the id for
+  // the picture and the name for the words, so a screen reader and a copied
+  // line both read "Kappa". Public and named by the token, like the others.
+  out = out.replace(/\[twitch:emote:([A-Za-z0-9_]+):([^\]]{0,64})\]/g, (_m, id: string, name: string) =>
+    stow(`<img src="${twitchEmoteUrl(id)}" class="custom-emoji" alt="${name}" title="${name}">`)
   )
 
   // Steam's emoticons and stickers, which arrive as `[steam:emote:name]`. Like
