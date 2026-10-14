@@ -168,12 +168,15 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
             url={buffer.avatarUrl}
             size={24}
             status={dmStatus(buffer, presence, buffers)}
+            badge={buffer.kind === 'dm' ? 'mail' : undefined}
           />
         ) : null}
         <span className="main-header-title ellipsis">{name}</span>
         {/* What they are doing, beside the name: the game, or a state the dot's
             colour does not tell apart. */}
         {statusText && <span className="header-status small muted ellipsis">{statusText}</span>}
+        {/* A whisper on Twitch is headed like a channel is - a picture and a name - so it says what it is. */}
+        {buffer.kind === 'dm' && buffer.accountId.startsWith('twitch:') && <span className="header-status small muted">Whisper</span>}
       </button>
 
       {buffer.topic && <HeaderTopic topic={buffer.topic} />}

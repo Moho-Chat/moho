@@ -164,7 +164,7 @@ export function KickEventCard({ embed, bufferId }: { embed: Embed; bufferId?: st
     return (
       <div className="kick-event moderation selectable">
         <span className="kick-event-badge lead">
-          <Icon name="gavel" size={20} />
+          <Icon name={embed.icon || 'gavel'} size={20} />
         </span>
         <div className="kick-event-line">
           <strong className="kick-event-name">{who}</strong>

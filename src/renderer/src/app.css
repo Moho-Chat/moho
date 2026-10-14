@@ -11020,3 +11020,26 @@ html[data-reduce-motion] *::after {
   letter-spacing: 0.24em;
   user-select: all;
 }
+
+/* The corner mark on a conversation with a person where the service's channels have pictures too (Twitch's
+   whispers): it says "direct message" where there is no presence dot to say it. */
+.avatar-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--on-primary, #fff);
+  border: 2px solid var(--ring, var(--surface-container));
+  box-sizing: content-box;
+}
+
+.header-face .avatar-badge,
+.header-nameplate .avatar-badge {
+  border-color: var(--surface);
+}
