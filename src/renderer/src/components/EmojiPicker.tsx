@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useMediaUrl } from '../lib/route'
-import { Icon } from './Icon'
+import { Icon, ServiceMark } from './Icon'
+import { serviceIcon } from '../lib/util'
 import { discordEmojiUrl, emojiPreview, sourcePick, type SmilieEntry } from '../lib/format'
 import { recentsHere } from '../lib/recents'
 import { drawableEmoteUrl, onLocalEmotes } from '../lib/emotecache'
@@ -560,7 +561,9 @@ export function EmojiPicker({
           id: src.id,
           name: src.name,
           icon: src.iconUrl ? (
-            <img src={media(src.iconUrl)} alt="" />
+            <img src={media(src.iconUrl)} alt="" className="emoji-rail-avatar" />
+          ) : src.service === 'twitch' && src.name === 'Twitch' ? (
+            <ServiceMark icon={serviceIcon('twitch')} size={20} />
           ) : (
             <span className="emoji-jump-initial">{src.name.slice(0, 1).toUpperCase()}</span>
           )

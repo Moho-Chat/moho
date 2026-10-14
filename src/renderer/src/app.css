@@ -8775,6 +8775,12 @@ video.lightbox-media {
   object-fit: contain;
 }
 
+/* A channel's own picture, as the server rail draws one. */
+.emoji-rail-item img.emoji-rail-avatar {
+  border-radius: 50%;
+  object-fit: cover;
+}
+
 .emoji-footer {
   display: flex;
   align-items: center;
