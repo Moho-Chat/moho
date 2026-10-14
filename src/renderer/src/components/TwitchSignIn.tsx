@@ -57,13 +57,17 @@ export function TwitchSignIn({
   const store = useStore()
   const [busy, setBusy] = useState(false)
   const [detail, setDetail] = useState('')
+  const [userCode, setUserCode] = useState('')
   const [scopes, setScopes] = useState<Scope[]>(moderation ? [...ASKS, ...MODERATION_ASKS] : ASKS)
 
   useEffect(() => {
     const off = window.moho.onEvent((e) => {
       if (!busy || !e.event.startsWith('twitchLogin')) return
-      const d = e.data as { detail?: string; scopes?: Scope[] }
-      if (e.event === 'twitchLoginCode' && d.scopes) setScopes(d.scopes)
+      const d = e.data as { detail?: string; scopes?: Scope[]; userCode?: string }
+      if (e.event === 'twitchLoginCode') {
+        if (d.scopes) setScopes(d.scopes)
+        if (d.userCode) setUserCode(d.userCode)
+      }
       else if (e.event === 'twitchLoginStatus') setDetail(d.detail || '')
     })
     return off
@@ -87,6 +91,7 @@ export function TwitchSignIn({
       .finally(() => {
         setBusy(false)
         setDetail('')
+        setUserCode('')
         void store.refreshAccounts()
       })
   }
@@ -94,7 +99,17 @@ export function TwitchSignIn({
   if (busy) {
     return (
       <div className="add-form">
-        <p>Sign in on twitch.tv in the window that opened, then press Authorize on the page that follows it.</p>
+        <p>Sign in on twitch.tv in the window that opened. It then goes to Twitch's "Activate your device" page, where moho types this code in for you; then press Authorize.</p>
+        {userCode && (
+          <div className="field-row">
+            <strong className="twitch-code" aria-label="Your sign-in code">
+              {userCode}
+            </strong>
+            <button type="button" className="button subtle" onClick={() => void window.moho.copyText(userCode)}>
+              Copy code
+            </button>
+          </div>
+        )}
         <p className="small muted">
           moho will be allowed to: {scopes.map((s) => s.why).join(', ')}. Twitch lists the same on its own page. You can end it any time at
           twitch.tv/settings/connections, and removing the account here ends it too. Closing the window cancels the sign-in.

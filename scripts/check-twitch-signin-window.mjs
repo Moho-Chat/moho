@@ -48,6 +48,9 @@ try {
     if (seen[seen.length - 1] !== where) seen.push(where)
   }
   say('the window went', seen.join(' -> '))
+  await sleep(6000)
+  say('page text', JSON.stringify(await win.evaluate(`document.body.innerText.slice(0, 300)`)))
+  say('inputs', JSON.stringify(await win.evaluate(`[...document.querySelectorAll('input')].map((i) => ({ type: i.type, name: i.name, id: i.id, ph: i.placeholder, max: i.maxLength, value: i.value, shown: i.getClientRects().length > 0 }))`)))
   win.close()
 } finally {
   await stop()

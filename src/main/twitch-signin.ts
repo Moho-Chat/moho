@@ -20,7 +20,7 @@ type Request = (method: string, params: Record<string, unknown>) => Promise<unkn
 
 interface Waiting {
   loginId: string
-  code?: { verificationUri: string }
+  userCode: string
   gotCode: ((uri: string) => void) | null
   codePromise: Promise<string>
   result: ((r: { success: boolean; error?: string }) => void) | null
@@ -38,6 +38,7 @@ export function feedTwitchSignIn(frame: { event: string; data?: Record<string, u
   // The first events can be heard before the daemon's answer naming the sign-in; nothing else is signing in.
   if (active.loginId && d.loginId !== active.loginId) return
   if (frame.event === 'twitchLoginCode' && typeof d.verificationUri === 'string') {
+    if (typeof d.userCode === 'string') active.userCode = d.userCode
     active.gotCode?.(d.verificationUri)
   } else if (frame.event === 'twitchLoginResult') {
     active.result?.({ success: d.success === true, error: typeof d.error === 'string' ? d.error : undefined })
@@ -55,6 +56,7 @@ export async function twitchSignIn(request: Request, options: { useTor?: boolean
   let result: (r: { success: boolean; error?: string }) => void = () => {}
   const w: Waiting = {
     loginId: '',
+    userCode: '',
     gotCode: null,
     codePromise: new Promise<string>((r) => (gotCode = r)),
     result: null,
@@ -104,6 +106,16 @@ export async function twitchSignIn(request: Request, options: { useTor?: boolean
             setTimeout(go, 600)
           }
         }
+        // Twitch's page does not take the code from the address, so it is typed into the page's field for the
+        // person, and nothing more: pressing Activate and then Authorize on Twitch's own screens is theirs.
+        const filled = (): void => {
+          if (w.finished || !w.userCode || !win.webContents.getURL().includes('/activate')) return
+          void win.webContents
+            .executeJavaScript(fillCode(w.userCode), true)
+            .then((how: unknown) => log.info(`twitch sign-in: the code field: ${String(how)}`))
+            .catch(() => undefined)
+        }
+        win.webContents.on('did-finish-load', filled)
         win.webContents.on('did-navigate', wander)
         win.webContents.on('did-navigate-in-page', wander)
         const done = await w.resultPromise
@@ -133,4 +145,46 @@ async function settled(win: { webContents: { isLoading(): boolean } }): Promise<
     await new Promise((r) => setTimeout(r, 250))
     quietFor = win.webContents.isLoading() ? 0 : quietFor + 250
   }
+}
+
+/**
+ * A script that finds the code field on Twitch's "Activate your device" page and types the code in, the way a
+ * person would (so the page's own scripts see it). Waits for the page, which draws it after it loads; says what it
+ * found. It presses the page's Activate button, which only submits the code, and nothing after it.
+ */
+export function fillCode(code: string): string {
+  return `(async (code) => {
+    const type = (el, v) => {
+      const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set
+      el.focus()
+      set.call(el, v)
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+      el.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+    const shown = (el) => el.getClientRects().length > 0 && !el.disabled && !el.readOnly
+    const deadline = Date.now() + 20000
+    while (Date.now() < deadline) {
+      const inputs = [...document.querySelectorAll('input')].filter((i) => ['text', 'tel', 'search', ''].includes(i.type) && shown(i))
+      const boxes = inputs.filter((i) => i.maxLength === 1)
+      if (boxes.length >= code.length) {
+        code.split('').forEach((c, i) => type(boxes[i], c))
+        return 'filled ' + code.length + ' boxes'
+      }
+      const named = inputs.find((i) => /code/i.test([i.name, i.id, i.placeholder, i.getAttribute('aria-label')].join(' ')))
+      const field = named || (inputs.length === 1 ? inputs[0] : null)
+      if (field) {
+        if (field.value !== code) type(field, code)
+        // Submitting the code is the page's own "Activate" button; approving what moho may do, next, is not.
+        const go = field.form && [...field.form.querySelectorAll('button, input[type=submit]')].find((b) => /^activate$/i.test((b.innerText || b.value || '').trim()))
+        if (go && !window.__mohoSubmitted) {
+          window.__mohoSubmitted = true
+          go.click()
+          return 'filled one field and pressed Activate'
+        }
+        return 'filled one field'
+      }
+      await new Promise((r) => setTimeout(r, 400))
+    }
+    return 'no code field found'
+  })(${JSON.stringify(code)})`
 }

@@ -11009,3 +11009,14 @@ html[data-reduce-motion] *::after {
   font-weight: var(--weight-bold);
   color: var(--mention-edge);
 }
+
+/* The code Twitch's "Activate your device" page asks for, shown in case the page's field has to be filled by hand. */
+.twitch-code {
+  padding: 6px 14px;
+  border: 1px solid var(--surface-variant-text);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 22px;
+  letter-spacing: 0.24em;
+  user-select: all;
+}
