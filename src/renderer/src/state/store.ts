@@ -262,8 +262,10 @@ export interface LiveCard {
   total?: number | null
   /** What this account stands to get back, where the service says. */
   yourReturn?: number | null
-  /** Shown here but answered on the service's own site: no vote, bet or end buttons. Twitch's. */
+  /** Shown here but not answerable from it: no vote or bet buttons. Twitch's, for an account with no twitch.tv session. */
   readOnly?: boolean
+  /** The service gives no way to end it from a viewer's card (Twitch's polls). */
+  noEnd?: boolean
   /** "open", "locked", "resolved" - whatever the service calls it. */
   state?: string | null
   /**
@@ -550,6 +552,8 @@ export interface ChatState {
   presenceByBuffer: Record<string, Member[]>
   /** Points the signed-in account has in each Kick channel, as Kick last pushed them. */
   kickPointsByBuffer: Record<string, number>
+  /** A Twitch channel's points as this account last heard: the balance, and the bonus waiting if there is one. */
+  twitchPoints: Record<string, { points: number | null; claimId?: string | null; name?: string | null }>
   /** How many people a roster stands for, where the service says it is more than it lists (Kick). */
   presenceTotalByBuffer: Record<string, number>
   /** Buffers whose initial backlog fetch has completed. */
@@ -807,6 +811,7 @@ const INITIAL: ChatState = {
   presenceByBuffer: {},
   presenceTotalByBuffer: {},
   kickPointsByBuffer: {},
+  twitchPoints: {},
   loadedBuffers: {},
   loadingMore: {},
   loadingNewer: {},
@@ -3980,6 +3985,10 @@ export class ChatStore {
         this.set({ livePolls: polls })
         break
       }
+
+      case 'twitchPoints':
+        this.set({ twitchPoints: { ...this.state.twitchPoints, [data.bufferId]: { points: data.points ?? null, claimId: data.claimId ?? null, name: data.name ?? null } } })
+        break
 
       case 'twitchRights':
         this.set({ twitchRights: { ...this.state.twitchRights, [data.bufferId]: !!data.moderator } })

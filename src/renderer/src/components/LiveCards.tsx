@@ -149,7 +149,7 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
           {/* Ending it is the streamer's own gesture, and the service refuses
               it for anybody else - so it is offered and allowed to fail there
               rather than guessed at from a role this client may not know. */}
-          {!reviewing && !isPrediction && open && !card.readOnly && (
+          {!reviewing && !isPrediction && open && !card.readOnly && !card.noEnd && (
             <IconButton name="delete" size={16} title="End this poll" onClick={() => store.endPoll(card.bufferId, card.id)} />
           )}
           <IconButton

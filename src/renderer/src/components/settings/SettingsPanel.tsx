@@ -1318,7 +1318,7 @@ function TwitchSettings(): JSX.Element {
 
       <SettingsSection
         title="Polls, predictions and raids"
-        description="Shown as they happen, for every channel you have open, from the same live service twitch.tv's own pages use, which needs no account. They can be watched here but not answered: voting, betting and claiming channel points are done on twitch.tv."
+        description="Shown as they happen, for every channel you have open, from the same live service twitch.tv's own pages use, which needs no account. You can vote, bet channel points and claim the bonus from here, as your twitch.tv session; each only when you press its button, and nothing is sent to earn points faster."
       />
 
       <SettingsSection

@@ -6,6 +6,7 @@ import { Icon, IconButton } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { useActiveBuffer, useChat, useComfy, useIdSetPref, useStore } from '../state/hooks'
 import { classes, hasDirectMessages, nickColor } from '../lib/util'
+import { TwitchPoints } from './TwitchPoints'
 import { KickPoints } from './KickPoints'
 import { ReasonPrompt } from './ReasonPrompt'
 import type { Member } from '../../../shared/wire'
@@ -478,6 +479,10 @@ export function NickList(): JSX.Element {
           there is no such thing in a whisper. */}
       {account?.service === 'kick' && buffer?.kind === 'channel' && buffer && (
         <KickPoints bufferId={buffer.id} />
+      )}
+      {/* Twitch's, for an account that has the twitch.tv session that can see them. */}
+      {account?.service === 'twitch' && account.webSession && buffer?.kind === 'channel' && buffer && (
+        <TwitchPoints bufferId={buffer.id} />
       )}
     </div>
   )
