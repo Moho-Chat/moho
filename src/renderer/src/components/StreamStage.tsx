@@ -106,6 +106,11 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
    *  one arrives. */
   const latest = useRef('')
   const [room, setRoom] = useState({ width: 640, height: 260 })
+  // How tall the picture is above the conversation, as it was left by dragging its bottom edge; none is the default
+  // (nearly half the window, to a limit). Followed while dragging and remembered when it is let go.
+  const [savedHeight, setSavedHeight] = usePref<number | null>('ui.streamHeight', null)
+  const [liveHeight, setLiveHeight] = useState<number | null | undefined>(undefined)
+  const inlineHeight = liveHeight === undefined ? savedHeight : liveHeight
   // Remembered between channels and between sessions: turning it down for one
   // stream and being deafened by the next is how a player loses a person.
   const [muted, setMuted] = usePref<boolean>('stream.muted', false)
@@ -156,7 +161,7 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
               ? // The corner: as tall as its width makes the picture, so
                 // resizing the panel resizes the picture.
                 (el.clientWidth * 9) / 16
-              : Math.min(view.innerHeight * 0.45, 460)
+              : (inlineHeight ?? Math.min(view.innerHeight * 0.45, 460))
       })
     measure()
     const observer = new ResizeObserver(measure)
@@ -166,7 +171,7 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
       observer.disconnect()
       view.removeEventListener('resize', measure)
     }
-  }, [mode, minimized, watching])
+  }, [mode, minimized, watching, inlineHeight])
 
   // The player itself, torn down and rebuilt only when the picture changes - not when the viewer count ticks over,
   // and not when the address is renewed, which it is every few minutes.
@@ -376,6 +381,11 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
       endIcon="stop_circle"
       onPopOut={mode === 'window' ? undefined : () => store.setStreamPoppedOut(true)}
       onBringBack={() => store.setStreamPoppedOut(false)}
+      height={Math.round(room.height)}
+      onHeight={(h, commit) => {
+        setLiveHeight(commit ? undefined : h)
+        if (commit) setSavedHeight(h)
+      }}
       controls={
         <>
           <IconButton

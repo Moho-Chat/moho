@@ -12,6 +12,7 @@ import { trayCount } from './lib/traycount'
 import { Composer } from './components/Composer'
 import { MembershipGate } from './components/MembershipGate'
 import { NickList } from './components/NickList'
+import { ColumnResizer, useColumnWidth } from './components/ColumnResizer'
 import { ThreadPanel } from './components/ThreadPanel'
 import { InvitePanel } from './components/InvitePanel'
 import { SteamFriendDialogs } from './components/SteamFriendDialogs'
@@ -85,6 +86,9 @@ export default function App(): JSX.Element {
   const [zoom] = usePref<number>('appearance.zoom', 1)
   const [density] = usePref<string>('appearance.density', 'cozy')
   const [reduceMotion] = usePref<boolean>('appearance.reduceMotion', false)
+  // The two side columns, as they were last dragged.
+  const [sidebarWidth, setSidebarWidth] = useColumnWidth('ui.sidebarWidth', 220)
+  const [nicklistWidth, setNicklistWidth] = useColumnWidth('ui.nicklistWidth', 180)
   const [hourFormat] = usePref<string>('display.hourFormat', '24')
   setHourFormat(hourFormat)
   useEffect(() => window.moho.setZoom(zoom), [zoom])
@@ -196,7 +200,7 @@ export default function App(): JSX.Element {
             : ''
 
   return (
-    <div className="app">
+    <div className="app" style={{ '--sidebar-width': `${sidebarWidth}px`, '--nicklist-width': `${nicklistWidth}px` } as React.CSSProperties}>
       <TitleBar />
 
       <div className="app-body">
@@ -210,7 +214,7 @@ export default function App(): JSX.Element {
             <div className="sidebar">
               <BufferList />
             </div>
-            <div className="divider-v" />
+            <ColumnResizer width={sidebarWidth} onWidth={setSidebarWidth} min={160} max={520} grows="right" label="Channel list width" />
           </>
         )}
 
@@ -308,7 +312,7 @@ export default function App(): JSX.Element {
 
         {!openThread && showNickList && (
           <>
-            <div className="divider-v" />
+            <ColumnResizer width={nicklistWidth} onWidth={setNicklistWidth} min={140} max={420} grows="left" label="Member list width" />
             <div className="nicklist-pane">
               <NickList />
             </div>

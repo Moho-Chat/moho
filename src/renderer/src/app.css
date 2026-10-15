@@ -71,6 +71,37 @@
 
 /* --- shell ------------------------------------------------------------ */
 
+/* A divider between columns that can be dragged. Its line stays one pixel; the part that takes the pointer is wider. */
+.divider-v.resizer {
+  position: relative;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: var(--z-raised);
+}
+
+.divider-v.resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
+}
+
+.divider-v.resizer:hover,
+.divider-v.resizer.dragging,
+.divider-v.resizer:focus-visible {
+  background: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+  outline: none;
+}
+
+/* While a column is being dragged: the cursor stays, and nothing underneath is selected. */
+body.resizing-column {
+  cursor: col-resize;
+  user-select: none;
+}
+
 .app-body {
   display: flex;
   flex: 1;
@@ -949,6 +980,7 @@
  * conversation and people type into a channel while talking in it.
  */
 .call-stage {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: none;
@@ -8512,14 +8544,30 @@ video.lightbox-media {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: -3px;
   z-index: 3;
-  height: 6px;
+  height: 10px;
   cursor: ns-resize;
+  touch-action: none;
 }
 
-.stage-resize:hover {
-  background: var(--overlay-control);
+/* A short bar in the middle of the edge, so it can be seen to be a handle. */
+.stage-resize::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 3px;
+  width: 36px;
+  height: 3px;
+  margin-left: -18px;
+  border-radius: 2px;
+  background: var(--outline-strong);
+  opacity: 0.6;
+}
+
+.stage-resize:hover::after {
+  opacity: 1;
+  background: var(--primary);
 }
 
 /* The line left above the conversation while the call is in its own window. */
@@ -8893,19 +8941,49 @@ video.lightbox-media {
   line-height: 1;
 }
 
-/* The corner panel's resize grip, in its inside (top-left) corner. */
+/* The corner panel is resized from any edge or corner. The inside (top-left) corner keeps its visible grip. */
 .call-stage.pip .call-stage-resize {
   position: absolute;
-  top: -4px;
-  left: -4px;
   z-index: 2;
-  width: 16px;
-  height: 16px;
-  cursor: nwse-resize;
   touch-action: none;
 }
 
-.call-stage.pip .call-stage-resize::after {
+.call-stage.pip .edge-t,
+.call-stage.pip .edge-b {
+  left: 12px;
+  right: 12px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.call-stage.pip .edge-t { top: -4px; }
+.call-stage.pip .edge-b { bottom: -4px; }
+
+.call-stage.pip .edge-l,
+.call-stage.pip .edge-r {
+  top: 12px;
+  bottom: 12px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.call-stage.pip .edge-l { left: -4px; }
+.call-stage.pip .edge-r { right: -4px; }
+
+.call-stage.pip .edge-tl,
+.call-stage.pip .edge-tr,
+.call-stage.pip .edge-bl,
+.call-stage.pip .edge-br {
+  width: 16px;
+  height: 16px;
+}
+
+.call-stage.pip .edge-tl { top: -4px; left: -4px; cursor: nwse-resize; }
+.call-stage.pip .edge-br { bottom: -4px; right: -4px; cursor: nwse-resize; }
+.call-stage.pip .edge-tr { top: -4px; right: -4px; cursor: nesw-resize; }
+.call-stage.pip .edge-bl { bottom: -4px; left: -4px; cursor: nesw-resize; }
+
+.call-stage.pip .edge-tl::after {
   content: '';
   position: absolute;
   top: 5px;
