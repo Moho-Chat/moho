@@ -1415,9 +1415,10 @@ function SteamForm({ onDone }: { onDone: () => void }): JSX.Element {
     <div className="add-form">
       <p className="small muted">
         Sign in with your Steam account name — the one you type at the Steam login, not the
-        display name your friends see. moho signs in as the Steam mobile app's chat, so it runs
-        beside the Steam launcher without signing it out. Your password goes to Steam and is not
-        kept; moho keeps only the token Steam hands back.
+        display name your friends see. moho signs in as a desktop client of its own, the way other
+        third-party Steam clients do, and shows up in your Steam devices as "moho on" your
+        computer's name. Your password goes to Steam and is not kept; moho keeps only the token
+        Steam hands back.
       </p>
       <TorSwitch service="steam" on={useTor} onChange={setUseTor} />
       <div className="field-row">
