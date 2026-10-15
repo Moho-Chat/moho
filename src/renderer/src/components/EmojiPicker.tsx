@@ -813,7 +813,7 @@ export function EmojiPicker({
             title={src.name}
             anchorRef={(el) => (sectionRefs.current[src.id] = el)}
           >
-            {src.emoji.map((e) => {
+            {src.emoji.map((e, at) => {
               // Only one reason left: a source that could not be used here
               // at all was dropped above, so a cell that cannot be pressed is
               // one this account has not paid for - in a room it is reading.
@@ -833,7 +833,7 @@ export function EmojiPicker({
                   : emojiPreview(e.id, smilies)?.src
               return (
                 <button
-                  key={`${src.id}:${e.id}`}
+                  key={`${src.id}:${e.id}:${at}`}
                   type="button"
                   // A cell with no picture shows its name, and the styling
                   // that keeps a name inside its square is `.emoji-cell.
