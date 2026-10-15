@@ -1308,6 +1308,13 @@ function TwitchSettings(): JSX.Element {
       </SettingsSection>
 
       <SettingsSection
+        title="Watching"
+        description="Twitch gives channel points for time spent watching, and counts it from a short report its own player sends once a minute. Moho plays the video itself, so while a Twitch stream is playing in the window (not paused, minimised or hidden) and you are signed in, it sends that same report for the channel, once a minute, and nothing when the channel is not live. It claims nothing and sends no more often than that."
+      >
+        <ToggleSetting settingKey="twitch.reportWatching" label="Report watching to Twitch" defaultValue={true} />
+      </SettingsSection>
+
+      <SettingsSection
         title="Polls, predictions and raids"
         description="Shown as they happen, for every channel you have open, from the same live service twitch.tv's own pages use, which needs no account. You can vote and bet channel points from here, as your twitch.tv session; each only when you press its button. Moho does not claim the bonus chest and sends nothing to earn points faster."
       />

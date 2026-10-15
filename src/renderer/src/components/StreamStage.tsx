@@ -287,6 +287,24 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
     }
   }, [hasUrl, picture, minimized])
 
+  // Twitch gives points for time spent watching and counts it from what the website's player reports once a minute,
+  // which a player of our own does not send. Told to the daemon once a minute while this picture is really
+  // playing and showing; a paused, hidden, minimised or closed stage says nothing, and the daemon sends nothing
+  // for a channel that is not live (see backend/twitch/watch.rs).
+  const [reportWatching] = usePref<boolean>('twitch.reportWatching', true)
+  useEffect(() => {
+    if (service !== 'twitch' || !watching || !hasUrl || minimized || !reportWatching) return
+    const bufferId = watching.bufferId
+    const timer = setInterval(() => {
+      const el = video.current
+      if (!el || el.paused || el.ended || el.readyState < 3 || document.visibilityState !== 'visible') return
+      void window.moho.rpc('reportTwitchWatching', { bufferId }).catch(() => {
+        /* Said nowhere: it is points, and the stream is playing either way. */
+      })
+    }, 60_000)
+    return () => clearInterval(timer)
+  }, [service, watching, hasUrl, picture, minimized, reportWatching])
+
   // The sound as it was left, whenever there is a picture to apply it to.
   useEffect(() => {
     const el = video.current

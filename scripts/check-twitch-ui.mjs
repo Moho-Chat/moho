@@ -83,7 +83,7 @@ try {
   check('Settings has a Twitch page', clicked)
   await sleep(600)
   const text = await ev(`document.body.innerText`)
-  for (const want of ['What to show besides chat', 'Badges', 'Polls, predictions and raids', 'Recent messages']) check(`Settings -> Twitch has "${want}"`, text.includes(want))
+  for (const want of ['What to show besides chat', 'Badges', 'Watching', 'Polls, predictions and raids', 'Recent messages']) check(`Settings -> Twitch has "${want}"`, text.includes(want))
   await shot('twitch-settings.png')
 } finally {
   await stop()
