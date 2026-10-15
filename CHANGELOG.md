@@ -17,6 +17,12 @@ Each section has two parts:
   that made it, including dependency updates
   (`node scripts/changelog-deps.mjs <previous tag>` lists those).
 
+## [1.2.1]
+
+### Fixes, patches and changes
+
+- Steam signs in as a desktop client of its own, with a machine id and a logon id that belong to the install, instead of as the Steam mobile app (a "phone" reporting a Linux desktop, with no machine id, which Steam raised an account alert about), and waits longer before reconnecting after Steam closes a connection. Sign in to Steam again from Accounts to take on the new identity; the old one stays in Steam's list of devices until you remove it there ([moho `fceec5d`](https://github.com/Moho-Chat/moho/commit/fceec5d), [nobilis `f3de870`](https://github.com/Moho-Chat/nobilis/commit/f3de870))
+
 ## [1.2.0]
 
 ### Major features
