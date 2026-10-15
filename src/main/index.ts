@@ -29,6 +29,8 @@ import { Notifier } from './notifications'
 import { IdleWatcher } from './idle'
 import { NOTHING_WAITING, trayIconFile, trayMenu, trayTooltip, type TrayState, type TrayStatus } from './tray'
 import { browserLogin, LOGIN_FLOWS } from './browser-login'
+import { feedTwitchSignIn, twitchSignIn } from './twitch-signin'
+import { answerIntegrity, mintIntegrity } from './twitch-integrity'
 import { EDIT_ACTIONS, IPC, POPOUT_FLAG, UI_SHOTS_FLAG, type EditAction, type EditMenuRequest, type PopoutState } from '../shared/ipc'
 import { clearnetLinks } from '../shared/clearnet'
 import { readCapped, pictureNamedIn } from './imagepage'
@@ -1110,6 +1112,13 @@ function wireIpc(): void {
     }
   })
 
+  // Twitch's sign-in, both halves in one window (see twitch-signin.ts). Only whether it worked comes back.
+  ipcMain.handle(IPC.twitchSignIn, (_e, options?: { useTor?: boolean }) =>
+    twitchSignIn((method, params) => client.request(method, params), {
+      useTor: typeof options?.useTor === 'boolean' ? options.useTor : undefined
+    })
+  )
+
   ipcMain.handle(IPC.smiliesDir, () => smiliesPath())
 
   // Chromium's HTTP cache, which Settings reports beside the daemon's.
@@ -1320,6 +1329,13 @@ app.whenReady().then(() => {
     } else if (frame.event === 'netSettings') {
       void applyTunnel((method, params) => client.request(method, params))
       resetRoute()
+    } else if (frame.event.startsWith('twitchLogin')) {
+      feedTwitchSignIn(frame as { event: string; data?: Record<string, unknown> })
+    } else if (frame.event === 'twitchIntegrityNeeded') {
+      // Twitch wants proof that a browser is asking for a stream; only a page of its own can make it.
+      void answerIntegrity(frame.data as { requestId?: string; deviceId?: string; authToken?: string }, (method, params) => client.request(method, params))
+      // Not forwarded: it carries the session, which only main and the daemon are to hold.
+      return
     }
     send(IPC.event, frame)
   })
@@ -1334,6 +1350,7 @@ app.whenReady().then(() => {
   // For the UI harness, which has no way to look inside a tray: what it shows
   // and offers, and the entries themselves to be clicked. Only when it asks.
   if (process.env.MOHO_UI_SHOTS === '1') {
+    ;(globalThis as Record<string, unknown>).__mohoTwitchIntegrity = { mint: mintIntegrity }
     ;(globalThis as Record<string, unknown>).__mohoTray = {
       update: updateTray,
       idle: (v: boolean | null) => idleWatcher.forceForTesting(v),

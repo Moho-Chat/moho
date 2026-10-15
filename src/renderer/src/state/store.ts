@@ -25,7 +25,7 @@ import type {
 import { addToast, type ToastAction, type ToastItem } from '../lib/toasts'
 import { ALL_STATUSES, statusesFor, supportsStatus } from '../lib/status'
 import type { SteamGroup, GroupCall } from '../lib/steamgroups'
-import { buildSmilieIndex, steamSameText, type SmilieEntry, type SmilieIndex } from '../lib/format'
+import { buildSmilieIndex, sneedSameText, steamSameText, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
 import { runExport } from '../lib/exporter'
 import type { ForumPost } from '../lib/forum'
@@ -262,6 +262,10 @@ export interface LiveCard {
   total?: number | null
   /** What this account stands to get back, where the service says. */
   yourReturn?: number | null
+  /** Shown here but not answerable from it: no vote or bet buttons. Twitch's, for an account with no twitch.tv session. */
+  readOnly?: boolean
+  /** The service gives no way to end it from a viewer's card (Twitch's polls). */
+  noEnd?: boolean
   /** "open", "locked", "resolved" - whatever the service calls it. */
   state?: string | null
   /**
@@ -333,11 +337,22 @@ export interface KickStream {
    * Where the video is: a signed Amazon IVS playlist, good for watching in
    * this window rather than in a browser tab beside it.
    *
-   * Replaced on every refresh, because the signature in it expires - so
-   * whoever is playing it reads the current one rather than the one they
-   * started with.
+   * Replaced shortly before the signature in it expires, which is about every
+   * seven minutes - so whoever is playing it reads the current one rather
+   * than the one they started with, and does not start over for a new one.
    */
   playbackUrl?: string | null
+  /** Unix seconds the address stops being accepted, where it says. */
+  playbackExpires?: number | null
+  /** The broadcast's own id: a different one is a different stream, even in the same channel. */
+  livestreamId?: number | null
+  /** Twitch only: whether Twitch says ads are not for this account (its Turbo, or a subscription). */
+  adFree?: boolean | null
+  /**
+   * Why a live stream has no picture to offer, in words: subscribers only, blocked where this is
+   * watched from. Absent when there is one, or when the channel is not live.
+   */
+  playbackError?: string | null
 }
 
 /** One box on a form a Discord bot sent. */
@@ -535,6 +550,12 @@ export interface ChatState {
   joinPanelAccountId: string
   messagesByBuffer: Record<string, ChatMessage[]>
   presenceByBuffer: Record<string, Member[]>
+  /** Points the signed-in account has in each Kick channel, as Kick last pushed them. */
+  kickPointsByBuffer: Record<string, number>
+  /** A Twitch channel's points as this account last heard: the balance. */
+  twitchPoints: Record<string, { points: number | null; name?: string | null }>
+  /** How many people a roster stands for, where the service says it is more than it lists (Kick). */
+  presenceTotalByBuffer: Record<string, number>
   /** Buffers whose initial backlog fetch has completed. */
   loadedBuffers: Record<string, true>
   loadingMore: Record<string, true>
@@ -561,6 +582,8 @@ export interface ChatState {
    * most of what a viewer wants to know, were nowhere.
    */
   kickStreams: Record<string, KickStream>
+  /** Whether the account may moderate each Twitch channel it has open, as Twitch last said. */
+  twitchRights: Record<string, boolean>
   /** The poll and prediction running in each channel, by `cardSlot`. */
   livePolls: Record<string, LiveCard>
   /**
@@ -786,6 +809,9 @@ const INITIAL: ChatState = {
   joinPanelAccountId: '',
   messagesByBuffer: {},
   presenceByBuffer: {},
+  presenceTotalByBuffer: {},
+  kickPointsByBuffer: {},
+  twitchPoints: {},
   loadedBuffers: {},
   loadingMore: {},
   loadingNewer: {},
@@ -796,6 +822,7 @@ const INITIAL: ChatState = {
   openThread: null,
   matrixPermissions: {},
   kickStreams: {},
+  twitchRights: {},
   livePolls: {},
   pinnedByBuffer: {},
   reviewCard: null,
@@ -875,6 +902,7 @@ const INITIAL: ChatState = {
 function echoMatches(echo: ChatMessage, real: Message): boolean {
   if (echo.pendingBody === real.body) return true
   if (real.bufferId.startsWith('steam:') && echo.pendingBody !== undefined && steamSameText(echo.pendingBody, real.body)) return true
+  if (real.bufferId.startsWith('sneedchat:') && echo.pendingBody !== undefined && sneedSameText(echo.pendingBody, real.body)) return true
   // A file is posted as markup the daemon builds - a BBCode image tag on
   // Sneedchat, a bare link on IRC - so what comes back is never what was
   // typed, and usually nothing was typed at all. Matching on the whole body
@@ -2603,7 +2631,7 @@ export class ChatStore {
    */
   async openThreadPanel(bufferId: string, rootId: string): Promise<void> {
     const known = (this.state.messagesByBuffer[bufferId] || []).filter(
-      (m) => m.id === rootId || (m.replyTo?.thread && m.replyTo.id === rootId)
+      (m) => m.id === rootId || (m.replyTo?.thread && m.replyTo.id === rootId) || m.replyTo?.threadRoot === rootId
     )
     this.set({ openThread: { bufferId, rootId, messages: known, loading: true } })
     try {
@@ -2632,15 +2660,22 @@ export class ChatStore {
     const open = this.state.openThread
     if (!open || (!body.trim() && !attachment)) return
     const root = open.messages.find((m) => m.id === open.rootId)
+    // Kick answers a message, not a thread, and the daemon quotes whatever it
+    // is told to answer from what it has stored. A thread whose first message
+    // is older than the scrollback still has replies on screen, and answering
+    // the first of those keeps the new one in the same thread.
+    const earliest = !root && this.accountFor(open.bufferId)?.service === 'kick' ? open.messages[0] : undefined
     await this.dispatchSend(
       open.bufferId,
       body,
-      {
-        id: open.rootId,
-        from: root?.from ?? '',
-        body: root?.body ?? '',
-        thread: true
-      },
+      earliest
+        ? { id: earliest.id, from: earliest.from, body: earliest.body }
+        : {
+            id: open.rootId,
+            from: root?.from ?? '',
+            body: root?.body ?? '',
+            thread: true
+          },
       attachment,
       spoilers
     )
@@ -2949,6 +2984,10 @@ export class ChatStore {
     const stream = this.state.kickStreams[bufferId]
     const buffer = this.state.buffers.find((b) => b.id === bufferId)
     if (!buffer) return
+    if (stream?.live && !stream.playbackUrl && stream.playbackError) {
+      this.toast('info', `${bufferDisplayName(buffer.name)}: ${stream.playbackError}`)
+      return
+    }
     if (!stream?.live || !stream.playbackUrl) {
       this.toast('info', `${bufferDisplayName(buffer.name)} is not streaming right now`)
       return
@@ -3592,6 +3631,17 @@ export class ChatStore {
         )
         break
 
+      // Kept rather than removed: the daemon says the service took it down and
+      // leaves the words, and what that looks like is the window's to decide.
+      // Kick says the balance changed: the five-minute earn, a bet, a reward.
+      case 'kickPoints':
+        this.set({ kickPointsByBuffer: { ...this.state.kickPointsByBuffer, [data.bufferId]: data.points } })
+        break
+
+      case 'messageModerated':
+        this.mapMessage(data.bufferId, data.id, (m) => ({ ...m, moderated: data.moderated ?? {} }))
+        break
+
       case 'reactionsChanged':
         this.mapMessage(data.bufferId, data.id, (m) => ({ ...m, reactions: data.reactions }))
         break
@@ -3936,6 +3986,14 @@ export class ChatStore {
         break
       }
 
+      case 'twitchPoints':
+        this.set({ twitchPoints: { ...this.state.twitchPoints, [data.bufferId]: { points: data.points ?? null, name: data.name ?? null } } })
+        break
+
+      case 'twitchRights':
+        this.set({ twitchRights: { ...this.state.twitchRights, [data.bufferId]: !!data.moderator } })
+        break
+
       case 'kickStream': {
         const stream = data as unknown as KickStream
         this.set({ kickStreams: { ...this.state.kickStreams, [stream.bufferId]: stream } })
@@ -3951,7 +4009,8 @@ export class ChatStore {
 
       case 'presenceChange':
         this.set({
-          presenceByBuffer: { ...this.state.presenceByBuffer, [data.bufferId]: data.members }
+          presenceByBuffer: { ...this.state.presenceByBuffer, [data.bufferId]: data.members },
+          presenceTotalByBuffer: { ...this.state.presenceTotalByBuffer, [data.bufferId]: data.total ?? data.members.length }
         })
         break
 
@@ -4490,12 +4549,13 @@ export class ChatStore {
     void this.refreshMatrixPermissions(bufferId)
 
     const service = this.accountFor(bufferId)?.service
+    if (service === 'twitch') void this.loadTwitchRecent(bufferId)
     if (service === 'sneedchat') void this.fetchSmilies()
     // Both services answer the same question about the open conversation -
     // what can go in a message here that isn't text - so both ask it the same
     // way. Kick's answer also depends on who is asking, since it carries which
     // of the streamer's emotes this account is subscribed to.
-    if (service === 'discord' || service === 'kick') void this.fetchBufferEmoji(bufferId)
+    if (service === 'discord' || service === 'kick' || service === 'twitch') void this.fetchBufferEmoji(bufferId)
   }
 
   /**
@@ -4526,7 +4586,10 @@ export class ChatStore {
   }
 
   private async fetchBufferEmoji(bufferId: string): Promise<void> {
-    if (this.state.bufferEmoji[bufferId]) return
+    // Twitch's tables arrive a moment after the channel is joined, so an empty answer is asked again
+    // the next time the channel is opened; the others' empty answer is the answer.
+    const have = this.state.bufferEmoji[bufferId]
+    if (have && (have.length > 0 || this.accountFor(bufferId)?.service !== 'twitch')) return
     try {
       const emoji = await window.moho.rpc<CustomEmoji[]>('listBufferEmoji', { bufferId })
       this.set({ bufferEmoji: { ...this.state.bufferEmoji, [bufferId]: emoji } })
@@ -4664,6 +4727,31 @@ export class ChatStore {
     lastReadTs[bufferId] = Math.floor(Date.now() / 1000)
     void window.moho.prefs.set('lastReadTs', lastReadTs)
     this.set({ lastReadTs })
+  }
+
+  /** The Twitch channels whose recent past has been asked for this session. */
+  private twitchRecentAsked = new Set<string>()
+
+  /**
+   * A Twitch channel's recent past, once per channel per session, if the person
+   * has said a third-party service may be asked for it (Settings, Twitch).
+   * Twitch keeps no history of its own, so without this a channel opens empty
+   * and fills as people speak. Off by default: it tells somebody else's server
+   * which channel is being opened.
+   */
+  private async loadTwitchRecent(bufferId: string): Promise<void> {
+    if (this.twitchRecentAsked.has(bufferId)) return
+    const prefs = await window.moho.prefs.getAll()
+    if (prefs['twitch.recentHistory'] !== true) return
+    this.twitchRecentAsked.add(bufferId)
+    try {
+      const r = await window.moho.rpc<{ read: number }>('twitchRecentMessages', { bufferId })
+      if (r.read > 0) await this.loadBacklog(bufferId)
+    } catch (e) {
+      // Not worth interrupting anybody over: the channel works, it just starts empty.
+      this.twitchRecentAsked.delete(bufferId)
+      console.debug('twitch recent messages:', (e as Error).message)
+    }
   }
 
   private async loadBacklog(bufferId: string): Promise<void> {

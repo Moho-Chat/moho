@@ -3,7 +3,7 @@
 
 export interface Account {
   id: string
-  service: 'irc' | 'discord' | 'sneedchat' | 'matrix' | 'kick' | 'steam' | 'jabber' | 'slack'
+  service: 'irc' | 'discord' | 'sneedchat' | 'matrix' | 'kick' | 'steam' | 'twitch' | 'jabber' | 'slack'
   displayName: string
   /**
    * How the user is presenting: "online" | "idle". Distinct from
@@ -84,6 +84,16 @@ export interface Account {
    * shared while a login did not exist are not simply lost.
    */
   dehydration?: boolean
+  /**
+   * Twitch only: whether this account holds a twitch.tv website session for playing video as the person
+   * (their Turbo, their subscriptions). A yes or a no; the session itself never leaves the daemon.
+   */
+  webSession?: boolean
+  /**
+   * Twitch only: whether this account was signed in with the rights to moderate (remove messages, time
+   * out, ban, change a room's modes) and to whisper. Off unless the person turned it on.
+   */
+  moderation?: boolean
 }
 
 export interface SneedChatRoom {
@@ -419,6 +429,29 @@ export interface ReplyPreview {
    * a forward is somebody else's message arriving.
    */
   forwarded?: boolean
+  /**
+   * The message a whole chain of replies grew from, where the service groups
+   * them into a thread (Kick does).
+   *
+   * Unlike `thread`, `id` here is still the message that was answered - this
+   * says which thread that message is part of, and a reply can be both.
+   */
+  threadRoot?: string
+}
+
+/**
+ * A message the service took down and the daemon kept.
+ *
+ * Whether to show it, strike it through or put a notice in its place is the
+ * window's choice (`kick.removedMessages`), so the text is still here.
+ */
+export interface Moderated {
+  /** Whether the service's automatic moderation did it, rather than a person. */
+  ai?: boolean
+  /** The rules it was said to break. */
+  rules?: string[]
+  /** Set by the window, never the daemon: this message's text has been swapped for a notice. */
+  replaced?: boolean
 }
 
 /**
@@ -588,6 +621,8 @@ export interface Message {
    * button below it.
    */
   components?: MessageComponent[]
+  /** Present once the service has removed the message. */
+  moderated?: Moderated
   /** Matrix only - the sender's full MXID, for targeting moderation actions. */
   senderId?: string
   /**
@@ -718,6 +753,11 @@ export interface MessageBadge {
   text: string
   /** Months subscribed, for the badges that count. */
   count?: number
+  /**
+   * A picture to draw it with, for the badges Kick sends as one - level,
+   * event and founder badges, a channel's own. Drawn instead of the word.
+   */
+  image?: string
 }
 
 export interface CustomEmoji {

@@ -83,6 +83,27 @@ export function kickEmoteUrl(id: string): string {
 }
 
 /**
+ * The picture for one of Twitch's own emotes, by id.
+ *
+ * Public and built from the id, like Discord's and Kick's, so it draws for an
+ * emote this account cannot use, which is the point of one somebody else sent.
+ * The dark-background version, at twice the size: chat is drawn on a dark
+ * surface and an emote is a row's height at most.
+ */
+export function twitchEmoteUrl(id: string, animated = false): string {
+  return resolveMediaUrl(`https://static-cdn.jtvnw.net/emoticons/v2/${encodeURIComponent(id)}/${animated ? 'animated' : 'default'}/dark/2.0`)
+}
+
+/**
+ * The picture for a Twitch cheermote: the prefix's animated picture of the tier the amount reaches. Twitch
+ * has tiers at 1, 100, 1,000, 5,000 and 10,000 bits.
+ */
+export function cheerUrl(prefix: string, amount: number): string {
+  const tier = [10000, 5000, 1000, 100, 1].find((t) => amount >= t) ?? 1
+  return resolveMediaUrl(`https://d3aqoihi2n8ty8.cloudfront.net/actions/${encodeURIComponent(prefix.toLowerCase())}/dark/animated/${tier}/2.gif`)
+}
+
+/**
  * The picture for one of Steam's emoticons or stickers, by name.
  *
  * A name is all a message carries - `[steam:emote:steamhappy]` - and the
@@ -135,6 +156,8 @@ export function emojiPreview(text: string, smilies: SmilieEntry[] = []): EmojiPr
   if (custom) return { src: discordEmojiUrl(custom[2]), label: `:${custom[1]}:` }
   const kick = text.match(/^\[emote:(\d+):([^\]]{0,64})\]$/)
   if (kick) return { src: kickEmoteUrl(kick[1]), label: `:${kick[2]}:` }
+  const twitch = text.match(/^\[twitch:(a?emote):([A-Za-z0-9_]+):([^\]]{0,64})\]$/)
+  if (twitch) return { src: twitchEmoteUrl(twitch[2], twitch[1] === 'aemote'), label: twitch[3] }
   const steam = steamTokenOf(text)
   if (steam) return { src: steamPictureUrl(steam.kind, steam.name), label: `:${steam.name}:` }
   const smilie = smilies.find((s) => s.aliases?.includes(text))
@@ -151,6 +174,21 @@ export function emojiPreview(text: string, smilies: SmilieEntry[] = []): EmojiPr
  */
 export function sourcePick(service: string, e: { id: string }): string {
   return service === 'steam' && e.id.startsWith('steam:') ? `[steam:emote:${e.id.slice(6)}]` : e.id
+}
+
+/**
+ * Sneedchat's own greentext: the site turns a line that starts with ">" into the same line wrapped in a
+ * green colour tag (`[color=#72ff72]>text`), so what comes back is never what was typed. Taken back to the
+ * plain ">text", which is what the window draws green itself (4chan's, see `.greentext`) and what a sent
+ * message is matched against.
+ */
+export function sneedGreentext(body: string): string {
+  return body.replace(/^\[color=#72ff72\](>[^\n]*?)(?:\[\/color\])?$/gim, '$1')
+}
+
+/** Whether a Sneedchat line that came back is the one that was sent, allowing for the site's greentext. */
+export function sneedSameText(sent: string, logged: string): boolean {
+  return sent.trim() === sneedGreentext(logged).trim()
 }
 
 /**
@@ -556,6 +594,20 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
     stow(`<img src="${kickEmoteUrl(id)}" class="custom-emoji" alt=":${name}:">`)
   )
 
+  // Twitch's own emotes, which arrive as `[twitch:emote:25:Kappa]`: the id for
+  // the picture and the name for the words, so a screen reader and a copied
+  // line both read "Kappa". Public and named by the token, like the others.
+  out = out.replace(/\[twitch:(a?emote):([A-Za-z0-9_]+):([^\]]{0,64})\]/g, (_m, kind: string, id: string, name: string) =>
+    stow(`<img src="${twitchEmoteUrl(id, kind === 'aemote')}" class="custom-emoji" alt="${name}" title="${name}">`)
+  )
+  // BetterTTV, FrankerFaceZ and 7TV are not drawn (Twitch does not carry them). A line stored while they were
+  // is read as the words it stands for.
+  out = out.replace(/\[twitch:(?:bttv|ffz|7tv):[A-Za-z0-9_]+:([^\]]{0,64})\]/g, '$1')
+  // A cheer: its picture and the amount beside it, as Twitch's chat draws one.
+  out = out.replace(/\[twitch:cheer:([a-z0-9]+):(\d{1,9})\]/g, (_m, prefix: string, amount: string) =>
+    stow(`<img src="${cheerUrl(prefix, Number(amount))}" class="custom-emoji" alt="${prefix}" title="${prefix} ${amount}"><span class="cheer-amount">${amount}</span>`)
+  )
+
   // Steam's emoticons and stickers, which arrive as `[steam:emote:name]`. Like
   // the two above the picture is public and named by the token, so one that
   // somebody else sent draws whether or not this account has it. A sticker is
@@ -664,6 +716,11 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   // A literal "\n" is just collapsible whitespace in HTML; a structured
   // multi-line message (a relay bot's author/link/stats/footer post) would
   // otherwise render as one run-together line.
+  // Sneedchat's greentext: a line that starts with ">" is the green of 4chan's. The text is escaped by now, so
+  // the mark is "&gt;"; a line is closed inside itself, so the wrap cannot straddle another.
+  if (opts.isSneedchat) {
+    out = out.split('\n').map((line) => (line.startsWith('&gt;') ? `<span class="greentext">${line}</span>` : line)).join('\n')
+  }
   out = out.replace(/\n/g, '<br>')
   return out
 }

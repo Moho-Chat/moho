@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  readableColor,
   bufferDisplayName,
   classes,
   fileNameOf,
@@ -136,5 +137,34 @@ describe('relative times for a column', () => {
     for (const s of [5, 600, 20000, 100000, 900000, 40000000]) {
       expect(formatRelativeShort(ago(s), now).length).toBeLessThanOrEqual(6)
     }
+  })
+})
+
+describe('readableColor', () => {
+  const ratio = (hex: string): number => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+    const l = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    const bg = 0.0057 // #0e1014
+    return (Math.max(l, bg) + 0.05) / (Math.min(l, bg) + 0.05)
+  }
+
+  it('leaves a colour that reads well exactly as it was', () => {
+    expect(readableColor('#FF69B4')).toBe('#FF69B4')
+    expect(readableColor('#FFFFFF')).toBe('#FFFFFF')
+  })
+
+  it('lightens one that would be a dark smear, keeping as much of its hue as it can', () => {
+    const out = readableColor('#0000FF')
+    expect(out).not.toBe('#0000FF')
+    const [r, g, b] = out.match(/\d+/g)!.map(Number)
+    expect(b).toBeGreaterThan(r)
+    const hex = `#${[r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')}`
+    expect(ratio(hex)).toBeGreaterThanOrEqual(4.4)
+    expect(readableColor('#000000')).toMatch(/^rgb|^#fff/)
+  })
+
+  it('leaves what is not a hex colour alone', () => {
+    expect(readableColor('hsl(120, 60%, 70%)')).toBe('hsl(120, 60%, 70%)')
+    expect(readableColor('')).toBe('')
   })
 })

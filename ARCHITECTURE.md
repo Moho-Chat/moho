@@ -219,6 +219,45 @@ called `subscribe` for that buffer.
   rather than only watched. The stream itself
   plays in the window over HLS, with its VODs and clips.
 
+- **Twitch** - a streamer's chat over Twitch's IRC service (read with no account, sent through the
+  official API), with emotes (Twitch's own, animated ones, and the channel's whole set in the picker with the ones the
+  account cannot use greyed out; BetterTTV, FrankerFaceZ and 7TV are browser extensions Twitch does not carry, so
+  they are not drawn), badges as pictures, cheers, replies and threads, subscriptions, gifts and
+  raids, raids out, polls and predictions as they happen, moderation, whispers, shoutouts and blocking.
+  One sign-in on twitch.tv gives the account its API token and the website session its player takes, so
+  the stream plays in the window as the person (their Turbo or subscriptions count) with Twitch's ad
+  breaks said and never skipped.
+
+### Notifications are cards
+
+Anything a service *says* rather than somebody *saying* - a join or part, a topic or mode change, a kick,
+a ban, a timeout, a room's slow mode, a removed message, a raid, a gift, a pinned message, a warning, a
+notice from the server itself - is drawn in the window as a **card**: the same plate Kick's and Twitch's
+events use (`KickEventCard.tsx`), with a mark for what it was, its subject in bold, and what happened.
+This holds for every protocol, and **for every protocol added later**; it is a rule of the design and not
+a styling choice of any one backend.
+
+How a backend takes part, which is the whole of its job:
+
+- It sends the line with a kind that is not speech (`system`, `join`, `part`, `topic`, `mode`, `kick`,
+  `moderation`, and so on - `isChatKind` in `lib/util.ts` is the test). The window then draws a
+  `NotificationCard` for it on its own: a mark chosen by kind (`SYSTEM_MARKS` in `MessageRow.tsx`), the
+  line's own words, a warning in red. Nothing else is needed, which is why a new protocol's notifications
+  are cards from its first connection.
+- It may say more by attaching an embed to the line (`kind: "moderation"`, `"raid"`, `"subscribe"`,
+  `"gift-sub"`, `"stream"`, ...) with the subject in `author`, what happened in `title`, who did it in
+  `description` where that is known, and a Material Symbols glyph in `icon`. A penalty (`gavel`,
+  `timer_off`, `delete`, `block`) draws in the danger colour, anything else in the window's accent.
+- It says each thing **once**. What the service already tells the whole room (a timeout, a mode change) is
+  not also written by the client that caused it; only what happens to this account alone is written
+  locally, as a card.
+- A line that is not speech is **never** left as bare grey text, and a card is never used for a person
+  speaking: the divide is whether somebody said it.
+
+A new protocol is not finished until its joins, parts, topic changes, moderation, mode changes and
+service notices come out of it as cards. `scripts/shot-notification-cards.mjs` draws every kind of line
+beside ordinary chat and a moderation card, to check that they are the same sort of thing.
+
 ## On-disk state
 
 | Path | Contents |

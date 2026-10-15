@@ -6,6 +6,7 @@ import { Icon, IconButton } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { useActiveBuffer, useChat, useComfy, useIdSetPref, useStore } from '../state/hooks'
 import { classes, hasDirectMessages, nickColor } from '../lib/util'
+import { TwitchPoints } from './TwitchPoints'
 import { KickPoints } from './KickPoints'
 import { ReasonPrompt } from './ReasonPrompt'
 import type { Member } from '../../../shared/wire'
@@ -88,10 +89,10 @@ function kickPermissions(members: Member[], me: string): Record<string, boolean>
 /**
  * Why the list says what it says, for the one service where it needs saying.
  */
-function rosterNote(service: string | undefined): string | undefined {
-  return service === 'kick'
-    ? 'Kick has no viewer list — this is everybody who has spoken here recently'
-    : undefined
+function rosterNote(service: string | undefined, total: number, listed: number): string | undefined {
+  if (service !== 'kick' && service !== 'twitch') return undefined
+  const base = `${service === 'twitch' ? 'Twitch' : 'Kick'} has no viewer list — this counts everybody who has spoken here since you opened it`
+  return total > listed ? `${base}. The ${listed.toLocaleString()} most recent are listed.` : base
 }
 
 /**
@@ -140,6 +141,7 @@ export function NickList(): JSX.Element {
   const [query, setQuery] = useState('')
 
   const members = (buffer && presenceByBuffer[buffer.id]) || []
+  const total = useChat((s) => (buffer ? s.presenceTotalByBuffer[buffer.id] : undefined)) ?? members.length
   const account = buffer && accounts.find((a) => a.id === buffer.accountId)
   // Any protocol that reports presence gets the online/offline split.
   const hasPresence = members.some((m) => m.status !== undefined)
@@ -263,8 +265,8 @@ export function NickList(): JSX.Element {
           // Named for what the list actually is. Kick has no viewer list to
           // ask for - it is built from who has spoken - and calling that
           // "members" would claim to know something nobody here can know.
-          <span className="small muted ellipsis" title={rosterNote(account?.service)}>
-            {members.length} {account?.service === 'kick' ? 'recently talking' : 'members'}
+          <span className="small muted ellipsis" title={rosterNote(account?.service, total, members.length)}>
+            {total.toLocaleString()} {account?.service === 'kick' || account?.service === 'twitch' ? 'recently talking' : 'members'}
           </span>
         )}
         <IconButton
@@ -477,6 +479,10 @@ export function NickList(): JSX.Element {
           there is no such thing in a whisper. */}
       {account?.service === 'kick' && buffer?.kind === 'channel' && buffer && (
         <KickPoints bufferId={buffer.id} />
+      )}
+      {/* Twitch's, for an account that has the twitch.tv session that can see them. */}
+      {account?.service === 'twitch' && account.webSession && buffer?.kind === 'channel' && buffer && (
+        <TwitchPoints bufferId={buffer.id} />
       )}
     </div>
   )

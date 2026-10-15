@@ -30,7 +30,16 @@ export type Capture =
   /** A request header the page starts sending - Discord's Authorization. */
   | { kind: 'header'; name: string }
   /** A cookie the service sets - the usual shape for forum software. */
-  | { kind: 'cookie'; name: string; url: string }
+  | {
+      kind: 'cookie'
+      name: string
+      url: string
+      /**
+       * Where the same value is to be had if the named cookie is not there: another cookie holding JSON with
+       * the value under a key. Twitch's page-readable `twilight-user` carries the token its `auth-token` cookie does.
+       */
+      fallback?: { name: string; key: string }
+    }
   /** A parameter on a redirect the service lands on - SSO, mostly. */
   | { kind: 'query'; param: string }
   /**
@@ -126,6 +135,17 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
         "(document.querySelector('.p-navgroup-user-linkText') || document.querySelector('.p-navgroup-link--user .p-navgroup-linkText'))?.textContent?.trim() || null"
     }
   },
+  twitch: {
+    label: 'Twitch',
+    url: 'https://www.twitch.tv/login',
+    // Nothing: the credential is a cookie the site sets, not a request to read.
+    watch: [],
+    // The website's own session token, which is what Twitch's player calls accept for playing a stream as the
+    // person who signed in - their Turbo, their subscriptions - and which a token from moho's own sign-in
+    // (made for chat and the official API) is not. It goes straight to the daemon, for the account named.
+    capture: { kind: 'cookie', name: 'auth-token', url: 'https://www.twitch.tv', fallback: { name: 'twilight-user', key: 'authToken' } },
+    finish: { method: 'setTwitchWebToken', param: 'token' }
+  },
   kick: {
     label: 'Kick',
     url: 'https://kick.com/',
@@ -165,7 +185,20 @@ let openWindow: BrowserWindow | null = null
  * be signing in, and the second would inherit the first's half-finished
  * session.
  */
-export async function browserLogin(service: string): Promise<LoginOutcome> {
+export async function browserLogin(
+  service: string,
+  options?: {
+    /**
+     * Keeps the window open once the credential is captured, for a flow that goes on in it: called with the
+     * credential and the window, and the window closes when what it returns settles. Twitch's: signing in on
+     * twitch.tv and then, in the same window and the same session, approving the code that gives the chat
+     * connection its token.
+     */
+    hold?: (value: string, win: BrowserWindow) => Promise<void>
+    /** Said at each step, without any credential in it, for the log. */
+    trace?: (message: string) => void
+  }
+): Promise<LoginOutcome> {
   const flow = LOGIN_FLOWS[service]
   if (!flow) return { ok: false, error: `No browser sign-in is defined for ${service}` }
   if (openWindow && !openWindow.isDestroyed()) {
@@ -219,6 +252,17 @@ export async function browserLogin(service: string): Promise<LoginOutcome> {
     e.preventDefault()
     retitle()
   })
+  if (options?.trace) {
+    const trace = options.trace
+    win.webContents.on('did-navigate', (_e, url) => {
+      try {
+        const u = new URL(url)
+        trace(`the window is at ${u.host}${u.pathname}`)
+      } catch {
+        /* not a URL */
+      }
+    })
+  }
   win.webContents.on('did-navigate', retitle)
   win.webContents.on('did-navigate-in-page', retitle)
   retitle()
@@ -244,7 +288,19 @@ export async function browserLogin(service: string): Promise<LoginOutcome> {
       TIMEOUT_MS
     )
 
+    let holding = false
     watch(ses, win, flow, (value) => {
+      if (options?.hold) {
+        // The credential shows up more than once as cookies change; the flow is told once.
+        if (holding) return
+        holding = true
+        options.trace?.('signed in on twitch.tv; the session was found')
+        void options
+          .hold(value, win)
+          .then(() => finish({ ok: true, value }))
+          .catch((e: Error) => finish({ ok: false, error: e.message }))
+        return
+      }
       // Read before finishing, because finishing destroys the window - and
       // best-effort, because this is a nicety and the credential is not.
       const also = flow.alsoRead
@@ -320,14 +376,31 @@ function watch(ses: Session, win: BrowserWindow, flow: LoginFlow, found: (value:
   }
 
   if (flow.capture.kind === 'cookie') {
-    const { name, url } = flow.capture
+    const { name, url, fallback } = flow.capture
     const check = (): void => {
-      void ses.cookies.get({ url, name }).then((cookies) => {
-        const value = cookies[0]?.value
+      void ses.cookies.get({ url }).then((cookies) => {
+        let value = cookies.find((c) => c.name === name)?.value
+        if (!value && fallback) {
+          const holder = cookies.find((c) => c.name === fallback.name)?.value
+          if (holder) {
+            try {
+              const parsed = JSON.parse(decodeURIComponent(holder)) as Record<string, unknown>
+              const token = parsed[fallback.key]
+              if (typeof token === 'string') value = token
+            } catch {
+              /* not JSON yet; the next change will be */
+            }
+          }
+        }
         if (value) found(value)
       })
     }
     ses.cookies.on('changed', check)
+    // Also after each page, in case the sign-in ended in a redirect that the cookie jar's own events did not announce.
+    if (!win.isDestroyed()) {
+      win.webContents.on('did-navigate', check)
+      win.webContents.on('did-finish-load', check)
+    }
     check()
     return
   }

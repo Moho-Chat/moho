@@ -126,6 +126,7 @@ const CATEGORIES: { id: string; label: string; group: string; icon?: string; ser
   { id: 'discord', label: 'Discord', group: 'Networks', service: 'discord' },
   { id: 'matrix', label: 'Matrix', group: 'Networks', service: 'matrix' },
   { id: 'kick', label: 'Kick', group: 'Networks', service: 'kick' },
+  { id: 'twitch', label: 'Twitch', group: 'Networks', service: 'twitch' },
   { id: 'about', label: 'About', group: 'About' }
 ]
 
@@ -244,6 +245,8 @@ function Page({ id }: { id: string }): JSX.Element | null {
       return <DiscordSettings />
     case 'kick':
       return <KickSettings />
+    case 'twitch':
+      return <TwitchSettings />
     case 'about':
       return <AboutSettings />
     default:
@@ -1220,6 +1223,111 @@ function KickSettings(): JSX.Element {
           label="Show timeouts and bans"
           description="What a moderator did, which everybody in the channel can see happening anyway"
           defaultValue={true}
+        />
+      </SettingsSection>
+
+      <SettingsSection
+        title="Badges"
+        description="Kick's level, founder and event badges, and a channel's own, drawn as pictures beside a name. Moderator, subscriber and the like stay as words."
+      >
+        <ToggleSetting
+          settingKey="kick.showBadgePictures"
+          label="Show badge pictures"
+          description="Loaded from Kick's servers as they are shown"
+          defaultValue={true}
+        />
+      </SettingsSection>
+
+      <SettingsSection
+        title="Messages Kick removes"
+        description="When a moderator or Kick's automatic moderation takes a message down. The text is kept, so you can still see what was said."
+      >
+        <SelectionSetting
+          settingKey="kick.removedMessages"
+          label="Removed messages"
+          description="Struck through in red keeps what was said beside the fact that it is gone"
+          defaultValue="strike"
+          options={[
+            { label: 'Delete', value: 'remove' },
+            { label: 'Strikethrough', value: 'strike' },
+            { label: 'Replace with notice', value: 'replace' }
+          ]}
+        />
+      </SettingsSection>
+    </>
+  )
+}
+
+/**
+ * Twitch. What is here is what the plan (Gitea issue #55) has built so far:
+ * where a channel's recent past comes from, and what is said about signing in.
+ */
+function TwitchSettings(): JSX.Element {
+  return (
+    <>
+      <SettingsSection
+        title="Twitch"
+        description="Channels are opened from the Join panel by name. Twitch's chat is public, so an account that never signs in still reads every channel; signing in adds talking and the channels you follow. Add an account from the Accounts pane."
+      />
+
+      <SettingsSection
+        title="What to show besides chat"
+        description="The same choices as Kick's: one setting covers a kind of event on both services."
+      >
+        <ToggleSetting settingKey="kick.showSubscriptions" label="Show subscriptions and gifted subs" defaultValue={true} />
+        <ToggleSetting settingKey="kick.showRaids" label="Show raids" defaultValue={true} />
+        <ToggleSetting
+          settingKey="kick.showModeration"
+          label="Show timeouts and bans"
+          description="What a moderator did, which everybody in the channel can see happening anyway"
+          defaultValue={true}
+        />
+        <SelectionSetting
+          settingKey="kick.removedMessages"
+          label="Removed messages"
+          description="When a moderator takes a message down. The text is kept, so you can still see what was said."
+          defaultValue="strike"
+          options={[
+            { label: 'Delete', value: 'remove' },
+            { label: 'Strikethrough', value: 'strike' },
+            { label: 'Replace with notice', value: 'replace' }
+          ]}
+        />
+      </SettingsSection>
+
+      <SettingsSection
+        title="Badges"
+        description="Twitch's own pictures beside a name: the channel's subscriber badge, moderator, VIP and the rest. With pictures off, the roles that have a short word are shown as that word."
+      >
+        <ToggleSetting
+          settingKey="kick.showBadgePictures"
+          label="Show badge pictures"
+          description="Loaded from Twitch's servers as they are shown. The same switch as Kick's."
+          defaultValue={true}
+        />
+      </SettingsSection>
+
+      <SettingsSection
+        title="Watching"
+        description="Twitch gives channel points for time spent watching, and counts it from a short report its own player sends once a minute. Moho plays the video itself, so while a Twitch stream is playing in the window (not paused, minimised or hidden) and you are signed in, it sends that same report for the channel, once a minute, and nothing when the channel is not live. It claims nothing and sends no more often than that."
+      >
+        <ToggleSetting settingKey="twitch.reportWatching" label="Report watching to Twitch" defaultValue={true} />
+      </SettingsSection>
+
+      <SettingsSection
+        title="Polls, predictions and raids"
+        description="Shown as they happen, for every channel you have open, from the same live service twitch.tv's own pages use, which needs no account. You can vote and bet channel points from here, as your twitch.tv session; each only when you press its button. Moho does not claim the bonus chest and sends nothing to earn points faster."
+      />
+
+      <SettingsSection
+        title="Recent messages"
+        description="Twitch keeps no chat history, so a channel you open starts empty and fills as people speak."
+      >
+        <ToggleSetting
+          settingKey="twitch.recentHistory"
+          label="Fill a channel with its recent messages"
+          description="Asks recent-messages.robotty.de, a service run by a third party that remembers each channel's last few hundred lines. It is told which channel you open, through the account's route. Off until you turn it on."
+          defaultValue={false}
         />
       </SettingsSection>
     </>

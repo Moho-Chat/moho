@@ -1059,7 +1059,7 @@ function BufferRow({
     // A conversation with a person is headed by that person, whatever
     // protocol they are on: their picture where there is one, their initial
     // where there is not.
-    <Avatar name={buffer.name} url={buffer.avatarUrl} size={22} status={status} accountId={buffer.accountId} />
+    <Avatar name={buffer.name} url={buffer.avatarUrl} size={22} status={account?.service === 'twitch' ? undefined : status} badge="mail" accountId={buffer.accountId} />
   ) : buffer.avatarUrl ? (
     <img className="buffer-avatar" src={media(buffer.avatarUrl)} alt="" />
   ) : buffer.serviceRoom ? (

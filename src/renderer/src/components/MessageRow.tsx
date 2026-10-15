@@ -8,7 +8,7 @@ import { EventSource } from './EventSource'
 import { ForwardPicker } from './ForwardPicker'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { MediaEmbed } from './MediaEmbed'
-import { KickEventCard, isKickEvent } from './KickEventCard'
+import { KickEventCard, NotificationCard, isKickEvent } from './KickEventCard'
 import { COMMON_EMOJI, EmojiPicker, readRecent, type StickerEntry } from './EmojiPicker'
 import { reactionLabel, reactorsSentence } from '../lib/reactions'
 import { UploadMeter } from './UploadMeter'
@@ -36,6 +36,7 @@ import {
   formatMessage,
   normalizeBBCode,
   clearnetLinks,
+  sneedGreentext,
   thumbnailLinks,
   youtubeId,
   stripCodeBlocks,
@@ -58,9 +59,11 @@ import {
   isWarning,
   isReward,
   isWhisper,
-  nickColor
+  nickColor,
+  readableColor
 } from '../lib/util'
 import { useEscapeLayer } from '../lib/layers'
+import { removedReason } from '../lib/moderation'
 
 /**
  * A badge, short enough to sit beside a name.
@@ -71,6 +74,11 @@ import { useEscapeLayer } from '../lib/layers'
  * being dropped - an unfamiliar badge still says the person has one.
  */
 function badgeLabel(badge: MessageBadge): string {
+  return ROLE_WORDS[badge.type] ?? badge.text.slice(0, 3).toUpperCase()
+}
+
+/** The words that stand for the roles worth looking for in a name's badges. */
+const ROLE_WORDS: Record<string, string> = ((): Record<string, string> => {
   const short: Record<string, string> = {
     broadcaster: 'HOST',
     moderator: 'MOD',
@@ -84,10 +92,17 @@ function badgeLabel(badge: MessageBadge): string {
     // Not a title like the rest of these - a warning that whoever sent this
     // was using a device nobody has vouched for. Without its own short form
     // the fallback below would abbreviate the explanation into "SEN".
-    unverified: '⚠'
+    unverified: '⚠',
+    // Twitch's: somebody's first message in a channel, and a message mirrored
+    // from another channel of a shared chat.
+    'first-message': 'NEW',
+    'shared-chat': 'SHARED',
+    // A cheer: bits sent with the message.
+    cheer: 'BITS',
+    lead_moderator: 'MOD'
   }
-  return short[badge.type] ?? badge.text.slice(0, 3).toUpperCase()
-}
+  return short
+})()
 
 /** A handful of one-click reactions on the hover toolbar. */
 /** What a line that is not speech is marked with, by the daemon's word for it. */
@@ -350,6 +365,12 @@ function MessageRowBody({
   // preview. The object itself, so the row only re-renders when that one
   // message changes.
   const replyId = message.replyTo && !message.replyTo.thread && !message.replyTo.forwarded ? message.replyTo.id : ''
+  // The thread open beside the room, if any: a reply to its first message has
+  // nothing to say that the panel's own heading does not.
+  const openRoot = useChat((s) => s.openThread?.rootId)
+  const [showBadgePictures] = usePref<boolean>('kick.showBadgePictures', true)
+  const twitchModerator = useChat((s) => s.twitchRights[bufferId] === true)
+  const twitchBlocker = useChat((s) => s.accounts.find((a) => bufferId.startsWith(`${a.id}|`))?.moderation === true)
   const original = useChat((s) => (replyId ? s.messagesByBuffer[bufferId]?.find((m) => m.id === replyId) : undefined))
   // Which message is open for editing is the window's, not each row's, so
   // Up arrow in the message box can open the last one.
@@ -424,6 +445,9 @@ function MessageRowBody({
   // KICKs sent, or subscriptions gifted: the daemon says which and to whom in
   // a card, and the line of text is what a copy or a search finds.
   const kickEvent = (message.embeds ?? []).find(isKickEvent)
+  // Any other line the service wrote rather than somebody saying it - a join, a topic, a notice - is drawn as the
+  // same card the events are, whatever protocol it came from (see ARCHITECTURE.md, "Notifications are cards").
+  const systemCard = isSystem && !kickEvent && !!message.body
   // Both of the modes that draw an avatar column. Bubbles is otherwise
   // nothing like comfy, but it wants the same picture beside the same first
   // line of a group.
@@ -471,7 +495,8 @@ function MessageRowBody({
     // because it is about what this reader's browser can reach, and it has to
     // hold for an edited line and for backlog alike - both of which arrive at
     // this function again and neither of which is re-stored.
-    const raw = clearnetLinks(message.body || '')
+    // Sneedchat's own greentext is put back to the plain ">" first, so it is one thing however it arrived.
+    const raw = isSneedchat ? sneedGreentext(clearnetLinks(message.body || '')) : clearnetLinks(message.body || '')
     const normalized = normalizeBBCode(raw)
     const media = markSpoilered(extractMedia(normalized, {
       contentSniffing,
@@ -482,7 +507,8 @@ function MessageRowBody({
       thumbnails: thumbnailLinks(raw)
     }), normalized)
     const codeBlocks = extractCodeBlocks(normalized)
-    const quoteBlocks = extractQuoteBlocks(stripCodeBlocks(normalized))
+    // Not on Sneedchat, where a line starting with ">" is greentext and stays in the line it is in.
+    const quoteBlocks = isSneedchat ? [] : extractQuoteBlocks(stripCodeBlocks(normalized))
 
     // The page a GIF was linked from is not shown as well as the GIF: it is the
     // same thing said twice, and is how a posted GIF read as an address.
@@ -491,7 +517,7 @@ function MessageRowBody({
       .map((e) => ({ url: e.url!, kind: 'image' as const }))
     let body = stripEmbeddedUrls(normalized, [...media, ...gifPages])
     body = stripCodeBlocks(body)
-    body = stripQuoteBlocks(body)
+    if (!isSneedchat) body = stripQuoteBlocks(body)
 
     return {
       // A sender's own formatting, where the protocol carried any: Matrix
@@ -686,6 +712,19 @@ function MessageRowBody({
       ? ([{ separator: true } as MenuEntry] as MenuEntry[])
       : []),
     ...moderationEntries(message, permissions, bufferId, store),
+    // Twitch's own block list, for whoever turned those rights on: server side, so it holds in every
+    // app and channel, which the window's own Ignore does not.
+    ...(twitchBlocker && service === 'twitch' && !message.isOwn && !isSystem && message.from
+      ? ([
+          { label: `Block ${message.from} on Twitch`, icon: 'block', danger: true, onClick: () => twitchAct(store, bufferId, message, 'block', {}, `${message.from} is blocked`) },
+          { label: `Unblock ${message.from}`, icon: 'check_circle', onClick: () => twitchAct(store, bufferId, message, 'unblock', {}, `${message.from} is unblocked`) }
+        ] as MenuEntry[])
+      : []),
+    // A Twitch moderator's: only where Twitch said this account is one for the channel, and not for their
+    // own lines. Timing out is by the sender's login; removing a message is by its id.
+    ...(twitchModerator && service === 'twitch' && !message.isOwn && !isSystem && message.from
+      ? twitchModerationEntries(message, bufferId, store)
+      : []),
     // Telling whoever runs the homeserver. Beside the moderation entries and
     // deliberately not gated like them: those need power in the room and this
     // needs none, which is the point of it - it is the answer available to
@@ -804,6 +843,36 @@ function MessageRowBody({
     return { claimed, loose: parts.media.filter((m) => !taken.has(m.url)) }
   }, [message.embeds, parts.media])
 
+  /** The words of the line itself: its text with its links, emoji and marks. */
+  const renderBody = (): React.ReactNode =>
+    parts.html && (
+      <span className="message-body selectable" title={message.moderated && !message.moderated.replaced ? removedReason(message) : undefined}>
+        <RichText
+          html={parts.html}
+          // Ours unless the sender sent their own formatting, which
+          // is the one case where a picture it names is a stranger's
+          // server being told this message was read.
+          ownMarkup={!message.html}
+          onRevealSpoiler={(i) => setRevealed((r) => ({ ...r, [i]: true }))}
+          // Following a channel link moves the rail too: the channel
+          // is usually in the same guild, but a cross-guild link is
+          // exactly the case where landing on a list that isn't
+          // showing it would be baffling.
+          onOpenChannel={(id) => void store.selectBuffer(id, true)}
+          onOpenLink={(url) => store.followDeepLink(url)}
+        />
+        {message.edited && (
+          <span
+            className="edited-tag small muted"
+            title={message.editedTs ? `Edited ${formatFullTime(message.editedTs)}` : 'Edited'}
+          >
+            {' '}
+            (edited)
+          </span>
+        )}
+      </span>
+    )
+
   return (
     <>
       <div
@@ -815,9 +884,10 @@ function MessageRowBody({
           isWarning(message.kind, message.id) && 'warning',
           message.pending && 'pending',
           message.failed && 'failed',
+          message.moderated && (message.moderated.replaced ? 'removed replaced' : 'removed'),
           isSystem && 'system',
           reward && 'reward',
-          kickEvent && 'has-kick-event',
+          (kickEvent || systemCard) && 'has-kick-event',
           grouped && 'grouped',
           fresh && 'fresh',
           comfy && 'comfy',
@@ -860,7 +930,7 @@ function MessageRowBody({
         {/* A join, a part, a topic change: not somebody speaking, so no face -
             but a small mark in the picture's own column, so the line's text
             starts where every other line's does instead of at the edge. */}
-        {mode === 'comfy' && isSystem && !kickEvent && (
+        {mode === 'comfy' && isSystem && !kickEvent && !systemCard && (
           <span className="message-avatar system-mark" aria-hidden>
             <Icon name={SYSTEM_MARKS[message.kind] ?? 'info'} size={16} />
           </span>
@@ -914,7 +984,7 @@ function MessageRowBody({
             <span className="message-byline">
               <span
                 className={classes('message-from', canOpenProfile && 'clickable')}
-                style={{ color: message.senderColor || nickColor(message.from) }}
+                style={{ color: message.senderColor ? readableColor(message.senderColor) : nickColor(message.from) }}
                 onClick={canOpenProfile ? openProfile : undefined}
                 role={canOpenProfile ? 'button' : undefined}
                 title={canOpenProfile ? `Profile of ${message.from}` : undefined}
@@ -928,15 +998,30 @@ function MessageRowBody({
                   {timeLabel}
                 </span>
               )}
-              {message.badges?.map((badge) => (
-                <span
-                  key={badge.type}
-                  className={`sender-badge small ${badge.type}`}
-                  title={badge.count ? `${badge.text} — ${badge.count} months` : badge.text}
-                >
-                  {badgeLabel(badge)}
-                </span>
-              ))}
+              {message.badges?.map((badge) =>
+                badge.image && showBadgePictures ? (
+                  // The service's own pictures, unless they are turned off. The tooltip
+                  // and the alt text say what it is for anybody who cannot see it.
+                  <img
+                    key={badge.type}
+                    className="sender-badge-image"
+                    src={media(badge.image)}
+                    alt={badge.text}
+                    title={badge.count ? `${badge.text} — ${badge.count} months` : badge.text}
+                    loading="lazy"
+                    draggable={false}
+                  />
+                ) : // Turned off, a badge that has a word for it is that word and one that has none is nothing.
+                badge.image && !(badge.type in ROLE_WORDS) ? null : (
+                  <span
+                    key={badge.type}
+                    className={`sender-badge small ${badge.type}`}
+                    title={badge.count ? `${badge.text} — ${badge.count} months` : badge.text}
+                  >
+                    {badgeLabel(badge)}
+                  </span>
+                )
+              )}
             </span>
           )}
 
@@ -977,6 +1062,7 @@ function MessageRowBody({
               the panel's title already says. */}
           {message.replyTo &&
             !(inThread && message.replyTo.thread) &&
+            !(inThread && message.replyTo.id === openRoot) &&
             (message.replyTo.thread && !inThread ? (
               <button
                 type="button"
@@ -1018,12 +1104,27 @@ function MessageRowBody({
                   style={
                     message.replyTo.forwarded
                       ? undefined
-                      : { color: original?.senderColor || nickColor(message.replyTo.from) }
+                      : { color: original?.senderColor ? readableColor(original.senderColor) : nickColor(message.replyTo.from) }
                   }
                 >
                   {message.replyTo.from}
                 </span>
                 <span className="ellipsis">{message.replyTo.body}</span>
+                {/* Kick groups a chain of replies under the message it began
+                    with; a reply is a way into that conversation. */}
+                {!inThread && message.replyTo.threadRoot && (
+                  <button
+                    type="button"
+                    className="reply-thread-open small"
+                    title="Open the thread"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void store.openThreadPanel(bufferId, message.replyTo!.threadRoot!)
+                    }}
+                  >
+                    <Icon name="forum" size={13} />
+                  </button>
+                )}
               </div>
             ))}
 
@@ -1091,35 +1192,13 @@ function MessageRowBody({
               )}
             </div>
           ) : kickEvent ? (
-            <KickEventCard embed={kickEvent} />
+            <KickEventCard embed={kickEvent} bufferId={bufferId} />
+          ) : systemCard ? (
+            <NotificationCard icon={SYSTEM_MARKS[message.kind] ?? 'info'} warning={isWarning(message.kind, message.id)}>
+              {renderBody()}
+            </NotificationCard>
           ) : (
-            parts.html && (
-              <span className="message-body selectable">
-                <RichText
-                  html={parts.html}
-                  // Ours unless the sender sent their own formatting, which
-                  // is the one case where a picture it names is a stranger's
-                  // server being told this message was read.
-                  ownMarkup={!message.html}
-                  onRevealSpoiler={(i) => setRevealed((r) => ({ ...r, [i]: true }))}
-                  // Following a channel link moves the rail too: the channel
-                  // is usually in the same guild, but a cross-guild link is
-                  // exactly the case where landing on a list that isn't
-                  // showing it would be baffling.
-                  onOpenChannel={(id) => void store.selectBuffer(id, true)}
-                  onOpenLink={(url) => store.followDeepLink(url)}
-                />
-                {message.edited && (
-                  <span
-                    className="edited-tag small muted"
-                    title={message.editedTs ? `Edited ${formatFullTime(message.editedTs)}` : 'Edited'}
-                  >
-                    {' '}
-                    (edited)
-                  </span>
-                )}
-              </span>
-            )
+            renderBody()
           )}
 
           {parts.quoteBlocks.map((quote, i) => (
@@ -1615,6 +1694,42 @@ function ReactionEmoji({ emoji }: { emoji: string }): JSX.Element {
   const custom = emoji.match(/^<?a?:?([A-Za-z0-9_~]{2,32}):(\d+)>?$/)
   if (!custom) return <span>{emoji}</span>
   return <img className="reaction-emoji" src={media(discordEmojiUrl(custom[2]))} alt={custom[1]} />
+}
+
+function twitchAct(
+  store: ReturnType<typeof useStore>,
+  bufferId: string,
+  message: ChatMessage,
+  action: string,
+  extra: Record<string, unknown> = {},
+  done?: string
+): void {
+  void window.moho
+    .rpc('twitchModerate', { bufferId, action, login: message.from.toLowerCase(), userId: message.senderId, ...extra })
+    .then(() => done && store.toast('info', done))
+    .catch((e: Error) => store.toast('error', e.message))
+}
+
+function twitchModerationEntries(message: ChatMessage, bufferId: string, store: ReturnType<typeof useStore>): MenuEntry[] {
+  const act = (action: string, extra: Record<string, unknown> = {}, done?: string): void => twitchAct(store, bufferId, message, action, extra, done)
+  const timeout = (label: string, seconds: number): MenuEntry => ({
+    label: `Time out ${label}`,
+    icon: 'timer',
+    onClick: () => act('timeout', { seconds }, `${message.from} timed out for ${label}`)
+  })
+  return [
+    { separator: true },
+    ...(message.id
+      ? ([{ label: 'Remove message', icon: 'delete', danger: true, onClick: () => act('delete', { messageId: message.id }) }] as MenuEntry[])
+      : []),
+    timeout('1 minute', 60),
+    timeout('10 minutes', 600),
+    timeout('1 hour', 3600),
+    timeout('1 day', 86400),
+    { label: `Shout out ${message.from}`, icon: 'campaign', onClick: () => act('shoutout', {}, `Shouted out ${message.from}`) },
+    { label: `Ban ${message.from}`, icon: 'gavel', danger: true, onClick: () => act('ban', {}, `${message.from} banned`) },
+    { label: `Unban ${message.from}`, icon: 'lock_open', onClick: () => act('unban', {}, `${message.from} can chat again`) }
+  ] as MenuEntry[]
 }
 
 function moderationEntries(

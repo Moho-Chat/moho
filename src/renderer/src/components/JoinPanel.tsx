@@ -74,6 +74,8 @@ export function JoinPanel(): JSX.Element {
         return <DiscordJoin account={account} />
       case 'kick':
         return <KickJoin account={account} />
+      case 'twitch':
+        return <TwitchJoin account={account} />
       case 'sneedchat':
         return <SneedchatRooms account={account} />
       case 'steam':
@@ -82,7 +84,7 @@ export function JoinPanel(): JSX.Element {
         return <div className="panel muted">Joining isn&apos;t supported for this service yet.</div>
     }
   })()
-  const joinable = all.filter((a) => ['irc', 'matrix', 'discord', 'kick', 'sneedchat', 'steam'].includes(a.service))
+  const joinable = all.filter((a) => ['irc', 'matrix', 'discord', 'kick', 'sneedchat', 'steam', 'twitch'].includes(a.service))
 
   return (
     <div className="join-frame">
@@ -356,6 +358,23 @@ function KickJoin({ account }: { account: Account }): JSX.Element {
       <p className="small muted">
         Kick chat is public, so this works signed out. Signing in adds talking, and your
         subscriber emotes for the channels you subscribe to.
+      </p>
+    </div>
+  )
+}
+
+function TwitchJoin({ account }: { account: Account }): JSX.Element {
+  const store = useStore()
+  return (
+    <div className="panel join-panel">
+      <SubmitField
+        label="Open a streamer's chat"
+        placeholder="channel name, or a twitch.tv link"
+        onSubmit={(name) => void store.joinAndOpen(account.id, name)}
+      />
+      <p className="small muted">
+        Twitch chat is public, so this works without signing in. Signing in adds talking and the
+        channels you follow. A channel that does not exist is said so and not kept.
       </p>
     </div>
   )

@@ -7,6 +7,12 @@ import { classes } from '../lib/util'
 const EDGE = 4
 /** The narrowest the corner panel may be made: its controls still fit. */
 const MIN_PIP_WIDTH = 240
+/** The tallest and shortest the picture above a conversation may be made. */
+const MIN_INLINE_HEIGHT = 140
+
+/** Which edge or corner of the corner panel is held: top, bottom, left, right and their corners. */
+type Edge = 't' | 'b' | 'l' | 'r' | 'tl' | 'tr' | 'bl' | 'br'
+const EDGES: Edge[] = ['t', 'b', 'l', 'r', 'tl', 'tr', 'bl', 'br']
 
 /**
  * The frame a moving picture lives in, whatever is feeding it.
@@ -42,6 +48,8 @@ export function VideoStage({
   onPopOut,
   /** Back from that window into moho. */
   onBringBack,
+  height,
+  onHeight,
   children
 }: {
   /** Above the conversation, in a corner of the window, or a window of its own. */
@@ -57,6 +65,9 @@ export function VideoStage({
   controls?: ReactNode
   onPopOut?: () => void
   onBringBack?: () => void
+  /** Inline only: how tall the picture is now, and how to change it. `null` puts it back to what it was. */
+  height?: number
+  onHeight?: (height: number | null, commit: boolean) => void
   children: ReactNode
 }): JSX.Element {
   const panel = useRef<HTMLDivElement>(null)
@@ -83,7 +94,8 @@ export function VideoStage({
    */
   const [savedWidth, setSavedWidth] = usePref<number | null>('ui.pipWidth', null)
   const [width, setWidth] = useState(savedWidth)
-  const sizing = useRef<{ x: number; w: number; h: number; right: number; bottom: number } | null>(null)
+  const sizing = useRef<{ x: number; y: number; w: number; dir: Edge; left: number; top: number; right: number; bottom: number } | null>(null)
+  const rise = useRef<{ y: number; h: number } | null>(null)
 
   /**
    * Where the panel may be put, in the coordinates it is positioned in.
@@ -167,15 +179,16 @@ export function VideoStage({
   }
 
   /**
-   * Resizing from the top-left corner - the inside corner, for a panel that
-   * starts in the bottom-right - so the edges against the window stay put and
-   * the panel grows towards the middle of it.
+   * Resizing from any edge or corner. The picture keeps its shape, so every handle changes the width and the
+   * height follows. The side opposite the one held stays where it is: the edges against the window stay put when
+   * the panel is grown from the inside, and the panel grows towards the middle of the window.
    */
-  const startResize = (e: PointerEvent<HTMLDivElement>): void => {
+  const startResize = (e: PointerEvent<HTMLDivElement>, dir: Edge): void => {
     const box = panel.current?.getBoundingClientRect()
     if (!box) return
-    const corner = local(box.right, box.bottom)
-    sizing.current = { x: e.clientX, w: box.width, h: box.height, right: corner.x, bottom: corner.y }
+    const from = local(box.left, box.top)
+    const to = local(box.right, box.bottom)
+    sizing.current = { x: e.clientX, y: e.clientY, w: box.width, dir, left: from.x, top: from.y, right: to.x, bottom: to.y }
     e.currentTarget.setPointerCapture(e.pointerId)
     e.preventDefault()
     e.stopPropagation()
@@ -186,11 +199,22 @@ export function VideoStage({
     if (!from) return
     const room = (panel.current?.offsetParent as HTMLElement | null)?.getBoundingClientRect()
     const largest = Math.max(MIN_PIP_WIDTH, (room?.width ?? window.innerWidth) * 0.9)
-    const w = Math.round(Math.min(Math.max(from.w + (from.x - e.clientX), MIN_PIP_WIDTH), largest))
-    setWidth(w)
+    const sideways = from.dir.includes('r') ? e.clientX - from.x : from.dir.includes('l') ? from.x - e.clientX : 0
+    const upwards = (from.dir.includes('b') ? e.clientY - from.y : from.dir.includes('t') ? from.y - e.clientY : 0) * (16 / 9)
+    // A corner follows whichever way it was pulled further.
+    const grow = Math.abs(sideways) >= Math.abs(upwards) ? sideways : upwards
+    setWidth(Math.round(Math.min(Math.max(from.w + grow, MIN_PIP_WIDTH), largest)))
   }
 
-  // The bottom-right corner stays where it was while the panel is resized.
+  /** Where the panel's top-left goes for the size it came out at, with the far side held. */
+  const anchored = (from: NonNullable<typeof sizing.current>, box: DOMRect): { x: number; y: number } =>
+    clamp(
+      // Held by its left when it was pulled from the right; otherwise by its right (the corner it starts in).
+      from.dir.includes('r') ? from.left : from.right - box.width,
+      from.dir.includes('b') ? from.top : from.bottom - box.height
+    )
+
+  // The far corner stays where it was while the panel is resized.
   // Placed from the size the panel actually came out at, not a guess at it:
   // the title and controls do not grow with the picture, so scaling the whole
   // height drifted the bottom edge up the screen.
@@ -198,7 +222,8 @@ export function VideoStage({
     const from = sizing.current
     const box = panel.current?.getBoundingClientRect()
     if (!from || !box) return
-    setSpot(clamp(from.right - box.width, from.bottom - box.height))
+    setSpot(anchored(from, box))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [width, clamp])
 
   const endResize = (e: PointerEvent<HTMLDivElement>): void => {
@@ -215,11 +240,31 @@ export function VideoStage({
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
         const box = panel.current?.getBoundingClientRect()
-        const rest = box ? clamp(from.right - box.width, from.bottom - box.height) : null
+        const rest = box ? anchored(from, box) : null
         if (rest) setSpot(rest)
         setSaved(rest)
       })
     )
+  }
+
+  // Above a conversation, the picture is resized by its bottom edge.
+  const startRise = (e: PointerEvent<HTMLDivElement>): void => {
+    rise.current = { y: e.clientY, h: height ?? 0 }
+    e.currentTarget.setPointerCapture(e.pointerId)
+    e.preventDefault()
+  }
+  const onRise = (e: PointerEvent<HTMLDivElement>): void => {
+    if (!rise.current || !onHeight) return
+    const view = e.currentTarget.ownerDocument.defaultView ?? window
+    onHeight(Math.round(Math.min(Math.max(rise.current.h + e.clientY - rise.current.y, MIN_INLINE_HEIGHT), view.innerHeight * 0.8)), false)
+  }
+  const endRise = (e: PointerEvent<HTMLDivElement>): void => {
+    if (!rise.current || !onHeight) return
+    const view = e.currentTarget.ownerDocument.defaultView ?? window
+    const done = Math.round(Math.min(Math.max(rise.current.h + e.clientY - rise.current.y, MIN_INLINE_HEIGHT), view.innerHeight * 0.8))
+    rise.current = null
+    e.currentTarget.releasePointerCapture(e.pointerId)
+    onHeight(done, true)
   }
 
   /** Where it sits: the corner it started in, or where it was put. */
@@ -254,18 +299,19 @@ export function VideoStage({
 
   return (
     <div className={classes('call-stage', mode === 'pip' && 'pip', mode === 'window' && 'in-window')} ref={panel} style={placed}>
-      {mode === 'pip' && (
-        // A grip in the inside corner, the way a window is resized from its
-        // corner.
-        <div
-          className="call-stage-resize"
-          title="Drag to resize"
-          onPointerDown={startResize}
-          onPointerMove={onResize}
-          onPointerUp={endResize}
-          onPointerCancel={endResize}
-        />
-      )}
+      {mode === 'pip' &&
+        // Any edge or corner, the way a window is resized.
+        EDGES.map((dir) => (
+          <div
+            key={dir}
+            className={`call-stage-resize edge-${dir}`}
+            title="Drag to resize"
+            onPointerDown={(e) => startResize(e, dir)}
+            onPointerMove={onResize}
+            onPointerUp={endResize}
+            onPointerCancel={endResize}
+          />
+        ))}
       {mode === 'window' && (
         // A window of its own has no frame, so this is its title bar: it moves
         // the window, and carries the two things a window is done with.
@@ -299,6 +345,18 @@ export function VideoStage({
       )}
 
       {children}
+
+      {mode === 'inline' && onHeight && (
+        <div
+          className="stage-resize"
+          title="Drag to resize · double-click to reset"
+          onPointerDown={startRise}
+          onPointerMove={onRise}
+          onPointerUp={endRise}
+          onPointerCancel={endRise}
+          onDoubleClick={() => onHeight(null, true)}
+        />
+      )}
 
       <div className="call-stage-controls">
         {/* Which conversation this belongs to, because the picture no longer

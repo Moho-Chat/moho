@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton, ServiceMark } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
 import { SteamAccountTools } from './SteamAccountTools'
+import { TwitchSignIn } from './TwitchSignIn'
 import { IgnoreList } from './IgnoreList'
 import { TunnelAllSwitch } from './settings/Tunnel'
 import { useChat, useConnectionDetail, useMapPref, usePref, useStore } from '../state/hooks'
@@ -24,7 +25,7 @@ import type { Account } from '../../../shared/wire'
  * that gains a backend appears here as soon as it gains a form, and one the
  * daemon stops offering disappears without this file being touched.
  */
-const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam'] as const
+const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch'] as const
 type AddableService = (typeof FORMS)[number]
 
 /** What `listProtocols` answers with. */
@@ -136,6 +137,7 @@ export function AccountsPanel(): JSX.Element {
         {adding === 'matrix' && <MatrixForm />}
         {adding === 'kick' && <KickForm onDone={() => setAdding(null)} />}
         {adding === 'steam' && <SteamForm onDone={() => setAdding(null)} />}
+        {adding === 'twitch' && <TwitchForm onDone={() => setAdding(null)} />}
         {adding && (
           <button type="button" className="button subtle small" onClick={() => setAdding(null)}>
             Cancel
@@ -459,6 +461,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
           {account.service === 'matrix' && <MatrixAccountTools account={account} />}
 
           {account.service === 'steam' && <SteamAccountTools account={account} />}
+          {account.service === 'twitch' && <TwitchAccountTools account={account} />}
 
           {account.service === 'sneedchat' && (
             <>
@@ -1468,6 +1471,126 @@ function SteamForm({ onDone }: { onDone: () => void }): JSX.Element {
         )}
       </div>
       {busy && detail && <p className="small muted">{detail}…</p>}
+    </div>
+  )
+}
+
+/**
+ * Adding a Twitch account: sign in, or only read.
+ *
+ * Twitch's chat is public, so an account that never signs in still reads every
+ * channel it is pointed at - the same choice Kick's form offers. Signing in is
+ * what buys sending, the channels you follow and the emotes you can use.
+ */
+function TwitchForm({ onDone }: { onDone: () => void }): JSX.Element {
+  const store = useStore()
+  const [useTor, setUseTor] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const readOnly = (): void => {
+    setBusy(true)
+    void window.moho
+      .rpc('addTwitchAccount', { useTor })
+      .then(() => {
+        void store.refreshAccounts()
+        onDone()
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <div className="add-form">
+      <TorSwitch service="twitch" on={useTor} onChange={setUseTor} />
+      <TwitchSignIn useTor={useTor} onDone={onDone}>
+        <button
+          type="button"
+          className="button subtle"
+          disabled={busy}
+          title="Read channels without an account. Twitch's chat is public; sending needs a sign-in."
+          onClick={readOnly}
+        >
+          Read without signing in
+        </button>
+      </TwitchSignIn>
+    </div>
+  )
+}
+
+/**
+ * What a Twitch account can be asked to do from its own card.
+ *
+ * Signing in (for one that only reads, or whose sign-in Twitch has stopped accepting; the new sign-in is a
+ * Twitch account of its own under the login that approved it, so an anonymous reader is left where it
+ * was), opening the channels the account follows.
+ *
+ * Video needs the website's own session, because Twitch's player takes only a token its own website made: the one
+ * moho gets for chat and the official API is refused there. It is not a second sign-in - one window signs in on
+ * twitch.tv and approves the code, and the session it saw on the way is kept with the account (see TwitchSignIn).
+ * It is the person's own website session, and says so - what it can do is what being signed in there can do - and
+ * it is what makes their Turbo or their subscriptions count, so ads they are not meant to see are not shown.
+ */
+function TwitchAccountTools({ account }: { account: Account }): JSX.Element {
+  const store = useStore()
+  const refused = account.state === 'auth_failed'
+  const [busy, setBusy] = useState('')
+
+  const run = (what: string, work: () => Promise<void>): void => {
+    setBusy(what)
+    void work()
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(''))
+  }
+
+  const follows = (liveOnly: boolean): void =>
+    run('follows', async () => {
+      const r = await window.moho.rpc<{ count: number }>('syncTwitchFollows', { accountId: account.id, liveOnly })
+      store.toast('info', r.count === 0 ? 'You follow no channels that are on air right now' : `Opening ${r.count} channel${r.count === 1 ? '' : 's'}`)
+    })
+
+  return (
+    <div className="account-tools">
+      {(!account.hasPassword || refused) && (
+        <>
+          <p className="small muted">
+            {refused
+              ? 'Twitch no longer accepts this sign-in. Signing in again keeps its channels and settings.'
+              : 'This account only reads. Sign in to send messages and to see the channels you follow.'}
+          </p>
+          <TwitchSignIn useTor={account.useTor} onDone={() => undefined} label={refused ? 'Sign in again' : 'Sign in'} />
+        </>
+      )}
+      {account.hasPassword && !refused && (
+        <div className="field-row">
+          <button type="button" className="button subtle" disabled={busy !== ''} onClick={() => follows(true)} title="Open the channels you follow that are streaming now">
+            Open followed channels that are live
+          </button>
+          <button type="button" className="button subtle" disabled={busy !== ''} onClick={() => follows(false)} title="Open everyone you follow, up to 200">
+            Open everyone I follow
+          </button>
+        </div>
+      )}
+      {account.hasPassword && !refused && (!account.moderation || !account.webSession) && (
+        <>
+          <p className="small muted">
+            This sign-in was made before {account.moderation ? 'video' : account.webSession ? 'moderation, whispers, shoutouts and blocking' : 'video, moderation, whispers, shoutouts and blocking'}{' '}
+            {account.moderation || account.webSession ? 'was' : 'were'} part of signing in. Signing in again adds {account.moderation || account.webSession ? 'it' : 'them'}, in the same one
+            window; nothing else changes.
+          </p>
+          <TwitchSignIn useTor={account.useTor} onDone={() => undefined} label="Sign in again" />
+        </>
+      )}
+      <p className="small muted">
+        {account.webSession
+          ? 'Video plays as you: signed in on twitch.tv, so your Turbo or your subscriptions count and their ads are not shown.'
+          : 'Video plays without a twitch.tv sign-in, so Twitch puts ads in streams. Signing in again signs in on twitch.tv too, which lets your Turbo or your subscriptions count.'}
+      </p>
+      {account.webSession && (
+        <p className="small muted">
+          It is your twitch.tv login session, so what it can do is what being signed in there can do. Removing this account
+          forgets it here; to end it on Twitch, use Sign out everywhere in twitch.tv's security settings.
+        </p>
+      )}
     </div>
   )
 }

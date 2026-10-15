@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMediaUrl } from '../lib/route'
 import { nickColor } from '../lib/util'
 import { presenceClass, presenceLabel } from '../lib/presence'
+import { Icon } from './Icon'
 
 /**
  * Somebody's face, with a fallback for the many people who have no picture.
@@ -21,12 +22,19 @@ export function Avatar({
   url,
   size = 24,
   status,
+  badge,
   accountId
 }: {
   name: string
   url?: string
   size?: number
   status?: string
+  /**
+   * A glyph in the corner that says what kind of thing this is, for a face that would otherwise look like
+   * a channel's: a conversation with a person on a service whose channels have pictures too, and which
+   * has no presence dot to tell them apart by.
+   */
+  badge?: string
   /** Whose picture: a strictly routed account's is fetched through its route
    *  (#257). Taken from the surrounding conversation when not given. */
   accountId?: string
@@ -58,6 +66,11 @@ export function Avatar({
           style={{ background: nickColor(name), width: size, height: size, fontSize: Math.round(size * 0.45) }}
         >
           {initial(name)}
+        </span>
+      )}
+      {badge && !status && (
+        <span className="avatar-badge" title="Direct message" aria-label="Direct message">
+          <Icon name={badge} size={Math.max(8, Math.round(size * 0.4))} />
         </span>
       )}
       {status && (

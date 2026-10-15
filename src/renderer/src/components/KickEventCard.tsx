@@ -1,10 +1,14 @@
 import { Icon } from './Icon'
+import { useStore } from '../state/hooks'
 import { embedColor } from '../lib/format'
 import { nickColor } from '../lib/util'
 import type { Embed } from '../../../shared/wire'
 
 /** The embed kinds the daemon draws as these cards instead of as a link preview. */
-export const KICK_EVENT_KINDS = ['kicks', 'gift-sub', 'raid', 'redeem', 'subscribe', 'moderation', 'stream']
+export const KICK_EVENT_KINDS = ['kicks', 'gift-sub', 'raid', 'redeem', 'subscribe', 'moderation', 'stream', 'raid-out']
+
+/** The glyphs of a moderation card that is a penalty: red. The rest (a mode, an unban, a shoutout) are not. */
+const PUNISHING = ['gavel', 'timer_off', 'delete', 'block']
 
 export function isKickEvent(embed: Embed): boolean {
   return !!embed.kind && KICK_EVENT_KINDS.includes(embed.kind)
@@ -30,7 +34,8 @@ function KicksMark({ size = 16 }: { size?: number }): JSX.Element {
  * streamer gave it - a ban, a timeout or a chat cleared, and the stream going
  * live or ending.
  */
-export function KickEventCard({ embed }: { embed: Embed }): JSX.Element | null {
+export function KickEventCard({ embed, bufferId }: { embed: Embed; bufferId?: string }): JSX.Element | null {
+  const store = useStore()
   const who = embed.author
   if (!who) return null
   const name = (colour?: string): JSX.Element => (
@@ -86,6 +91,39 @@ export function KickEventCard({ embed }: { embed: Embed }): JSX.Element | null {
     )
   }
 
+  // Twitch: the channel being watched is sending its viewers to another (the embed's title is how many, its
+  // description the other channel's login), and the card offers to go along.
+  if (embed.kind === 'raid-out') {
+    const account = bufferId ? store.accountFor(bufferId) : undefined
+    return (
+      <div className="kick-event raid selectable">
+        <span className="kick-event-badge lead">
+          <Icon name="groups" size={20} />
+        </span>
+        <div className="kick-event-main">
+          <div className="kick-event-line">
+            <span className="kick-event-verb">Raiding</span>
+            {name()}
+            {embed.title && (
+              <>
+                <span className="kick-event-verb">with</span>
+                <strong className="kick-event-amount">{embed.title}</strong>
+                <span className="kick-event-verb">{embed.title === '1' ? 'viewer.' : 'viewers.'}</span>
+              </>
+            )}
+          </div>
+          {account && embed.description && (
+            <div className="kick-event-message">
+              <button type="button" className="button subtle" onClick={() => void store.joinAndOpen(account.id, embed.description ?? '')}>
+                Open {who}'s chat
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   if (embed.kind === 'redeem') {
     return (
       <div className="kick-event redeem selectable" style={tint}>
@@ -127,9 +165,9 @@ export function KickEventCard({ embed }: { embed: Embed }): JSX.Element | null {
 
   if (embed.kind === 'moderation') {
     return (
-      <div className="kick-event moderation selectable">
+      <div className={`kick-event moderation selectable${PUNISHING.includes(embed.icon ?? 'gavel') ? '' : ' soft'}`}>
         <span className="kick-event-badge lead">
-          <Icon name="gavel" size={20} />
+          <Icon name={embed.icon || 'gavel'} size={20} />
         </span>
         <div className="kick-event-line">
           <strong className="kick-event-name">{who}</strong>
@@ -189,6 +227,23 @@ export function KickEventCard({ embed }: { embed: Embed }): JSX.Element | null {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * A line the service wrote rather than somebody saying it - a join, a topic change, a notice about the
+ * conversation - as the same card the events above are, so every protocol's notifications look alike and a
+ * protocol added later gets them by sending a line that is not speech. It carries the words as the log draws
+ * them (links and emoji in place), a mark for what kind of line it was, and takes the red of a warning.
+ */
+export function NotificationCard({ icon, warning, children }: { icon: string; warning?: boolean; children: React.ReactNode }): JSX.Element {
+  return (
+    <div className={`kick-event notification selectable${warning ? ' warning' : ''}`}>
+      <span className="kick-event-badge lead">
+        <Icon name={icon} size={18} />
+      </span>
+      <div className="kick-event-line">{children}</div>
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildSmilieIndex,
+  cheerUrl,
   discordEmojiUrl,
   embedColor,
   emojiPreview,
@@ -14,6 +15,8 @@ import {
   hostnameOf,
   ircFormat,
   normalizeBBCode,
+  sneedGreentext,
+  sneedSameText,
   stripCodeBlocks,
   stripEmbeddedUrls,
   stripQuoteBlocks,
@@ -305,5 +308,52 @@ describe('the forum\'s own files', () => {
 
   it('leave other pictures and an AVIF anywhere else as they were', () => {
     expect(extractMedia('https://i.ibb.co/JRkN8BFv/photo.avif', {}).map((m) => m.kind)).toEqual(['image'])
+  })
+})
+
+describe("Twitch's emotes and cheers in a message", () => {
+  it("draws Twitch's own, still and moving, and reads a stored third-party emote as its word", () => {
+    const html = formatMessage('[twitch:emote:25:Kappa] [twitch:aemote:emotesv2_abc:Dance] [twitch:bttv:a1:OMEGALUL] [twitch:7tv:01AB:GAMBA]')
+    expect(html).toContain('emoticons/v2/25/default/dark/2.0')
+    expect(html).toContain('emoticons/v2/emotesv2_abc/animated/dark/2.0')
+    expect(html).toContain('OMEGALUL GAMBA')
+    expect(html).not.toContain('cdn.7tv.app')
+    expect(html).not.toContain('[twitch:')
+    expect(html).toContain('alt="Kappa"')
+  })
+
+  it('draws a cheer as its picture and its amount, at the tier the amount reaches', () => {
+    const html = formatMessage('[twitch:cheer:cheer:250] [twitch:cheer:kappa:5]')
+    expect(html).toContain('actions/cheer/dark/animated/100/2.gif')
+    expect(html).toContain('actions/kappa/dark/animated/1/2.gif')
+    expect(html).toContain('<span class="cheer-amount">250</span>')
+    expect(cheerUrl('Cheer', 10000)).toContain('/cheer/dark/animated/10000/')
+    expect(cheerUrl('cheer', 999)).toContain('/animated/100/')
+  })
+
+  it('shows what the composer would put for one, and nothing for what is not a token', () => {
+    expect(emojiPreview('[twitch:emote:25:Kappa]')?.label).toBe('Kappa')
+    expect(emojiPreview('[twitch:7tv:01AB:GAMBA]')).toBeNull()
+    expect(emojiPreview('[twitch:nonsense:1:x]')).toBeNull()
+    // An id with a slash in it is not an id, and cannot build another address.
+    expect(formatMessage('[twitch:emote:../x:y]')).not.toContain('emoticons/v2/..')
+  })
+})
+
+describe("Sneedchat's greentext", () => {
+  it('is a line that starts with ">", in 4chan\'s green, on that line only', () => {
+    const html = formatMessage('plain\n>be me\nstill plain', { isSneedchat: true })
+    expect(html).toBe('plain<br><span class="greentext">&gt;be me</span><br>still plain')
+    // Anywhere else it is just a character.
+    expect(formatMessage('>not green')).not.toContain('greentext')
+  })
+
+  it("is the same thing whether the site wrapped it in its own colour or not, and its echo matches what was sent", () => {
+    expect(sneedGreentext('[color=#72ff72]>archlinuxwoman')).toBe('>archlinuxwoman')
+    expect(sneedGreentext('[color=#72ff72]>a\nb')).toBe('>a\nb')
+    expect(sneedGreentext('[color=#72ff72]>wrapped[/color]')).toBe('>wrapped')
+    expect(sneedGreentext('[color=#ff0000]red stays')).toBe('[color=#ff0000]red stays')
+    expect(sneedSameText('>archlinuxwoman', '[color=#72ff72]>archlinuxwoman')).toBe(true)
+    expect(sneedSameText('hello', '[color=#72ff72]>hello')).toBe(false)
   })
 })

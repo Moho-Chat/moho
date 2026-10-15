@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useMediaUrl } from '../lib/route'
-import { Icon } from './Icon'
+import { Icon, ServiceMark } from './Icon'
+import { serviceIcon } from '../lib/util'
 import { discordEmojiUrl, emojiPreview, sourcePick, type SmilieEntry } from '../lib/format'
+import { recentsHere } from '../lib/recents'
 import { drawableEmoteUrl, onLocalEmotes } from '../lib/emotecache'
 import { LottieSticker } from './LottieSticker'
 import type { CustomEmoji } from '../../../shared/wire'
@@ -74,6 +76,8 @@ export const COMMON_EMOJI: { emoji: string; name: string }[] = [
 export function emojiToken(e: CustomEmoji): string {
   // Steam's, named rather than numbered: the id carries the service.
   if (e.id.startsWith('steam:')) return `[steam:emote:${e.id.slice(6)}]`
+  // Twitch's, which the daemon names by the token its messages carry: the box draws the picture and Twitch is sent the word.
+  if (e.id.startsWith('[twitch:')) return e.id
   if (e.url) return `[emote:${e.id}:${e.name}]`
   return `<${e.animated ? 'a' : ''}:${e.name}:${e.id}>`
 }
@@ -262,6 +266,8 @@ export function EmojiPicker({
   // daemon rather than assembled here, because the answer depends on things
   // only it knows - a Nitro subscription, a Kick channel's standing.
   const [sources, setSources] = useState<EmojiSource[]>([])
+  /** Whether the daemon has said yet what can be sent here, which decides what the recent picks may offer. */
+  const [sourcesLoaded, setSourcesLoaded] = useState(false)
   const scroll = useRef<HTMLDivElement>(null)
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
@@ -272,7 +278,10 @@ export function EmojiPicker({
       // An older daemon has no such method; the buffer's own emoji below are
       // what this showed before it asked, so that is what it falls back to.
       .catch(() => [])
-      .then(setSources)
+      .then((list) => {
+        setSources(list)
+        setSourcesLoaded(true)
+      })
   }, [bufferId, stickersOnly])
 
   // The picker is normally opened fresh, but it stays up across a buffer
@@ -407,6 +416,26 @@ export function EmojiPicker({
     return groups
   }, [custom, sources])
 
+  // What can be sent in this conversation, as the text each is picked as. A recent pick is shown only if it is in
+  // here (or is an ordinary Unicode emoji): one from another server, another channel, an unlock that has lapsed or
+  // an account without Nitro is not something this conversation can take, so it is not offered - on every service.
+  // The stored list is left as it is, so a pick comes back where it works again.
+  const onOffer = useMemo(() => {
+    const set = new Set<string>()
+    for (const src of sources) {
+      if (!src.usableHere) continue
+      for (const e of src.emoji) {
+        if (e.locked) continue
+        set.add(sourcePick(src.service, e))
+        set.add(emojiToken({ id: e.id, name: e.name, url: e.url, animated: e.animated } as CustomEmoji))
+      }
+    }
+    for (const e of customEmoji) set.add(emojiToken(e))
+    for (const s of smilies) for (const a of s.aliases ?? []) set.add(a)
+    return set
+  }, [sources, customEmoji, smilies])
+  const recentHere = useMemo(() => recentsHere(recent, onOffer, sourcesLoaded, fixedSet), [recent, onOffer, sourcesLoaded, fixedSet])
+
   const jumpTo = (id: string): void => {
     sectionRefs.current[id]?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }
@@ -527,12 +556,14 @@ export function EmojiPicker({
         }))
       ]
     : [
-        ...(!q && recent.length > 0 ? [{ id: 'recent', name: 'Recent', icon: <Icon name="schedule" size={20} /> }] : []),
+        ...(!q && recentHere.length > 0 ? [{ id: 'recent', name: 'Recent', icon: <Icon name="schedule" size={20} /> }] : []),
         ...sourceSections.map((src) => ({
           id: src.id,
           name: src.name,
           icon: src.iconUrl ? (
-            <img src={media(src.iconUrl)} alt="" />
+            <img src={media(src.iconUrl)} alt="" className="emoji-rail-avatar" />
+          ) : src.service === 'twitch' && src.name === 'Twitch' ? (
+            <ServiceMark icon={serviceIcon('twitch')} size={20} />
           ) : (
             <span className="emoji-jump-initial">{src.name.slice(0, 1).toUpperCase()}</span>
           )
@@ -742,9 +773,9 @@ export function EmojiPicker({
         }}
       >
         <PickerScroll.Provider value={scroll}>
-        {!stickersOnly && !q && recent.length > 0 && (
+        {!stickersOnly && !q && recentHere.length > 0 && (
           <Section title="Recent" anchorRef={(el) => (sectionRefs.current.recent = el)}>
-            {recent.map((r) => {
+            {recentHere.map((r) => {
               // A recent is stored as the text that gets sent, which for a
               // custom emoji or a shortcode is a stand-in rather than the
               // thing. Resolved back to a picture here, so the row of recents
@@ -782,7 +813,7 @@ export function EmojiPicker({
             title={src.name}
             anchorRef={(el) => (sectionRefs.current[src.id] = el)}
           >
-            {src.emoji.map((e) => {
+            {src.emoji.map((e, at) => {
               // Only one reason left: a source that could not be used here
               // at all was dropped above, so a cell that cannot be pressed is
               // one this account has not paid for - in a room it is reading.
@@ -802,7 +833,7 @@ export function EmojiPicker({
                   : emojiPreview(e.id, smilies)?.src
               return (
                 <button
-                  key={`${src.id}:${e.id}`}
+                  key={`${src.id}:${e.id}:${at}`}
                   type="button"
                   // A cell with no picture shows its name, and the styling
                   // that keeps a name inside its square is `.emoji-cell.

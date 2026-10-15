@@ -5,6 +5,7 @@ import { IconButton } from './Icon'
 import { Composer } from './Composer'
 import { useChat, usePref, useStore } from '../state/hooks'
 import type { ChatMessage } from '../state/store'
+import { applyRemoved, type RemovedMessages } from '../lib/moderation'
 
 /**
  * A thread, beside the room it belongs to.
@@ -26,6 +27,7 @@ export function ThreadPanel(): JSX.Element | null {
   // to ask for `ui.*`, which nothing writes, so it ignored both.
   const [comfy] = usePref<'classic' | 'comfy' | 'bubbles'>('display.messageMode', 'comfy')
   const [relativeTimestamps] = usePref<boolean>('display.relativeTimestamps', false)
+  const [removedMode] = usePref<RemovedMessages>('kick.removedMessages', 'strike')
   const store = useStore()
   // Before the early return below, as every hook here has to be.
   const shared = useRowContext(thread?.bufferId ?? '')
@@ -36,15 +38,15 @@ export function ThreadPanel(): JSX.Element | null {
   const messages = useMemo((): ChatMessage[] => {
     if (!thread) return []
     const live = (messagesByBuffer[thread.bufferId] || []).filter(
-      (m) => m.id === thread.rootId || (m.replyTo?.thread && m.replyTo.id === thread.rootId)
+      (m) => m.id === thread.rootId || (m.replyTo?.thread && m.replyTo.id === thread.rootId) || m.replyTo?.threadRoot === thread.rootId
     )
     // By id, so a message that is both fetched and live appears once. The
     // live copy wins: it is the one carrying edits and reactions that have
     // happened since the fetch.
     const byId = new Map<string, ChatMessage>()
     for (const m of [...thread.messages, ...live]) byId.set(m.id, m)
-    return [...byId.values()].sort((a, b) => a.ts - b.ts)
-  }, [thread, messagesByBuffer])
+    return applyRemoved([...byId.values()].sort((a, b) => a.ts - b.ts), removedMode)
+  }, [thread, messagesByBuffer, removedMode])
 
   // Opened on, and following, the newest reply: a thread is read from its end.
   const count = messages.length
@@ -53,6 +55,10 @@ export function ThreadPanel(): JSX.Element | null {
     if (el) el.scrollTop = el.scrollHeight
   }, [thread?.rootId, count])
 
+  // Not counting the message it grew from - which is not always here: a thread can outlive the scrollback
+  // its first message was in, and then every message shown is a reply.
+  const replyCount = messages.filter((m) => m.id !== thread?.rootId).length
+
   if (!thread) return null
 
   return (
@@ -60,7 +66,7 @@ export function ThreadPanel(): JSX.Element | null {
       <div className="thread-header">
         <span className="thread-title ellipsis">Thread</span>
         <span className="small muted">
-          {Math.max(0, messages.length - 1) === 1 ? '1 reply' : `${Math.max(0, messages.length - 1)} replies`}
+          {replyCount === 1 ? '1 reply' : `${replyCount} replies`}
         </span>
         <IconButton name="close" title="Close thread" onClick={() => store.closeThreadPanel()} />
       </div>

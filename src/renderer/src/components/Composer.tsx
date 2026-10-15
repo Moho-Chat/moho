@@ -864,13 +864,13 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
 
   // A Kick account with no sign-in watches; it cannot talk. Offering the
   // box anyway meant typing a message the service was always going to refuse.
-  if (account && account.service === 'kick' && !account.hasPassword) {
+  if (account && (account.service === 'kick' || account.service === 'twitch') && !account.hasPassword) {
     return (
       <div className="composer">
         <div className="divider-h" />
         <div className="composer-watching small muted">
           <Icon name="visibility" size={16} />
-          <span>Watching signed out. Sign in to Kick to talk here.</span>
+          <span>Watching signed out. Sign in to {account.service === 'twitch' ? 'Twitch' : 'Kick'} to talk here.</span>
           <button type="button" className="button" onClick={() => store.setActivePanel('accounts')}>
             Sign in
           </button>
@@ -1303,8 +1303,8 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
 
         {/* GIFs, wherever there is a Discord account to ask for them: the
             picker borrows that account's way of looking, and what it finds can
-            be sent in any conversation. */}
-        {!thread && service !== 'steam' && accounts.some((a) => a.service === 'discord') && (
+            be sent in any conversation - except Twitch's, whose chat takes no pictures. */}
+        {!thread && service !== 'steam' && service !== 'twitch' && accounts.some((a) => a.service === 'discord') && (
           <button
             ref={gifButtonRef}
             type="button"
