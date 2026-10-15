@@ -11,9 +11,14 @@ import Hls from 'hls.js'
  * Here each of those lines becomes a segment of the playlist like any other, the same length as the
  * last complete one, so hls.js asks for it and plays it as it arrives.
  *
- * Twitch's playlists do the same under another name - `#EXT-X-TWITCH-PREFETCH` - with two-second segments,
- * and are read the same way. They have none while an ad is playing (the ad's segments are not prefetched),
- * which needs nothing: a playlist with no such line is left as it is.
+ * Twitch's playlists carry the same under another name - `#EXT-X-TWITCH-PREFETCH` - and are NOT read this way,
+ * though they once were. An IVS prefetch address is the address the segment will have when it is complete, so a
+ * segment is the same one in the playlist before and after it is made. Twitch's is not: the prefetch address and
+ * the address of the finished segment are different (measured on summit1g's playlists), so a segment taken from a
+ * prefetch line changes address in the next refresh, hls.js sees "media sequence mismatch" for it on every
+ * refresh, and gives up on the rendition every ten seconds or so, which is a picture that goes black and starts
+ * again. Left as they are, hls.js ignores the lines and plays the finished segments, a few seconds nearer the
+ * past and without a stop.
  */
 /**
  * The addresses that were listed as prefetch, which hls.js must not judge the connection by: one of
@@ -33,14 +38,14 @@ function remember(address: string): void {
 const UNIFORM_WITHIN = 0.25
 
 export function withPrefetch(playlist: string, take = 2): string {
-  if (take <= 0 || !/#EXT-X-(?:TWITCH-)?PREFETCH:/.test(playlist) || playlist.includes('#EXT-X-ENDLIST')) return playlist
+  if (take <= 0 || !/#EXT-X-PREFETCH:/.test(playlist) || playlist.includes('#EXT-X-ENDLIST')) return playlist
   const lines = playlist.split('\n')
   const kept: string[] = []
   const ahead_: string[] = []
   let length = ''
   const lengths: number[] = []
   for (const line of lines) {
-    const prefetch = /^#EXT-X-(?:TWITCH-)?PREFETCH:(\S+)/.exec(line.trim())
+    const prefetch = /^#EXT-X-PREFETCH:(\S+)/.exec(line.trim())
     if (prefetch) {
       ahead_.push(prefetch[1])
       continue

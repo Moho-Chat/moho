@@ -69,11 +69,9 @@ describe('withPrefetch on a Twitch playlist', () => {
     ''
   ].join('\n')
 
-  it('reads the prefetch lines under Twitch name as segments of the same length', () => {
-    const out = withPrefetch(twitch)
-    expect(out).not.toContain('PREFETCH')
-    expect(out.split('\n').filter((l) => l.startsWith('#EXTINF'))).toEqual(['#EXTINF:2.000,live', '#EXTINF:2.000,live', '#EXTINF:2.000,prefetch', '#EXTINF:2.000,prefetch'])
-    expect(out.trim().endsWith('https://cdn.example/d.mp4')).toBe(true)
+  it('leaves the prefetch lines under Twitch name alone: their address is not the finished segment\'s', () => {
+    // Taken as segments, each would change address in the next refresh and hls.js would reject the playlist.
+    expect(withPrefetch(twitch)).toBe(twitch)
   })
 
   it('leaves a playlist with none - an ad is playing, and ads are not prefetched - as it is', () => {
