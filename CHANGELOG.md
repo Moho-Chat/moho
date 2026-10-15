@@ -17,6 +17,33 @@ Each section has two parts:
   that made it, including dependency updates
   (`node scripts/changelog-deps.mjs <previous tag>` lists those).
 
+## [1.2.0]
+
+### Major features
+
+- **Twitch, fully ported:** a streamer's chat beside the stream, in the same window as everything else. Read with no account at all, or sign in once and have chat, video, channel points, moderation and whispers from that single sign-in.
+- **Twitch chat:** messages with name colours, badges, cheers with their pictures, replies and threads, Twitch's own emotes (animated ones move), first-time and returning chatters, and subscriptions, gifts, raids and announcements drawn as cards. The channels you follow are opened the first time you sign in, and the member list counts who is talking.
+- **Twitch video:** the stream plays in the window the way Kick's does, in the conversation, in the corner or in a window of its own, with a resolution menu, captions where the streamer sends them, and Twitch's ad breaks said instead of left to look like a fault. A subscriber's or Turbo account plays without them.
+- **Twitch emotes:** the picker shows the selected channel's whole set with the ones you cannot use greyed out and the usable ones first, then Twitch's own, then a section for each other channel that gives you emotes, each with the channel's picture. What you send leaves as its word and shows as its picture in your own line; an emote that lapses leaves the picker, and an emote that cannot be sent in a conversation is not offered as a recent one on any service.
+- **Twitch channel points:** the balance on a plaque, one panel over the chat that lists a channel's rewards cheapest first and redeems them (Highlight My Message, Choose an Emote to Unlock, Unlock a Random Sub Emote, Modify a Single Emote, and the streamer's own, with the text a reward asks for), and watching a stream in moho now earns points because the player reports that it is being watched, once a minute and only while the picture is playing, with a switch in Settings.
+- **Twitch polls, predictions and raids** as they happen, as cards: vote in a poll and bet on a prediction from the card, and go along with a raid.
+- **Twitch moderation and whispers** from one sign-in: removing messages, timeouts, bans, the room's modes, announcements, shoutouts, blocking, and whispers as conversations of their own, from menus and from slash commands, for the channels where the account has the rights.
+- **Twitch's own sections in the list:** Channels and Direct Messages are fixed headings, and a whisper is a conversation named for the person, with a badge to tell it from a channel.
+- **Kick and Twitch share one rewards panel** for channel points, opened from the plaque over the chat like the quick switcher.
+
+### Fixes, patches and changes
+
+- Every notification a service sends is drawn as a card in the same style, and that is the rule for protocols to come ([moho `9ef8a67`](https://github.com/Moho-Chat/moho/commit/9ef8a67))
+- IRC explains a channel's modes in words when you join and when one changes, so `+Cnrt` is not left for a new user to decode ([moho `34fcddf`](https://github.com/Moho-Chat/moho/commit/34fcddf), [nobilis `28481f3`](https://github.com/Moho-Chat/nobilis/commit/28481f3))
+- Sneedchat greentext is drawn in 4chan's green, and a sent greentext line is matched with the site's coloured echo ([moho `bb2edf5`](https://github.com/Moho-Chat/moho/commit/bb2edf5))
+- Recent emoji are offered only where they can be sent, in every conversation of every service ([moho `aacbde7`](https://github.com/Moho-Chat/moho/commit/aacbde7))
+- The channel list, the member list, the stream above the conversation and the corner panel can be resized by dragging their edges ([moho `d1e39f1`](https://github.com/Moho-Chat/moho/commit/d1e39f1))
+- Kick video plays about 3.5 seconds behind instead of 20, without rebuilding the picture on every new address, and has a resolution menu and live captions ([moho `3aff255`](https://github.com/Moho-Chat/moho/commit/3aff255), [nobilis `9f0ca86`](https://github.com/Moho-Chat/nobilis/commit/9f0ca86))
+- Kick video no longer guesses prefetched segments for streams whose segments differ in length ([moho `a7ef798`](https://github.com/Moho-Chat/moho/commit/a7ef798))
+- Kick shows threads from replies and removed messages, struck through, left out or replaced as chosen ([moho `8e3d110`](https://github.com/Moho-Chat/moho/commit/8e3d110), [nobilis `bb318cf`](https://github.com/Moho-Chat/nobilis/commit/bb318cf))
+- Kick's recently-talking count keeps rising past the length of what is listed ([moho `987644e`](https://github.com/Moho-Chat/moho/commit/987644e), [nobilis `41e93b8`](https://github.com/Moho-Chat/nobilis/commit/41e93b8))
+- Kick's points plaque follows its push, and badge pictures are drawn beside names ([moho `dd44e76`](https://github.com/Moho-Chat/moho/commit/dd44e76), [nobilis `4c17be0`](https://github.com/Moho-Chat/nobilis/commit/4c17be0))
+
 ## [1.1.0]
 
 ### Major features
