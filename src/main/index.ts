@@ -1152,7 +1152,7 @@ app.whenReady().then(() => {
     applyPolicy(contents)
     contents.on('console-message', (event) => {
       const message = (event as unknown as { message?: string }).message
-      if (typeof message === 'string' && message.startsWith('[call] ')) log.info(message)
+      if (typeof message === 'string' && (message.startsWith('[call] ') || message.startsWith('[restore] '))) log.info(message)
     })
   })
 

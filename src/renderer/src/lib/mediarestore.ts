@@ -66,16 +66,24 @@ export function restoreMissingMedia(): () => void {
     const el = e.target
     if (!(el instanceof HTMLImageElement || el instanceof HTMLVideoElement || el instanceof HTMLAudioElement)) return
     const path = cachedPath(el)
-    if (!path) return
+    if (!path) {
+      if ((el.currentSrc || el.src).includes('telegram')) console.info(`[restore] a failed picture is not one the daemon can restore: ${(el.currentSrc || el.src).slice(-90)}`)
+      return
+    }
     if (el.dataset.restoreGaveUp === path) return
     // Known to be past saving, or already restored once for this element and
     // still failing: let it fail as it always did.
-    if (gone.has(path) || el.dataset.restoreTried === path) return
+    if (gone.has(path) || el.dataset.restoreTried === path) {
+      console.info(`[restore] ${path.split(/[\\/]/).slice(-2).join('/')} failed again, not asked for twice`)
+      return
+    }
     el.dataset.restoreTried = path
     e.stopPropagation()
+    console.info(`[restore] ${path.split(/[\\/]/).slice(-2).join('/')} asked for`)
 
     const row = el.closest<HTMLElement>('[data-msg-id]')
     void restore(path, row?.dataset.bufferId, row?.dataset.msgId).then((restored) => {
+      console.info(`[restore] ${path.split(/[\\/]/).slice(-2).join('/')} ${restored ? 'came back' : 'could not be fetched'}`)
       if (!restored) {
         failAfterAll(el, path)
         return
