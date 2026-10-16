@@ -421,6 +421,36 @@ export function MediaEmbed({
     // video/quicktime, which canPlayType refuses outright while the browser
     // then plays the file perfectly well once it looks inside. Letting it try
     // and handling the failure is the honest test.
+    //
+    // A Telegram video is not in the cache until it is fetched, and fetching is
+    // the whole file: a feed of videos would pull hundreds of megabytes just to
+    // be scrolled. So it is drawn as its preview, and fetched when played.
+    const deferred =
+      !attachment?.gif && !!attachment?.thumbnailPath && !previewGone && !playing && /[\\/]telegram-media[\\/]/.test(fullSrc)
+    if (deferred) {
+      return (
+        <span className={classes('media-embed-wrap video', tile && 'tile', hidden && 'spoilered')} style={{ ...ratio, position: 'relative' }} {...reveal}>
+          <img
+            className="media-embed"
+            style={ratio}
+            src={media(previewSrc)}
+            alt={attachment?.filename || ''}
+            loading="lazy"
+            onError={() => setPreviewGone(true)}
+          />
+          <button
+            type="button"
+            className="video-expand"
+            title="Play"
+            style={{ position: 'absolute', inset: 0, margin: 'auto', width: 48, height: 48 }}
+            onClick={() => setPlaying(true)}
+          >
+            <Icon name="play_circle" size={32} />
+          </button>
+          {cover}
+        </span>
+      )
+    }
     return (
       <>
         <span
@@ -445,7 +475,7 @@ export function MediaEmbed({
                   onMouseEnter: (e: React.MouseEvent<HTMLVideoElement>) => !autoplay && void e.currentTarget.play().catch(() => {}),
                   onMouseLeave: (e: React.MouseEvent<HTMLVideoElement>) => !autoplay && e.currentTarget.pause()
                 }
-              : { controls: true, loop })}
+              : { controls: true, loop, autoPlay: playing })}
             // Enough to draw the first frame and know how long it is, without
             // pulling megabytes for every video in a scrolled-past backlog.
             preload="metadata"
