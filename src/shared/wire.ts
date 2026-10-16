@@ -173,6 +173,8 @@ export interface Buffer {
    * refuses, so offering to leave it is offering something that fails.
    */
   serviceRoom?: boolean
+  /** A glyph drawn in front of the name in the list: Telegram's broadcast channels and bots. */
+  nameIcon?: string
   /**
    * Set while the buffer exists but the service has not yet said what is in
    * it - a Matrix room between joining it and its first sync. The list draws

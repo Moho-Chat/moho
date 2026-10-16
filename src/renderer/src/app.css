@@ -3560,6 +3560,13 @@ img.smilie {
   background: var(--primary-selected);
 }
 
+/* The glyph for what kind of conversation it is (a horn for a broadcast channel, a robot for a bot), in front of its name. */
+.buffer-name-icon {
+  margin-right: 5px;
+  vertical-align: -2px;
+  opacity: 0.85;
+}
+
 /* --- media embeds ------------------------------------------------------ */
 
 .media-row {
