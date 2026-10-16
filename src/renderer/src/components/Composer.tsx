@@ -260,7 +260,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   // here rather than left as the one service where the button is dead.
   // Steam takes a picture or a short video, and says which and how big.
   const supportsAttachments =
-    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc' || service === 'steam'
+    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc' || service === 'steam' || service === 'telegram'
 
   // Starting a reply puts the cursor in the box: the next thing anybody does
   // is write the answer.
@@ -1048,7 +1048,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
               {/* On the card's corner, and there only while it is pointed at
                   or focused - they would be a dozen buttons otherwise. */}
               <div className="staged-actions">
-                {(service === 'discord' || service === 'steam') && (
+                {(service === 'discord' || service === 'steam' || service === 'telegram') && (
                   <button
                     type="button"
                     className={classes('staged-action', att.spoiler && 'on')}
@@ -1232,7 +1232,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
                 !e.altKey &&
                 !e.metaKey &&
                 !text &&
-                (service === 'discord' || service === 'sneedchat' || service === 'matrix')
+                (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram')
               ) {
                 const last = store.lastEditableOwn(buffer.id)
                 if (last) {
@@ -1346,7 +1346,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
             messages at all: Discord's flag and base64 waveform, and Matrix's
             MSC3245 marker with integers. The daemon speaks both from one
             recording, so this is the same button either way. */}
-        {!thread && (service === 'discord' || service === 'matrix') && <VoiceRecorder bufferId={buffer.id} />}
+        {!thread && (service === 'discord' || service === 'matrix' || service === 'telegram') && <VoiceRecorder bufferId={buffer.id} />}
 
         {/* Sending is the one thing the box does that its own Enter does not
             say, so it is only drawn when there is something to send. */}
