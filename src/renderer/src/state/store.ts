@@ -600,6 +600,8 @@ export interface ChatState {
   /** Which messages each Matrix room has pinned, newest last. */
   /** Which messages a conversation has pinned, where the service says so. */
   pinnedMessages: Record<string, string[]>
+  /** How many replies or comments a message has, where the service says so (Telegram): by conversation, then message. */
+  threadCounts: Record<string, Record<string, number>>
   /**
    * The pinned messages themselves, once somebody has asked for them. The ids
    * above say that something is pinned; these say what, for the banner over
@@ -827,6 +829,7 @@ const INITIAL: ChatState = {
   pinnedByBuffer: {},
   reviewCard: null,
   pinnedMessages: {},
+  threadCounts: {},
   pinnedRows: {},
   forumPages: {},
   discordFriends: {},
@@ -2679,6 +2682,8 @@ export class ChatStore {
       attachment,
       spoilers
     )
+    // A Telegram comment lands in the channel's discussion group, not in this conversation, so the panel asks again.
+    if (this.accountFor(open.bufferId)?.service === 'telegram') void this.openThreadPanel(open.bufferId, open.rootId)
   }
 
   /**
@@ -3641,6 +3646,14 @@ export class ChatStore {
       case 'messageModerated':
         this.mapMessage(data.bufferId, data.id, (m) => ({ ...m, moderated: data.moderated ?? {} }))
         break
+
+      case 'threadCount': {
+        const d = data as unknown as { bufferId: string; id: string; count: number }
+        const mine = this.state.threadCounts[d.bufferId] ?? {}
+        if (mine[d.id] === d.count) break
+        this.set({ threadCounts: { ...this.state.threadCounts, [d.bufferId]: { ...mine, [d.id]: d.count } } })
+        break
+      }
 
       case 'reactionsChanged':
         this.mapMessage(data.bufferId, data.id, (m) => ({ ...m, reactions: data.reactions }))

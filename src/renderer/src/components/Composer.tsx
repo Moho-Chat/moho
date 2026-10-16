@@ -844,7 +844,8 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   // Somewhere that can be read and not written in: a channel this account has
   // no permission to send to, or Discord's own notices. A box that every send
   // is refused from is a worse answer than saying so where it would be.
-  if (buffer.readOnly) {
+  // A channel's comments are written to its discussion group, which the channel's own lock says nothing about.
+  if (buffer.readOnly && !(thread && service === 'telegram')) {
     const official = buffer.readOnly.includes('official Discord')
     return (
       <div className="composer">
