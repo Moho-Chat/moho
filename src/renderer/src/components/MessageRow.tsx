@@ -1267,7 +1267,17 @@ function MessageRowBody({
                   {embed.fields.map((f, k) => (
                     <div key={k} className="rich-embed-field">
                       <div className="rich-embed-field-name">{f.name}</div>
-                      <div>{f.value}</div>
+                      {/* Markdown on Discord, like the description above; plain text elsewhere. */}
+                      {service === 'discord' ? (
+                        <RichText
+                          html={formatMessage(f.value, { channels, markdownEscapes: true })}
+                          ownMarkup
+                          onOpenChannel={(id) => void store.selectBuffer(id, true)}
+                          onOpenLink={(url) => store.followDeepLink(url)}
+                        />
+                      ) : (
+                        <div>{f.value}</div>
+                      )}
                     </div>
                   ))}
                 </div>
