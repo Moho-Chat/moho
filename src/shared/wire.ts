@@ -439,6 +439,8 @@ export interface ReplyPreview {
    * says which thread that message is part of, and a reply can be both.
    */
   threadRoot?: string
+  /** The conversation (a buffer id) the answered message is in, when it is not this one: Telegram can answer a post in another channel. */
+  chat?: string
 }
 
 /**

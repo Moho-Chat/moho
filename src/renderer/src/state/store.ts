@@ -1044,7 +1044,7 @@ function applyOwnReaction(list: Reaction[], emoji: string, add: boolean): Reacti
  * backwards through what they do offer.
  */
 function canFetchAround(bufferId: string): boolean {
-  return bufferId.startsWith('discord:') || bufferId.startsWith('matrix:')
+  return bufferId.startsWith('discord:') || bufferId.startsWith('matrix:') || bufferId.startsWith('telegram:')
 }
 
 function bestEffort(work: Promise<unknown>, what: string): void {
@@ -3606,7 +3606,7 @@ export class ChatStore {
       // forward without an author.
       case 'messageReplyRenamed': {
         this.mapMessage(data.bufferId, data.id, (m) =>
-          m.replyTo ? { ...m, replyTo: { ...m.replyTo, from: data.from } } : m
+          m.replyTo ? { ...m, replyTo: { ...m.replyTo, from: data.from, ...(data.body ? { body: data.body } : {}) } } : m
         )
         break
       }

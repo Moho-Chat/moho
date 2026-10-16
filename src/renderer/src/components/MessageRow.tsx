@@ -1075,6 +1075,38 @@ function MessageRowBody({
                 <span>In thread</span>
                 {message.replyTo.body && <span className="ellipsis">{message.replyTo.body}</span>}
               </button>
+            ) : service === 'telegram' && !message.replyTo.forwarded ? (
+              // As Telegram draws an answer: an accent bar, who said it (and where, when it was another channel), what
+              // they said, and the quote mark. Going to it is a click, to the other channel if that is where it is.
+              <div
+                className="tg-quote selectable"
+                role="button"
+                tabIndex={0}
+                title={message.replyTo.chat ? 'Go to the original' : 'Go to the message'}
+                onClick={() => {
+                  const target = message.replyTo!
+                  if (target.chat) {
+                    void store.selectBuffer(target.chat, true).then(() =>
+                      store.jumpToMessage(target.chat!, target.id).then((found) => {
+                        if (found) store.setJumpTarget(target.id)
+                      })
+                    )
+                  } else jumpToReply()
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    ;(e.currentTarget as HTMLElement).click()
+                  }
+                }}
+              >
+                <div className="tg-quote-from">
+                  {message.replyTo.chat && <Icon name="campaign" size={13} />}
+                  {message.replyTo.from || 'Message'}
+                </div>
+                {message.replyTo.body && <div className="tg-quote-body">{message.replyTo.body}</div>}
+                <Icon name="format_quote" size={16} className="tg-quote-mark" />
+              </div>
             ) : (
               <div
                 className={classes('reply-preview small muted', replyId && 'reply-jump')}
