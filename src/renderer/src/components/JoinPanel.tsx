@@ -76,6 +76,8 @@ export function JoinPanel(): JSX.Element {
         return <KickJoin account={account} />
       case 'twitch':
         return <TwitchJoin account={account} />
+      case 'telegram':
+        return <TelegramJoin account={account} />
       case 'sneedchat':
         return <SneedchatRooms account={account} />
       case 'steam':
@@ -84,7 +86,7 @@ export function JoinPanel(): JSX.Element {
         return <div className="panel muted">Joining isn&apos;t supported for this service yet.</div>
     }
   })()
-  const joinable = all.filter((a) => ['irc', 'matrix', 'discord', 'kick', 'sneedchat', 'steam', 'twitch'].includes(a.service))
+  const joinable = all.filter((a) => ['irc', 'matrix', 'discord', 'kick', 'sneedchat', 'steam', 'twitch', 'telegram'].includes(a.service))
 
   return (
     <div className="join-frame">
@@ -375,6 +377,24 @@ function TwitchJoin({ account }: { account: Account }): JSX.Element {
       <p className="small muted">
         Twitch chat is public, so this works without signing in. Signing in adds talking and the
         channels you follow. A channel that does not exist is said so and not kept.
+      </p>
+    </div>
+  )
+}
+
+function TelegramJoin({ account }: { account: Account }): JSX.Element {
+  const store = useStore()
+  return (
+    <div className="panel join-panel">
+      <SubmitField
+        label="Join a chat, or open a conversation"
+        placeholder="@name, or a t.me link"
+        onSubmit={(name) => void store.joinAndOpen(account.id, name)}
+      />
+      <p className="small muted">
+        A public group or channel is joined by its @name or t.me link, a private one by the invite link
+        somebody gave you, and a person's @name opens a conversation with them. Telegram may ask an
+        administrator to accept a request to join. Closing a chat in the list leaves it.
       </p>
     </div>
   )

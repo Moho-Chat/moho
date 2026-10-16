@@ -381,6 +381,14 @@ export function NickList(): JSX.Element {
                       .catch((e: Error) => store.toast('error', e.message))
                     return
                   }
+                  if (account.service === 'telegram') {
+                    if (action !== 'kick' && action !== 'ban' && action !== 'mute') return
+                    void window.moho
+                      .rpc('moderateTelegramMember', { bufferId: buffer.id, userId: member.userId, action })
+                      .then(() => store.toast('info', `${action === 'ban' ? 'Banned' : action === 'mute' ? 'Muted for 10 minutes' : 'Removed'} ${member.nick}`))
+                      .catch((e: Error) => store.toast('error', e.message))
+                    return
+                  }
                   if (account.service === 'steam') {
                     const group = steamRoomIds(buffer)?.group
                     if (!group || !member.userId || (action !== 'kick' && action !== 'ban' && action !== 'mute')) return

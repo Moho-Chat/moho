@@ -1742,12 +1742,15 @@ function moderationEntries(
   // display names collide and can be changed at will.
   const userId = message.senderId
   if (!userId) return []
+  const telegram = store.accountFor(bufferId)?.service === 'telegram'
   const call = (method: string): void => {
     const account = store.accountFor(bufferId)
     if (!account) return
-    void window.moho
-      .rpc(method, { accountId: account.id, bufferId, userId })
-      .catch((e: Error) => store.toast('error', e.message))
+    // Telegram's three are one call that names which.
+    const asked = telegram
+      ? window.moho.rpc('moderateTelegramMember', { bufferId, userId, action: method.replace('MatrixMember', '') })
+      : window.moho.rpc(method, { accountId: account.id, bufferId, userId })
+    void asked.catch((e: Error) => store.toast('error', e.message))
   }
   const out: MenuEntry[] = []
   if (permissions.canMute)
@@ -1758,7 +1761,7 @@ function moderationEntries(
     out.push({ label: 'Ban sender', icon: 'gavel', danger: true, onClick: () => call('banMatrixMember') })
     // Reachable only from here, not the member list: a banned user is no
     // longer a member, so their scrollback is the one place left to find them.
-    out.push({ label: 'Unban sender', icon: 'lock_open', onClick: () => call('unbanMatrixMember') })
+    if (!telegram) out.push({ label: 'Unban sender', icon: 'lock_open', onClick: () => call('unbanMatrixMember') })
   }
   return out
 }

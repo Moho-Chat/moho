@@ -5445,6 +5445,15 @@ export class ChatStore {
       }
       return
     }
+    if (account?.service === 'telegram') {
+      try {
+        const perms = await window.moho.rpc<RoomPermissions>('telegramPermissions', { bufferId })
+        this.set({ matrixPermissions: { ...this.state.matrixPermissions, [bufferId]: perms } })
+      } catch {
+        /* advisory only */
+      }
+      return
+    }
     if (account?.service !== 'matrix') return
     try {
       const perms = await window.moho.rpc<RoomPermissions>('getMatrixRoomPermissions', {
