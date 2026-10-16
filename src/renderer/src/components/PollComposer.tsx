@@ -5,6 +5,8 @@ import { useStore } from '../state/hooks'
 
 /** The spec's own ceiling, so twenty-one answers is refused here not there. */
 const MAX_ANSWERS = 20
+/** Telegram's: ten answers, and a count that can be held back until the poll closes. */
+const TELEGRAM_MAX_ANSWERS = 10
 
 /**
  * Starting a poll.
@@ -18,6 +20,7 @@ const MAX_ANSWERS = 20
  */
 export function PollComposer({ bufferId, onClose }: { bufferId: string; onClose: () => void }): JSX.Element {
   const store = useStore()
+  const max = store.accountFor(bufferId)?.service === 'telegram' ? TELEGRAM_MAX_ANSWERS : MAX_ANSWERS
   const [question, setQuestion] = useState('')
   const [answers, setAnswers] = useState(['', ''])
   const [disclosed, setDisclosed] = useState(true)
@@ -77,7 +80,7 @@ export function PollComposer({ bufferId, onClose }: { bufferId: string; onClose:
           <button
             type="button"
             className="button subtle small"
-            disabled={answers.length >= MAX_ANSWERS}
+            disabled={answers.length >= max}
             onClick={() => setAnswers([...answers, ''])}
           >
             Add an answer

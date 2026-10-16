@@ -487,6 +487,9 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
       disabled: !supportsAttachments,
       onClick: pickAndStage
     },
+    ...(service === 'telegram' && !thread
+      ? ([{ label: 'Start a poll', icon: 'ballot', onClick: () => setPolling(true) }] as MenuEntry[])
+      : []),
     ...(service === 'matrix' && !thread
       ? ([
           {
