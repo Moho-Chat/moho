@@ -122,6 +122,8 @@ const DAEMON_MEDIA_DIRS = [
   'kick-emotes',
   'discord-stickers',
   'discord-sounds',
+  'telegram-media',
+  'telegram-avatars',
   'transient'
 ]
 
