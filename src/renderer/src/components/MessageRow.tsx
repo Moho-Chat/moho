@@ -410,7 +410,7 @@ function MessageRowBody({
   // messages; IRC has no such concept.
   const canEditDelete =
     !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram')
-  const canReact = service === 'discord' || service === 'matrix' || service === 'steam'
+  const canReact = service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram'
   // Steam's stickers, asked for when the reaction picker opens: it reacts with them too.
   const [steamStickers, setSteamStickers] = useState<StickerEntry[]>([])
   useEffect(() => {
@@ -641,7 +641,7 @@ function MessageRowBody({
     // rather than gated on a power level read here: the server decides, and
     // it refuses in words worth showing - hiding the action from somebody who
     // could have used it is the worse mistake.
-    ...((service === 'matrix' || service === 'discord') && !isSystem
+    ...((service === 'matrix' || service === 'discord' || service === 'telegram') && !isSystem
       ? ([
           {
             label: pinned ? 'Unpin from this conversation' : 'Pin to this conversation',

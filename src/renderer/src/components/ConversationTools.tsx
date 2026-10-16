@@ -615,6 +615,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   // to a name half written.
   const filterMenu = suggestions(query)
   const isMatrix = buffer.accountId.startsWith('matrix:')
+  const isTelegram = buffer.accountId.startsWith('telegram:')
   const isSteam = buffer.accountId.startsWith('steam:')
   const stream = useChat((s) => s.kickStreams)[buffer.id]
   // Whether this window is the one playing this channel. Per window rather
@@ -682,11 +683,11 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
                 if (filtered) setResults([])
               })
           }
-          if (!isMatrix) return
-          // Then the homeserver, which has what this client never downloaded
+          if (!isMatrix && !isTelegram) return
+          // Then the server, which has what this client never downloaded
           // - including everything said before this account joined.
           return window.moho
-            .rpc<MatrixSearch>('searchMatrixMessages', {
+            .rpc<MatrixSearch>(isTelegram ? 'searchTelegramMessages' : 'searchMatrixMessages', {
               bufferId: buffer.id,
               query: text,
               scope,
@@ -711,7 +712,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
         .finally(() => setSearching(false))
     }, 250)
     return () => clearTimeout(timer)
-  }, [query, buffer.id, store, isMatrix, isDiscord, scope])
+  }, [query, buffer.id, store, isMatrix, isTelegram, isDiscord, scope])
 
   // A viewer count that never moves is worse than none, and Kick pushes a
   // stream starting and stopping but never the count. The followed channels
@@ -980,7 +981,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
 
       {isMatrix && buffer.kind !== 'server' && <ThreadList buffer={buffer} />}
       {isDiscord && buffer.kind === 'channel' && <DiscordThreads buffer={buffer} />}
-      {(isMatrix || isDiscord) && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
+      {(isMatrix || isDiscord || buffer.accountId.startsWith('telegram:')) && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
 
       {/* Beside the pins, because it is the same kind of fact about a room:
           something the room keeps, rather than something said in it. */}
@@ -1085,7 +1086,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           {/* Where to look. Only on Matrix, because it is the only protocol
               here whose server will answer the question - and the room is
               often exactly what somebody searching has forgotten. */}
-          {isMatrix && (
+          {(isMatrix || isTelegram) && (
             <div className="search-scope small">
               <button
                 type="button"
