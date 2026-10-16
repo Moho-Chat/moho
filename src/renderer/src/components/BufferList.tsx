@@ -1156,20 +1156,16 @@ function BufferRow({
         onDragEnd={onDragEnd}
         title={link ? `${buffer.name} — ${link.detail}` : draggable ? `${buffer.name} — drag onto a heading to file it` : doing ? `${buffer.name} — ${doing}` : buffer.name}
       >
+        {/* What kind of conversation it is, ahead of its picture: a horn for a broadcast channel, a robot for a bot. */}
+        {buffer.nameIcon && <Icon name={buffer.nameIcon} size={15} className="buffer-kind-icon" />}
         {leading}
         {comfy && activity ? (
           <span className="buffer-text">
-            <span className="ellipsis buffer-name">
-              {buffer.nameIcon && <Icon name={buffer.nameIcon} size={14} className="buffer-name-icon" />}
-              {rowName}
-            </span>
+            <span className="ellipsis buffer-name">{rowName}</span>
             <ActivityLine activity={activity} />
           </span>
         ) : (
-          <span className="ellipsis buffer-name">
-            {buffer.nameIcon && <Icon name={buffer.nameIcon} size={14} className="buffer-name-icon" />}
-            {rowName}
-          </span>
+          <span className="ellipsis buffer-name">{rowName}</span>
         )}
         {/* So a conversation with no unread count and no traffic in it is
             explained rather than merely quiet: it is being read elsewhere. */}
