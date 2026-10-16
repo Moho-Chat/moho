@@ -135,6 +135,9 @@ const api = {
 
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke(IPC.openExternal, url),
 
+  /** A finished document (a Telegram Instant View) in a window of its own. */
+  openArticle: (title: string, html: string): Promise<void> => ipcRenderer.invoke(IPC.openArticle, title, html),
+
   /**
    * Which picture a page is showing, read from its own OpenGraph tag.
    *

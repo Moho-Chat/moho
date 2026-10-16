@@ -3508,6 +3508,58 @@ img.smilie {
   margin-top: var(--spacing-s);
 }
 
+/* A link's preview as Telegram draws it: an accent bar, the site in the accent, the title in bold, the picture, and
+   Instant View as a bar along the bottom. */
+.link-card {
+  margin: var(--spacing-xxs) 0;
+  padding: 2px 0 0 var(--spacing-m);
+  border-left: 3px solid var(--primary);
+  max-width: 420px;
+}
+.link-card-site {
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+  font-size: 0.92em;
+}
+.link-card-title {
+  display: block;
+  font-weight: var(--weight-semibold);
+  color: inherit;
+  text-decoration: none;
+}
+.link-card-desc {
+  color: var(--surface-variant-text);
+  white-space: pre-wrap;
+}
+.link-card-image {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  margin-top: var(--spacing-xs);
+  border-radius: var(--corner-radius-small);
+  object-fit: cover;
+  cursor: pointer;
+}
+.link-card-instant {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: var(--spacing-xs);
+  padding: 6px 0;
+  border: 0;
+  border-radius: var(--corner-radius-small);
+  background: var(--primary-hover);
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.link-card-instant:hover {
+  background: var(--primary-selected);
+}
+
 /* --- media embeds ------------------------------------------------------ */
 
 .media-row {

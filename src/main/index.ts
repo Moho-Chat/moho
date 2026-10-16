@@ -893,6 +893,38 @@ function wireIpc(): void {
     if (/^(https?|mailto):/i.test(url)) shell.openExternal(url)
   })
 
+  // An article, drawn from a document the daemon built (see nobilis's backend/telegram/instant.rs). It gets a window
+  // of its own that can do nothing but show it: no script, no preload, no way to navigate away - a link opens in the
+  // browser - and the only pictures it may draw are the daemon's cached ones, through moho-media.
+  ipcMain.handle(IPC.openArticle, (_e, title: unknown, html: unknown) => {
+    if (typeof html !== 'string' || html.length > 8_000_000) return
+    const win = new BrowserWindow({
+      width: 900,
+      height: 800,
+      minWidth: 360,
+      minHeight: 300,
+      autoHideMenuBar: true,
+      backgroundColor: '#0e1621',
+      icon: resourcePath('icons', 'moho.png'),
+      title: typeof title === 'string' && title ? title : 'Article',
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, javascript: false }
+    })
+    const external = (url: string): void => {
+      if (/^(https?|mailto):/i.test(url)) shell.openExternal(url)
+    }
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      external(url)
+      return { action: 'deny' }
+    })
+    win.webContents.on('will-navigate', (event, url) => {
+      // A place in the same page is fine; anything else is somewhere else.
+      if (url.startsWith('data:') && url.includes('#')) return
+      event.preventDefault()
+      external(url)
+    })
+    void win.loadURL(`data:text/html;charset=utf-8;base64,${Buffer.from(html, 'utf8').toString('base64')}`)
+  })
+
   // Where to write something the app is about to produce - a key export, so
   // far. Separate from pickFile because the two dialogs ask opposite
   // questions, and a save dialog that cannot name a default file is a save

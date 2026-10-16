@@ -8,6 +8,7 @@ import { EventSource } from './EventSource'
 import { ForwardPicker } from './ForwardPicker'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { MediaEmbed } from './MediaEmbed'
+import { LinkCard } from './LinkCard'
 import { KickEventCard, NotificationCard, isKickEvent } from './KickEventCard'
 import { COMMON_EMOJI, EmojiPicker, readRecent, type StickerEntry } from './EmojiPicker'
 import { reactionLabel, reactorsSentence } from '../lib/reactions'
@@ -1214,7 +1215,9 @@ function MessageRowBody({
           ))}
 
           {(message.embeds || []).map((embed, i) =>
-            embed.kind === 'gif' || isKickEvent(embed) ? null : (
+            embed.kind === 'gif' || isKickEvent(embed) ? null : service === 'telegram' ? (
+              <LinkCard key={`e${i}`} embed={embed} bufferId={bufferId} messageId={message.id} />
+            ) : (
             <div
               key={`e${i}`}
               className={classes('rich-embed selectable', embed.kind === 'notice' && 'notice')}

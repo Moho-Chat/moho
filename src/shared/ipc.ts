@@ -9,6 +9,7 @@ export const IPC = {
   windowClose: 'moho:window:close',
   windowIsMaximized: 'moho:window:isMaximized',
   openExternal: 'moho:openExternal',
+  openArticle: 'moho:openArticle',
   resolveImagePage: 'moho:resolveImagePage',
   pickFile: 'moho:pickFile',
   pickSavePath: 'moho:pickSavePath',
