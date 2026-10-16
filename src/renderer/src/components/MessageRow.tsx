@@ -537,6 +537,7 @@ function MessageRowBody({
           isSneedchat,
           smilies: smilieIndex,
           channels,
+          markdownEscapes: service === 'discord',
           // Only IRC's own traffic is drawn with IRC's codes. Elsewhere they
           // are stripped, which is what the formatter does when not told.
           ircFormatting: service === 'irc' && ircColours ? 'render' : 'strip'
@@ -1254,7 +1255,7 @@ function MessageRowBody({
               {embed.description && (
                 <div className="rich-embed-desc small">
                   <RichText
-                    html={formatMessage(embed.description, { channels })}
+                    html={formatMessage(embed.description, { channels, markdownEscapes: service === 'discord' })}
                     ownMarkup
                     onOpenChannel={(id) => void store.selectBuffer(id, true)}
                   onOpenLink={(url) => store.followDeepLink(url)}
