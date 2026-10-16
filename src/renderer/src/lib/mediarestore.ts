@@ -54,8 +54,10 @@ function restore(path: string, bufferId?: string, messageId?: string): Promise<s
 }
 
 /** Lets a failure through to the element's own handler after all. */
-function failAfterAll(el: Media): void {
-  el.dataset.restoreGaveUp = '1'
+function failAfterAll(el: Media, path: string): void {
+  // Of this file, not of the element: a picture that falls back from its preview to the original is the same element
+  // with another file, and that one has not been tried.
+  el.dataset.restoreGaveUp = path
   el.dispatchEvent(new Event('error'))
 }
 
@@ -63,9 +65,9 @@ export function restoreMissingMedia(): () => void {
   const onError = (e: Event): void => {
     const el = e.target
     if (!(el instanceof HTMLImageElement || el instanceof HTMLVideoElement || el instanceof HTMLAudioElement)) return
-    if (el.dataset.restoreGaveUp) return
     const path = cachedPath(el)
     if (!path) return
+    if (el.dataset.restoreGaveUp === path) return
     // Known to be past saving, or already restored once for this element and
     // still failing: let it fail as it always did.
     if (gone.has(path) || el.dataset.restoreTried === path) return
@@ -75,7 +77,7 @@ export function restoreMissingMedia(): () => void {
     const row = el.closest<HTMLElement>('[data-msg-id]')
     void restore(path, row?.dataset.bufferId, row?.dataset.msgId).then((restored) => {
       if (!restored) {
-        failAfterAll(el)
+        failAfterAll(el, path)
         return
       }
       // A new URL for the same file, so nothing serves the failure again
