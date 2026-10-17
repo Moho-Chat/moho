@@ -1075,6 +1075,37 @@ function MessageRowBody({
                 <span>In thread</span>
                 {message.replyTo.body && <span className="ellipsis">{message.replyTo.body}</span>}
               </button>
+            ) : service === 'telegram' && message.replyTo.forwarded ? (
+              // Where a forwarded message came from, as Telegram says it: "Forwarded from" and the source, which is
+              // somewhere to go when it was a post in a channel this account has open.
+              (() => {
+                const source = message.replyTo
+                const open = source.chat && source.id
+                return (
+                  <div className="tg-forward small">
+                    <span className="muted">Forwarded from </span>
+                    {open ? (
+                      <button
+                        type="button"
+                        className="tg-forward-source link-button"
+                        title="Go to the original"
+                        onClick={() =>
+                          void store.selectBuffer(source.chat!, true).then(() =>
+                            store.jumpToMessage(source.chat!, source.id).then((found) => {
+                              if (found) store.setJumpTarget(source.id)
+                            })
+                          )
+                        }
+                      >
+                        <Icon name="campaign" size={13} />
+                        {source.from}
+                      </button>
+                    ) : (
+                      <span className="tg-forward-source">{source.from}</span>
+                    )}
+                  </div>
+                )
+              })()
             ) : service === 'telegram' && !message.replyTo.forwarded ? (
               // As Telegram draws an answer: an accent bar, who said it (and where, when it was another channel), what
               // they said, and the quote mark. Going to it is a click, to the other channel if that is where it is.

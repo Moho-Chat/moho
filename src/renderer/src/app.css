@@ -3605,6 +3605,26 @@ img.smilie {
   color: var(--primary);
 }
 
+/* Where a forwarded Telegram message came from. */
+.tg-forward {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 2px 0 2px;
+  padding-left: var(--spacing-m);
+  border-left: 3px solid var(--primary);
+}
+.tg-forward-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+}
+
 /* --- media embeds ------------------------------------------------------ */
 
 .media-row {
