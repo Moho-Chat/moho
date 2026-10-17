@@ -2982,14 +2982,77 @@ img.custom-emoji.steam-sticker {
 }
 
 .membership-rules {
-  max-width: 480px;
-  max-height: 70vh;
+  width: min(860px, 94vw);
+  max-height: 80vh;
   overflow-y: auto;
   padding: var(--spacing-l);
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
   border: 1px solid var(--outline-medium);
   box-shadow: var(--shadow-2);
+}
+
+/* The server on the left and its form on the right, as Discord draws it; one above the other when narrow. */
+.membership-body {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--spacing-xl, 24px);
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .membership-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.membership-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--spacing-m);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container);
+  border: 1px solid var(--outline-medium);
+}
+.membership-card-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  object-fit: cover;
+}
+.membership-card-name {
+  font-weight: var(--weight-semibold);
+}
+.membership-title {
+  margin: 0 0 4px;
+  font-size: var(--font-size-large);
+  font-weight: var(--weight-semibold);
+}
+.membership-field {
+  margin-top: var(--spacing-m);
+}
+.membership-field-label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: var(--weight-semibold);
+}
+.membership-rules-list {
+  margin: 0 0 var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m) var(--spacing-s) 2em;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container);
+}
+.membership-rules-list li {
+  padding: 6px 0;
+  white-space: pre-wrap;
+}
+.membership-rules-list li + li {
+  border-top: 1px solid var(--outline-medium);
+}
+.membership-agree {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  margin: 4px 0;
 }
 
 .membership-rules-head {
