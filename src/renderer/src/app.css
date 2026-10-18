@@ -6363,6 +6363,7 @@ video.lightbox-media {
 /* Discord's own pill for a bot or application, in its blurple, whoever's name it sits beside. */
 .sender-badge.app,
 .sender-badge.verified-app {
+  margin-left: 6px;
   padding: 1px 5px;
   border-radius: 4px;
   background: #5865f2;

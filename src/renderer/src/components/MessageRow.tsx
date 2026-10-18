@@ -996,13 +996,7 @@ function MessageRowBody({
               >
                 {message.isAction ? `* ${message.from}` : message.from}
               </span>
-              {/* The time on the name's own line, as Discord does it, in the
-                  full form the tooltip also carries. */}
-              {mode === 'comfy' && (
-                <span className="message-stamp" title={formatFullTime(message.ts)}>
-                  {timeLabel}
-                </span>
-              )}
+              {/* Beside the name, ahead of the time: a mark on who is talking, as Discord puts its APP pill. */}
               {message.badges?.map((badge) =>
                 badge.image && showBadgePictures ? (
                   // The service's own pictures, unless they are turned off. The tooltip
@@ -1026,6 +1020,13 @@ function MessageRowBody({
                     {badgeLabel(badge)}
                   </span>
                 )
+              )}
+              {/* The time on the name's own line, as Discord does it, in the
+                  full form the tooltip also carries. */}
+              {mode === 'comfy' && (
+                <span className="message-stamp" title={formatFullTime(message.ts)}>
+                  {timeLabel}
+                </span>
               )}
             </span>
           )}
