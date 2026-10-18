@@ -1045,6 +1045,8 @@ function BufferRow({
   // redraws when it changes and not on every presence update in the window.
   const activity = useChat((s) => dmActivity(buffer, s.presenceByBuffer))
   const comfy = useComfy()
+  // The one conversation Discord itself writes to, which the daemon marks read-only for that reason.
+  const isOfficial = account?.service === 'discord' && !!buffer.readOnly?.includes('official Discord')
   const doing = activity ? activityLabel(activity) : undefined
 
   // Under an account header the row's own kind is what's worth showing (a
@@ -1159,7 +1161,20 @@ function BufferRow({
         {/* What kind of conversation it is, ahead of its picture: a horn for a broadcast channel, a robot for a bot. */}
         {buffer.nameIcon && <Icon name={buffer.nameIcon} size={15} className="buffer-kind-icon" />}
         {leading}
-        {comfy && activity ? (
+        {isOfficial ? (
+          // Discord's own conversation: marked so a notice that arrives here can be trusted as Discord's, and a message
+          // that merely claims to be Discord's cannot borrow it - the mark belongs to this conversation alone.
+          <span className="buffer-text">
+            <span className="ellipsis buffer-name">
+              {rowName}
+              <span className="buffer-official-mark">
+                <Icon name="check" size={11} />
+                OFFICIAL
+              </span>
+            </span>
+            <span className="small ellipsis">Official Discord Message</span>
+          </span>
+        ) : comfy && activity ? (
           <span className="buffer-text">
             <span className="ellipsis buffer-name">{rowName}</span>
             <ActivityLine activity={activity} />

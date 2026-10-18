@@ -102,6 +102,8 @@ const ROLE_WORDS: Record<string, string> = ((): Record<string, string> => {
     cheer: 'BITS',
     // Discord's mark on a bot or application, and on one Discord has verified.
     app: 'APP',
+    // What Discord's own account sends, so a message that claims to be from Discord can be told from one that is.
+    official: '✓ OFFICIAL',
     'verified-app': '✓ APP',
     lead_moderator: 'MOD'
   }

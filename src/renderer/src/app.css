@@ -3688,6 +3688,22 @@ img.smilie {
   text-decoration: none;
 }
 
+/* Discord's own conversation in the list: the mark beside its name and what it is underneath. */
+.buffer-official-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #5865f2;
+  color: #fff;
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
 /* A Telegram bot's Menu button, ahead of the message box. */
 .composer-menu-button {
   flex: none;
@@ -6378,7 +6394,8 @@ video.lightbox-media {
 
 /* Discord's own pill for a bot or application, in its blurple, whoever's name it sits beside. */
 .sender-badge.app,
-.sender-badge.verified-app {
+.sender-badge.verified-app,
+.sender-badge.official {
   margin-left: 6px;
   padding: 1px 5px;
   border-radius: 4px;
