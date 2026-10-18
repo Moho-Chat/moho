@@ -5860,6 +5860,178 @@ video.lightbox-media {
   opacity: 0;
 }
 
+/* The player: the controls are drawn over the picture and rest out of sight while it plays. */
+.vp {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: var(--corner-radius-small);
+  background: #000;
+}
+.vp.full {
+  border-radius: 0;
+}
+.vp-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  cursor: pointer;
+}
+.vp-top {
+  position: absolute;
+  top: var(--spacing-xs);
+  right: var(--spacing-xs);
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--corner-radius-small);
+  background: rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.vp-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 18px 10px 6px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  opacity: 1;
+  transition: opacity 0.12s;
+}
+/* Out of the way while it plays, back when the pointer is on it or it stops. */
+.vp.playing .vp-bar {
+  opacity: 0;
+}
+.vp:hover .vp-top,
+.vp:hover .vp-bar,
+.vp:focus-within .vp-top,
+.vp:focus-within .vp-bar,
+.vp-bar:has(.vp-speeds) {
+  opacity: 1;
+}
+.vp-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 2px;
+}
+.vp-fill {
+  flex: 1;
+}
+.vp-button {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--corner-radius-small);
+  background: none;
+  color: #fff;
+  cursor: pointer;
+}
+.vp-button:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.vp-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.vp-time {
+  flex: none;
+  white-space: nowrap;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: #fff;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.vp-rate {
+  margin-left: 2px;
+  font-size: 11px;
+}
+/* The volume: the icon, and the slider that opens out beside it when the pointer is on either. */
+.vp-volume {
+  display: flex;
+  align-items: center;
+}
+.vp-level {
+  width: 0;
+  opacity: 0;
+  margin: 0;
+  transition: width 0.15s, opacity 0.15s, margin 0.15s;
+}
+.vp-volume:hover .vp-level,
+.vp-volume:focus-within .vp-level {
+  width: 70px;
+  margin: 0 6px 0 2px;
+  opacity: 1;
+}
+.vp-seek,
+.vp-level {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, #fff var(--vp-progress, 0%), rgba(255, 255, 255, 0.35) var(--vp-progress, 0%));
+  cursor: pointer;
+}
+.vp-seek {
+  display: block;
+  width: 100%;
+  margin: 0;
+}
+.vp-seek::-webkit-slider-thumb,
+.vp-level::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+}
+.vp-speed {
+  position: relative;
+}
+.vp-speeds {
+  position: absolute;
+  right: 0;
+  bottom: 34px;
+  display: flex;
+  flex-direction: column;
+  min-width: 96px;
+  padding: 4px;
+  border-radius: var(--corner-radius-small);
+  background: rgba(20, 20, 24, 0.96);
+  box-shadow: var(--shadow-2);
+}
+.vp-speed-option {
+  padding: 5px 10px;
+  border: 0;
+  border-radius: var(--corner-radius-small);
+  background: none;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.vp-speed-option:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+.vp-speed-option.on {
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+}
+
 .media-embed-wrap.video:hover .video-expand {
   opacity: 1;
 }

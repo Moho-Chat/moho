@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { Lightbox, type LightboxSource } from './Lightbox'
 import { registerMedia } from '../lib/gallery'
+import { VideoPlayer } from './VideoPlayer'
 import { VoiceMessage } from './VoiceMessage'
 import { LottieSticker, lottieStickerId } from './LottieSticker'
 import { fullImageFor, knownFullImage } from '../lib/fullimage'
@@ -45,6 +46,8 @@ interface Props {
    * fills the cell and crops to it rather than keeping its own shape.
    */
   tile?: boolean
+  /** Present when the message this is in can be edited by this person: the video's pencil. */
+  onEdit?: () => void
 }
 
 /** What Discord puts at the front of a file name to hide it behind a spoiler. */
@@ -94,7 +97,8 @@ export function MediaEmbed({
   onOpenInDiscord,
   onRefresh,
   onStale,
-  tile
+  tile,
+  onEdit
 }: Props): JSX.Element | null {
   // Through the account's route when it is strictly routed (#257).
   const media = useMediaUrl()
@@ -460,29 +464,36 @@ export function MediaEmbed({
           style={ratio}
           {...reveal}
         >
-          <video
-            className="media-embed"
-            style={ratio}
-            src={media(fullSrc)}
-            // A GIF is silent, runs on its own and goes round, and has no
-            // player to operate: it plays when it is shown if autoplay is on,
-            // and otherwise while the pointer is over it. Any other video is a
-            // video, with its controls.
-            {...(attachment?.gif
-              ? {
-                  muted: true,
-                  autoPlay: autoplay,
-                  loop: true,
-                  onMouseEnter: (e: React.MouseEvent<HTMLVideoElement>) => !autoplay && void e.currentTarget.play().catch(() => {}),
-                  onMouseLeave: (e: React.MouseEvent<HTMLVideoElement>) => !autoplay && e.currentTarget.pause()
-                }
-              : { controls: true, loop, autoPlay: playing })}
-            // Enough to draw the first frame and know how long it is, without
-            // pulling megabytes for every video in a scrolled-past backlog.
-            preload="metadata"
-            playsInline
-            onError={() => setFailed(true)}
-          />
+          {attachment?.gif ? (
+            <video
+              className="media-embed"
+              style={ratio}
+              src={media(fullSrc)}
+              // A GIF is silent, runs on its own and goes round, and has no player to operate: it plays when it is
+              // shown if autoplay is on, and otherwise while the pointer is over it.
+              muted
+              autoPlay={autoplay}
+              loop
+              onMouseEnter={(e) => !autoplay && void e.currentTarget.play().catch(() => {})}
+              onMouseLeave={(e) => !autoplay && e.currentTarget.pause()}
+              preload="metadata"
+              playsInline
+              onError={() => setFailed(true)}
+            />
+          ) : (
+            // Any other video is a video, with the one set of controls every service gets.
+            <VideoPlayer
+              src={media(fullSrc)}
+              className="media-embed"
+              style={ratio}
+              loop={loop}
+              autoPlay={playing}
+              filename={shownName}
+              saveFrom={openTarget}
+              onEdit={onEdit}
+              onError={() => setFailed(true)}
+            />
+          )}
           {/* A video has its own full-screen button in its controls. One without controls (a silent looping clip)
               has none, so it gets this: the same full screen, never the viewer. */}
           {attachment?.gif && (
