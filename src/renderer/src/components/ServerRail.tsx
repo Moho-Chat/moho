@@ -304,7 +304,7 @@ function RailTile(props: TileProps): JSX.Element {
               ? [
                   { separator: true } as const,
                   {
-                    label: group.kind === 'space' ? 'Leave space' : 'Leave server',
+                    label: group.kind === 'space' ? 'Leave space' : group.service === 'telegram' ? 'Leave group' : 'Leave server',
                     icon: 'logout',
                     danger: true,
                     onClick: props.onLeave
