@@ -3688,6 +3688,22 @@ img.smilie {
   text-decoration: none;
 }
 
+/* A Telegram bot's Menu button, ahead of the message box. */
+.composer-menu-button {
+  flex: none;
+  margin-right: var(--spacing-xs);
+  padding: 4px 14px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--primary-container);
+  color: #fff;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+.composer-menu-button:hover {
+  filter: brightness(1.15);
+}
+
 /* --- media embeds ------------------------------------------------------ */
 
 .media-row {

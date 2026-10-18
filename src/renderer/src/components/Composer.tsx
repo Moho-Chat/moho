@@ -104,7 +104,7 @@ interface TypedCommand {
   description?: string
   /** "Built-in", or the bot that answers it. */
   source?: string
-  kind: 'builtin' | 'application'
+  kind: 'builtin' | 'application' | 'bot'
   /** Discord's own description of the command, handed back to run it. */
   command?: { options?: { name: string; type?: number; required?: boolean }[] }
 }
@@ -646,6 +646,14 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const takeCommand = (command: TypedCommand): void => {
     const wants = (command.usage ?? '').trim().length > 0
     setCommands([])
+    // A Telegram bot's command is sent the moment it is chosen, as Telegram's own apps do: it is a message to the bot,
+    // and the menu is the bot's own list of what it understands.
+    if (command.kind === 'bot' && buffer) {
+      setText('')
+      if (inputRef.current) inputRef.current.textContent = ''
+      void store.sendMessage(buffer.id, `/${command.name}`)
+      return
+    }
     if (!wants && command.kind === 'application') {
       setPendingCommand(command)
       runCommand(command, `/${command.name}`)
@@ -1079,6 +1087,30 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
 
       <div className="composer-row">
        <div className="composer-box">
+        {/* The bot's own menu, where Telegram puts it: ahead of the box. Opens the list of what the bot understands. */}
+        {service === 'telegram' && buffer.nameIcon === 'smart_toy' && !thread && (
+          <button
+            type="button"
+            className="composer-menu-button"
+            title="Show this bot's commands"
+            onClick={() => {
+              setText('/')
+              const box = inputRef.current
+              if (box) {
+                box.textContent = '/'
+                const range = document.createRange()
+                range.selectNodeContents(box)
+                range.collapse(false)
+                const selection = window.getSelection()
+                selection?.removeAllRanges()
+                selection?.addRange(range)
+                box.focus()
+              }
+            }}
+          >
+            Menu
+          </button>
+        )}
         {/* Everything that is not typed goes through here, inside the box on
             the left as in Discord. Where there is only the one thing - a
             file - it is that thing, without a menu in between. */}
