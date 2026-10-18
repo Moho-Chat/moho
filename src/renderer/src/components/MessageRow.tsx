@@ -100,6 +100,9 @@ const ROLE_WORDS: Record<string, string> = ((): Record<string, string> => {
     'shared-chat': 'SHARED',
     // A cheer: bits sent with the message.
     cheer: 'BITS',
+    // Discord's mark on a bot or application, and on one Discord has verified.
+    app: 'APP',
+    'verified-app': '✓ APP',
     lead_moderator: 'MOD'
   }
   return short

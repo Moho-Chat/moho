@@ -6360,6 +6360,17 @@ video.lightbox-media {
   letter-spacing: 0.04em;
 }
 
+/* Discord's own pill for a bot or application, in its blurple, whoever's name it sits beside. */
+.sender-badge.app,
+.sender-badge.verified-app {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #5865f2;
+  color: #fff;
+  font-size: 10px;
+  line-height: 1.3;
+}
+
 /* The one badge that is a warning rather than a title: this message came
    from a device nobody has vouched for. Coloured like an error and left
    uncoloured nowhere else, because a doubt about who sent something is the
