@@ -17,6 +17,7 @@ import {
   normalizeBBCode,
   sneedGreentext,
   sneedSameText,
+  sourcePick,
   stripCodeBlocks,
   stripEmbeddedUrls,
   stripQuoteBlocks,
@@ -374,5 +375,16 @@ describe('markdown escapes', () => {
   })
   it('leaves a backslash before a letter alone even when asked', () => {
     expect(formatMessage('C:\\Users\\me', on)).toBe('C:\\Users\\me')
+  })
+})
+
+describe('what a picker section sends back', () => {
+  it("is Discord's own token for a custom emoji, never the bare number that names it", () => {
+    expect(sourcePick('discord', { id: '1413156421880647762', name: 'lettyCrazy' })).toBe('<:lettyCrazy:1413156421880647762>')
+    expect(sourcePick('discord', { id: '99', name: 'dance', animated: true })).toBe('<a:dance:99>')
+  })
+  it('leaves the other services as they were', () => {
+    expect(sourcePick('sneedchat', { id: ':lol:' })).toBe(':lol:')
+    expect(sourcePick('steam', { id: 'steam:steambored' })).toBe('[steam:emote:steambored]')
   })
 })

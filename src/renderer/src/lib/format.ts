@@ -172,8 +172,13 @@ export function emojiPreview(text: string, smilies: SmilieEntry[] = []): EmojiPr
  * `steam:name` key, which is no message at all: it was inserted as the words
  * "steam:steambored". It leaves as the emoticon token, which the box draws.
  */
-export function sourcePick(service: string, e: { id: string }): string {
-  return service === 'steam' && e.id.startsWith('steam:') ? `[steam:emote:${e.id.slice(6)}]` : e.id
+export function sourcePick(service: string, e: { id: string; name?: string; animated?: boolean }): string {
+  if (service === 'steam' && e.id.startsWith('steam:')) return `[steam:emote:${e.id.slice(6)}]`
+  // Discord's is named by a number alone, which is no message at all: picked from another server's section it went
+  // into the box (and the recent list) as the bare digits. It leaves as the form Discord parses, which the box draws
+  // as its picture - and which Nitro lets any server take.
+  if (service === 'discord' && /^\d+$/.test(e.id)) return `<${e.animated ? 'a' : ''}:${e.name || 'emoji'}:${e.id}>`
+  return e.id
 }
 
 /**
