@@ -1220,7 +1220,9 @@ app.whenReady().then(() => {
   // Granted only to this application's own windows, on the default session.
   // A sign-in window loads somebody else's page and runs in a partition of
   // its own, which this handler never sees.
-  const allowed = new Set(['media', 'display-capture', 'audioCapture', 'videoCapture'])
+  // And full screen, which a page asks for with requestFullscreen: a handler that does not name it refuses it, and the
+  // video player's button then did nothing.
+  const allowed = new Set(['media', 'display-capture', 'audioCapture', 'videoCapture', 'fullscreen'])
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => {
     callback(allowed.has(permission))
   })
