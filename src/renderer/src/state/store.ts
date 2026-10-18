@@ -2934,6 +2934,18 @@ export class ChatStore {
    * and guessing at it would mean showing an answer that never came.
    */
   useComponent(bufferId: string, messageId: string, customId: string, select: boolean, values: string[]): void {
+    // A Telegram bot answers a press with a notice, or an address to open, and no more: whatever else it does arrives
+    // as an edit to the message or a new one.
+    if (this.accountFor(bufferId)?.service === 'telegram') {
+      void window.moho
+        .rpc<{ message?: string | null; alert?: boolean; url?: string | null }>('pressTelegramButton', { bufferId, messageId, customId })
+        .then((answer) => {
+          if (answer.message) this.toast(answer.alert ? 'error' : 'info', answer.message)
+          if (answer.url) void window.moho.openExternal(answer.url)
+        })
+        .catch((e: Error) => this.toast('error', e.message))
+      return
+    }
     void window.moho
       .rpc('useDiscordComponent', { bufferId, messageId, customId, select, values })
       .catch((e: Error) => this.toast('error', e.message))
