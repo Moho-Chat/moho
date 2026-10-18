@@ -178,7 +178,8 @@ export function MediaEmbed({
   viewerRef.current = viewerSource
   useEffect(() => {
     const el = wrapRef.current
-    if (!el || (kind !== 'image' && kind !== 'video')) return
+    // Pictures only: a video goes full screen by itself and is not stepped to from the viewer.
+    if (!el || kind !== 'image') return
     return registerMedia(el, () => viewerRef.current())
   }, [kind])
 
@@ -482,23 +483,20 @@ export function MediaEmbed({
             playsInline
             onError={() => setFailed(true)}
           />
-          <button
-            type="button"
-            className="video-expand"
-            title="Expand"
-            onClick={() => setExpanded(true)}
-          >
-            <Icon name="fullscreen" size={16} />
-          </button>
+          {/* A video has its own full-screen button in its controls. One without controls (a silent looping clip)
+              has none, so it gets this: the same full screen, never the viewer. */}
+          {attachment?.gif && (
+            <button
+              type="button"
+              className="video-expand"
+              title="Full screen"
+              onClick={(e) => void e.currentTarget.parentElement?.querySelector('video')?.requestFullscreen?.().catch(() => {})}
+            >
+              <Icon name="fullscreen" size={16} />
+            </button>
+          )}
           {cover}
         </span>
-        {expanded && (
-          <Lightbox
-            source={viewerSource()}
-            anchor={wrapRef.current}
-            onClose={() => setExpanded(false)}
-          />
-        )}
       </>
     )
   }
