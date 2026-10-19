@@ -5870,8 +5870,25 @@ video.lightbox-media {
   border-radius: var(--corner-radius-small);
   background: #000;
 }
-.vp.full {
+.vp.full,
+.vp:fullscreen {
+  /* Full screen is the whole screen, not the shape the video had in the log (which its inline aspect ratio and the
+     embed's size limits would otherwise keep). */
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: none !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
   border-radius: 0;
+}
+.vp.full .vp-video,
+.vp:fullscreen .vp-video {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+  object-fit: contain;
 }
 .vp-video {
   display: block;
