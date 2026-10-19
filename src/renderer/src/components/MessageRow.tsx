@@ -9,6 +9,7 @@ import { ForwardPicker } from './ForwardPicker'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { MediaEmbed } from './MediaEmbed'
 import { LinkCard } from './LinkCard'
+import { isPlainEmoji } from '../lib/recents'
 import { KickEventCard, NotificationCard, isKickEvent } from './KickEventCard'
 import { COMMON_EMOJI, EmojiPicker, readRecent, type StickerEntry } from './EmojiPicker'
 import { reactionLabel, reactorsSentence } from '../lib/reactions'
@@ -130,7 +131,9 @@ const DEFAULT_REACTIONS = ['👍', '❤️', '😂', '🔥']
  * belongs to a server and may not be sendable from wherever the toolbar is.
  */
 function quickReactions(accountId?: string): string[] {
-  const recent = readRecent(accountId).filter((e) => !e.startsWith('<') && !e.startsWith(':'))
+  // Only ordinary emoji: anything with letters or digits in it is a stand-in for one (a custom emoji's token, or the
+  // bare number older builds stored for one), and is not a picture.
+  const recent = readRecent(accountId).filter(isPlainEmoji)
   return [...new Set([...recent, ...DEFAULT_REACTIONS])].slice(0, 4)
 }
 
