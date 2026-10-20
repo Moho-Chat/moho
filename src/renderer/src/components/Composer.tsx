@@ -1348,10 +1348,10 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
 
         {/* GIFs, wherever there is a Discord account to ask for them: the picker borrows that account's way of looking.
             What it finds is sent as a link, so it is offered only on the services that show a link to one as a picture
-            (GIF_SERVICES): not IRC, Steam, Twitch or Sneedchat, which take none, and not Telegram, whose GIFs come from its own
-            search and saved list rather than from a link. A service not on the list is
+            (GIF_SERVICES): not IRC, Steam, Twitch or Sneedchat, which take none. Telegram has GIFs of its own - the account's
+            saved ones and Telegram's GIF search - and gets the picker with those, asking Telegram rather than Discord. A service not on the list is
             one nobody has checked, and gets no button. */}
-        {!thread && GIF_SERVICES.has(service ?? '') && accounts.some((a) => a.service === 'discord') && (
+        {!thread && ((GIF_SERVICES.has(service ?? '') && accounts.some((a) => a.service === 'discord')) || service === 'telegram') && (
           <button
             ref={gifButtonRef}
             type="button"
@@ -1431,6 +1431,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
           bufferId={buffer.id}
           accountId={buffer.accountId}
           discord={service === 'discord'}
+          telegram={service === 'telegram'}
           onClose={() => setGifPicker(false)}
         />
       )}

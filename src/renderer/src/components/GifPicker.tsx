@@ -43,6 +43,7 @@ export function GifPicker({
   bufferId,
   accountId,
   discord,
+  telegram,
   onClose
 }: {
   anchor: HTMLElement | null
@@ -50,6 +51,8 @@ export function GifPicker({
   accountId: string
   /** Whether the conversation is on Discord, which decides what is sent. */
   discord: boolean
+  /** Whether the conversation is on Telegram, which has GIFs of its own: the account's saved ones, and its GIF search. */
+  telegram?: boolean
   onClose: () => void
 }): JSX.Element {
   const store = useStore()
@@ -116,7 +119,7 @@ export function GifPicker({
     const wait = setTimeout(
       () => {
         window.moho
-          .rpc<{ gifs: GifEntry[]; categories: GifCategory[] }>('listGifs', { query: query.trim() })
+          .rpc<{ gifs: GifEntry[]; categories: GifCategory[] }>(telegram ? 'listTelegramGifs' : 'listGifs', telegram ? { bufferId, query: query.trim() } : { query: query.trim() })
           .then((answer) => {
             if (!current) return
             setGifs(answer.gifs)
@@ -135,10 +138,15 @@ export function GifPicker({
       current = false
       clearTimeout(wait)
     }
-  }, [query])
+  }, [query, telegram, bufferId])
 
   const pick = (gif: GifEntry): void => {
     onClose()
+    // Telegram's are files on Telegram: sending one is sending that file, not a link to it.
+    if (telegram) {
+      void window.moho.rpc('sendTelegramGif', { bufferId, id: gif.id }).catch((e: Error) => store.toast('error', e.message))
+      return
+    }
     // Discord's own client sends the link, which Discord turns into the GIF.
     // Everything else is sent the file, since a page address would be only
     // that.
