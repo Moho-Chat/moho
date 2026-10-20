@@ -619,6 +619,28 @@ function toggleWindow(): void {
   }
 }
 
+/**
+ * What a left click on the tray icon does: put the window away if it is showing, bring it back if it is not.
+ *
+ * By whether it is showing, and not by whether it has focus. Clicking the tray takes the focus off the window first
+ * on most desktops, so asking whether it is focused always said no, and a click could only ever show the window -
+ * never put it away. The hotkey keeps the focus test (see `toggleWindow`): pressed while typing somewhere else it
+ * means "bring moho here", not "hide it".
+ */
+function toggleFromTray(): void {
+  if (!mainWindow) {
+    createWindow()
+    return
+  }
+  if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
+    mainWindow.hide()
+    return
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
+
 function trayIcon(unread: number): Electron.NativeImage {
   lastTrayIcon = trayIconFile(nativeTheme.shouldUseDarkColors, unread)
   const img = nativeImage.createFromPath(resourcePath('icons', lastTrayIcon))
@@ -700,7 +722,7 @@ function createTray(): void {
   tray = new Tray(trayIcon(0))
   tray.setToolTip('moho')
   refreshTrayMenu()
-  tray.on('click', toggleWindow)
+  tray.on('click', toggleFromTray)
   // The icon is drawn for the panel it sits on, so it is drawn again when the
   // system changes colour scheme.
   nativeTheme.on('updated', () => updateTray(lastTray))
