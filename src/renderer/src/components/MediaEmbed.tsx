@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { Lightbox, type LightboxSource } from './Lightbox'
 import { registerMedia } from '../lib/gallery'
+import { VideoPlayer } from './VideoPlayer'
 import { VoiceMessage } from './VoiceMessage'
 import { LottieSticker, lottieStickerId } from './LottieSticker'
 import { fullImageFor, knownFullImage } from '../lib/fullimage'
@@ -45,6 +46,8 @@ interface Props {
    * fills the cell and crops to it rather than keeping its own shape.
    */
   tile?: boolean
+  /** Present when the message this is in can be edited by this person: the video's pencil. */
+  onEdit?: () => void
 }
 
 /** What Discord puts at the front of a file name to hide it behind a spoiler. */
@@ -94,7 +97,8 @@ export function MediaEmbed({
   onOpenInDiscord,
   onRefresh,
   onStale,
-  tile
+  tile,
+  onEdit
 }: Props): JSX.Element | null {
   // Through the account's route when it is strictly routed (#257).
   const media = useMediaUrl()
@@ -178,7 +182,8 @@ export function MediaEmbed({
   viewerRef.current = viewerSource
   useEffect(() => {
     const el = wrapRef.current
-    if (!el || (kind !== 'image' && kind !== 'video')) return
+    // Pictures only: a video goes full screen by itself and is not stepped to from the viewer.
+    if (!el || kind !== 'image') return
     return registerMedia(el, () => viewerRef.current())
   }, [kind])
 
@@ -421,6 +426,36 @@ export function MediaEmbed({
     // video/quicktime, which canPlayType refuses outright while the browser
     // then plays the file perfectly well once it looks inside. Letting it try
     // and handling the failure is the honest test.
+    //
+    // A Telegram video is not in the cache until it is fetched, and fetching is
+    // the whole file: a feed of videos would pull hundreds of megabytes just to
+    // be scrolled. So it is drawn as its preview, and fetched when played.
+    const deferred =
+      !attachment?.gif && !!attachment?.thumbnailPath && !previewGone && !playing && /[\\/]telegram-media[\\/]/.test(fullSrc)
+    if (deferred) {
+      return (
+        <span className={classes('media-embed-wrap video', tile && 'tile', hidden && 'spoilered')} style={{ ...ratio, position: 'relative' }} {...reveal}>
+          <img
+            className="media-embed"
+            style={ratio}
+            src={media(previewSrc)}
+            alt={attachment?.filename || ''}
+            loading="lazy"
+            onError={() => setPreviewGone(true)}
+          />
+          <button
+            type="button"
+            className="video-expand"
+            title="Play"
+            style={{ position: 'absolute', inset: 0, margin: 'auto', width: 48, height: 48 }}
+            onClick={() => setPlaying(true)}
+          >
+            <Icon name="play_circle" size={32} />
+          </button>
+          {cover}
+        </span>
+      )
+    }
     return (
       <>
         <span
@@ -429,46 +464,50 @@ export function MediaEmbed({
           style={ratio}
           {...reveal}
         >
-          <video
-            className="media-embed"
-            style={ratio}
-            src={media(fullSrc)}
-            // A GIF is silent, runs on its own and goes round, and has no
-            // player to operate: it plays when it is shown if autoplay is on,
-            // and otherwise while the pointer is over it. Any other video is a
-            // video, with its controls.
-            {...(attachment?.gif
-              ? {
-                  muted: true,
-                  autoPlay: autoplay,
-                  loop: true,
-                  onMouseEnter: (e: React.MouseEvent<HTMLVideoElement>) => !autoplay && void e.currentTarget.play().catch(() => {}),
-                  onMouseLeave: (e: React.MouseEvent<HTMLVideoElement>) => !autoplay && e.currentTarget.pause()
-                }
-              : { controls: true, loop })}
-            // Enough to draw the first frame and know how long it is, without
-            // pulling megabytes for every video in a scrolled-past backlog.
-            preload="metadata"
-            playsInline
-            onError={() => setFailed(true)}
-          />
-          <button
-            type="button"
-            className="video-expand"
-            title="Expand"
-            onClick={() => setExpanded(true)}
-          >
-            <Icon name="fullscreen" size={16} />
-          </button>
+          {attachment?.gif ? (
+            <video
+              className="media-embed"
+              style={ratio}
+              src={media(fullSrc)}
+              // A GIF is silent, runs on its own and goes round, and has no player to operate: it plays when it is
+              // shown if autoplay is on, and otherwise while the pointer is over it.
+              muted
+              autoPlay={autoplay}
+              loop
+              onMouseEnter={(e) => !autoplay && void e.currentTarget.play().catch(() => {})}
+              onMouseLeave={(e) => !autoplay && e.currentTarget.pause()}
+              preload="metadata"
+              playsInline
+              onError={() => setFailed(true)}
+            />
+          ) : (
+            // Any other video is a video, with the one set of controls every service gets.
+            <VideoPlayer
+              src={media(fullSrc)}
+              className="media-embed"
+              style={ratio}
+              loop={loop}
+              autoPlay={playing}
+              filename={shownName}
+              saveFrom={openTarget}
+              onEdit={onEdit}
+              onError={() => setFailed(true)}
+            />
+          )}
+          {/* A video has its own full-screen button in its controls. One without controls (a silent looping clip)
+              has none, so it gets this: the same full screen, never the viewer. */}
+          {attachment?.gif && (
+            <button
+              type="button"
+              className="video-expand"
+              title="Full screen"
+              onClick={(e) => void e.currentTarget.parentElement?.querySelector('video')?.requestFullscreen?.().catch(() => {})}
+            >
+              <Icon name="fullscreen" size={16} />
+            </button>
+          )}
           {cover}
         </span>
-        {expanded && (
-          <Lightbox
-            source={viewerSource()}
-            anchor={wrapRef.current}
-            onClose={() => setExpanded(false)}
-          />
-        )}
       </>
     )
   }

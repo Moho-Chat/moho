@@ -104,7 +104,7 @@ interface TypedCommand {
   description?: string
   /** "Built-in", or the bot that answers it. */
   source?: string
-  kind: 'builtin' | 'application'
+  kind: 'builtin' | 'application' | 'bot'
   /** Discord's own description of the command, handed back to run it. */
   command?: { options?: { name: string; type?: number; required?: boolean }[] }
 }
@@ -208,6 +208,8 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
    */
   const [commands, setCommands] = useState<TypedCommand[]>([])
   const [commandIndex, setCommandIndex] = useState(0)
+  /** A Telegram bot's Menu, open over the box: the bot's commands, asked for without anything being typed. */
+  const [botMenu, setBotMenu] = useState(false)
   /**
    * The application command whose name has been completed into the box.
    *
@@ -260,7 +262,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   // here rather than left as the one service where the button is dead.
   // Steam takes a picture or a short video, and says which and how big.
   const supportsAttachments =
-    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc' || service === 'steam'
+    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc' || service === 'steam' || service === 'telegram'
 
   // Starting a reply puts the cursor in the box: the next thing anybody does
   // is write the answer.
@@ -394,7 +396,9 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const typedCommand = /^\/\S*$/.test(text) ? text.slice(1) : null
 
   useEffect(() => {
-    if (typedCommand === null || !buffer) {
+    // The bot's Menu is open: its whole list, whatever is (or is not) in the box.
+    const asking = botMenu ? '' : typedCommand
+    if (asking === null || !buffer) {
       setCommands([])
       return
     }
@@ -402,7 +406,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
       void window.moho
         .rpc<{ commands: TypedCommand[] }>('listCommands', {
           bufferId: buffer.id,
-          query: typedCommand
+          query: asking
         })
         .then((answer) => {
           setCommands(answer.commands || [])
@@ -414,10 +418,21 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
           // complaint about typing a slash.
           setCommands([])
         })
-    }, 200)
+    }, botMenu ? 0 : 200)
     return () => clearTimeout(timer)
-  }, [typedCommand, buffer?.id])
+  }, [typedCommand, buffer?.id, botMenu])
 
+  // The Menu belongs to the conversation it was opened in, and goes when anything else is clicked.
+  useEffect(() => setBotMenu(false), [buffer?.id])
+  useEffect(() => {
+    if (!botMenu) return
+    const away = (e: MouseEvent): void => {
+      const target = e.target as HTMLElement | null
+      if (!target?.closest('.command-picker, .composer-menu-button')) setBotMenu(false)
+    }
+    document.addEventListener('mousedown', away)
+    return () => document.removeEventListener('mousedown', away)
+  }, [botMenu])
 
   if (!buffer) return null
 
@@ -487,6 +502,9 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
       disabled: !supportsAttachments,
       onClick: pickAndStage
     },
+    ...(service === 'telegram' && !thread
+      ? ([{ label: 'Start a poll', icon: 'ballot', onClick: () => setPolling(true) }] as MenuEntry[])
+      : []),
     ...(service === 'matrix' && !thread
       ? ([
           {
@@ -643,6 +661,15 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const takeCommand = (command: TypedCommand): void => {
     const wants = (command.usage ?? '').trim().length > 0
     setCommands([])
+    // A Telegram bot's command is sent the moment it is chosen, as Telegram's own apps do: it is a message to the bot,
+    // and the menu is the bot's own list of what it understands.
+    if (command.kind === 'bot' && buffer) {
+      setBotMenu(false)
+      setText('')
+      if (inputRef.current) inputRef.current.textContent = ''
+      void store.sendMessage(buffer.id, `/${command.name}`)
+      return
+    }
     if (!wants && command.kind === 'application') {
       setPendingCommand(command)
       runCommand(command, `/${command.name}`)
@@ -844,7 +871,8 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   // Somewhere that can be read and not written in: a channel this account has
   // no permission to send to, or Discord's own notices. A box that every send
   // is refused from is a worse answer than saying so where it would be.
-  if (buffer.readOnly) {
+  // A channel's comments are written to its discussion group, which the channel's own lock says nothing about.
+  if (buffer.readOnly && !(thread && service === 'telegram')) {
     const official = buffer.readOnly.includes('official Discord')
     return (
       <div className="composer">
@@ -897,7 +925,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
       {commands.length > 0 && (
         <div className="command-picker" role="listbox" aria-label="Run a command">
           <div className="picker-head small muted">
-            Commands matching /{typedCommand}
+            {botMenu ? 'Commands' : <>Commands matching /{typedCommand}</>}
           </div>
           {commands.map((c, i) => (
             <button
@@ -1048,7 +1076,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
               {/* On the card's corner, and there only while it is pointed at
                   or focused - they would be a dozen buttons otherwise. */}
               <div className="staged-actions">
-                {(service === 'discord' || service === 'steam') && (
+                {(service === 'discord' || service === 'steam' || service === 'telegram') && (
                   <button
                     type="button"
                     className={classes('staged-action', att.spoiler && 'on')}
@@ -1075,6 +1103,19 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
 
       <div className="composer-row">
        <div className="composer-box">
+        {/* The bot's own menu, where Telegram puts it: ahead of the box. Opens the list of what the bot understands. */}
+        {service === 'telegram' && buffer.nameIcon === 'smart_toy' && !thread && (
+          <button
+            type="button"
+            className="composer-menu-button"
+            title="Show this bot's commands"
+            // Opens the list and nothing else: nothing is written into the box, and choosing a command sends it.
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setBotMenu((open) => !open)}
+          >
+            Menu
+          </button>
+        )}
         {/* Everything that is not typed goes through here, inside the box on
             the left as in Discord. Where there is only the one thing - a
             file - it is that thing, without a menu in between. */}
@@ -1168,6 +1209,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
                 if (e.key === 'Escape') {
                   e.preventDefault()
                   setCommands([])
+                  setBotMenu(false)
                   return
                 }
               }
@@ -1232,7 +1274,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
                 !e.altKey &&
                 !e.metaKey &&
                 !text &&
-                (service === 'discord' || service === 'sneedchat' || service === 'matrix')
+                (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram')
               ) {
                 const last = store.lastEditableOwn(buffer.id)
                 if (last) {
@@ -1346,7 +1388,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
             messages at all: Discord's flag and base64 waveform, and Matrix's
             MSC3245 marker with integers. The daemon speaks both from one
             recording, so this is the same button either way. */}
-        {!thread && (service === 'discord' || service === 'matrix') && <VoiceRecorder bufferId={buffer.id} />}
+        {!thread && (service === 'discord' || service === 'matrix' || service === 'telegram') && <VoiceRecorder bufferId={buffer.id} />}
 
         {/* Sending is the one thing the box does that its own Enter does not
             say, so it is only drawn when there is something to send. */}

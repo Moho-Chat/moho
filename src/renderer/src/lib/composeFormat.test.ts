@@ -94,3 +94,13 @@ describe('markup details', () => {
     expect(wrap('sneedchat', 'color', 'g', '#00fc00')).toBe('[color=#00fc00]g[/color]')
   })
 })
+
+describe('Telegram formatting', () => {
+  it('is offered the formats the daemon turns into entities, written as Discord reads them', () => {
+    expect(formatsFor('telegram')).toEqual(['bold', 'italic', 'underline', 'strike', 'code', 'spoiler', 'quote'])
+    expect(wrap('telegram', 'bold', 'x')).toBe('**x**')
+    expect(wrap('telegram', 'underline', 'x')).toBe('__x__')
+    expect(wrap('telegram', 'spoiler', 'x')).toBe('||x||')
+    expect(wrap('telegram', 'quote', 'a\nb')).toBe('\n> a\n> b\n')
+  })
+})

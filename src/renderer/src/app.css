@@ -2982,14 +2982,77 @@ img.custom-emoji.steam-sticker {
 }
 
 .membership-rules {
-  max-width: 480px;
-  max-height: 70vh;
+  width: min(860px, 94vw);
+  max-height: 80vh;
   overflow-y: auto;
   padding: var(--spacing-l);
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
   border: 1px solid var(--outline-medium);
   box-shadow: var(--shadow-2);
+}
+
+/* The server on the left and its form on the right, as Discord draws it; one above the other when narrow. */
+.membership-body {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--spacing-xl, 24px);
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .membership-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.membership-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--spacing-m);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container);
+  border: 1px solid var(--outline-medium);
+}
+.membership-card-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  object-fit: cover;
+}
+.membership-card-name {
+  font-weight: var(--weight-semibold);
+}
+.membership-title {
+  margin: 0 0 4px;
+  font-size: var(--font-size-large);
+  font-weight: var(--weight-semibold);
+}
+.membership-field {
+  margin-top: var(--spacing-m);
+}
+.membership-field-label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: var(--weight-semibold);
+}
+.membership-rules-list {
+  margin: 0 0 var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m) var(--spacing-s) 2em;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container);
+}
+.membership-rules-list li {
+  padding: 6px 0;
+  white-space: pre-wrap;
+}
+.membership-rules-list li + li {
+  border-top: 1px solid var(--outline-medium);
+}
+.membership-agree {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  margin: 4px 0;
 }
 
 .membership-rules-head {
@@ -3506,6 +3569,155 @@ img.smilie {
    reading order: what it is, then the thing itself. */
 .rich-embed-media {
   margin-top: var(--spacing-s);
+}
+
+/* A link's preview as Telegram draws it: an accent bar, the site in the accent, the title in bold, the picture, and
+   Instant View as a bar along the bottom. */
+.link-card {
+  margin: var(--spacing-xxs) 0;
+  padding: 2px 0 0 var(--spacing-m);
+  border-left: 3px solid var(--primary);
+  max-width: 420px;
+}
+.link-card-site {
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+  font-size: 0.92em;
+}
+.link-card-title {
+  display: block;
+  font-weight: var(--weight-semibold);
+  color: inherit;
+  text-decoration: none;
+}
+.link-card-desc {
+  color: var(--surface-variant-text);
+  white-space: pre-wrap;
+}
+.link-card-image {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  margin-top: var(--spacing-xs);
+  border-radius: var(--corner-radius-small);
+  object-fit: cover;
+  cursor: pointer;
+}
+.link-card-instant {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: var(--spacing-xs);
+  padding: 6px 0;
+  border: 0;
+  border-radius: var(--corner-radius-small);
+  background: var(--primary-hover);
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.link-card-instant:hover {
+  background: var(--primary-selected);
+}
+
+/* The glyph for what kind of conversation it is (a horn for a broadcast channel, a robot for a bot), ahead of its picture. */
+.buffer-kind-icon {
+  flex: none;
+  opacity: 0.85;
+}
+
+/* What a Telegram message answers: an accent bar, who said it, what they said, and the quote mark. */
+.tg-quote {
+  position: relative;
+  display: block;
+  margin: 2px 0 4px;
+  padding: 4px 28px 4px var(--spacing-m);
+  border-left: 3px solid var(--primary);
+  border-radius: 0 var(--corner-radius-small) var(--corner-radius-small) 0;
+  background: var(--primary-hover-light);
+  max-width: 520px;
+  cursor: pointer;
+}
+.tg-quote:hover {
+  background: var(--primary-hover);
+}
+.tg-quote-from {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+  font-size: 0.92em;
+}
+.tg-quote-body {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+  color: var(--surface-variant-text);
+}
+.tg-quote-mark {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  opacity: 0.7;
+  color: var(--primary);
+}
+
+/* Where a forwarded Telegram message came from. */
+.tg-forward {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 2px 0 2px;
+  padding-left: var(--spacing-m);
+  border-left: 3px solid var(--primary);
+}
+.tg-forward-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+}
+
+/* Discord's own conversation in the list: the mark beside its name and what it is underneath. */
+.buffer-official-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #5865f2;
+  color: #fff;
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+/* A Telegram bot's Menu button, ahead of the message box. */
+.composer-menu-button {
+  flex: none;
+  margin-right: var(--spacing-xs);
+  padding: 4px 14px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--primary-container);
+  color: #fff;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+.composer-menu-button:hover {
+  filter: brightness(1.15);
 }
 
 /* --- media embeds ------------------------------------------------------ */
@@ -5648,6 +5860,195 @@ video.lightbox-media {
   opacity: 0;
 }
 
+/* The player: the controls are drawn over the picture and rest out of sight while it plays. */
+.vp {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: var(--corner-radius-small);
+  background: #000;
+}
+.vp.full,
+.vp:fullscreen {
+  /* Full screen is the whole screen, not the shape the video had in the log (which its inline aspect ratio and the
+     embed's size limits would otherwise keep). */
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: none !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+  border-radius: 0;
+}
+.vp.full .vp-video,
+.vp:fullscreen .vp-video {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+  object-fit: contain;
+}
+.vp-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  cursor: pointer;
+}
+.vp-top {
+  position: absolute;
+  top: var(--spacing-xs);
+  right: var(--spacing-xs);
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--corner-radius-small);
+  background: rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.vp-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 18px 10px 6px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  opacity: 1;
+  transition: opacity 0.12s;
+}
+/* Out of the way while it plays, back when the pointer is on it or it stops. */
+.vp.playing .vp-bar {
+  opacity: 0;
+}
+.vp:hover .vp-top,
+.vp:hover .vp-bar,
+.vp:focus-within .vp-top,
+.vp:focus-within .vp-bar,
+.vp-bar:has(.vp-speeds) {
+  opacity: 1;
+}
+.vp-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 2px;
+}
+.vp-fill {
+  flex: 1;
+}
+.vp-button {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--corner-radius-small);
+  background: none;
+  color: #fff;
+  cursor: pointer;
+}
+.vp-button:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.vp-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.vp-time {
+  flex: none;
+  white-space: nowrap;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: #fff;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.vp-rate {
+  margin-left: 2px;
+  font-size: 11px;
+}
+/* The volume: the icon, and the slider that opens out beside it when the pointer is on either. */
+.vp-volume {
+  display: flex;
+  align-items: center;
+}
+.vp-level {
+  width: 0;
+  opacity: 0;
+  margin: 0;
+  transition: width 0.15s, opacity 0.15s, margin 0.15s;
+}
+.vp-volume:hover .vp-level,
+.vp-volume:focus-within .vp-level {
+  width: 70px;
+  margin: 0 6px 0 2px;
+  opacity: 1;
+}
+.vp-seek,
+.vp-level {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, #fff var(--vp-progress, 0%), rgba(255, 255, 255, 0.35) var(--vp-progress, 0%));
+  cursor: pointer;
+}
+.vp-seek {
+  display: block;
+  width: 100%;
+  margin: 0;
+}
+.vp-seek::-webkit-slider-thumb,
+.vp-level::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+}
+.vp-speed {
+  position: relative;
+}
+.vp-speeds {
+  position: absolute;
+  right: 0;
+  bottom: 34px;
+  display: flex;
+  flex-direction: column;
+  min-width: 96px;
+  padding: 4px;
+  border-radius: var(--corner-radius-small);
+  background: rgba(20, 20, 24, 0.96);
+  box-shadow: var(--shadow-2);
+}
+.vp-speed-option {
+  padding: 5px 10px;
+  border: 0;
+  border-radius: var(--corner-radius-small);
+  background: none;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.vp-speed-option:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+.vp-speed-option.on {
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+}
+
 .media-embed-wrap.video:hover .video-expand {
   opacity: 1;
 }
@@ -6178,6 +6579,19 @@ video.lightbox-media {
   background: var(--surface-container-high);
   color: var(--surface-variant-text);
   letter-spacing: 0.04em;
+}
+
+/* Discord's own pill for a bot or application, in its blurple, whoever's name it sits beside. */
+.sender-badge.app,
+.sender-badge.verified-app,
+.sender-badge.official {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #5865f2;
+  color: #fff;
+  font-size: 10px;
+  line-height: 1.3;
 }
 
 /* The one badge that is a warning rather than a title: this message came

@@ -21,7 +21,7 @@ import { resolveMediaUrl } from './util'
 
 /** The caches the daemon can restore from, by folder. Kick's emotes are
  *  not here: lib/emotecache puts Kick's own picture up at once instead. */
-const RESTORABLE = /[\\/]nobilis[\\/](matrix-media|sneedchat-attachments|sneedchat-avatars|discord-thumbnails|discord-icons)[\\/]/
+const RESTORABLE = /[\\/]nobilis[\\/](matrix-media|sneedchat-attachments|sneedchat-avatars|discord-thumbnails|discord-icons|telegram-media|telegram-avatars)[\\/]/
 
 /** Paths being fetched, so a picture drawn twice asks once. */
 const inFlight = new Map<string, Promise<string | null>>()
@@ -54,8 +54,10 @@ function restore(path: string, bufferId?: string, messageId?: string): Promise<s
 }
 
 /** Lets a failure through to the element's own handler after all. */
-function failAfterAll(el: Media): void {
-  el.dataset.restoreGaveUp = '1'
+function failAfterAll(el: Media, path: string): void {
+  // Of this file, not of the element: a picture that falls back from its preview to the original is the same element
+  // with another file, and that one has not been tried.
+  el.dataset.restoreGaveUp = path
   el.dispatchEvent(new Event('error'))
 }
 
@@ -63,19 +65,27 @@ export function restoreMissingMedia(): () => void {
   const onError = (e: Event): void => {
     const el = e.target
     if (!(el instanceof HTMLImageElement || el instanceof HTMLVideoElement || el instanceof HTMLAudioElement)) return
-    if (el.dataset.restoreGaveUp) return
     const path = cachedPath(el)
-    if (!path) return
+    if (!path) {
+      if ((el.currentSrc || el.src).includes('telegram')) console.info(`[restore] a failed picture is not one the daemon can restore: ${(el.currentSrc || el.src).slice(-90)}`)
+      return
+    }
+    if (el.dataset.restoreGaveUp === path) return
     // Known to be past saving, or already restored once for this element and
     // still failing: let it fail as it always did.
-    if (gone.has(path) || el.dataset.restoreTried === path) return
+    if (gone.has(path) || el.dataset.restoreTried === path) {
+      console.info(`[restore] ${path.split(/[\\/]/).slice(-2).join('/')} failed again, not asked for twice`)
+      return
+    }
     el.dataset.restoreTried = path
     e.stopPropagation()
+    console.info(`[restore] ${path.split(/[\\/]/).slice(-2).join('/')} asked for`)
 
     const row = el.closest<HTMLElement>('[data-msg-id]')
     void restore(path, row?.dataset.bufferId, row?.dataset.msgId).then((restored) => {
+      console.info(`[restore] ${path.split(/[\\/]/).slice(-2).join('/')} ${restored ? 'came back' : 'could not be fetched'}`)
       if (!restored) {
-        failAfterAll(el)
+        failAfterAll(el, path)
         return
       }
       // A new URL for the same file, so nothing serves the failure again

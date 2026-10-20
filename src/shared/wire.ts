@@ -3,7 +3,7 @@
 
 export interface Account {
   id: string
-  service: 'irc' | 'discord' | 'sneedchat' | 'matrix' | 'kick' | 'steam' | 'twitch' | 'jabber' | 'slack'
+  service: 'irc' | 'discord' | 'sneedchat' | 'matrix' | 'kick' | 'steam' | 'twitch' | 'telegram' | 'jabber' | 'slack'
   displayName: string
   /**
    * How the user is presenting: "online" | "idle". Distinct from
@@ -173,6 +173,8 @@ export interface Buffer {
    * refuses, so offering to leave it is offering something that fails.
    */
   serviceRoom?: boolean
+  /** A glyph drawn in front of the name in the list: Telegram's broadcast channels and bots. */
+  nameIcon?: string
   /**
    * Set while the buffer exists but the service has not yet said what is in
    * it - a Matrix room between joining it and its first sync. The list draws
@@ -437,6 +439,8 @@ export interface ReplyPreview {
    * says which thread that message is part of, and a reply can be both.
    */
   threadRoot?: string
+  /** The conversation (a buffer id) the answered message is in, when it is not this one: Telegram can answer a post in another channel. */
+  chat?: string
 }
 
 /**

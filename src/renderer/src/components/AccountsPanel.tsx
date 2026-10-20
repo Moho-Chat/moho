@@ -25,7 +25,7 @@ import type { Account } from '../../../shared/wire'
  * that gains a backend appears here as soon as it gains a form, and one the
  * daemon stops offering disappears without this file being touched.
  */
-const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch'] as const
+const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram'] as const
 type AddableService = (typeof FORMS)[number]
 
 /** What `listProtocols` answers with. */
@@ -138,6 +138,7 @@ export function AccountsPanel(): JSX.Element {
         {adding === 'kick' && <KickForm onDone={() => setAdding(null)} />}
         {adding === 'steam' && <SteamForm onDone={() => setAdding(null)} />}
         {adding === 'twitch' && <TwitchForm onDone={() => setAdding(null)} />}
+        {adding === 'telegram' && <TelegramForm onDone={() => setAdding(null)} />}
         {adding && (
           <button type="button" className="button subtle small" onClick={() => setAdding(null)}>
             Cancel
@@ -1477,6 +1478,213 @@ function SteamForm({ onDone }: { onDone: () => void }): JSX.Element {
 }
 
 /**
+ * Adding a Telegram account: an api_id and api_hash, a phone number, then the code Telegram sends and, if the account
+ * has one, its cloud password.
+ *
+ * Telegram gives one api_id and api_hash to a phone number's owner, and every client sends them. moho has none of its
+ * own, so the ones typed here are kept with the account, as private as the session is. Nothing typed here is sent
+ * anywhere but Telegram.
+ */
+function TelegramForm({ onDone }: { onDone: () => void }): JSX.Element {
+  const store = useStore()
+  const [apiId, setApiId] = useState('')
+  const [apiHash, setApiHash] = useState('')
+  const [phone, setPhone] = useState('')
+  const [useTor, setUseTor] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [loginId, setLoginId] = useState('')
+  const [detail, setDetail] = useState('')
+  const [needs, setNeeds] = useState<{ step: 'code' | 'password'; hint?: string; error?: string } | null>(null)
+  const [typed, setTyped] = useState('')
+
+  // Held in a ref as well: the first event can be handled before the render that follows the answer that started the
+  // sign-in. Nothing else is signing in from this form, so an event with no id known yet is this one's.
+  const current = useRef('')
+  const setId = (id: string): void => {
+    current.current = id
+    setLoginId(id)
+  }
+
+  useEffect(() => {
+    const off = window.moho.onEvent((e) => {
+      const d = e.data as { loginId?: string; text?: string; step?: 'code' | 'password'; hint?: string; error?: string; success?: boolean }
+      if (!e.event.startsWith('telegramLogin')) return
+      if (current.current && d.loginId !== current.current) return
+      if (e.event === 'telegramLoginStatus') {
+        setDetail(d.text || '')
+      } else if (e.event === 'telegramLoginNeeds') {
+        setNeeds({ step: d.step ?? 'code', hint: d.hint ?? undefined, error: d.error ?? undefined })
+        setTyped('')
+        setDetail('')
+      } else if (e.event === 'telegramLoginResult') {
+        setNeeds(null)
+        setId('')
+        setBusy(false)
+        setDetail('')
+        if (d.success) {
+          setApiHash('')
+          void store.refreshAccounts()
+          onDone()
+        } else {
+          store.toast('error', d.error || 'Telegram sign-in failed')
+        }
+      }
+    })
+    return off
+  }, [onDone, store])
+
+  // Closing the form on a sign-in that is still waiting tells the daemon nobody is.
+  useEffect(
+    () => () => {
+      if (current.current) void window.moho.rpc('cancelTelegramLogin', { loginId: current.current }).catch(() => {})
+    },
+    []
+  )
+
+  const begin = (): void => {
+    setBusy(true)
+    setDetail('')
+    setNeeds(null)
+    current.current = ''
+    void window.moho
+      .rpc<{ loginId: string }>('addTelegramAccount', { apiId: apiId.trim(), apiHash: apiHash.trim(), phone, useTor })
+      .then((r) => setId(r.loginId))
+      .catch((e: Error) => {
+        setBusy(false)
+        store.toast('error', e.message)
+      })
+  }
+
+  const send = (): void => {
+    const value = needs?.step === 'password' ? typed : typed.trim()
+    if (!value || !loginId || !needs) return
+    void window.moho
+      .rpc(needs.step === 'password' ? 'submitTelegramPassword' : 'submitTelegramCode', { loginId, value })
+      .then(() => setDetail('checking'))
+      .catch((e: Error) => store.toast('error', e.message))
+  }
+
+  const cancel = (): void => {
+    if (current.current) void window.moho.rpc('cancelTelegramLogin', { loginId: current.current }).catch(() => {})
+    setId('')
+    setNeeds(null)
+    setDetail('')
+    setBusy(false)
+  }
+
+  if (needs) {
+    const password = needs.step === 'password'
+    return (
+      <div className="add-form">
+        <p>
+          {password
+            ? 'This account has a cloud password.'
+            : 'Telegram sent a code to your other Telegram app, or by SMS.'}
+        </p>
+        <label className="field">
+          <span className="small muted">{password ? `Password${needs.hint ? ` (hint: ${needs.hint})` : ''}` : 'Code'}</span>
+          <input
+            className="text-field"
+            type={password ? 'password' : 'text'}
+            autoFocus
+            autoComplete="off"
+            spellCheck={false}
+            inputMode={password ? undefined : 'numeric'}
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') send()
+            }}
+          />
+        </label>
+        {needs.error && (
+          <div className="warning-note">
+            <Icon name="warning" size={16} />
+            <span>{needs.error}</span>
+          </div>
+        )}
+        {detail && <p className="small muted">{detail}…</p>}
+        <div className="field-row">
+          <button type="button" className="button primary" disabled={!typed.trim()} onClick={send}>
+            {password ? 'Submit password' : 'Submit code'}
+          </button>
+          <button type="button" className="button" onClick={cancel}>
+            Cancel sign-in
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const ready = apiId.trim() !== '' && apiHash.trim() !== '' && phone.trim() !== ''
+  return (
+    <div className="add-form">
+      <p className="small muted">
+        Telegram gives one <strong>api_id</strong> and <strong>api_hash</strong> to the owner of a phone number, at{' '}
+        <a href="https://my.telegram.org/apps" target="_blank" rel="noreferrer">
+          my.telegram.org/apps
+        </a>
+        , and every Telegram app a person uses can share them. moho has none of its own: the ones you type here are kept
+        with the account, as private as the session. Telegram then sends a code, and asks for the account's cloud
+        password if it has one.
+      </p>
+      <TorSwitch service="telegram" on={useTor} onChange={setUseTor} />
+      <div className="field-row">
+        <label className="field">
+          <span className="small muted">api_id</span>
+          <input
+            className="text-field"
+            autoComplete="off"
+            spellCheck={false}
+            inputMode="numeric"
+            value={apiId}
+            disabled={busy}
+            onChange={(e) => setApiId(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span className="small muted">api_hash</span>
+          <input
+            className="text-field"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={apiHash}
+            disabled={busy}
+            onChange={(e) => setApiHash(e.target.value)}
+          />
+        </label>
+      </div>
+      <label className="field">
+        <span className="small muted">Phone number, with its country code</span>
+        <input
+          className="text-field"
+          autoComplete="off"
+          placeholder="+1 555 123 4567"
+          value={phone}
+          disabled={busy}
+          onChange={(e) => setPhone(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && ready && !busy) begin()
+          }}
+        />
+      </label>
+      <div className="field-row">
+        <button type="button" className="button primary" disabled={busy || !ready} onClick={begin}>
+          {busy ? 'Signing in…' : 'Send the code'}
+        </button>
+        {busy && (
+          <button type="button" className="button" onClick={cancel}>
+            Cancel
+          </button>
+        )}
+      </div>
+      {busy && detail && <p className="small muted">{detail}…</p>}
+    </div>
+  )
+}
+
+/**
  * Adding a Twitch account: sign in, or only read.
  *
  * Twitch's chat is public, so an account that never signs in still reads every
@@ -1714,6 +1922,9 @@ function TorWarning({ service }: { service: Account['service'] }): JSX.Element |
   } else if (service === 'kick') {
     text =
       "Kick blocks Tor's exit points, so a connection through moho's own Tor will most likely be refused. A SOCKS5 proxy you host yourself may work."
+  } else if (service === 'telegram') {
+    text =
+      "Telegram often challenges or limits a sign-in that comes from Tor or a VPN, and signing in from a new address can put the account's other sessions on alert. Sign in once from your usual connection, then route it if you need to."
   } else if (service === 'irc' || service === 'matrix') {
     text = `Each ${service === 'irc' ? 'network' : 'homeserver'} has its own policy on Tor, and many block its exit points. A SOCKS5 proxy you host yourself may be accepted where Tor is not.`
   } else {

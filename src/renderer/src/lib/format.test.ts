@@ -17,6 +17,7 @@ import {
   normalizeBBCode,
   sneedGreentext,
   sneedSameText,
+  sourcePick,
   stripCodeBlocks,
   stripEmbeddedUrls,
   stripQuoteBlocks,
@@ -355,5 +356,35 @@ describe("Sneedchat's greentext", () => {
     expect(sneedGreentext('[color=#ff0000]red stays')).toBe('[color=#ff0000]red stays')
     expect(sneedSameText('>archlinuxwoman', '[color=#72ff72]>archlinuxwoman')).toBe(true)
     expect(sneedSameText('hello', '[color=#72ff72]>hello')).toBe(false)
+  })
+})
+
+describe('markdown escapes', () => {
+  const on = { markdownEscapes: true }
+  it('drops the backslash of an escaped mark, and keeps the mark as text', () => {
+    expect(formatMessage('The Austin Police \\(APD\\) is aware\\. Call 911\\.', on)).toBe('The Austin Police (APD) is aware. Call 911.')
+    expect(formatMessage('a \\* b \\* c', on)).toBe('a * b * c')
+    expect(formatMessage('one \\\\ backslash', on)).toBe('one \\ backslash')
+    expect(formatMessage('Q \\& A', on)).toBe('Q &amp; A')
+  })
+  it('keeps an escaped asterisk from starting bold', () => {
+    expect(formatMessage('\\*not bold\\*', on)).toBe('*not bold*')
+  })
+  it('leaves backslashes alone where nobody asked', () => {
+    expect(formatMessage('a regex \\d+\\.\\d', {})).toBe('a regex \\d+\\.\\d')
+  })
+  it('leaves a backslash before a letter alone even when asked', () => {
+    expect(formatMessage('C:\\Users\\me', on)).toBe('C:\\Users\\me')
+  })
+})
+
+describe('what a picker section sends back', () => {
+  it("is Discord's own token for a custom emoji, never the bare number that names it", () => {
+    expect(sourcePick('discord', { id: '1413156421880647762', name: 'lettyCrazy' })).toBe('<:lettyCrazy:1413156421880647762>')
+    expect(sourcePick('discord', { id: '99', name: 'dance', animated: true })).toBe('<a:dance:99>')
+  })
+  it('leaves the other services as they were', () => {
+    expect(sourcePick('sneedchat', { id: ':lol:' })).toBe(':lol:')
+    expect(sourcePick('steam', { id: 'steam:steambored' })).toBe('[steam:emote:steambored]')
   })
 })

@@ -127,7 +127,9 @@ function stickerKey(s: StickerEntry): string {
 export function readRecent(accountId?: string): string[] {
   try {
     const stored = JSON.parse(localStorage.getItem(recentKey(accountId)) || '[]')
-    return Array.isArray(stored) ? stored : []
+    // Without the bare numbers older builds kept for a custom emoji picked from another server: they were never a
+    // message, and are not worth showing.
+    return Array.isArray(stored) ? stored.filter((r) => !/^\d+$/.test(String(r))) : []
   } catch {
     return []
   }

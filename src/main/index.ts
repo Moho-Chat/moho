@@ -619,6 +619,28 @@ function toggleWindow(): void {
   }
 }
 
+/**
+ * What a left click on the tray icon does: put the window away if it is showing, bring it back if it is not.
+ *
+ * By whether it is showing, and not by whether it has focus. Clicking the tray takes the focus off the window first
+ * on most desktops, so asking whether it is focused always said no, and a click could only ever show the window -
+ * never put it away. The hotkey keeps the focus test (see `toggleWindow`): pressed while typing somewhere else it
+ * means "bring moho here", not "hide it".
+ */
+function toggleFromTray(): void {
+  if (!mainWindow) {
+    createWindow()
+    return
+  }
+  if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
+    mainWindow.hide()
+    return
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
+
 function trayIcon(unread: number): Electron.NativeImage {
   lastTrayIcon = trayIconFile(nativeTheme.shouldUseDarkColors, unread)
   const img = nativeImage.createFromPath(resourcePath('icons', lastTrayIcon))
@@ -700,7 +722,7 @@ function createTray(): void {
   tray = new Tray(trayIcon(0))
   tray.setToolTip('moho')
   refreshTrayMenu()
-  tray.on('click', toggleWindow)
+  tray.on('click', toggleFromTray)
   // The icon is drawn for the panel it sits on, so it is drawn again when the
   // system changes colour scheme.
   nativeTheme.on('updated', () => updateTray(lastTray))
@@ -891,6 +913,38 @@ function wireIpc(): void {
     // attacker-controlled, and shell.openExternal will happily launch things
     // like `file://` or a custom app scheme otherwise.
     if (/^(https?|mailto):/i.test(url)) shell.openExternal(url)
+  })
+
+  // An article, drawn from a document the daemon built (see nobilis's backend/telegram/instant.rs). It gets a window
+  // of its own that can do nothing but show it: no script, no preload, no way to navigate away - a link opens in the
+  // browser - and the only pictures it may draw are the daemon's cached ones, through moho-media.
+  ipcMain.handle(IPC.openArticle, (_e, title: unknown, html: unknown) => {
+    if (typeof html !== 'string' || html.length > 8_000_000) return
+    const win = new BrowserWindow({
+      width: 900,
+      height: 800,
+      minWidth: 360,
+      minHeight: 300,
+      autoHideMenuBar: true,
+      backgroundColor: '#0e1621',
+      icon: resourcePath('icons', 'moho.png'),
+      title: typeof title === 'string' && title ? title : 'Article',
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, javascript: false }
+    })
+    const external = (url: string): void => {
+      if (/^(https?|mailto):/i.test(url)) shell.openExternal(url)
+    }
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      external(url)
+      return { action: 'deny' }
+    })
+    win.webContents.on('will-navigate', (event, url) => {
+      // A place in the same page is fine; anything else is somewhere else.
+      if (url.startsWith('data:') && url.includes('#')) return
+      event.preventDefault()
+      external(url)
+    })
+    void win.loadURL(`data:text/html;charset=utf-8;base64,${Buffer.from(html, 'utf8').toString('base64')}`)
   })
 
   // Where to write something the app is about to produce - a key export, so
@@ -1152,7 +1206,7 @@ app.whenReady().then(() => {
     applyPolicy(contents)
     contents.on('console-message', (event) => {
       const message = (event as unknown as { message?: string }).message
-      if (typeof message === 'string' && message.startsWith('[call] ')) log.info(message)
+      if (typeof message === 'string' && (message.startsWith('[call] ') || message.startsWith('[restore] '))) log.info(message)
     })
   })
 
@@ -1188,7 +1242,9 @@ app.whenReady().then(() => {
   // Granted only to this application's own windows, on the default session.
   // A sign-in window loads somebody else's page and runs in a partition of
   // its own, which this handler never sees.
-  const allowed = new Set(['media', 'display-capture', 'audioCapture', 'videoCapture'])
+  // And full screen, which a page asks for with requestFullscreen: a handler that does not name it refuses it, and the
+  // video player's button then did nothing.
+  const allowed = new Set(['media', 'display-capture', 'audioCapture', 'videoCapture', 'fullscreen'])
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => {
     callback(allowed.has(permission))
   })

@@ -228,6 +228,17 @@ called `subscribe` for that buffer.
   the stream plays in the window as the person (their Turbo or subscriptions count) with Twitch's ad
   breaks said and never skipped.
 
+- **Telegram** - MTProto through grammers (a pure-Rust client, pinned), with each account carrying its own
+  `api_id` and `api_hash` from my.telegram.org (moho embeds none, so no install shares a key) and one saved
+  session per account in a private file that is never re-created on a hiccup. Sign-in by phone, code and cloud
+  password. Chats are read from the dialog list and become buffers under Direct Messages, Groups and Channels
+  (a channel the account cannot write in shows the lock message instead of the message box); history, live
+  messages, edits and deletions, formatting both ways, replies and forwards, service messages as cards, media
+  fetched on demand into a cache, reactions, pins, polls, search in a chat or everywhere, members and profiles,
+  threads and a channel's comments, join by @name or link, administrator actions, and a mute that follows the
+  account. Not supported: secret chats, calls, stories, payments; sign-in by QR code, folders, forum topics,
+  drafts and scheduled messages are not done yet. The code is `nobilis/src/backend/telegram/`.
+
 ### Notifications are cards
 
 Anything a service *says* rather than somebody *saying* - a join or part, a topic or mode change, a kick,

@@ -256,14 +256,16 @@ export function MessageList(): JSX.Element {
    * whose replies are older than the loaded window, which is the honest
    * failure - it says "at least this many", never "none" for a live one.
    */
+  const told = useChat((s) => (bufferId ? s.threadCounts[bufferId] : undefined))
   const threadReplies = useMemo(() => {
-    const counts: Record<string, number> = {}
+    // What the service says wins where it says: a Telegram channel's comments are in another chat altogether.
+    const counts: Record<string, number> = { ...(told ?? {}) }
     for (const m of all) {
       const root = m.replyTo?.thread ? m.replyTo.id : m.replyTo?.threadRoot
-      if (root) counts[root] = (counts[root] ?? 0) + 1
+      if (root && !(told && root in told)) counts[root] = (counts[root] ?? 0) + 1
     }
     return counts
-  }, [all])
+  }, [all, told])
 
   const messages = useMemo(() => {
     const allowed: Record<string, boolean> = {

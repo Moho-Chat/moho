@@ -8,6 +8,8 @@ import { EventSource } from './EventSource'
 import { ForwardPicker } from './ForwardPicker'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { MediaEmbed } from './MediaEmbed'
+import { LinkCard } from './LinkCard'
+import { isPlainEmoji } from '../lib/recents'
 import { KickEventCard, NotificationCard, isKickEvent } from './KickEventCard'
 import { COMMON_EMOJI, EmojiPicker, readRecent, type StickerEntry } from './EmojiPicker'
 import { reactionLabel, reactorsSentence } from '../lib/reactions'
@@ -99,6 +101,11 @@ const ROLE_WORDS: Record<string, string> = ((): Record<string, string> => {
     'shared-chat': 'SHARED',
     // A cheer: bits sent with the message.
     cheer: 'BITS',
+    // Discord's mark on a bot or application, and on one Discord has verified.
+    app: 'APP',
+    // What Discord's own account sends, so a message that claims to be from Discord can be told from one that is.
+    official: '✓ OFFICIAL',
+    'verified-app': '✓ APP',
     lead_moderator: 'MOD'
   }
   return short
@@ -124,7 +131,9 @@ const DEFAULT_REACTIONS = ['👍', '❤️', '😂', '🔥']
  * belongs to a server and may not be sendable from wherever the toolbar is.
  */
 function quickReactions(accountId?: string): string[] {
-  const recent = readRecent(accountId).filter((e) => !e.startsWith('<') && !e.startsWith(':'))
+  // Only ordinary emoji: anything with letters or digits in it is a stand-in for one (a custom emoji's token, or the
+  // bare number older builds stored for one), and is not a picture.
+  const recent = readRecent(accountId).filter(isPlainEmoji)
   return [...new Set([...recent, ...DEFAULT_REACTIONS])].slice(0, 4)
 }
 
@@ -409,8 +418,12 @@ function MessageRowBody({
   // Discord, Sneedchat and Matrix support editing and deleting your own
   // messages; IRC has no such concept.
   const canEditDelete =
-    !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix')
-  const canReact = service === 'discord' || service === 'matrix' || service === 'steam'
+    !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram')
+  const beginEdit = (): void => {
+    setDraft(message.body)
+    setEditing(true)
+  }
+  const canReact = service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram'
   // Steam's stickers, asked for when the reaction picker opens: it reacts with them too.
   const [steamStickers, setSteamStickers] = useState<StickerEntry[]>([])
   useEffect(() => {
@@ -536,6 +549,7 @@ function MessageRowBody({
           isSneedchat,
           smilies: smilieIndex,
           channels,
+          markdownEscapes: service === 'discord',
           // Only IRC's own traffic is drawn with IRC's codes. Elsewhere they
           // are stripped, which is what the formatter does when not told.
           ircFormatting: service === 'irc' && ircColours ? 'render' : 'strip'
@@ -641,7 +655,7 @@ function MessageRowBody({
     // rather than gated on a power level read here: the server decides, and
     // it refuses in words worth showing - hiding the action from somebody who
     // could have used it is the worse mistake.
-    ...((service === 'matrix' || service === 'discord') && !isSystem
+    ...((service === 'matrix' || service === 'discord' || service === 'telegram') && !isSystem
       ? ([
           {
             label: pinned ? 'Unpin from this conversation' : 'Pin to this conversation',
@@ -991,13 +1005,7 @@ function MessageRowBody({
               >
                 {message.isAction ? `* ${message.from}` : message.from}
               </span>
-              {/* The time on the name's own line, as Discord does it, in the
-                  full form the tooltip also carries. */}
-              {mode === 'comfy' && (
-                <span className="message-stamp" title={formatFullTime(message.ts)}>
-                  {timeLabel}
-                </span>
-              )}
+              {/* Beside the name, ahead of the time: a mark on who is talking, as Discord puts its APP pill. */}
               {message.badges?.map((badge) =>
                 badge.image && showBadgePictures ? (
                   // The service's own pictures, unless they are turned off. The tooltip
@@ -1021,6 +1029,13 @@ function MessageRowBody({
                     {badgeLabel(badge)}
                   </span>
                 )
+              )}
+              {/* The time on the name's own line, as Discord does it, in the
+                  full form the tooltip also carries. */}
+              {mode === 'comfy' && (
+                <span className="message-stamp" title={formatFullTime(message.ts)}>
+                  {timeLabel}
+                </span>
               )}
             </span>
           )}
@@ -1073,6 +1088,69 @@ function MessageRowBody({
                 <span>In thread</span>
                 {message.replyTo.body && <span className="ellipsis">{message.replyTo.body}</span>}
               </button>
+            ) : service === 'telegram' && message.replyTo.forwarded ? (
+              // Where a forwarded message came from, as Telegram says it: "Forwarded from" and the source, which is
+              // somewhere to go when it was a post in a channel this account has open.
+              (() => {
+                const source = message.replyTo
+                const open = source.chat && source.id
+                return (
+                  <div className="tg-forward small">
+                    <span className="muted">Forwarded from </span>
+                    {open ? (
+                      <button
+                        type="button"
+                        className="tg-forward-source link-button"
+                        title="Go to the original"
+                        onClick={() =>
+                          void store.selectBuffer(source.chat!, true).then(() =>
+                            store.jumpToMessage(source.chat!, source.id).then((found) => {
+                              if (found) store.setJumpTarget(source.id)
+                            })
+                          )
+                        }
+                      >
+                        <Icon name="campaign" size={13} />
+                        {source.from}
+                      </button>
+                    ) : (
+                      <span className="tg-forward-source">{source.from}</span>
+                    )}
+                  </div>
+                )
+              })()
+            ) : service === 'telegram' && !message.replyTo.forwarded ? (
+              // As Telegram draws an answer: an accent bar, who said it (and where, when it was another channel), what
+              // they said, and the quote mark. Going to it is a click, to the other channel if that is where it is.
+              <div
+                className="tg-quote selectable"
+                role="button"
+                tabIndex={0}
+                title={message.replyTo.chat ? 'Go to the original' : 'Go to the message'}
+                onClick={() => {
+                  const target = message.replyTo!
+                  if (target.chat) {
+                    void store.selectBuffer(target.chat, true).then(() =>
+                      store.jumpToMessage(target.chat!, target.id).then((found) => {
+                        if (found) store.setJumpTarget(target.id)
+                      })
+                    )
+                  } else jumpToReply()
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    ;(e.currentTarget as HTMLElement).click()
+                  }
+                }}
+              >
+                <div className="tg-quote-from">
+                  {message.replyTo.chat && <Icon name="campaign" size={13} />}
+                  {message.replyTo.from || 'Message'}
+                </div>
+                {message.replyTo.body && <div className="tg-quote-body">{message.replyTo.body}</div>}
+                <Icon name="format_quote" size={16} className="tg-quote-mark" />
+              </div>
             ) : (
               <div
                 className={classes('reply-preview small muted', replyId && 'reply-jump')}
@@ -1214,7 +1292,9 @@ function MessageRowBody({
           ))}
 
           {(message.embeds || []).map((embed, i) =>
-            embed.kind === 'gif' || isKickEvent(embed) ? null : (
+            embed.kind === 'gif' || isKickEvent(embed) ? null : service === 'telegram' ? (
+              <LinkCard key={`e${i}`} embed={embed} bufferId={bufferId} messageId={message.id} />
+            ) : (
             <div
               key={`e${i}`}
               className={classes('rich-embed selectable', embed.kind === 'notice' && 'notice')}
@@ -1251,7 +1331,7 @@ function MessageRowBody({
               {embed.description && (
                 <div className="rich-embed-desc small">
                   <RichText
-                    html={formatMessage(embed.description, { channels })}
+                    html={formatMessage(embed.description, { channels, markdownEscapes: service === 'discord' })}
                     ownMarkup
                     onOpenChannel={(id) => void store.selectBuffer(id, true)}
                   onOpenLink={(url) => store.followDeepLink(url)}
@@ -1263,7 +1343,17 @@ function MessageRowBody({
                   {embed.fields.map((f, k) => (
                     <div key={k} className="rich-embed-field">
                       <div className="rich-embed-field-name">{f.name}</div>
-                      <div>{f.value}</div>
+                      {/* Markdown on Discord, like the description above; plain text elsewhere. */}
+                      {service === 'discord' ? (
+                        <RichText
+                          html={formatMessage(f.value, { channels, markdownEscapes: true })}
+                          ownMarkup
+                          onOpenChannel={(id) => void store.selectBuffer(id, true)}
+                          onOpenLink={(url) => store.followDeepLink(url)}
+                        />
+                      ) : (
+                        <div>{f.value}</div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1329,6 +1419,7 @@ function MessageRowBody({
                   onOpenInDiscord={(b, m) => void store.openInDiscord(b, m)}
                   onRefresh={(b, m) => store.refreshAttachments(b, m)}
                   onStale={(b, m) => store.resignWhenIdle(b, m)}
+                  onEdit={canEditDelete ? beginEdit : undefined}
                 />
               ))}
             </div>
@@ -1350,6 +1441,7 @@ function MessageRowBody({
                   onOpenInDiscord={(b, m) => void store.openInDiscord(b, m)}
                   onRefresh={(b, m) => store.refreshAttachments(b, m)}
                   onStale={(b, m) => store.resignWhenIdle(b, m)}
+                  onEdit={canEditDelete ? beginEdit : undefined}
                 />
               ))}
               {/* Links someone typed, unfurled from the body. Still needed
@@ -1742,12 +1834,15 @@ function moderationEntries(
   // display names collide and can be changed at will.
   const userId = message.senderId
   if (!userId) return []
+  const telegram = store.accountFor(bufferId)?.service === 'telegram'
   const call = (method: string): void => {
     const account = store.accountFor(bufferId)
     if (!account) return
-    void window.moho
-      .rpc(method, { accountId: account.id, bufferId, userId })
-      .catch((e: Error) => store.toast('error', e.message))
+    // Telegram's three are one call that names which.
+    const asked = telegram
+      ? window.moho.rpc('moderateTelegramMember', { bufferId, userId, action: method.replace('MatrixMember', '') })
+      : window.moho.rpc(method, { accountId: account.id, bufferId, userId })
+    void asked.catch((e: Error) => store.toast('error', e.message))
   }
   const out: MenuEntry[] = []
   if (permissions.canMute)
@@ -1758,7 +1853,7 @@ function moderationEntries(
     out.push({ label: 'Ban sender', icon: 'gavel', danger: true, onClick: () => call('banMatrixMember') })
     // Reachable only from here, not the member list: a banned user is no
     // longer a member, so their scrollback is the one place left to find them.
-    out.push({ label: 'Unban sender', icon: 'lock_open', onClick: () => call('unbanMatrixMember') })
+    if (!telegram) out.push({ label: 'Unban sender', icon: 'lock_open', onClick: () => call('unbanMatrixMember') })
   }
   return out
 }

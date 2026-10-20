@@ -127,6 +127,7 @@ const CATEGORIES: { id: string; label: string; group: string; icon?: string; ser
   { id: 'matrix', label: 'Matrix', group: 'Networks', service: 'matrix' },
   { id: 'kick', label: 'Kick', group: 'Networks', service: 'kick' },
   { id: 'twitch', label: 'Twitch', group: 'Networks', service: 'twitch' },
+  { id: 'telegram', label: 'Telegram', group: 'Networks', service: 'telegram' },
   { id: 'about', label: 'About', group: 'About' }
 ]
 
@@ -247,6 +248,8 @@ function Page({ id }: { id: string }): JSX.Element | null {
       return <KickSettings />
     case 'twitch':
       return <TwitchSettings />
+    case 'telegram':
+      return <TelegramSettings />
     case 'about':
       return <AboutSettings />
     default:
@@ -1262,6 +1265,32 @@ function KickSettings(): JSX.Element {
  * Twitch. What is here is what the plan (Gitea issue #55) has built so far:
  * where a channel's recent past comes from, and what is said about signing in.
  */
+function TelegramSettings(): JSX.Element {
+  return (
+    <>
+      <SettingsSection
+        title="Telegram"
+        description="Each account signs in with its own api_id and api_hash, which Telegram gives you at my.telegram.org/apps, and one session that moho keeps and reuses. It never asks for a new code just because the connection dropped. Add an account from the Accounts pane."
+      />
+
+      <SettingsSection
+        title="Where moho shows up"
+        description="Telegram lists every session of an account under Settings → Devices in its own apps, named after this computer, for example “moho (linux x86_64)”. Ending it there signs moho out; moho then says so and stops, rather than signing in again."
+      />
+
+      <SettingsSection
+        title="Muting and notifications"
+        description="Muting a chat from its menu is Telegram's own mute for the account, so it holds on your phone as well, and a chat you muted on your phone is muted here."
+      />
+
+      <SettingsSection
+        title="What moho does not do"
+        description="Secret chats, voice and video calls, stories, payments and bots' inline mode are not part of moho. Signing in by QR code, folders, forum topics, drafts and scheduled messages are not done yet."
+      />
+    </>
+  )
+}
+
 function TwitchSettings(): JSX.Element {
   return (
     <>

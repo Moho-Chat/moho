@@ -600,6 +600,8 @@ export interface ChatState {
   /** Which messages each Matrix room has pinned, newest last. */
   /** Which messages a conversation has pinned, where the service says so. */
   pinnedMessages: Record<string, string[]>
+  /** How many replies or comments a message has, where the service says so (Telegram): by conversation, then message. */
+  threadCounts: Record<string, Record<string, number>>
   /**
    * The pinned messages themselves, once somebody has asked for them. The ids
    * above say that something is pinned; these say what, for the banner over
@@ -827,6 +829,7 @@ const INITIAL: ChatState = {
   pinnedByBuffer: {},
   reviewCard: null,
   pinnedMessages: {},
+  threadCounts: {},
   pinnedRows: {},
   forumPages: {},
   discordFriends: {},
@@ -1041,7 +1044,7 @@ function applyOwnReaction(list: Reaction[], emoji: string, add: boolean): Reacti
  * backwards through what they do offer.
  */
 function canFetchAround(bufferId: string): boolean {
-  return bufferId.startsWith('discord:') || bufferId.startsWith('matrix:')
+  return bufferId.startsWith('discord:') || bufferId.startsWith('matrix:') || bufferId.startsWith('telegram:')
 }
 
 function bestEffort(work: Promise<unknown>, what: string): void {
@@ -2679,6 +2682,8 @@ export class ChatStore {
       attachment,
       spoilers
     )
+    // A Telegram comment lands in the channel's discussion group, not in this conversation, so the panel asks again.
+    if (this.accountFor(open.bufferId)?.service === 'telegram') void this.openThreadPanel(open.bufferId, open.rootId)
   }
 
   /**
@@ -2929,6 +2934,18 @@ export class ChatStore {
    * and guessing at it would mean showing an answer that never came.
    */
   useComponent(bufferId: string, messageId: string, customId: string, select: boolean, values: string[]): void {
+    // A Telegram bot answers a press with a notice, or an address to open, and no more: whatever else it does arrives
+    // as an edit to the message or a new one.
+    if (this.accountFor(bufferId)?.service === 'telegram') {
+      void window.moho
+        .rpc<{ message?: string | null; alert?: boolean; url?: string | null }>('pressTelegramButton', { bufferId, messageId, customId })
+        .then((answer) => {
+          if (answer.message) this.toast(answer.alert ? 'error' : 'info', answer.message)
+          if (answer.url) void window.moho.openExternal(answer.url)
+        })
+        .catch((e: Error) => this.toast('error', e.message))
+      return
+    }
     void window.moho
       .rpc('useDiscordComponent', { bufferId, messageId, customId, select, values })
       .catch((e: Error) => this.toast('error', e.message))
@@ -3601,7 +3618,7 @@ export class ChatStore {
       // forward without an author.
       case 'messageReplyRenamed': {
         this.mapMessage(data.bufferId, data.id, (m) =>
-          m.replyTo ? { ...m, replyTo: { ...m.replyTo, from: data.from } } : m
+          m.replyTo ? { ...m, replyTo: { ...m.replyTo, from: data.from, ...(data.body ? { body: data.body } : {}) } } : m
         )
         break
       }
@@ -3641,6 +3658,14 @@ export class ChatStore {
       case 'messageModerated':
         this.mapMessage(data.bufferId, data.id, (m) => ({ ...m, moderated: data.moderated ?? {} }))
         break
+
+      case 'threadCount': {
+        const d = data as unknown as { bufferId: string; id: string; count: number }
+        const mine = this.state.threadCounts[d.bufferId] ?? {}
+        if (mine[d.id] === d.count) break
+        this.set({ threadCounts: { ...this.state.threadCounts, [d.bufferId]: { ...mine, [d.id]: d.count } } })
+        break
+      }
 
       case 'reactionsChanged':
         this.mapMessage(data.bufferId, data.id, (m) => ({ ...m, reactions: data.reactions }))
@@ -5427,6 +5452,15 @@ export class ChatStore {
         const groups = await window.moho.rpc<SteamChatGroup[]>('steamChatGroups', { accountId: account.id, groupId: ids.group })
         // Not kept when the group is not known yet: asked again at the next opening.
         if (groups[0]) this.set({ matrixPermissions: { ...this.state.matrixPermissions, [bufferId]: { canRedactOthers: groups[0].mayModerate } } })
+      } catch {
+        /* advisory only */
+      }
+      return
+    }
+    if (account?.service === 'telegram') {
+      try {
+        const perms = await window.moho.rpc<RoomPermissions>('telegramPermissions', { bufferId })
+        this.set({ matrixPermissions: { ...this.state.matrixPermissions, [bufferId]: perms } })
       } catch {
         /* advisory only */
       }

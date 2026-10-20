@@ -172,8 +172,13 @@ export function emojiPreview(text: string, smilies: SmilieEntry[] = []): EmojiPr
  * `steam:name` key, which is no message at all: it was inserted as the words
  * "steam:steambored". It leaves as the emoticon token, which the box draws.
  */
-export function sourcePick(service: string, e: { id: string }): string {
-  return service === 'steam' && e.id.startsWith('steam:') ? `[steam:emote:${e.id.slice(6)}]` : e.id
+export function sourcePick(service: string, e: { id: string; name?: string; animated?: boolean }): string {
+  if (service === 'steam' && e.id.startsWith('steam:')) return `[steam:emote:${e.id.slice(6)}]`
+  // Discord's is named by a number alone, which is no message at all: picked from another server's section it went
+  // into the box (and the recent list) as the bare digits. It leaves as the form Discord parses, which the box draws
+  // as its picture - and which Nitro lets any server take.
+  if (service === 'discord' && /^\d+$/.test(e.id)) return `<${e.animated ? 'a' : ''}:${e.name || 'emoji'}:${e.id}>`
+  return e.id
 }
 
 /**
@@ -380,6 +385,14 @@ export interface FormatOptions {
    * bold.
    */
   ircFormatting?: 'render' | 'strip'
+  /**
+   * Whether a backslash in front of a punctuation mark is an escape and goes away, leaving the mark as plain text.
+   *
+   * Discord's markdown works that way, and the text it hands over for a link's preview is escaped for it
+   * (`\(APD\)`, `\.`): drawn as it is, the backslashes show. Not elsewhere - a regular expression or a path pasted
+   * into IRC has backslashes that mean themselves.
+   */
+  markdownEscapes?: boolean
 }
 
 /**
@@ -556,6 +569,12 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   }
 
   let out = text
+
+  // Escapes first, so an escaped mark is never read as markdown by a later pass. What follows a backslash is
+  // already HTML-escaped (a `&` is `&amp;` by now), so those forms are matched whole.
+  if (opts.markdownEscapes) {
+    out = out.replace(/\\(&amp;|&lt;|&gt;|&quot;|&#39;|[!#-%(-\/:-@[-`{-~])/g, (_m, mark: string) => stow(mark))
+  }
 
   // Inline `code` spans, stowed before anything else touches them so backticked
   // content is never reinterpreted as markdown or links, and escaped since code

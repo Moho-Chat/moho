@@ -72,17 +72,17 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
       onTogglePin: () => togglePin(buffer.id),
       onToggleMute: () => {
         toggleMute(buffer.id)
-        if (account?.service === 'matrix' || account?.service === 'steam') {
+        if (account?.service === 'matrix' || account?.service === 'steam' || account?.service === 'telegram') {
           void window.moho
-            .rpc(account.service === 'steam' ? 'steamSetFriendMuted' : 'setMatrixRoomMuted', { bufferId: buffer.id, muted: !isMuted(buffer.id) })
+            .rpc(account.service === 'steam' ? 'steamSetFriendMuted' : account.service === 'telegram' ? 'setTelegramChatMuted' : 'setMatrixRoomMuted', { bufferId: buffer.id, muted: !isMuted(buffer.id) })
             .catch((e: Error) => store.toast('error', e.message))
         }
       },
       onUnmuteAccount:
-        account?.service === 'matrix' || account?.service === 'steam'
+        account?.service === 'matrix' || account?.service === 'steam' || account?.service === 'telegram'
           ? () =>
               void window.moho
-                .rpc(account.service === 'steam' ? 'steamSetFriendMuted' : 'setMatrixRoomMuted', { bufferId: buffer.id, muted: false })
+                .rpc(account.service === 'steam' ? 'steamSetFriendMuted' : account.service === 'telegram' ? 'setTelegramChatMuted' : 'setMatrixRoomMuted', { bufferId: buffer.id, muted: false })
                 .catch((e: Error) => store.toast('error', e.message))
           : undefined,
       onToggleAutojoin:

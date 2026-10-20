@@ -21,6 +21,8 @@ const CAPABILITIES: Record<string, FormatKind[]> = {
   discord: ['bold', 'italic', 'underline', 'strike', 'code', 'spoiler', 'quote'],
   // markup.rs in the daemon: bold, italic, strike and code.
   matrix: ['bold', 'italic', 'strike', 'code'],
+  // Written as Markdown, the way Discord reads it, and turned into Telegram's entities by the daemon (telegram/markup.rs).
+  telegram: ['bold', 'italic', 'underline', 'strike', 'code', 'spoiler', 'quote'],
   sneedchat: ['bold', 'italic', 'underline', 'strike', 'code', 'spoiler', 'quote', 'color'],
   // Quote is left out of IRC: a quote is a line of its own, and a newline
   // reaching IRC is a malformed message.
@@ -129,7 +131,7 @@ export function wrap(service: string | undefined, kind: FormatKind, inner: strin
   const trail = inner.match(/\s*$/)?.[0] ?? ''
   const core = inner.slice(lead.length, inner.length - trail.length)
   const marked = (open: string, close = open): string => `${lead}${open}${core}${close}${trail}`
-  const markdown = service === 'discord' || service === 'matrix'
+  const markdown = service === 'discord' || service === 'matrix' || service === 'telegram'
 
   if (service === 'sneedchat') {
     switch (kind) {
@@ -172,11 +174,11 @@ export function wrap(service: string | undefined, kind: FormatKind, inner: strin
         const [open, close] = codeFence(core)
         return marked(open, close)
       }
-      case 'underline': return service === 'discord' ? marked('__') : inner
-      case 'spoiler': return service === 'discord' ? marked('||') : inner
+      case 'underline': return service === 'discord' || service === 'telegram' ? marked('__') : inner
+      case 'spoiler': return service === 'discord' || service === 'telegram' ? marked('||') : inner
       case 'quote': {
-        if (service !== 'discord') return inner
-        // A quote is a line of its own on Discord, however it was typed.
+        if (service !== 'discord' && service !== 'telegram') return inner
+        // A quote is a line of its own on Discord and Telegram, however it was typed.
         const quoted = core.split('\n').map((line) => `> ${line}`).join('\n')
         return `${lead}\n${quoted}\n${trail}`
       }
