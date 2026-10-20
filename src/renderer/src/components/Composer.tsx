@@ -52,7 +52,7 @@ interface StagedAttachment {
 const TYPING_REPEAT_MS = 4000
 
 /** The services whose conversations can take a GIF: the picker sends a link, and these show it as the picture. */
-const GIF_SERVICES = new Set(['discord', 'matrix', 'telegram', 'irc', 'kick'])
+const GIF_SERVICES = new Set(['discord', 'matrix', 'kick'])
 
 /**
  * What the box holds, as the text that will be sent.
@@ -1348,7 +1348,8 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
 
         {/* GIFs, wherever there is a Discord account to ask for them: the picker borrows that account's way of looking.
             What it finds is sent as a link, so it is offered only on the services that show a link to one as a picture
-            (GIF_SERVICES): not Steam's, Twitch's or Sneedchat's chats, which take none. A service not on the list is
+            (GIF_SERVICES): not IRC, Steam, Twitch or Sneedchat, which take none, and not Telegram, whose GIFs come from its own
+            search and saved list rather than from a link. A service not on the list is
             one nobody has checked, and gets no button. */}
         {!thread && GIF_SERVICES.has(service ?? '') && accounts.some((a) => a.service === 'discord') && (
           <button
