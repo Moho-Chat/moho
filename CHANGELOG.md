@@ -17,6 +17,32 @@ Each section has two parts:
   that made it, including dependency updates
   (`node scripts/changelog-deps.mjs <previous tag>` lists those).
 
+## [1.3.0]
+
+### Major features
+
+- **Telegram, ported:** your chats, groups, channels and bots in the same window as everything else. Sign in with your phone number, the code Telegram sends and your two-step password if you have one, using your own API id and hash from my.telegram.org (one is enough for every client you use); the session is kept, so a restart does not sign in again.
+- **Telegram conversations:** private chats and bots as direct messages, groups and supergroups on the server rail like Discord's servers, channels with their posts, and a group's forum topics as conversations of their own. A horn marks a broadcast channel and a robot a bot. History loads as you scroll, new messages, edits and deletions arrive live, and messages you send, edit and delete go out the same way.
+- **Telegram messages:** formatting, replies (with the quote shown above and a click to the original, even in another channel), forwards with a link back to where they came from, pictures, videos, files and voice messages drawn as they arrive and fetched when played, link cards, and Instant View articles opened in a window of their own.
+- **Telegram on top of the chat:** reactions, pinned messages, polls (voting and making them), search, comments and thread counts on channel posts, a member list with moderation where you have the rights, muting, joining by link, and the GIF picker with your saved GIFs and Telegram's own search.
+- **Telegram bots:** a bot's inline buttons are drawn under its message and pressed from the window, and the Menu button opens the bot's own command list.
+- **Discord stays signed in:** a restart within a couple of minutes resumes the session Discord is already holding instead of logging in again, only the conversations that have something new are asked about, and a limit on fresh logins (3 an hour, 8 a day) holds the connection and says why, with a Connect anyway button when you mean it.
+- **One video player on every service:** play, seek, a volume slider that opens on hover, elapsed or remaining time, speed, full screen, save, and edit on your own messages.
+
+### Fixes, patches and changes
+
+- Discord sends this install's id, language and timezone with its requests, as its own clients do; it still says it is moho ([moho `3a6c8da`](https://github.com/Moho-Chat/moho/commit/3a6c8da), [nobilis `3bf68e7`](https://github.com/Moho-Chat/nobilis/commit/3bf68e7))
+- Discord resumes its session after a restart, asks only about conversations that moved on, posts typing at most every eight seconds and does not repeat a read mark ([moho `ab8f40f`](https://github.com/Moho-Chat/moho/commit/ab8f40f), [nobilis `e8b25d9`](https://github.com/Moho-Chat/nobilis/commit/e8b25d9))
+- Discord limits fresh logins per account, holds the connection when it is over, and lets you through with Connect anyway ([moho `59f978d`](https://github.com/Moho-Chat/moho/commit/59f978d), [nobilis `8a7d733`](https://github.com/Moho-Chat/nobilis/commit/8a7d733), [moho `8f62f44`](https://github.com/Moho-Chat/moho/commit/8f62f44), [nobilis `58bf5ac`](https://github.com/Moho-Chat/nobilis/commit/58bf5ac))
+- Discord's membership-screening dialog is drawn as Discord draws it, with the rules, the questions and the answers sent ([moho `23afcb6`](https://github.com/Moho-Chat/moho/commit/23afcb6), [nobilis `63093e1`](https://github.com/Moho-Chat/nobilis/commit/63093e1))
+- Discord messages made of layout components (containers, sections, text, pictures) are drawn as cards with their buttons ([moho `c64812c`](https://github.com/Moho-Chat/moho/commit/c64812c), [nobilis `41c2780`](https://github.com/Moho-Chat/nobilis/commit/41c2780))
+- Discord's APP mark on bots and applications, a check on verified ones, and OFFICIAL on the platform's own account and its messages; badges sit between the name and the time ([moho `2f4c204`](https://github.com/Moho-Chat/moho/commit/2f4c204), [nobilis `dba7731`](https://github.com/Moho-Chat/nobilis/commit/dba7731), [moho `510627f`](https://github.com/Moho-Chat/moho/commit/510627f), [nobilis `5501675`](https://github.com/Moho-Chat/nobilis/commit/5501675), [moho `5d2d0fe`](https://github.com/Moho-Chat/moho/commit/5d2d0fe))
+- Discord: an emoji picked from another server's section goes in as its token and not the number that names it, and the hover toolbar and recent list no longer show bare numbers ([moho `9a86141`](https://github.com/Moho-Chat/moho/commit/9a86141), [moho `f1bf63a`](https://github.com/Moho-Chat/moho/commit/f1bf63a))
+- Discord reads a backslash before punctuation as an escape in messages, link previews and embed field values ([moho `eb549f7`](https://github.com/Moho-Chat/moho/commit/eb549f7), [moho `a2a8949`](https://github.com/Moho-Chat/moho/commit/a2a8949))
+- Videos go full screen by themselves on every service, filling the screen, with no second expand button and no viewer ([moho `bf5c33d`](https://github.com/Moho-Chat/moho/commit/bf5c33d), [moho `1387907`](https://github.com/Moho-Chat/moho/commit/1387907), [moho `aab10c7`](https://github.com/Moho-Chat/moho/commit/aab10c7), [moho `72d5b83`](https://github.com/Moho-Chat/moho/commit/72d5b83))
+- A left click on the tray icon puts the window away when it is showing and brings it back when it is not ([moho `4ebabb2`](https://github.com/Moho-Chat/moho/commit/4ebabb2))
+- The GIF picker is offered only where a GIF link shows as a picture: not on Steam, Twitch, Sneedchat or IRC ([moho `40505af`](https://github.com/Moho-Chat/moho/commit/40505af), [moho `7a2fda0`](https://github.com/Moho-Chat/moho/commit/7a2fda0))
+
 ## [1.2.1]
 
 ### Fixes, patches and changes

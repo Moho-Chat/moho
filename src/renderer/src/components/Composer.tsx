@@ -51,6 +51,9 @@ interface StagedAttachment {
  */
 const TYPING_REPEAT_MS = 4000
 
+/** The services whose conversations can take a GIF: the picker sends a link, and these show it as the picture. */
+const GIF_SERVICES = new Set(['discord', 'matrix', 'kick'])
+
 /**
  * What the box holds, as the text that will be sent.
  *
@@ -1343,10 +1346,12 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
           <Icon name="mood" size={18} />
         </button>
 
-        {/* GIFs, wherever there is a Discord account to ask for them: the
-            picker borrows that account's way of looking, and what it finds can
-            be sent in any conversation - except Twitch's, whose chat takes no pictures. */}
-        {!thread && service !== 'steam' && service !== 'twitch' && accounts.some((a) => a.service === 'discord') && (
+        {/* GIFs, wherever there is a Discord account to ask for them: the picker borrows that account's way of looking.
+            What it finds is sent as a link, so it is offered only on the services that show a link to one as a picture
+            (GIF_SERVICES): not IRC, Steam, Twitch or Sneedchat, which take none. Telegram has GIFs of its own - the account's
+            saved ones and Telegram's GIF search - and gets the picker with those, asking Telegram rather than Discord. A service not on the list is
+            one nobody has checked, and gets no button. */}
+        {!thread && ((GIF_SERVICES.has(service ?? '') && accounts.some((a) => a.service === 'discord')) || service === 'telegram') && (
           <button
             ref={gifButtonRef}
             type="button"
@@ -1426,6 +1431,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
           bufferId={buffer.id}
           accountId={buffer.accountId}
           discord={service === 'discord'}
+          telegram={service === 'telegram'}
           onClose={() => setGifPicker(false)}
         />
       )}

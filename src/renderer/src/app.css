@@ -6264,6 +6264,11 @@ video.lightbox-media {
   overflow: hidden;
   white-space: normal;
 }
+/* A held login is explained in full: the time it will connect is at the end. */
+.account-detail.held {
+  -webkit-line-clamp: unset;
+  display: block;
+}
 
 /* --- presence on avatars ---------------------------------------------- */
 

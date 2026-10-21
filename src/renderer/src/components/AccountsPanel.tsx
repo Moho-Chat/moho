@@ -332,6 +332,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
   // What the daemon last said about why. Only meaningful while something is
   // wrong, which is exactly when the state line alone explains nothing.
   const detail = useConnectionDetail(account.id)
+  const held = account.service === 'discord' && !!detail?.startsWith('Holding the Discord connection')
 
   const call = (method: string, params: Record<string, unknown>): void => {
     void window.moho
@@ -353,7 +354,20 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
           <div className="small muted">
             {serviceLabel(account.service)} · {account.state}
           </div>
-          {detail && <div className="small muted ellipsis account-detail" title={detail}>{detail}</div>}
+          {detail && <div className={classes('small muted account-detail', held && 'held')} title={detail}>{detail}</div>}
+          {/* Held for having logged in too often (see nobilis's identify_budget): said in full, with the way past it. */}
+          {held && (
+            <div>
+              <button
+                type="button"
+                className="button subtle"
+                title="Many fresh logins can get an account flagged as spam by Discord. This one is counted."
+                onClick={() => call('connectDiscordAnyway', { accountId: account.id })}
+              >
+                Connect anyway
+              </button>
+            </div>
+          )}
         </div>
         <button
           type="button"
