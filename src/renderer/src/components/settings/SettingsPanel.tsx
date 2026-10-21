@@ -6,6 +6,7 @@ import {
   DirectorySetting,
   SavedMark,
   SettingsSection,
+  DropdownSetting,
   SelectionSetting,
   StringSetting,
   ToggleSetting,
@@ -17,6 +18,7 @@ import { acceleratorLabel, acceleratorOf } from '../../lib/accelerator'
 import { AccountsPanel } from '../AccountsPanel'
 import { DownloadsPanel } from '../DownloadsPanel'
 import { humanBytes } from '../../lib/util'
+import { DEFAULT_SEARCH_ENGINE, SEARCH_ENGINES, validTemplate } from '../../lib/searchengines'
 import { TunnelAllSwitch, useNetSettings } from './Tunnel'
 import type { Account, DccPrefs } from '../../../../shared/wire'
 
@@ -846,6 +848,41 @@ function AppearanceSettings(): JSX.Element {
   )
 }
 
+/**
+ * Which search engine "Search for…" uses on selected text. The search opens in
+ * the system's default browser, so moho sends the engine nothing itself - and
+ * neither Tor nor a proxy set up here applies to it.
+ */
+function SearchSettings(): JSX.Element {
+  const [engine] = usePref<string>('search.engine', DEFAULT_SEARCH_ENGINE)
+  const [custom] = usePref<string>('search.customUrl', '')
+  return (
+    <SettingsSection
+      title="Search"
+      description="Select text in a message, right-click it and search for it on the web. The search opens in your default browser, outside moho, so it does not go through Tor or a proxy set here."
+    >
+      <DropdownSetting
+        settingKey="search.engine"
+        label="Search engine"
+        defaultValue={DEFAULT_SEARCH_ENGINE}
+        options={SEARCH_ENGINES.map((e) => ({ label: e.label, value: e.id }))}
+      />
+      {engine === 'custom' && (
+        <StringSetting
+          settingKey="search.customUrl"
+          label="Address"
+          description={
+            custom && !validTemplate(custom)
+              ? 'Not usable yet: it has to start with http:// or https:// and contain %s where the search goes.'
+              : 'A web address with %s where the search goes, for example https://example.org/search?q=%s'
+          }
+          placeholder="https://example.org/search?q=%s"
+        />
+      )}
+    </SettingsSection>
+  )
+}
+
 function GeneralSettings(): JSX.Element {
   const [defaultDir, setDefaultDir] = useState('')
   useEffect(() => {
@@ -890,6 +927,8 @@ function GeneralSettings(): JSX.Element {
           defaultValue={true}
         />
       </SettingsSection>
+
+      <SearchSettings />
 
       <SettingsSection title="Media">
         <ToggleSetting

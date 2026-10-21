@@ -1,6 +1,6 @@
 import { FormatBar } from './FormatBar'
 import { formatsFor, serialize, type FormatKind } from '../lib/composeFormat'
-import { applyFormat } from '../lib/composeFormatDom'
+import { applyFormat, restoreSelectionAfterHistory } from '../lib/composeFormatDom'
 import { useMediaUrl } from '../lib/route'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon, IconButton, MaskIcon } from './Icon'
@@ -1181,6 +1181,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
             aria-multiline="true"
             aria-label={thread ? 'Reply in thread' : `Message ${bufferDisplayName(buffer.name)}`}
             onInput={(e) => {
+              restoreSelectionAfterHistory(e.currentTarget, (e.nativeEvent as InputEvent).inputType)
               setText(composerText(e.currentTarget))
               noteTyping()
               noteMention()

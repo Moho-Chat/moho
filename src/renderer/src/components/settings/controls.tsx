@@ -158,6 +158,40 @@ export function SelectionSetting({
   )
 }
 
+/** A choice among too many to lay out as buttons: a drop-down of them. */
+export function DropdownSetting({
+  settingKey,
+  label,
+  description,
+  defaultValue,
+  options
+}: {
+  settingKey: string
+  label: string
+  description?: string
+  defaultValue: string
+  options: { label: string; value: string }[]
+}): JSX.Element {
+  const [value, setValue] = usePref<string>(settingKey, defaultValue)
+  return (
+    <div className="setting-row">
+      <div className="setting-text">
+        <div>{label}</div>
+        {description && <div className="small muted">{description}</div>}
+      </div>
+      <div className="setting-actions">
+        <select className="text-field" value={value} aria-label={label} onChange={(e) => setValue(e.target.value)}>
+          {options.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  )
+}
+
 /**
  * A folder chosen through the system picker, with the platform default shown
  * (and used) until the user overrides it.

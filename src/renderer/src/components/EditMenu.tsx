@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { ContextMenu, type MenuEntry } from './ContextMenu'
 import type { EditAction, EditMenuRequest } from '../../../shared/ipc'
+import { usePref } from '../state/hooks'
+import { DEFAULT_SEARCH_ENGINE, engineName, searchUrl, shortened } from '../lib/searchengines'
 
 /**
  * The right-click menu for anywhere text is typed: the message box, and every
@@ -14,6 +16,8 @@ import type { EditAction, EditMenuRequest } from '../../../shared/ipc'
 export function EditMenu(): JSX.Element | null {
   const [menu, setMenu] = useState<EditMenuRequest | null>(null)
   const focus = useRef<{ element: HTMLElement | null; range: Range | null }>({ element: null, range: null })
+  const [searchEngine] = usePref<string>('search.engine', DEFAULT_SEARCH_ENGINE)
+  const [searchCustom] = usePref<string>('search.customUrl', '')
 
   useEffect(
     () =>
@@ -79,6 +83,18 @@ export function EditMenu(): JSX.Element | null {
     { separator: true },
     { label: 'Select all', icon: 'select_all', disabled: !menu.can.selectAll, onClick: act('selectAll') }
   )
+  // Looking up what is selected, in the browser the person already uses.
+  const address = searchUrl(menu.selection ?? '', searchEngine, searchCustom)
+  if (address) {
+    entries.push(
+      { separator: true },
+      {
+        label: `Search ${engineName(searchEngine, searchCustom)} for “${shortened(menu.selection)}”`,
+        icon: 'search',
+        onClick: () => void window.moho.openExternal(address)
+      }
+    )
+  }
 
   return <ContextMenu x={menu.x} y={menu.y} entries={entries} onClose={() => setMenu(null)} />
 }
