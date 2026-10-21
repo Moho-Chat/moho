@@ -31,6 +31,8 @@ Each section has two parts:
 
 ### Fixes, patches and changes
 
+- Select text in a message or in the message box, right-click it and search the web for it, in your default browser, with the engine chosen in Settings > General: DuckDuckGo, Google, Bing, Brave Search, Startpage, Ecosia, Qwant, Yandex, Kagi, or an address of your own ([moho `4233439`](https://github.com/Moho-Chat/moho/commit/4233439))
+- Formatting in the message box can be taken off again with the same button or key, over a whole run, part of one or a mixed selection, and undo and redo step over each change and leave the selection where it was ([moho `496d18f`](https://github.com/Moho-Chat/moho/commit/496d18f))
 - Discord sends this install's id, language and timezone with its requests, as its own clients do; it still says it is moho ([moho `3a6c8da`](https://github.com/Moho-Chat/moho/commit/3a6c8da), [nobilis `3bf68e7`](https://github.com/Moho-Chat/nobilis/commit/3bf68e7))
 - Discord resumes its session after a restart, asks only about conversations that moved on, posts typing at most every eight seconds and does not repeat a read mark ([moho `ab8f40f`](https://github.com/Moho-Chat/moho/commit/ab8f40f), [nobilis `e8b25d9`](https://github.com/Moho-Chat/nobilis/commit/e8b25d9))
 - Discord limits fresh logins per account, holds the connection when it is over, and lets you through with Connect anyway ([moho `59f978d`](https://github.com/Moho-Chat/moho/commit/59f978d), [nobilis `8a7d733`](https://github.com/Moho-Chat/nobilis/commit/8a7d733), [moho `8f62f44`](https://github.com/Moho-Chat/moho/commit/8f62f44), [nobilis `58bf5ac`](https://github.com/Moho-Chat/nobilis/commit/58bf5ac))

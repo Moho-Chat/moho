@@ -101,8 +101,18 @@ try {
   const klipy = rows.find((r) => r.text.includes('klipy.com'))
   check(!!klipy && klipy.videos.length === 0, 'a Klipy page nothing could read stays a link', JSON.stringify(klipy))
 
-  // The picker.
-  check(await page.evaluate('!!document.querySelector(\'button[title="GIFs"]\')'), 'a GIF button is offered where there is a Discord account')
+  // The picker. It is offered only where a GIF link shows as a picture - Discord, Matrix, Kick - and none of those can be
+  // stood up here, so the IRC account is shown to the window as a Matrix one: the picker appears, and what it sends still
+  // goes through the daemon to the fake IRC server.
+  check(!(await page.evaluate('!!document.querySelector(\'button[title="GIFs"]\')')), 'no GIF button on an IRC conversation, which would show a GIF link as a link')
+  await page.evaluate(`(() => {
+    const shots = window.__mohoShots
+    const s = shots.state()
+    const account = s.accounts.find((a) => a.id === s.buffers.find((b) => b.id === s.activeBufferId)?.accountId)
+    shots.patch({ accounts: s.accounts.map((a) => (a === account ? { ...a, service: 'matrix' } : a)) })
+  })()`)
+  await sleep(500)
+  check(await page.evaluate('!!document.querySelector(\'button[title="GIFs"]\')'), 'a GIF button is offered where a GIF link shows as a picture')
   await page.evaluate(click('button[title="GIFs"]'))
   await until(page, 'document.querySelector(".gif-picker")', 'the picker')
   check((await page.evaluate('document.querySelectorAll(".gif-cell").length')) === 3, 'it lists what it was given')
@@ -117,7 +127,7 @@ try {
   // Choosing one sends it - to IRC, the file, which anything can show as a link.
   await page.evaluate(`document.querySelector('.gif-cell[title="cat dancing"]').click()`)
   await sleep(1200)
-  check(sent.some((l) => /PRIVMSG #lobby :?http:\/\/127\.0\.0\.1:9\/a\.gif/.test(l)), 'choosing one sends the file to a service that is not Discord', JSON.stringify(sent))
+  check(sent.some((l) => /PRIVMSG #lobby :?http:\/\/127\.0\.0\.1:9\/a\.gif/.test(l)), 'choosing one sends the file to a service that is not Discord (here IRC\'s wire, dressed as Matrix)', JSON.stringify(sent))
   check(!(await page.evaluate('!!document.querySelector(".gif-picker")')), 'and the picker closes')
 } catch (e) {
   console.log('FAIL', e.message)
