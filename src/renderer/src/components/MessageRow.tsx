@@ -16,6 +16,7 @@ import { reactionLabel, reactorsSentence } from '../lib/reactions'
 import { UploadMeter } from './UploadMeter'
 import { RichText } from '../lib/richtext'
 import { useChat, usePref, useStore } from '../state/hooks'
+import { DEFAULT_SEARCH_ENGINE, engineName, searchUrl, shortened } from '../lib/searchengines'
 import { useTick } from '../lib/clock'
 import { useSniffedTypes, sniffUrl } from '../lib/sniff'
 import { useMediaUrl, useStrictRoute } from '../lib/route'
@@ -567,6 +568,12 @@ function MessageRowBody({
   // have let go of the selection.
   const selectedRef = useRef('')
   const selected = selectedRef.current
+  const [searchEngine] = usePref<string>('search.engine', DEFAULT_SEARCH_ENGINE)
+  const [searchCustom] = usePref<string>('search.customUrl', '')
+  const searchAddress = selected ? searchUrl(selected, searchEngine, searchCustom) : null
+  const search = searchAddress
+    ? { url: searchAddress, name: engineName(searchEngine, searchCustom), shown: shortened(selected) }
+    : null
   const canOpenProfile = !!message.from && !isSystem && !message.isOwn
   const openProfile = (): void => store.showProfile(bufferId, message.from, message.senderId)
   // Back to what this answers, bringing it into view first if it is a long
@@ -617,6 +624,12 @@ function MessageRowBody({
     // do, having replaced the one the window would have given.
     ...(selected
       ? ([{ label: 'Copy', icon: 'content_copy', onClick: () => void window.moho.copyText(selected) }] as MenuEntry[])
+      : []),
+    // Looking up what is selected: in the browser the person already uses, with
+    // the engine they chose in Settings. Only for a selection - there is no
+    // sensible thing to search for in a whole message.
+    ...(search
+      ? ([{ label: `Search ${search.name} for “${search.shown}”`, icon: 'search', onClick: () => void window.moho.openExternal(search.url) }] as MenuEntry[])
       : []),
     ...(message.body && !isSystem
       ? ([{ label: 'Copy text', icon: 'content_copy', onClick: () => void window.moho.copyText(message.body) }] as MenuEntry[])

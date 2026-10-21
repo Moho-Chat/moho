@@ -356,7 +356,8 @@ function wireEditMenu(win: BrowserWindow): void {
         delete: f.canDelete,
         selectAll: f.canSelectAll
       },
-      hasSelection: params.selectionText.length > 0
+      hasSelection: params.selectionText.length > 0,
+      selection: params.selectionText.slice(0, 1000)
     } satisfies EditMenuRequest)
   })
 }

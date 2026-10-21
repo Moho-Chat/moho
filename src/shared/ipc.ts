@@ -119,4 +119,6 @@ export interface EditMenuRequest {
   suggestions: string[]
   can: Record<EditAction, boolean>
   hasSelection: boolean
+  /** What is selected, for searching the web for it. */
+  selection: string
 }
