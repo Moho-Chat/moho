@@ -995,6 +995,16 @@ function DiscordForm({ accountId }: { accountId?: string }): JSX.Element {
 
   return (
     <div className="add-form">
+      {/* Said before anything is entered, the way Dissent's README says it: this is the risk, and what moho does and does
+          not do about it. */}
+      {!accountId && (
+        <p className="small muted discord-risk" role="note">
+          Discord does not allow third-party clients, and an account using one can be flagged and logged out, or banned.
+          moho is careful - it says what it is, makes few requests, and will not send the first message to a server or a
+          person - but nothing it does can make that risk nothing. Use an account you can afford to lose, and see the
+          first message in each new place from Discord&apos;s own app.
+        </p>
+      )}
       {!accountId && <TorSwitch service="discord" on={useTor} onChange={setUseTor} />}
       <div className="setting-segmented">
         <button

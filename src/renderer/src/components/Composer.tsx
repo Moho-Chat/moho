@@ -140,6 +140,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const [stickers, setStickers] = useState<StickerEntry[]>([])
   const [stickerPicker, setStickerPicker] = useState(false)
   const [gifPicker, setGifPicker] = useState(false)
+  const [discordTyping] = usePref<boolean>('discord.sendTyping', false)
   /**
    * What to do with files dropped on the window: they land in the tray, to be
    * looked over and sent with the next message rather than going out on the
@@ -449,6 +450,9 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
    * it on services with no such notion, so there is nothing to check here.
    */
   const noteTyping = (): void => {
+    // Not on Discord unless asked for: its own clients send it, but a third-party client that does is one more thing
+    // Discord can tell it apart by, and Dissent does without it altogether. A setting in Settings > Discord.
+    if (service === 'discord' && !discordTyping) return
     const now = Date.now()
     if (now - typingSentAt.current < TYPING_REPEAT_MS) return
     typingSentAt.current = now
