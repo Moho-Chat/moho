@@ -190,6 +190,9 @@ export function transformFormat(root: HTMLElement, range: Range, kind: FormatKin
   return true
 }
 
+/** The formats the browser can make and unmake itself, and its name for each. */
+const NATIVE: Partial<Record<FormatKind, string>> = { bold: 'bold', italic: 'italic', underline: 'underline', strike: 'strikeThrough' }
+
 /** Where a point in the box is, by child positions from the box down, so it can be found again in a copy. */
 function pathOf(root: Node, node: Node, offset: number): number[] {
   const path = [offset]
@@ -215,6 +218,16 @@ function resolve(root: Node, path: number[]): [Node, number] {
  * replacement lands in cannot put back a format that was just taken off.
  */
 export function applyFormat(root: HTMLElement, kind: FormatKind, colour?: string): boolean {
+  const native = NATIVE[kind]
+  if (native) {
+    // The browser's own bold, italic, underline and strikethrough: it knows how to take them off again from all of a
+    // selection, part of one or the whole box - the last of which the replacement below cannot do, because the
+    // browser keeps the formatting of what it replaces when that is everything in the box - and its undo steps over
+    // them and puts the selection back by itself. Serialising reads the elements it makes as it does ours.
+    root.focus()
+    document.execCommand('styleWithCSS', false, 'false')
+    return document.execCommand(native)
+  }
   const before = root.innerHTML
   const beforeSelection = currentSelection(root)
   const selection = window.getSelection()
@@ -224,9 +237,20 @@ export function applyFormat(root: HTMLElement, kind: FormatKind, colour?: string
   root.focus()
 
   const copy = root.cloneNode(true) as HTMLElement
+  // Content that begins with plain text is put in a wrapper of its own. The browser keeps the formatting of whatever
+  // it replaces when the replacement is text and the selection is everything inside one formatted run - so taking a
+  // format off all of the box put it straight back - and does not when the replacement starts with an element.
+  const wrapped = copy.firstChild?.nodeType === 3
+  const shift = (path: number[]): number[] => (wrapped ? [0, ...path] : path)
+  if (wrapped) {
+    const wrapper = document.createElement('span')
+    wrapper.dataset.plain = ''
+    wrapper.append(...Array.from(copy.childNodes))
+    copy.append(wrapper)
+  }
   const range = document.createRange()
-  range.setStart(...resolve(copy, pathOf(root, picked.startContainer, picked.startOffset)))
-  range.setEnd(...resolve(copy, pathOf(root, picked.endContainer, picked.endOffset)))
+  range.setStart(...resolve(copy, shift(pathOf(root, picked.startContainer, picked.startOffset))))
+  range.setEnd(...resolve(copy, shift(pathOf(root, picked.endContainer, picked.endOffset))))
   if (!transformFormat(copy, range, kind, colour)) return false
 
   const start = pathOf(copy, range.startContainer, range.startOffset)

@@ -17,6 +17,14 @@ Each section has two parts:
   that made it, including dependency updates
   (`node scripts/changelog-deps.mjs <previous tag>` lists those).
 
+## [1.3.1]
+
+### Fixes, patches and changes
+
+- Discord is not spoken to first from here: a server where your account has not said anything since it joined, and a conversation with nothing in it, are locked with a note to send the first message from Discord's own app or website, after Discord flagged accounts for exactly that. Whether you have spoken is looked for in what moho keeps and then in Discord's search (one request a server, remembered), the lock lifts by itself once there is a message of yours there, and a message sent from moho does not count ([moho `b04189a`](https://github.com/Moho-Chat/moho/commit/b04189a), [nobilis `b9a79e4`](https://github.com/Moho-Chat/nobilis/commit/b9a79e4))
+- Discord messages carry a nonce and an explicit list of who may be mentioned, as Discord's own clients send them; a file is checked against what the account may upload before any of it is sent, and waits a few seconds after a message instead of following straight on ([moho `b04189a`](https://github.com/Moho-Chat/moho/commit/b04189a), [nobilis `b9a79e4`](https://github.com/Moho-Chat/nobilis/commit/b9a79e4))
+- Taking bold, italic, underline or strikethrough off all of the message box (select all, then the same button or key) works, and undo and redo step over formatting and leave the selection where it was ([moho `5b438be`](https://github.com/Moho-Chat/moho/commit/5b438be))
+
 ## [1.3.0]
 
 ### Major features

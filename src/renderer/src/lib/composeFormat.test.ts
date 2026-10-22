@@ -69,6 +69,21 @@ describe('serialising the box', () => {
   })
 })
 
+describe('what the browser makes in the box', () => {
+  it('reads its own bold, italic, underline and strikethrough as ours', () => {
+    const made = box(el('B', [text('b')]), text(' '), el('I', [text('i')]), text(' '), el('U', [text('u')]), text(' '), el('STRIKE', [text('s')]))
+    expect(serialize(made, 'discord')).toBe('**b** *i* __u__ ~~s~~')
+    expect(serialize(made, 'sneedchat')).toBe('[b]b[/b] [i]i[/i] [u]u[/u] [s]s[/s]')
+  })
+  it('sees through the plain wrapper put round content when a format is taken off', () => {
+    const wrapped = box(el('SPAN', [text('one '), fmt('bold', [text('two')]), text(' three')], { plain: '' }))
+    expect(serialize(wrapped, 'discord')).toBe('one **two** three')
+  })
+  it('does not say bold twice for bold inside bold', () => {
+    expect(serialize(box(el('B', [fmt('bold', [text('x')])])), 'discord')).toBe('**x**')
+  })
+})
+
 describe('markup details', () => {
   it('fences code with more backticks than it holds', () => {
     expect(wrap('discord', 'code', 'a`b')).toBe('``a`b``')

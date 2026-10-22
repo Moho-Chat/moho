@@ -877,6 +877,8 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   // A channel's comments are written to its discussion group, which the channel's own lock says nothing about.
   if (buffer.readOnly && !(thread && service === 'telegram')) {
     const official = buffer.readOnly.includes('official Discord')
+    // Discord's first-word lock: the daemon opens it by itself once the account has spoken there.
+    const firstWord = buffer.readOnly.includes("Discord's own app")
     return (
       <div className="composer">
         <div className="divider-h" />
@@ -887,6 +889,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
             {official && (
               <span className="small">Discord will never ask you for your password or account token.</span>
             )}
+            {firstWord && <span className="small">moho notices when you have, and opens this up by itself.</span>}
           </div>
         </div>
       </div>
