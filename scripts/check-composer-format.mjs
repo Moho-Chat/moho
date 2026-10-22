@@ -4,10 +4,11 @@
  * to a selection can be taken off again - by the keyboard shortcut or the strip's button, over the whole run,
  * over part of it, or over a selection reaching past it - and each step can be undone with the box's own undo.
  *
- *   node scripts/check-composer-format.mjs
+ *   node scripts/check-composer-format.mjs        (SERVICE=sneedchat to try another service's box)
  */
 import { launchApp, sleep } from './lib/harness.mjs'
 
+const SERVICE = process.env.SERVICE ?? 'discord'
 const { page, stop } = await launchApp({ env: { MOHO_UI_SHOTS: '1' } })
 const ev = (code) => page.evaluate(code)
 const results = []
@@ -21,7 +22,13 @@ const html = () => ev(`document.querySelector(${JSON.stringify(BOX)}).innerHTML.
 const marked = () =>
   ev(`(() => {
     const mark = { bold: '**', italic: '_', underline: '__', strike: '~~', code: '\`', spoiler: '||', quote: '> ' }
-    const walk = (n) => n.nodeType === 3 ? n.nodeValue : n instanceof HTMLElement && n.dataset.fmt ? (mark[n.dataset.fmt] ?? '') + [...n.childNodes].map(walk).join('') + (n.dataset.fmt === 'quote' ? '' : mark[n.dataset.fmt] ?? '') : [...n.childNodes].map(walk).join('')
+    const native = { B: 'bold', STRONG: 'bold', I: 'italic', EM: 'italic', U: 'underline', S: 'strike', STRIKE: 'strike' }
+    const walk = (n) => {
+      if (n.nodeType === 3) return n.nodeValue
+      const kind = n instanceof HTMLElement ? (n.dataset.fmt ?? native[n.nodeName]) : null
+      const inner = [...n.childNodes].map(walk).join('')
+      return kind ? (mark[kind] ?? '') + inner + (kind === 'quote' ? '' : mark[kind] ?? '') : inner
+    }
     return walk(document.querySelector(${JSON.stringify(BOX)}))
   })()`)
 const type = async (text) => {
@@ -62,10 +69,10 @@ try {
   await page.call('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false })
   await ev(`(() => {
     const s = window.__mohoShots.store
-    const acct = { id: 'discord:me', service: 'discord', name: 'me', host: '', port: 0, state: 'connected', hasPassword: true, nick: 'me' }
-    const buf = { id: 'discord:me|chat', accountId: 'discord:me', kind: 'channel', name: 'chat', lastActivityTs: 5, category: 'Channels', groupId: 'account:discord:me' }
-    s.set({ accounts: [acct], groups: [{ id: 'account:discord:me', accountId: 'discord:me', service: 'discord', kind: 'account', name: 'me', position: 0 }], buffers: [buf], messagesByBuffer: { 'discord:me|chat': [] }, activeBufferId: 'discord:me|chat' })
-    s.selectGroup('account:discord:me')
+    const acct = { id: '${SERVICE}:me', service: '${SERVICE}', name: 'me', host: '', port: 0, state: 'connected', hasPassword: true, nick: 'me' }
+    const buf = { id: '${SERVICE}:me|chat', accountId: '${SERVICE}:me', kind: 'channel', name: 'chat', lastActivityTs: 5, category: 'Channels', groupId: 'account:${SERVICE}:me' }
+    s.set({ accounts: [acct], groups: [{ id: 'account:${SERVICE}:me', accountId: '${SERVICE}:me', service: '${SERVICE}', kind: 'account', name: 'me', position: 0 }], buffers: [buf], messagesByBuffer: { '${SERVICE}:me|chat': [] }, activeBufferId: '${SERVICE}:me|chat' })
+    s.selectGroup('account:${SERVICE}:me')
   })()`)
   await sleep(1200)
 
@@ -89,6 +96,53 @@ try {
   await undo()
   check('undo puts it back after it was taken off', (await marked()) === 'one **two** three four', await marked())
   check('and leaves the word selected', (await ev(`String(getSelection())`)) === 'two', await ev(`String(getSelection())`))
+
+  console.log('All of the box')
+  await type('one two three')
+  await ev(`(() => { const b = document.querySelector(${JSON.stringify(BOX)}); b.focus(); getSelection().selectAllChildren(b) })()`)
+  await bold()
+  check('everything goes bold (select all, then the key)', (await marked()) === '**one two three**', await marked())
+  await bold()
+  check('and the key again takes it all off', (await marked()) === 'one two three', await marked())
+  await bold()
+  await undo()
+  check('and undo puts the box back as it was', (await marked()) === 'one two three', await marked())
+  await ev(`(() => { const b = document.querySelector(${JSON.stringify(BOX)}); b.focus(); getSelection().selectAllChildren(b) })()`)
+  await sleep(250)
+  await strip('Bold')
+  await sleep(250)
+  check('everything goes bold from the strip', (await marked()) === '**one two three**', await marked())
+  await strip('Bold')
+  check('and the strip again takes it all off', (await marked()) === 'one two three', await marked())
+  for (const [title, m] of [['Code', '`'], ['Spoiler', '||'], ['Italic', '_']]) {
+    await ev(`(() => { const b = document.querySelector(${JSON.stringify(BOX)}); b.focus(); getSelection().selectAllChildren(b) })()`)
+    await sleep(250)
+    await strip(title)
+    const on = await marked()
+    await sleep(250)
+    await strip(title)
+    check(`${title}: all of the box goes on and comes off again`, on === `${m}one two three${m}` && (await marked()) === 'one two three', `${on} -> ${await marked()}`)
+  }
+
+  console.log('Formats the window makes itself (code, spoiler) undo as well')
+  for (const [title, m] of [['Code', '`'], ['Spoiler', '||']]) {
+    await type('one two three four')
+    await select('two')
+    await sleep(250)
+    await strip(title)
+    const on = await marked()
+    await undo()
+    const off = await marked()
+    const kept = await ev(`String(getSelection())`)
+    await redo()
+    check(`${title}: on, undo takes it off with the word still selected, redo puts it on`, on === `one ${m}two${m} three four` && off === 'one two three four' && kept === 'two' && (await marked()) === on, `${on} | ${off} | ${kept} | ${await marked()}`)
+    await ev(`(() => { const b = document.querySelector(${JSON.stringify(BOX)}); b.focus(); getSelection().selectAllChildren(b) })()`)
+    await sleep(250)
+    await strip(title)
+    await strip(title)
+    await undo()
+    check(`${title}: over all of the box, taken off and undone`, (await marked()).replace(/[\`|]/g, '') === 'one two three four' && (await marked()).includes(m), await marked())
+  }
 
   console.log('Undo leaves a selection that is safe to type over')
   await type('one two three four')
@@ -130,9 +184,9 @@ try {
   if (!(await select('line\nsecond'))) await select('linesecond')
   await bold()
   const lines = await ev(`document.querySelector(${JSON.stringify(BOX)}).innerHTML`)
-  check('a selection over two lines is bold, and the break is still there', /data-fmt="bold"/.test(lines) && (/<br/.test(lines) || /\n/.test(lines)) && (await marked()).replace(/\n/g, '').includes('**'), lines)
+  check('a selection over two lines is bold, and the break is still there', /<b>|data-fmt="bold"/.test(lines) && (/<br/.test(lines) || /\n/.test(lines)) && (await marked()).replace(/\n/g, '').includes('**'), lines)
   await bold()
-  check('and comes off whole', !/data-fmt/.test(await html()), await html())
+  check('and comes off whole', !/data-fmt|<b>/.test(await html()), await html())
 
   console.log('Part of a run')
   await type('one two three four')
