@@ -17,6 +17,14 @@ Each section has two parts:
   that made it, including dependency updates
   (`node scripts/changelog-deps.mjs <previous tag>` lists those).
 
+## [1.3.2]
+
+### Fixes, patches and changes
+
+- Discord is asked for less and more politely, after what Dissent does to avoid being flagged as a third-party client: reads wait out a rate limit and let an empty bucket refill instead of treating a refusal as an answer; no history is fetched at login (a conversation is read the first time it is opened, 30 messages); a member list is subscribed to once a connection and no longer again at every join and leave; our own membership of each server comes from login and is not asked for; a read mark is sent only while the window is in front, never for a conversation whose last word is yours, and not again after another device sent it; text Discord would refuse (over 2,000 characters, 4,000 with Nitro, or empty) is refused before it is sent; the login declares the capabilities of a user client; the first reconnect wait is four seconds ([moho `74f2c47`](https://github.com/Moho-Chat/moho/commit/74f2c47), [nobilis `7943767`](https://github.com/Moho-Chat/nobilis/commit/7943767))
+- The typing notice to Discord is off unless you turn it on in Settings > Discord, and adding a Discord account says plainly that third-party clients are against Discord's terms and what moho does about that ([moho `74f2c47`](https://github.com/Moho-Chat/moho/commit/74f2c47))
+- A reply's quote, in the line over a reply and in the bar over the box, draws what it quotes - emotes, emoji and stickers as pictures instead of their codes - on every service ([moho `df818a1`](https://github.com/Moho-Chat/moho/commit/df818a1))
+
 ## [1.3.1]
 
 ### Fixes, patches and changes
