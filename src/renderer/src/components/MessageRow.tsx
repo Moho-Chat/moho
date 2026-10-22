@@ -15,6 +15,7 @@ import { COMMON_EMOJI, EmojiPicker, readRecent, type StickerEntry } from './Emoj
 import { reactionLabel, reactorsSentence } from '../lib/reactions'
 import { UploadMeter } from './UploadMeter'
 import { RichText } from '../lib/richtext'
+import { ReplyBody } from './ReplyBody'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { DEFAULT_SEARCH_ENGINE, engineName, searchUrl, shortened } from '../lib/searchengines'
 import { useTick } from '../lib/clock'
@@ -382,6 +383,9 @@ function MessageRowBody({
   const twitchModerator = useChat((s) => s.twitchRights[bufferId] === true)
   const twitchBlocker = useChat((s) => s.accounts.find((a) => bufferId.startsWith(`${a.id}|`))?.moderation === true)
   const original = useChat((s) => (replyId ? s.messagesByBuffer[bufferId]?.find((m) => m.id === replyId) : undefined))
+  // What a reply quotes. Twitch sends the parent's words as plain text, with no word of which are emotes; where the
+  // original is on screen it has them, as it was drawn, so that is what is quoted.
+  const quoted = service === 'twitch' && original?.body ? original.body : message.replyTo?.body ?? ''
   // Which message is open for editing is the window's, not each row's, so
   // Up arrow in the message box can open the last one.
   const editing = useChat((s) => s.editingId === message.id)
@@ -1099,7 +1103,11 @@ function MessageRowBody({
               >
                 <Icon name="forum" size={13} />
                 <span>In thread</span>
-                {message.replyTo.body && <span className="ellipsis">{message.replyTo.body}</span>}
+                {message.replyTo.body && (
+                  <span className="ellipsis">
+                    <ReplyBody text={message.replyTo.body} service={service} channels={channels} />
+                  </span>
+                )}
               </button>
             ) : service === 'telegram' && message.replyTo.forwarded ? (
               // Where a forwarded message came from, as Telegram says it: "Forwarded from" and the source, which is
@@ -1161,7 +1169,11 @@ function MessageRowBody({
                   {message.replyTo.chat && <Icon name="campaign" size={13} />}
                   {message.replyTo.from || 'Message'}
                 </div>
-                {message.replyTo.body && <div className="tg-quote-body">{message.replyTo.body}</div>}
+                {message.replyTo.body && (
+                  <div className="tg-quote-body">
+                    <ReplyBody text={message.replyTo.body} service={service} channels={channels} />
+                  </div>
+                )}
                 <Icon name="format_quote" size={16} className="tg-quote-mark" />
               </div>
             ) : (
@@ -1200,7 +1212,9 @@ function MessageRowBody({
                 >
                   {message.replyTo.from}
                 </span>
-                <span className="ellipsis">{message.replyTo.body}</span>
+                <span className="ellipsis">
+                  <ReplyBody text={quoted} service={service} channels={channels} />
+                </span>
                 {/* Kick groups a chain of replies under the message it began
                     with; a reply is a way into that conversation. */}
                 {!inThread && message.replyTo.threadRoot && (

@@ -1349,6 +1349,12 @@ export class ChatStore {
     this.set({ activeBufferId: initialBufferId, activeGroupId: initialGroupId })
 
     void this.refreshNetSettings()
+    const looked = (): void => {
+      const id = this.ackPending
+      if (id && id === this.state.activeBufferId && this.windowIsActive()) bestEffort(this.ackRead(id), 'ack read')
+    }
+    window.addEventListener('focus', looked)
+    document.addEventListener('visibilitychange', looked)
     void window.moho.popout.list().then((popouts) => this.set({ popouts }))
     window.moho.popout.onChange((popouts) => this.set({ popouts }))
 
@@ -2605,6 +2611,13 @@ export class ChatStore {
 
   // --- push events ----------------------------------------------------
 
+  /** The conversation to be told is read as soon as the window is looked at. */
+  private ackPending: string | null = null
+
+  private windowIsActive(): boolean {
+    return document.visibilityState === 'visible' && document.hasFocus()
+  }
+
   /**
    * Tells the service a conversation has been read.
    *
@@ -2618,6 +2631,14 @@ export class ChatStore {
    * leave a room read here unread on your phone forever.
    */
   private async ackRead(bufferId: string): Promise<void> {
+    // Only what is being read. A window that is hidden, or is not the one in front, is not reading anything: a
+    // conversation opened at startup behind other windows, or selected from a notification, is not read by anybody.
+    // Said when the window is next looked at (`ackPending`), and only if that is still the conversation on screen.
+    if (!this.windowIsActive()) {
+      this.ackPending = bufferId
+      return
+    }
+    this.ackPending = null
     const prefs = await window.moho.prefs.getAll()
     await window.moho.rpc('markBufferRead', {
       bufferId,

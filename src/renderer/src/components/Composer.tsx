@@ -10,6 +10,7 @@ import { PollComposer } from './PollComposer'
 import { Avatar } from './Avatar'
 import { COMMON_EMOJI, emojiToken, EmojiPicker, type StickerEntry } from './EmojiPicker'
 import { GifPicker } from './GifPicker'
+import { ReplyBody } from './ReplyBody'
 import { PlaceField } from './PlaceField'
 import { VoiceRecorder } from './VoiceRecorder'
 import { useActiveBuffer, useChat, useStore } from '../state/hooks'
@@ -139,6 +140,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const [stickers, setStickers] = useState<StickerEntry[]>([])
   const [stickerPicker, setStickerPicker] = useState(false)
   const [gifPicker, setGifPicker] = useState(false)
+  const [discordTyping] = usePref<boolean>('discord.sendTyping', false)
   /**
    * What to do with files dropped on the window: they land in the tray, to be
    * looked over and sent with the next message rather than going out on the
@@ -448,6 +450,9 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
    * it on services with no such notion, so there is nothing to check here.
    */
   const noteTyping = (): void => {
+    // Not on Discord unless asked for: its own clients send it, but a third-party client that does is one more thing
+    // Discord can tell it apart by, and Dissent does without it altogether. A setting in Settings > Discord.
+    if (service === 'discord' && !discordTyping) return
     const now = Date.now()
     if (now - typingSentAt.current < TYPING_REPEAT_MS) return
     typingSentAt.current = now
@@ -1042,7 +1047,14 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
           {repliedTo?.avatarUrl && <img className="reply-avatar" src={media(repliedTo.avatarUrl)} alt="" />}
           <span className="ellipsis">
             Replying to <strong>{replyingTo.from}</strong>
-            {replyingTo.body ? <span className="muted">{`: ${replyingTo.body}`}</span> : ''}
+            {replyingTo.body ? (
+              <span className="muted">
+                {': '}
+                <ReplyBody text={replyingTo.body} service={service} />
+              </span>
+            ) : (
+              ''
+            )}
           </span>
           {/* Whether the one answered is told, as Discord's own bar has it.
               Only there: nothing else here can say it. */}

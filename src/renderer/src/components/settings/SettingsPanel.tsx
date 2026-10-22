@@ -1532,6 +1532,18 @@ function DiscordSettings(): JSX.Element {
   }
 
   return (
+    <>
+    <SettingsSection
+      title="Typing"
+      description="Discord's own apps tell others when you are typing. A client that is not Discord's own is told apart from them by exactly this kind of traffic, and accounts using one have been flagged, so moho does not send it unless you turn it on. You still see when other people are typing."
+    >
+      <ToggleSetting
+        settingKey="discord.sendTyping"
+        label="Tell others when I am typing"
+        description="Sends Discord's typing notice, at most once every eight seconds in a conversation."
+        defaultValue={false}
+      />
+    </SettingsSection>
     <SettingsSection
       title="Scrollback"
       description="Re-reads the last 50 messages of every Discord conversation on every account and stores any that are missing here. Nothing already stored is changed. A conversation takes about a third of a second, so a large account takes a few minutes."
@@ -1544,6 +1556,7 @@ function DiscordSettings(): JSX.Element {
       </div>
       {result && <p className="small muted">{result}</p>}
     </SettingsSection>
+    </>
   )
 }
 
