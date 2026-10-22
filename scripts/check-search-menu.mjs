@@ -27,14 +27,15 @@ const shot = async (name) => {
 const mouse = (type, x, y, button = 'left') => page.call('Input.dispatchMouseEvent', { type, x, y, button, buttons: type === 'mouseReleased' ? 0 : button === 'right' ? 2 : 1, clickCount: 1 })
 const menuLabels = () => ev(`[...document.querySelectorAll('.context-menu .context-menu-item')].map((e) => e.innerText.trim().split('\\n').pop())`)
 /** Sets a field the way a person's edit does, so the window's own handlers run. */
-const setField = (selector, value, how) => ev(`(() => {
+const setField = (selector, value, how) => ev(`(async () => {
   const el = document.querySelector(${JSON.stringify(selector)})
   if (!el) return false
   if (${JSON.stringify(how)} === 'input') el.focus()
   const proto = el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype
   Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)})
   el.dispatchEvent(new Event(${JSON.stringify(how)}, { bubbles: true }))
-  if (${JSON.stringify(how)} === 'input') el.blur()
+  // Time for the window to take the edit before the field is left, as it has when a person types.
+  if (${JSON.stringify(how)} === 'input') { await new Promise((r) => setTimeout(r, 200)); el.blur() }
   return true
 })()`)
 const openGeneral = async () => {
