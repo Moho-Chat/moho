@@ -1567,6 +1567,15 @@ export class ChatStore {
         // Not connected yet, or an older daemon: nothing to answer.
       }
     }
+    // Stoat's are the people whose relationship to this account is "incoming": the daemon lists them.
+    for (const account of this.state.accounts.filter((a) => a.service === 'stoat' && a.state === 'connected')) {
+      try {
+        const r = await window.moho.rpc<{ incoming: FriendRequest[] }>('stoatFriendRequests', { accountId: account.id })
+        next[account.id] = r.incoming
+      } catch {
+        // Not connected yet: the daemon's own push fills it in.
+      }
+    }
     this.set({ friendRequests: next })
     // Discord keeps its requests among its friends; the daemon pushes changes,
     // and this is the first reading, so one that arrived while moho was
@@ -1615,6 +1624,8 @@ export class ChatStore {
       } else if (invitation.kind === 'friend') {
         if (invitation.service === 'discord') {
           await window.moho.rpc('answerDiscordFriendRequest', { accountId, userId: id, accept })
+        } else if (invitation.service === 'stoat') {
+          await window.moho.rpc('answerStoatFriendRequest', { accountId, userId: id, accept })
         } else {
           await window.moho.rpc('steamAnswerFriendRequest', { accountId, steamid: id, accept })
         }
@@ -4287,6 +4298,12 @@ export class ChatStore {
         }
         void this.refreshAccounts()
         break
+
+      // Stoat says who has asked an account to be their friend, whenever that changes.
+      case 'stoatFriendRequests': {
+        this.set({ friendRequests: { ...this.state.friendRequests, [data.accountId as string]: (data.incoming ?? []) as FriendRequest[] } })
+        break
+      }
 
       case 'steamFriendRequests': {
         const incoming = ((data.requests as { incoming?: SteamPerson[] } | undefined)?.incoming ?? []).map(personToRequest)

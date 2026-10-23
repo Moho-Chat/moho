@@ -78,6 +78,8 @@ export function JoinPanel(): JSX.Element {
         return <TwitchJoin account={account} />
       case 'telegram':
         return <TelegramJoin account={account} />
+      case 'stoat':
+        return <StoatJoin account={account} />
       case 'sneedchat':
         return <SneedchatRooms account={account} />
       case 'steam':
@@ -86,7 +88,7 @@ export function JoinPanel(): JSX.Element {
         return <div className="panel muted">Joining isn&apos;t supported for this service yet.</div>
     }
   })()
-  const joinable = all.filter((a) => ['irc', 'matrix', 'discord', 'kick', 'sneedchat', 'steam', 'twitch', 'telegram'].includes(a.service))
+  const joinable = all.filter((a) => ['irc', 'matrix', 'discord', 'kick', 'sneedchat', 'steam', 'twitch', 'telegram', 'stoat'].includes(a.service))
 
   return (
     <div className="join-frame">
@@ -377,6 +379,58 @@ function TwitchJoin({ account }: { account: Account }): JSX.Element {
       <p className="small muted">
         Twitch chat is public, so this works without signing in. Signing in adds talking and the
         channels you follow. A channel that does not exist is said so and not kept.
+      </p>
+    </div>
+  )
+}
+
+/** Joining a Stoat server by its invite, and asking somebody to be a friend. */
+function StoatJoin({ account }: { account: Account }): JSX.Element {
+  const store = useStore()
+  const [friend, setFriend] = useState('')
+  const [busy, setBusy] = useState(false)
+  const connected = account.state === 'connected'
+  const ask = (): void => {
+    const typed = friend.trim()
+    if (!typed) return
+    setBusy(true)
+    void window.moho
+      .rpc('addStoatFriend', { accountId: account.id, username: typed })
+      .then(() => {
+        setFriend('')
+        store.toast('info', `Friend request sent to ${typed}`)
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+  return (
+    <div className="panel join-panel">
+      <SubmitField
+        label="Join a server"
+        placeholder="An invite link, or its code"
+        onSubmit={(code) => void store.joinAndOpen(account.id, code)}
+      />
+      <span className="small muted">Add a friend</span>
+      <div className="field-row">
+        <input
+          className="text-field"
+          placeholder="Their name and number, like name#1234"
+          spellCheck={false}
+          autoComplete="off"
+          value={friend}
+          disabled={!connected || busy}
+          onChange={(e) => setFriend(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') ask()
+          }}
+        />
+        <button type="button" className="button" disabled={!connected || busy || !friend.trim()} onClick={ask}>
+          Add friend
+        </button>
+      </div>
+      <p className="small muted">
+        Somebody who asks to be your friend waits as a tile in the server list, where you answer. Closing a server
+        from its menu leaves it, unless you own it.
       </p>
     </div>
   )

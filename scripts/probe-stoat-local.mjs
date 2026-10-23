@@ -9,11 +9,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { launchApp, sleep } from './lib/harness.mjs'
-import { accounts, as, upload, API } from './lib/stoat-local.mjs'
+import { accounts, as, upload, makeAccount, API } from './lib/stoat-local.mjs'
 
 const out = process.argv[2] ?? '.'
 fs.mkdirSync(out, { recursive: true })
 const acc = accounts()
+// A stranger for this run: asks to be a friend, and has a server to be invited to.
+const stranger = await makeAccount(`probe${Date.now().toString(36)}`)
 const { page, stop } = await launchApp({ env: { MOHO_UI_SHOTS: '1' } })
 const ev = (code) => page.evaluate(code)
 const rpc = (method, params = {}) => ev(`window.moho.rpc(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
@@ -41,6 +43,9 @@ const until = async (what, fn, ms = 15000) => {
 }
 try {
   await sleep(2500)
+  // The two are friends to begin with (a block ends a friendship, and an earlier run may have made one).
+  await as('alice', 'PUT', `/users/${acc.bob.id}/friend`).catch(() => {})
+  await as('bob', 'PUT', `/users/${acc.alice.id}/friend`).catch(() => {})
   await page.call('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false })
   await rpc('addStoatAccountToken', { instance: API, token: acc.alice.token })
   const account = `stoat:${acc.alice.id}`
@@ -54,7 +59,8 @@ try {
   })
   check('the server and its channels are made', !!buffers, JSON.stringify(buffers?.map((b) => b.name)))
   check('a voice room is a conversation too, marked as one', buffers?.find((b) => /Voice Room/.test(b.name))?.nameIcon === 'volume_up')
-  check('bob is a DM-able friend but no DM exists yet', !buffers?.some((b) => b.kind === 'dm' && b.name === 'bob'))
+  const notes = await rpc('openDirectMessage', { accountId: account, userId: acc.alice.id })
+  check('the account’s own notes open as a conversation', (notes.bufferId ?? notes).endsWith('|Saved Notes'), JSON.stringify(notes))
   const channel = acc.server.channels.General
 
   // bob speaks.
@@ -112,6 +118,51 @@ try {
   await rpc('sendMessage', { bufferId: general, body: 'hidden', attachmentPaths: [mine2], spoilerPaths: [mine2] })
   const spoiled = await until('spoiler seen', async () => (await as('bob', 'GET', `/channels/${channel}/messages?limit=10`)).find((m) => m.content === 'hidden' && m.attachments?.length))
   check('and one marked as a spoiler goes under the name Stoat reads as one', !!spoiled && /^SPOILER_/.test(spoiled.attachments[0].filename))
+
+  // A conversation with bob, both ways.
+  const opened = await rpc('openDirectMessage', { accountId: account, userId: acc.bob.id, nick: 'bob' })
+  const dm = opened.bufferId ?? opened
+  check('a direct message with bob opens', typeof dm === 'string' && dm.includes('|bob'), JSON.stringify(opened))
+  const dmChannel = (await as('bob', 'GET', `/users/${acc.alice.id}/dm`))._id
+  await as('bob', 'POST', `/channels/${dmChannel}/messages`, { content: 'psst, it is bob' })
+  const whisper = await until('dm heard', async () => (await rpc('getBacklog', { bufferId: dm })).find((m) => m.body === 'psst, it is bob'))
+  check('what bob says in it is heard', !!whisper)
+  await rpc('sendMessage', { bufferId: dm, body: 'psst back' })
+  const back = await until('dm seen', async () => (await as('bob', 'GET', `/channels/${dmChannel}/messages?limit=5`)).find((m) => m.content === 'psst back'))
+  check('and what alice says reaches bob', !!back)
+
+  // Blocking, and being let through again.
+  await rpc('stoatBlock', { accountId: account, userId: acc.bob.id, block: true })
+  const locked = await until('locked', async () => (await rpc('listBuffers')).find((b) => b.id === dm)?.readOnly)
+  check('blocking bob closes the conversation to writing', !!locked, locked)
+  await rpc('stoatBlock', { accountId: account, userId: acc.bob.id, block: false })
+  const stillShut = await until('shut', async () => (await rpc('listBuffers')).find((b) => b.id === dm)?.readOnly)
+  check('and unblocking does not make them friends again: it stays shut, with the reason', /friends/.test(stillShut ?? ''), stillShut)
+  await as('alice', 'PUT', `/users/${acc.bob.id}/friend`)
+  await as('bob', 'PUT', `/users/${acc.alice.id}/friend`)
+  const open = await until('open again', async () => !(await rpc('listBuffers')).find((b) => b.id === dm)?.readOnly)
+  check('and being friends again opens it', !!open)
+
+  // Somebody asks to be a friend.
+  await stranger.call('PUT', `/users/${acc.alice.id}/friend`)
+  const asked = await until('request', async () => (await rpc('stoatFriendRequests', { accountId: account })).incoming.find((r) => r.id === stranger.id))
+  check('a friend request is listed with the name of who asked', !!asked && asked.name === stranger.username, JSON.stringify(asked))
+  await rpc('answerStoatFriendRequest', { accountId: account, userId: stranger.id, accept: true })
+  const friends = await until('friends', async () => (await stranger.call('GET', `/users/${acc.alice.id}`)).relationship === 'Friend')
+  check('accepting makes them friends', !!friends)
+  check('and they are no longer waiting', !(await rpc('stoatFriendRequests', { accountId: account })).incoming.some((r) => r.id === stranger.id))
+
+  // Another server, joined by its invite and left.
+  const hall = await stranger.call('POST', '/servers/create', { name: 'Stranger Den' })
+  const invite = await stranger.call('POST', `/channels/${hall.channels[0]._id}/invites`, {})
+  await rpc('joinBuffer', { accountId: account, name: `http://localhost:8880/invite/${invite._id}` })
+  const joined = await until('joined', async () => (await rpc('listBuffers')).find((b) => b.accountId === account && /^Stranger Den\//.test(b.name)))
+  check('a server is joined by its invite link and its channels are made', !!joined, joined?.name)
+  await rpc('leaveGroup', { groupId: `${account}|server:${hall.server._id}` })
+  const left = await until('left', async () => !(await rpc('listBuffers')).some((b) => /^Stranger Den\//.test(b.name)))
+  check('and leaving it takes it away', !!left)
+  const ownLeft = await rpc('leaveGroup', { groupId: `${account}|server:${acc.server.id}` }).then(() => 'left', (e) => e.message)
+  check('a server the account owns is not left, since that deletes it', /own this server/.test(ownLeft), ownLeft)
 
   await ev(`window.__mohoShots.store.refreshBuffers(); window.__mohoShots.store.selectBuffer(${JSON.stringify(general)})`)
   await sleep(800)
