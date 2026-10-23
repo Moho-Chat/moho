@@ -56,3 +56,35 @@ describe('scrolling to the top of a conversation', () => {
     expect(rpc).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('a conversation whose service keeps its own unread count', () => {
+  it('starts the count from it when it first appears', () => {
+    // A conversation new to the window is subscribed to, which asks the daemon.
+    vi.stubGlobal('window', { moho: { rpc: vi.fn().mockResolvedValue(undefined) } })
+    const store = new ChatStore() as unknown as { state: { buffers: Record<string, unknown>[] }; handleBufferListChange: (data: unknown) => void }
+    store.handleBufferListChange({ id: 't|g:5', accountId: 't', kind: 'channel', name: 'Group/#Topic', lastActivityTs: 0, unreadSeed: 7, mentionsSeed: 2 })
+    const b = store.state.buffers.find((x) => x.id === 't|g:5')!
+    expect([b.unread, b.mentions, b.highlight]).toEqual([7, 2, true])
+    vi.unstubAllGlobals()
+  })
+
+  it('sets the count when the service moves it, and leaves it alone when it has not', () => {
+    const seeded = { unreadSeed: 7, mentionsSeed: 2, unread: 9, mentions: 3, highlight: true }
+    // Two more were heard since the service last said seven: not a change, so the window keeps counting.
+    let b = after({ unreadSeed: 7, mentionsSeed: 2 }, seeded)
+    expect([b.unread, b.mentions]).toEqual([9, 3])
+    // The service says it was all read elsewhere: the seed goes away and so does the count.
+    b = after({}, seeded)
+    expect([b.unread, b.mentions, b.highlight, b.unreadSeed]).toEqual([0, 0, false, 0])
+    // The service says there are now ten.
+    b = after({ unreadSeed: 10 }, seeded)
+    expect([b.unread, b.mentions, b.highlight]).toEqual([10, 0, false])
+  })
+
+  it('does not put a count on the conversation being read', () => {
+    const store = new ChatStore() as unknown as { state: { buffers: Record<string, unknown>[]; activeBufferId: string | null }; handleBufferListChange: (data: unknown) => void }
+    store.state = { ...store.state, activeBufferId: 'm|!r', buffers: [{ id: 'm|!r', accountId: 'm', kind: 'channel', name: '!r', lastActivityTs: 0, unread: 0, highlight: false, mentions: 0 }] }
+    store.handleBufferListChange({ id: 'm|!r', accountId: 'm', kind: 'channel', name: '!r', lastActivityTs: 0, unreadSeed: 4 })
+    expect(store.state.buffers[0].unread).toBe(0)
+  })
+})

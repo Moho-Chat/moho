@@ -36,6 +36,9 @@ try {
   const form = await ev(`(() => { const f = document.querySelector('.add-form'); return f ? f.innerText : '' })()`)
   check('the form says where the api_id comes from', /my\.telegram\.org\/apps/.test(form), form.slice(0, 120))
   check('it asks for the api_id, the api_hash and the phone number', /api_id/.test(form) && /api_hash/.test(form) && /Phone number/.test(form))
+  const qrDisabled = () => ev(`[...document.querySelectorAll('.add-form button')].find((b) => /QR code/.test(b.textContent))?.disabled`)
+  check('a QR code is offered as the other way in', (await qrDisabled()) !== undefined)
+  check('and waits for the api_id and the api_hash, which it needs, but not for a phone number', (await qrDisabled()) === true)
   const disabled = () => ev(`[...document.querySelectorAll('.add-form button.primary')].find((b) => /Send the code/.test(b.textContent))?.disabled`)
   check('nothing can be sent while the form is empty', (await disabled()) === true)
   const fill = (placeholderOrLabel, value) => ev(`(() => {
@@ -48,6 +51,7 @@ try {
   await fill('api_id', '12345')
   await fill('api_hash', 'abcdef')
   check('two of three are not enough', (await disabled()) === true)
+  check('the QR code needs only those two', (await qrDisabled()) === false)
   await fill('Phone number', '+1 555 123 4567')
   await sleep(200)
   check('all three turn the button on', (await disabled()) === false)

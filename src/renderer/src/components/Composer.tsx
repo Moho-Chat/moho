@@ -247,7 +247,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const route = useChat((s) => s.route)
   const routed = tunnelAll || !!account?.useTor
   const media = useMediaUrl(account?.id)
-  const hasStickers = service === 'matrix' || service === 'discord' || service === 'steam'
+  const hasStickers = service === 'matrix' || service === 'discord' || service === 'steam' || service === 'telegram'
   const formats = formatsFor(service)
   /**
    * The account's stickers, asked for when the picker opens - from either
@@ -257,7 +257,16 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const loadStickers = (): void => {
     if (!hasStickers || !buffer) return
     void window.moho
-      .rpc<StickerEntry[]>(service === 'discord' ? 'listDiscordStickers' : service === 'steam' ? 'listSteamStickers' : 'listMatrixStickers', { bufferId: buffer.id })
+      .rpc<StickerEntry[]>(
+        service === 'discord'
+          ? 'listDiscordStickers'
+          : service === 'steam'
+            ? 'listSteamStickers'
+            : service === 'telegram'
+              ? 'listTelegramStickers'
+              : 'listMatrixStickers',
+        { bufferId: buffer.id }
+      )
       .then(setStickers)
       .catch(() => setStickers([]))
   }
@@ -1387,7 +1396,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
             gesture: an emoji goes into the line being written and a sticker
             is the message. Only where the service has them: Matrix, where a
             pack supplies them, and Discord, where each guild has its own. */}
-        {!thread && (service === 'matrix' || service === 'discord' || service === 'steam') && (
+        {!thread && hasStickers && (
           <button
             ref={stickerButtonRef}
             type="button"
@@ -1472,7 +1481,9 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
                   const sent =
                     service === 'steam'
                       ? window.moho.rpc('sendSteamSticker', { bufferId: buffer.id, name: sticker.name })
-                      : sticker.id
+                      : service === 'telegram'
+                        ? window.moho.rpc('sendTelegramSticker', { bufferId: buffer.id, id: sticker.id })
+                        : sticker.id
                         ? window.moho.rpc('sendDiscordSticker', { bufferId: buffer.id, stickerId: sticker.id })
                         : window.moho.rpc('sendMatrixSticker', { bufferId: buffer.id, mxc: sticker.mxc, body: sticker.body })
                   void sent.catch((e: Error) => store.toast('error', e.message))
