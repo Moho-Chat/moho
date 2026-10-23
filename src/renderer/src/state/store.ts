@@ -2614,6 +2614,22 @@ export class ChatStore {
   /** The conversation to be told is read as soon as the window is looked at. */
   private ackPending: string | null = null
 
+  /** When each conversation was last told it is read, so a busy one is told every few seconds and not every line. */
+  private ackedAt = new Map<string, number>()
+
+  /**
+   * What is on screen has been read to its end: the window is in front, the conversation is the open one, and the
+   * list is at its bottom (the caller says so). Told to the service, but not oftener than every few seconds - the
+   * newer of a run of messages covers the older - and never for a conversation that is not being looked at.
+   */
+  ackIfReading(bufferId: string): void {
+    if (bufferId !== this.state.activeBufferId || !this.windowIsActive()) return
+    const now = Date.now()
+    if (now - (this.ackedAt.get(bufferId) ?? 0) < 5000) return
+    this.ackedAt.set(bufferId, now)
+    bestEffort(this.ackRead(bufferId), 'ack read')
+  }
+
   private windowIsActive(): boolean {
     return document.visibilityState === 'visible' && document.hasFocus()
   }
