@@ -276,7 +276,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   // here rather than left as the one service where the button is dead.
   // Steam takes a picture or a short video, and says which and how big.
   const supportsAttachments =
-    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc' || service === 'steam' || service === 'telegram'
+    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc' || service === 'steam' || service === 'telegram' || service === 'stoat'
 
   // Starting a reply puts the cursor in the box: the next thing anybody does
   // is write the answer.
