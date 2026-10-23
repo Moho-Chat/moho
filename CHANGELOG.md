@@ -17,6 +17,17 @@ Each section has two parts:
   that made it, including dependency updates
   (`node scripts/changelog-deps.mjs <previous tag>` lists those).
 
+## [1.3.3]
+
+### Fixes, patches and changes
+
+- Telegram sign-in by QR code: scan it with Telegram on a phone that is already signed in (Settings, Devices, Link Desktop Device), with no phone number or code; the code is renewed as Telegram says, an account kept in another datacenter is followed there, and a cloud password is asked for after the scan ([moho `b481fb8`](https://github.com/Moho-Chat/moho/commit/b481fb8), [nobilis `430e89f`](https://github.com/Moho-Chat/nobilis/commit/430e89f))
+- Telegram chat folders are the categories of the account's page, kept in step both ways: a folder made, renamed, deleted or put in another order on Telegram turns up as the category, and the same done to a category here is done on Telegram, including filing a conversation by dragging it (a category becomes a folder when its first conversation is filed in, since Telegram keeps no empty folder) ([moho `b481fb8`](https://github.com/Moho-Chat/moho/commit/b481fb8), [nobilis `430e89f`](https://github.com/Moho-Chat/nobilis/commit/430e89f), [nobilis `c9c98de`](https://github.com/Moho-Chat/nobilis/commit/c9c98de))
+- Telegram stickers can be sent, from the Stickers tab (recent, favourites and the installed packs); a group's bots offer their commands in the slash menu, written as `/command@bot` where two bots share a name; and a topic's own unread and mention counts start its badge ([moho `b481fb8`](https://github.com/Moho-Chat/moho/commit/b481fb8), [nobilis `430e89f`](https://github.com/Moho-Chat/nobilis/commit/430e89f))
+- Telegram links open in moho: moho takes over `tg://` links, which is what the "View in Telegram" button on a post's web page opens, and a t.me link in a message goes to the chat and the post, joining the channel if the account is not in it ([moho `b6b308d`](https://github.com/Moho-Chat/moho/commit/b6b308d), [nobilis `64a13fa`](https://github.com/Moho-Chat/nobilis/commit/64a13fa))
+- Discord is held back further from what gets an account flagged: no request after a 401 or three refusals on a route, a captcha closes its place instead of being answered, the server's own rules (verification level, onboarding, timeout, slowmode) are checked before a send, a direct message needs five of the account's own messages from Discord's own apps first and an empty channel is not written into first, history is asked once, uploads go in two steps as the official client does, one message at a time is sent to a channel, and the login is the official shape with the gateway stream compressed ([moho `5776ca8`](https://github.com/Moho-Chat/moho/commit/5776ca8), [nobilis `3557335`](https://github.com/Moho-Chat/nobilis/commit/3557335), [nobilis `2638938`](https://github.com/Moho-Chat/nobilis/commit/2638938))
+- The message box of a Discord server is closed while the green new-member badge shows by your name there (taken to be the first week after joining), since what is sent from another client in that time is treated as spam; it opens again by itself ([moho `5f10ae6`](https://github.com/Moho-Chat/moho/commit/5f10ae6), [nobilis `b1862bb`](https://github.com/Moho-Chat/nobilis/commit/b1862bb))
+
 ## [1.3.2]
 
 ### Fixes, patches and changes
