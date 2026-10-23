@@ -2248,6 +2248,12 @@ export class ChatStore {
       return
     }
 
+    // A Telegram link goes to wherever it points: the chat, joined if the account is not in it, and the post.
+    if (link.service === 'telegram') {
+      void this.openTelegramLink(link.url)
+      return
+    }
+
     // A kick.com link names a streamer, and clicking one means both things:
     // the stream goes to the browser, which is where video is watched, and
     // the chat opens here, which is what this client is for. Doing only the
@@ -2303,6 +2309,36 @@ export class ChatStore {
     }
     // The first one named, being the one they clicked towards.
     this.awaitBuffer(existing.id, link.channels[0])
+  }
+
+  /**
+   * Follows a link to a Telegram chat or post, from a message or from the browser's "View in Telegram" button: the
+   * daemon finds (or joins) the chat, and this opens its conversation and goes to the post.
+   *
+   * With no Telegram account to open it in, a web address goes on to the browser as it would have, and an app link
+   * says what is missing.
+   */
+  async openTelegramLink(url: string): Promise<void> {
+    const accounts = this.state.accounts.filter((a) => a.service === 'telegram')
+    if (accounts.length === 0) {
+      if (/^https?:/i.test(url)) void window.moho.openExternal(url)
+      else this.toast('info', 'Add a Telegram account to open that link here')
+      return
+    }
+    // Brought to the front by the click that came from the browser; a link followed in a message is already here.
+    this.set({ activePanel: '' })
+    try {
+      const where = await window.moho.rpc<{ accountId: string; bufferId: string; messageId: string | null }>('openTelegramLink', {
+        url,
+        // The account in front, when it is a Telegram one; otherwise the daemon takes the first that is connected.
+        accountId: accounts.find((a) => this.state.activeBufferId?.startsWith(`${a.id}|`))?.id
+      })
+      await this.refreshBuffers()
+      await this.selectBuffer(where.bufferId, true)
+      if (where.messageId && (await this.jumpToMessage(where.bufferId, where.messageId))) this.setJumpTarget(where.messageId)
+    } catch (e) {
+      this.toast('error', `Couldn't open that Telegram link: ${(e as Error).message}`)
+    }
   }
 
   /**
