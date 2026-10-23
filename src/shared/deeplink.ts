@@ -27,7 +27,16 @@ export interface KickLink {
   handle: string
 }
 
-export type DeepLink = IrcLink | KickLink
+/**
+ * A link to a Telegram chat or a post in one, as a `tg://` link (what the "View in Telegram" button on a web preview
+ * opens) or a t.me address in a message. The daemon reads it: this only recognises one, and passes it on whole.
+ */
+export interface TelegramLink {
+  service: 'telegram'
+  url: string
+}
+
+export type DeepLink = IrcLink | KickLink | TelegramLink
 
 /**
  * Schemes moho asks the desktop to send it.
@@ -36,12 +45,54 @@ export type DeepLink = IrcLink | KickLink
  * link is an ordinary web address, and registering for `https` would mean
  * volunteering to be the system browser.
  */
-export const DEEP_LINK_SCHEMES = ['irc', 'ircs']
+export const DEEP_LINK_SCHEMES = ['irc', 'ircs', 'tg']
 
 /** Whether a string is a link this client would act on. */
 export function isDeepLink(value: string): boolean {
   const lower = value.toLowerCase()
-  return DEEP_LINK_SCHEMES.some((s) => lower.startsWith(`${s}:`)) || !!kickHandle(value)
+  return DEEP_LINK_SCHEMES.some((s) => lower.startsWith(`${s}:`)) ? isTelegramOrIrc(value) : !!kickHandle(value) || isTelegramLink(value)
+}
+
+/** A `tg:` link is only one of ours if it is a kind that opens a chat; the others (login, proxy, themes) are not. */
+function isTelegramOrIrc(value: string): boolean {
+  return value.toLowerCase().startsWith('tg:') ? isTelegramLink(value) : true
+}
+
+/** Pages on t.me that are about something other than a chat. */
+const TELEGRAM_PAGES = ['s', 'addstickers', 'addemoji', 'setlanguage', 'proxy', 'socks', 'share', 'login', 'iv', 'addtheme', 'bg', 'boost', 'm', 'addlist', 'invoice', 'giftcode', 'contact']
+
+/**
+ * Whether a string is a link to a Telegram chat, a post, or a private invite: `tg://resolve`, `tg://privatepost`,
+ * `tg://join`, and t.me, telegram.me and telegram.dog addresses that name one. The same reading the daemon makes
+ * (nobilis backend/telegram/links.rs), which has the last word.
+ */
+export function isTelegramLink(value: string): boolean {
+  let url: URL
+  try {
+    url = new URL(value.trim())
+  } catch {
+    return false
+  }
+  if (url.protocol === 'tg:') {
+    const params = url.searchParams
+    if (url.hostname === 'resolve') {
+      const domain = params.get('domain') ?? ''
+      return /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(domain) && domain !== 'telegrampassport'
+    }
+    if (url.hostname === 'privatepost') return /^\d+$/.test(params.get('channel') ?? '')
+    if (url.hostname === 'join') return /^[A-Za-z0-9_-]+$/.test(params.get('invite') ?? '')
+    return false
+  }
+  if (!/^https?:$/.test(url.protocol)) return false
+  if (!['t.me', 'telegram.me', 'telegram.dog'].includes(url.hostname.replace(/^www\./, ''))) return false
+  const parts = url.pathname.split('/').filter(Boolean)
+  const first = parts[0]
+  if (!first) return false
+  if (first.startsWith('+')) return /^[A-Za-z0-9_-]+$/.test(first.slice(1))
+  if (first === 'joinchat') return /^[A-Za-z0-9_-]+$/.test(parts[1] ?? '')
+  if (first === 'c') return /^\d+$/.test(parts[1] ?? '')
+  if (TELEGRAM_PAGES.includes(first)) return false
+  return /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(first)
 }
 
 /**
@@ -91,6 +142,7 @@ export function kickHandle(value: string): string | null {
 export function parseDeepLink(value: string): DeepLink | null {
   const kick = kickHandle(value)
   if (kick) return { service: 'kick', handle: kick }
+  if (isTelegramLink(value)) return { service: 'telegram', url: value.trim() }
 
   let url: URL
   try {
@@ -100,7 +152,7 @@ export function parseDeepLink(value: string): DeepLink | null {
   }
 
   const scheme = url.protocol.replace(/:$/, '').toLowerCase()
-  if (!DEEP_LINK_SCHEMES.includes(scheme)) return null
+  if (scheme !== 'irc' && scheme !== 'ircs') return null
   const host = url.hostname
   if (!host) return null
 

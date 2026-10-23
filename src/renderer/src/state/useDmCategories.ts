@@ -38,6 +38,12 @@ export function useDmCategories(): void {
     for (const id of connectedSteam.split(',').filter(Boolean)) store.loadSteamGroups(id)
   }, [connectedSteam, store])
 
+  // The same for a Telegram account's folders, which the account's page draws as its categories.
+  const connectedTelegram = accounts.filter((a) => a.service === 'telegram' && a.state === 'connected').map((a) => a.id).join(',')
+  useEffect(() => {
+    for (const id of connectedTelegram.split(',').filter(Boolean)) store.loadTelegramFolders(id)
+  }, [connectedTelegram, store])
+
   useEffect(() => {
     if (!ready) return
     // The account headings first, then the Steam groups on top of what they

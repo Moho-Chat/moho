@@ -71,9 +71,9 @@ Exec=$BIN_DIR/$APP_ID.AppImage %U
 Icon=$APP_ID
 Terminal=false
 Categories=Network;InstantMessaging;Chat;
-# What makes an irc:// link in a browser offer moho at all. Exec already takes
+# What makes an irc:// or tg:// (Telegram) link in a browser offer moho at all. Exec already takes
 # %U, so the desktop has somewhere to put the URL once it decides to.
-MimeType=x-scheme-handler/irc;x-scheme-handler/ircs;
+MimeType=x-scheme-handler/irc;x-scheme-handler/ircs;x-scheme-handler/tg;
 Keywords=chat;irc;discord;matrix;sneedchat;messaging;
 StartupWMClass=moho
 StartupNotify=true

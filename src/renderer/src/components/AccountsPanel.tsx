@@ -1520,6 +1520,8 @@ function TelegramForm({ onDone }: { onDone: () => void }): JSX.Element {
   const [detail, setDetail] = useState('')
   const [needs, setNeeds] = useState<{ step: 'code' | 'password'; hint?: string; error?: string } | null>(null)
   const [typed, setTyped] = useState('')
+  /** A QR code to scan, and when it was drawn (Telegram renews it about every half minute). */
+  const [qr, setQr] = useState<{ path: string; at: number } | null>(null)
 
   // Held in a ref as well: the first event can be handled before the render that follows the answer that started the
   // sign-in. Nothing else is signing in from this form, so an event with no id known yet is this one's.
@@ -1536,12 +1538,18 @@ function TelegramForm({ onDone }: { onDone: () => void }): JSX.Element {
       if (current.current && d.loginId !== current.current) return
       if (e.event === 'telegramLoginStatus') {
         setDetail(d.text || '')
+      } else if (e.event === 'telegramLoginQr') {
+        const q = e.data as { path?: string }
+        if (q.path) setQr({ path: q.path, at: Date.now() })
+        setDetail('')
       } else if (e.event === 'telegramLoginNeeds') {
+        setQr(null)
         setNeeds({ step: d.step ?? 'code', hint: d.hint ?? undefined, error: d.error ?? undefined })
         setTyped('')
         setDetail('')
       } else if (e.event === 'telegramLoginResult') {
         setNeeds(null)
+        setQr(null)
         setId('')
         setBusy(false)
         setDetail('')
@@ -1579,6 +1587,21 @@ function TelegramForm({ onDone }: { onDone: () => void }): JSX.Element {
       })
   }
 
+  const beginQr = (): void => {
+    setBusy(true)
+    setDetail('')
+    setNeeds(null)
+    setQr(null)
+    current.current = ''
+    void window.moho
+      .rpc<{ loginId: string }>('addTelegramAccountQr', { apiId: apiId.trim(), apiHash: apiHash.trim(), useTor })
+      .then((r) => setId(r.loginId))
+      .catch((e: Error) => {
+        setBusy(false)
+        store.toast('error', e.message)
+      })
+  }
+
   const send = (): void => {
     const value = needs?.step === 'password' ? typed : typed.trim()
     if (!value || !loginId || !needs) return
@@ -1592,8 +1615,29 @@ function TelegramForm({ onDone }: { onDone: () => void }): JSX.Element {
     if (current.current) void window.moho.rpc('cancelTelegramLogin', { loginId: current.current }).catch(() => {})
     setId('')
     setNeeds(null)
+    setQr(null)
     setDetail('')
     setBusy(false)
+  }
+
+  if (qr && !needs) {
+    return (
+      <div className="add-form">
+        <p>Scan this with Telegram on your phone.</p>
+        <p className="small muted">
+          In the app, open Settings, then Devices, then Link Desktop Device, and point the phone at the code. The code
+          changes about every half minute, and the picture here changes with it. If the account has a cloud password,
+          it is asked for next.
+        </p>
+        <img className="qr-image" src={resolveMediaUrl(`file://${qr.path}#${qr.at}`)} alt="Telegram sign-in QR code" />
+        {detail && <p className="small muted">{detail}…</p>}
+        <div className="field-row">
+          <button type="button" className="button" onClick={cancel}>
+            Cancel sign-in
+          </button>
+        </div>
+      </div>
+    )
   }
 
   if (needs) {
@@ -1680,7 +1724,7 @@ function TelegramForm({ onDone }: { onDone: () => void }): JSX.Element {
         </label>
       </div>
       <label className="field">
-        <span className="small muted">Phone number, with its country code</span>
+        <span className="small muted">Phone number, with its country code (not needed for a QR code)</span>
         <input
           className="text-field"
           autoComplete="off"
@@ -1696,6 +1740,9 @@ function TelegramForm({ onDone }: { onDone: () => void }): JSX.Element {
       <div className="field-row">
         <button type="button" className="button primary" disabled={busy || !ready} onClick={begin}>
           {busy ? 'Signing in…' : 'Send the code'}
+        </button>
+        <button type="button" className="button" disabled={busy || apiId.trim() === '' || apiHash.trim() === ''} onClick={beginQr}>
+          Sign in with a QR code
         </button>
         {busy && (
           <button type="button" className="button" onClick={cancel}>

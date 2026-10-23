@@ -118,6 +118,13 @@ export interface Buffer {
   readOnly?: string
   /** A Discord forum: a list of posts, each a thread, not a conversation. */
   forum?: boolean
+  /**
+   * What the service counts as unread here, where it keeps a count this window could not work out (a Telegram topic
+   * never opened here): a starting point for the count, which then follows live messages.
+   */
+  unreadSeed?: number
+  /** How many of those mention this account. */
+  mentionsSeed?: number
   /** Matrix only - absent, not false, for protocols with no encryption concept. */
   encrypted?: boolean
   /**

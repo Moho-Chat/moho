@@ -12,6 +12,14 @@ import { presenceClass, presenceLabel } from '../lib/presence'
 import { activityLabel, dmActivity } from '../lib/activity'
 import { ActivityLine } from './ActivityLine'
 import { steamCategoryId, parseSteamCategory } from '../lib/steamgroups'
+import {
+  folderAssignment,
+  folderCategories,
+  folderOrder,
+  isPendingCategory,
+  parseTelegramCategory,
+  pendingCategoryId
+} from '../lib/telegramfolders'
 import { NamePrompt } from './NamePrompt'
 import { useChat, useComfy, useIdSetPref, useInvitations, useMapPref, usePref, useStore } from '../state/hooks'
 import {
@@ -170,6 +178,9 @@ export function BufferList(): JSX.Element {
   const isDmPage = activeGroup?.id === DM_GROUP_ID
   // A Steam account's own page: its friends sit under the folders Steam keeps for the account.
   const steamPage = activeGroup?.kind === 'account' && accounts.find((a) => a.id === activeGroup.accountId)?.service === 'steam'
+  // A Telegram account's own page: its conversations sit under the chat folders the account keeps, which are kept in step
+  // with the categories both ways.
+  const telegramPage = activeGroup?.kind === 'account' && accounts.find((a) => a.id === activeGroup.accountId)?.service === 'telegram'
   /**
    * Whose identity the plaque shows.
    *
@@ -264,8 +275,23 @@ export function BufferList(): JSX.Element {
         : [],
     [steamPage, activeGroup, steamGroups]
   )
-  const myCategories = steamPage ? steamFolders : activeGroup ? (customCats[activeGroup.id] ?? []) : []
+  const telegramFolders = useChat((s) => s.telegramFolders)
+  /** Categories made on this page that are not Telegram folders yet: Telegram keeps no empty one. */
+  const [pendingFolders, setPendingFolders] = useState<CustomCategory[]>([])
+  const tgFolders = useMemo(() => (telegramPage && activeGroup ? (telegramFolders[activeGroup.accountId] ?? []) : []), [telegramPage, activeGroup, telegramFolders])
+  const myCategories = useMemo(
+    () =>
+      steamPage
+        ? steamFolders
+        : telegramPage && activeGroup
+          ? [...folderCategories(activeGroup.accountId, tgFolders), ...pendingFolders.filter((p) => p.id.startsWith(`tfnew:${activeGroup.accountId}:`))]
+          : activeGroup
+            ? (customCats[activeGroup.id] ?? [])
+            : [],
+    [steamPage, steamFolders, telegramPage, activeGroup, tgFolders, pendingFolders, customCats]
+  )
   const viewAssignment = useMemo(() => {
+    if (telegramPage && activeGroup) return folderAssignment(activeGroup.accountId, tgFolders, groupBuffers)
     if (!steamPage || !activeGroup) return assignment
     const folders = [...(steamGroups[activeGroup.accountId] ?? [])].sort((a, b) => a.id - b.id)
     const next = { ...assignment }
@@ -276,16 +302,30 @@ export function BufferList(): JSX.Element {
       else delete next[b.id]
     }
     return next
-  }, [steamPage, activeGroup, steamGroups, assignment, groupBuffers])
-  /** Files a conversation under a heading: on Steam for a Steam page, in the preferences for the rest. */
+  }, [steamPage, telegramPage, tgFolders, activeGroup, steamGroups, assignment, groupBuffers])
+  /** Files a conversation under a heading: on Steam for a Steam page, on Telegram for a Telegram one, in the preferences for the rest. */
   const fileBuffer = (bufferId: string, categoryId: string): void => {
-    if (steamPage) store.moveSteamFriend(bufferId, parseSteamCategory(categoryId)?.groupId ?? null)
-    else setAssignment(bufferId, categoryId)
+    if (steamPage) {
+      store.moveSteamFriend(bufferId, parseSteamCategory(categoryId)?.groupId ?? null)
+    } else if (telegramPage) {
+      const pending = pendingFolders.find((p) => p.id === categoryId)
+      if (pending) {
+        // The first conversation in it is what makes it a folder on Telegram.
+        void store.createTelegramFolder(bufferId, pending.name).then((made) => {
+          if (made) setPendingFolders((list) => list.filter((p) => p.id !== categoryId))
+        })
+      } else {
+        store.fileTelegramChat(bufferId, parseTelegramCategory(categoryId)?.folderId ?? null)
+      }
+    } else {
+      setAssignment(bufferId, categoryId)
+    }
   }
 
   const grouped = useMemo(() => {
     if (!activeGroup) return null
-    const list = sections(groupBuffers, myCategories, viewAssignment, categoryOrder[activeGroup.id] ?? [])
+    // Telegram's own order stands on its page: a heading dragged here is moved there, and comes back in that order.
+    const list = sections(groupBuffers, myCategories, viewAssignment, telegramPage ? [] : (categoryOrder[activeGroup.id] ?? []))
     if (!isPinnedPage && !isDmPage) {
       for (const s of list) {
         s.buffers.sort((a, b) => (a.position || 0) - (b.position || 0))
@@ -295,7 +335,7 @@ export function BufferList(): JSX.Element {
     // they just made it, and a heading that vanishes until something is put
     // in it cannot have anything put in it.
     return list.filter((s) => s.custom || s.buffers.length > 0)
-  }, [activeGroup, isPinnedPage, isDmPage, steamPage, groupBuffers, myCategories, viewAssignment, categoryOrder])
+  }, [activeGroup, isPinnedPage, isDmPage, steamPage, telegramPage, groupBuffers, myCategories, viewAssignment, categoryOrder])
 
   // The menu still toggles a buffer's *own* flag independently of a muted
   // rail entry above it, the same way muting a channel inside an
@@ -416,7 +456,7 @@ export function BufferList(): JSX.Element {
       lifted={dragging?.kind === 'buffer' && dragging.id === b.id}
       onDragStart={() => beginDrag('buffer', b.id)}
       onDragEnd={endDrag}
-      filed={!!assignment[b.id] && myCategories.some((c) => c.id === assignment[b.id])}
+      filed={telegramPage ? !!viewAssignment[b.id] : !!assignment[b.id] && myCategories.some((c) => c.id === assignment[b.id])}
     />
   )
 
@@ -463,7 +503,9 @@ export function BufferList(): JSX.Element {
     if (!held || !grouped || !activeGroup) return
     if (held.kind === 'category') {
       if (held.id === section.key) return
-      setCategoryOrder(activeGroup.id, reorderCategories(grouped, held.id, section.key))
+      const order = reorderCategories(grouped, held.id, section.key)
+      if (telegramPage) store.reorderTelegramFolders(activeGroup.accountId, folderOrder(order))
+      else setCategoryOrder(activeGroup.id, order)
       return
     }
     if (!section.custom) return
@@ -619,6 +661,14 @@ export function BufferList(): JSX.Element {
                             if (name && steamPage && activeGroup) {
                               const group = parseSteamCategory(naming.id)?.groupId
                               if (group !== undefined) store.renameSteamFolder(activeGroup.accountId, group, name)
+                            } else if (name && telegramPage && activeGroup) {
+                              // A category not yet a folder is only named; a folder is renamed on Telegram.
+                              if (isPendingCategory(naming.id)) setPendingFolders((list) => list.map((p) => (p.id === naming.id ? { ...p, name } : p)))
+                              else {
+                                const folder = parseTelegramCategory(naming.id)?.folderId
+                                // The same name is not a change: nothing is asked of Telegram.
+                                if (folder !== undefined && name !== section.name) store.renameTelegramFolder(activeGroup.accountId, folder, name)
+                              }
                             } else if (name) {
                               writeCategories(
                                 myCategories.map((c) => (c.id === naming.id ? { ...c, name } : c))
@@ -750,6 +800,13 @@ export function BufferList(): JSX.Element {
                   setMakingFolder(true)
                   return
                 }
+                // On Telegram it is made there with its first conversation, so until then it is only drawn.
+                if (telegramPage) {
+                  const id = pendingCategoryId(activeGroup.accountId)
+                  setPendingFolders((list) => [...list, { id, name: 'New category' }])
+                  setNaming({ id, name: 'New category' })
+                  return
+                }
                 const id = `cat-${Date.now().toString(36)}`
                 // At the top, not the end. The command was given from the
                 // group's own title at the top of this list, and a heading
@@ -800,7 +857,10 @@ export function BufferList(): JSX.Element {
                     // to wherever the service filed them.
                     onClick: () => {
                       const group = parseSteamCategory(catMenu.section.key)
+                      const folder = parseTelegramCategory(catMenu.section.key)
                       if (steamPage && activeGroup && group) store.deleteSteamFolder(activeGroup.accountId, group.groupId)
+                      else if (telegramPage && activeGroup && isPendingCategory(catMenu.section.key)) setPendingFolders((list) => list.filter((p) => p.id !== catMenu.section.key))
+                      else if (telegramPage && activeGroup && folder) store.deleteTelegramFolder(activeGroup.accountId, folder.folderId)
                       else writeCategories(myCategories.filter((c) => c.id !== catMenu.section.key))
                     }
                   }

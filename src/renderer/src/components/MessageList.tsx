@@ -321,6 +321,15 @@ export function MessageList(): JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const [anchored, setAnchored] = useState(true)
+  // Read as far as the newest line, while it is on screen at the bottom of a window that is looked at: a moment after
+  // it arrives, so one that is scrolled past at once is not reported as read.
+  const newestId = messages[messages.length - 1]?.id
+  useEffect(() => {
+    if (!anchored || !newestId) return
+    const timer = setTimeout(() => store.ackIfReading(bufferId), 1500)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchored, newestId, bufferId])
   const [missedCount, setMissedCount] = useState(0)
   /** How many of the newest messages are built as rows. */
   const [shown, setShown] = useState(RENDER_WINDOW)

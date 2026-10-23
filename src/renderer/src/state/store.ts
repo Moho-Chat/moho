@@ -25,6 +25,7 @@ import type {
 import { addToast, type ToastAction, type ToastItem } from '../lib/toasts'
 import { ALL_STATUSES, statusesFor, supportsStatus } from '../lib/status'
 import type { SteamGroup, GroupCall } from '../lib/steamgroups'
+import type { TelegramFolder } from '../lib/telegramfolders'
 import { buildSmilieIndex, sneedSameText, steamSameText, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
 import { runExport } from '../lib/exporter'
@@ -738,6 +739,8 @@ export interface ChatState {
   profile: Profile | null
   /** Each Steam account's friend groups as Steam last said them; absent until it has. */
   steamGroups: Record<string, SteamGroup[]>
+  /** Each Telegram account's chat folders as Telegram last said them, in its order; absent until it has. */
+  telegramFolders: Record<string, TelegramFolder[]>
   replyingTo: { id: string; from: string; body: string } | null
   /** Whether answering pings the author (Discord's "@ ON"): on for every new reply. */
   replyPing: boolean
@@ -862,6 +865,7 @@ const INITIAL: ChatState = {
   steamDialog: null,
   profile: null,
   steamGroups: {},
+  telegramFolders: {},
   replyingTo: null,
   replyPing: true,
   editingId: '',
@@ -1045,6 +1049,24 @@ function applyOwnReaction(list: Reaction[], emoji: string, add: boolean): Reacti
  */
 function canFetchAround(bufferId: string): boolean {
   return bufferId.startsWith('discord:') || bufferId.startsWith('matrix:') || bufferId.startsWith('telegram:')
+}
+
+/**
+ * What a re-broadcast of a conversation does to its unread count: when the service's own count changed, the count is
+ * set to it, and otherwise it is left to follow the messages heard. A conversation being read is not given a count.
+ * The seeds are taken as sent, absent meaning none, since the daemon leaves a zero out.
+ */
+function seededCount(
+  before: BufferEntry,
+  data: WireBuffer,
+  active: string | null
+): Pick<BufferEntry, 'unreadSeed' | 'mentionsSeed'> & Partial<Pick<BufferEntry, 'unread' | 'mentions' | 'highlight'>> {
+  const unreadSeed = data.unreadSeed ?? 0
+  const mentionsSeed = data.mentionsSeed ?? 0
+  const changed = unreadSeed !== (before.unreadSeed ?? 0) || mentionsSeed !== (before.mentionsSeed ?? 0)
+  if (!changed) return { unreadSeed, mentionsSeed }
+  if (data.id === active) return { unreadSeed, mentionsSeed }
+  return { unreadSeed, mentionsSeed, unread: unreadSeed, mentions: mentionsSeed, highlight: mentionsSeed > 0 }
 }
 
 function bestEffort(work: Promise<unknown>, what: string): void {
@@ -2226,6 +2248,12 @@ export class ChatStore {
       return
     }
 
+    // A Telegram link goes to wherever it points: the chat, joined if the account is not in it, and the post.
+    if (link.service === 'telegram') {
+      void this.openTelegramLink(link.url)
+      return
+    }
+
     // A kick.com link names a streamer, and clicking one means both things:
     // the stream goes to the browser, which is where video is watched, and
     // the chat opens here, which is what this client is for. Doing only the
@@ -2281,6 +2309,36 @@ export class ChatStore {
     }
     // The first one named, being the one they clicked towards.
     this.awaitBuffer(existing.id, link.channels[0])
+  }
+
+  /**
+   * Follows a link to a Telegram chat or post, from a message or from the browser's "View in Telegram" button: the
+   * daemon finds (or joins) the chat, and this opens its conversation and goes to the post.
+   *
+   * With no Telegram account to open it in, a web address goes on to the browser as it would have, and an app link
+   * says what is missing.
+   */
+  async openTelegramLink(url: string): Promise<void> {
+    const accounts = this.state.accounts.filter((a) => a.service === 'telegram')
+    if (accounts.length === 0) {
+      if (/^https?:/i.test(url)) void window.moho.openExternal(url)
+      else this.toast('info', 'Add a Telegram account to open that link here')
+      return
+    }
+    // Brought to the front by the click that came from the browser; a link followed in a message is already here.
+    this.set({ activePanel: '' })
+    try {
+      const where = await window.moho.rpc<{ accountId: string; bufferId: string; messageId: string | null }>('openTelegramLink', {
+        url,
+        // The account in front, when it is a Telegram one; otherwise the daemon takes the first that is connected.
+        accountId: accounts.find((a) => this.state.activeBufferId?.startsWith(`${a.id}|`))?.id
+      })
+      await this.refreshBuffers()
+      await this.selectBuffer(where.bufferId, true)
+      if (where.messageId && (await this.jumpToMessage(where.bufferId, where.messageId))) this.setJumpTarget(where.messageId)
+    } catch (e) {
+      this.toast('error', `Couldn't open that Telegram link: ${(e as Error).message}`)
+    }
   }
 
   /**
@@ -2586,9 +2644,9 @@ export class ChatStore {
       const wire = await window.moho.rpc<WireBuffer[]>('listBuffers')
       const existing = new Map(this.state.buffers.map((b) => [b.id, b]))
       const buffers = wire.map((b) => ({
-        unread: existing.get(b.id)?.unread ?? 0,
-        highlight: existing.get(b.id)?.highlight ?? false,
-        mentions: existing.get(b.id)?.mentions ?? 0,
+        unread: existing.get(b.id)?.unread ?? b.unreadSeed ?? 0,
+        highlight: existing.get(b.id)?.highlight ?? (b.mentionsSeed ?? 0) > 0,
+        mentions: existing.get(b.id)?.mentions ?? b.mentionsSeed ?? 0,
         ...b
       }))
       this.set({ buffers })
@@ -2613,6 +2671,22 @@ export class ChatStore {
 
   /** The conversation to be told is read as soon as the window is looked at. */
   private ackPending: string | null = null
+
+  /** When each conversation was last told it is read, so a busy one is told every few seconds and not every line. */
+  private ackedAt = new Map<string, number>()
+
+  /**
+   * What is on screen has been read to its end: the window is in front, the conversation is the open one, and the
+   * list is at its bottom (the caller says so). Told to the service, but not oftener than every few seconds - the
+   * newer of a run of messages covers the older - and never for a conversation that is not being looked at.
+   */
+  ackIfReading(bufferId: string): void {
+    if (bufferId !== this.state.activeBufferId || !this.windowIsActive()) return
+    const now = Date.now()
+    if (now - (this.ackedAt.get(bufferId) ?? 0) < 5000) return
+    this.ackedAt.set(bufferId, now)
+    bestEffort(this.ackRead(bufferId), 'ack read')
+  }
 
   private windowIsActive(): boolean {
     return document.visibilityState === 'visible' && document.hasFocus()
@@ -2776,6 +2850,57 @@ export class ChatStore {
         .rpc('steamGroupChange', { accountId: call.accountId, action: call.action, groupId: call.groupId, steamid: call.steamid, name: call.name })
         .catch((e: Error) => this.toast('error', `Steam did not change the group: ${e.message}`))
     }
+  }
+
+  /** Asks what folders a Telegram account has, for when it has just connected. */
+  loadTelegramFolders(accountId: string): void {
+    void window.moho
+      .rpc<TelegramFolder[]>('telegramFolders', { accountId })
+      .then((folders) => this.set({ telegramFolders: { ...this.state.telegramFolders, [accountId]: folders } }))
+      .catch(() => {})
+  }
+
+  /**
+   * Files a Telegram conversation under a folder, or under none: a change to the account on Telegram, out of the folder it
+   * is drawn under and into the one chosen. Nothing moves here until Telegram has agreed and said so.
+   */
+  fileTelegramChat(bufferId: string, folderId: number | null): void {
+    void window.moho
+      .rpc('fileTelegramChat', { bufferId, folderId })
+      .catch((e: Error) => this.toast('error', `Telegram did not move the chat: ${e.message}`))
+  }
+
+  /**
+   * Makes a Telegram folder with one conversation in it, which is how a category made here comes to exist there: a
+   * folder needs a chat in it. Resolves when it is made.
+   */
+  async createTelegramFolder(bufferId: string, name: string): Promise<boolean> {
+    try {
+      await window.moho.rpc('createTelegramFolder', { bufferId, name })
+      return true
+    } catch (e) {
+      this.toast('error', `Telegram did not make the folder: ${(e as Error).message}`)
+      return false
+    }
+  }
+
+  renameTelegramFolder(accountId: string, folderId: number, name: string): void {
+    void window.moho
+      .rpc('renameTelegramFolder', { accountId, folderId, name })
+      .catch((e: Error) => this.toast('error', `Telegram did not rename the folder: ${e.message}`))
+  }
+
+  /** Deletes a folder: the chats in it stay where they are, in whatever other folders they are in. */
+  deleteTelegramFolder(accountId: string, folderId: number): void {
+    void window.moho
+      .rpc('deleteTelegramFolder', { accountId, folderId })
+      .catch((e: Error) => this.toast('error', `Telegram did not delete the folder: ${e.message}`))
+  }
+
+  reorderTelegramFolders(accountId: string, order: number[]): void {
+    void window.moho
+      .rpc('reorderTelegramFolders', { accountId, order })
+      .catch((e: Error) => this.toast('error', `Telegram did not reorder the folders: ${e.message}`))
   }
 
   /**
@@ -3937,6 +4062,12 @@ export class ChatStore {
         break
       }
 
+      // Telegram says what folders an account has, or that they changed.
+      case 'telegramFolders': {
+        this.set({ telegramFolders: { ...this.state.telegramFolders, [data.accountId as string]: (data.folders ?? []) as TelegramFolder[] } })
+        break
+      }
+
       case 'profile': {
         const answer = data as unknown as Profile
         const open = this.state.profile
@@ -4308,7 +4439,8 @@ export class ChatStore {
                 favourite: data.favourite ?? false,
                 lowPriority: data.lowPriority ?? false,
                 readOnly: data.readOnly,
-                forum: data.forum ?? false
+                forum: data.forum ?? false,
+                ...seededCount(b, data, this.state.activeBufferId)
               }
             : b
         )
@@ -4316,7 +4448,12 @@ export class ChatStore {
       this.followPeekJoin(data)
       return
     }
-    this.set({ buffers: [...buffers, { unread: 0, highlight: false, mentions: 0, ...data }] })
+    this.set({
+      buffers: [
+        ...buffers,
+        { unread: data.unreadSeed ?? 0, highlight: (data.mentionsSeed ?? 0) > 0, mentions: data.mentionsSeed ?? 0, ...data }
+      ]
+    })
     // Filed under a rail entry this window has never been told of. An
     // account's own entry is not announced when the account is made - the
     // daemon lists one for every account when asked - so the first
