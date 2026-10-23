@@ -3,13 +3,13 @@
 **Every conversation you're in, in one window.**
 <img width="1545" height="912" alt="showcase-screenshot" src="https://github.com/user-attachments/assets/b9dabddb-bb3c-4a71-b872-9ad167ecd400" />
 
-moho is a desktop chat client that speaks IRC, Discord, Matrix, Kick, Twitch, Sneedchat, Steam and many more protocols at the
+moho is a desktop chat client that speaks IRC, Discord, Matrix, Kick, Twitch, Sneedchat, Steam, Telegram and many more protocols at the
 same time. Whether the room is a twenty-year-old IRC channel, a Discord server, an encrypted Matrix room, or a
 stream's chat going past at forty lines a minute you're able to be part of the conversation.
 
 ## What it does
 
-- **Many networks, one place.** IRC, Discord, Matrix, Kick, Twitch, Sneedchat, Steam and many more protocols soon, side by side, with
+- **Many networks, one place.** IRC, Discord, Matrix, Kick, Twitch, Sneedchat, Steam, Telegram and many more protocols soon, side by side, with
   the same reply, edit, react, search and tag-someone gestures on each — as far as each
   service actually supports them.
 - **Calls.** Voice, camera and screen sharing on Discord and on Matrix, voice rooms and calls on Steam, including the group
@@ -34,6 +34,7 @@ stream's chat going past at forty lines a minute you're able to be part of the c
 | **Twitch** | Supported, fully ported | A streamer's chat beside the stream, which plays in the window with a resolution menu and its ad breaks said; emotes (animated, and the channel's whole set with the ones you cannot use greyed out), badges, cheers, replies and threads, its events drawn as cards, channel points with a rewards panel and watch time that earns them, polls, predictions and raids you can answer, and moderation and whispers, all from one sign-in |
 | **Sneedchat** | Supported | The forum's chat rooms, over clearnet or Tor |
 | **Steam** | Supported, fully ported | Friends and direct messages, group chats with rooms, roles and invitations, voice rooms and calls, emoticons, stickers, reactions, pictures and files, friend folders, and signing in by password or by QR code |
+| **Telegram** | Supported | Private chats, bots, groups with their forum topics, and channels, with replies and forwards, formatting, pictures, video, files and voice messages, reactions, polls, pinned messages, search, comments on channel posts, the GIF picker and stickers, bots' buttons and command menus, your chat folders kept in step with moho's categories both ways, links to chats and posts that open in moho, and signing in by phone number and code or by QR code |
 
 Every protocol gets the same window, mentions inbox, search and per-account Tor or SOCKS5 routing.
 How much of each service's own feature set a protocol has is as far as its service lets a
