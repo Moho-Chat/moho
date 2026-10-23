@@ -131,7 +131,7 @@ export function wrap(service: string | undefined, kind: FormatKind, inner: strin
   const trail = inner.match(/\s*$/)?.[0] ?? ''
   const core = inner.slice(lead.length, inner.length - trail.length)
   const marked = (open: string, close = open): string => `${lead}${open}${core}${close}${trail}`
-  const markdown = service === 'discord' || service === 'matrix' || service === 'telegram'
+  const markdown = service === 'discord' || service === 'matrix' || service === 'telegram' || service === 'stoat'
 
   if (service === 'sneedchat') {
     switch (kind) {
@@ -175,9 +175,9 @@ export function wrap(service: string | undefined, kind: FormatKind, inner: strin
         return marked(open, close)
       }
       case 'underline': return service === 'discord' || service === 'telegram' ? marked('__') : inner
-      case 'spoiler': return service === 'discord' || service === 'telegram' ? marked('||') : inner
+      case 'spoiler': return service === 'discord' || service === 'telegram' ? marked('||') : service === 'stoat' ? marked('!!') : inner
       case 'quote': {
-        if (service !== 'discord' && service !== 'telegram') return inner
+        if (service !== 'discord' && service !== 'telegram' && service !== 'stoat') return inner
         // A quote is a line of its own on Discord and Telegram, however it was typed.
         const quoted = core.split('\n').map((line) => `> ${line}`).join('\n')
         return `${lead}\n${quoted}\n${trail}`

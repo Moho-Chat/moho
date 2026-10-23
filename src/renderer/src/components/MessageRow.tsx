@@ -423,12 +423,12 @@ function MessageRowBody({
   // Discord, Sneedchat and Matrix support editing and deleting your own
   // messages; IRC has no such concept.
   const canEditDelete =
-    !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram')
+    !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat')
   const beginEdit = (): void => {
     setDraft(message.body)
     setEditing(true)
   }
-  const canReact = service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram'
+  const canReact = service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram' || service === 'stoat'
   // Steam's stickers, asked for when the reaction picker opens: it reacts with them too.
   const [steamStickers, setSteamStickers] = useState<StickerEntry[]>([])
   useEffect(() => {
