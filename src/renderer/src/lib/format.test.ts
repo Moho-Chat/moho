@@ -18,6 +18,7 @@ import {
   sneedGreentext,
   sneedSameText,
   sourcePick,
+  stoatSameText,
   stripCodeBlocks,
   stripEmbeddedUrls,
   stripQuoteBlocks,
@@ -386,5 +387,29 @@ describe('what a picker section sends back', () => {
   it('leaves the other services as they were', () => {
     expect(sourcePick('sneedchat', { id: ':lol:' })).toBe(':lol:')
     expect(sourcePick('steam', { id: 'steam:steambored' })).toBe('[steam:emote:steambored]')
+  })
+})
+
+describe('Stoat text', () => {
+  it('a spoiler typed with !! is the one logged with ||', () => {
+    expect(stoatSameText('the !!end!! is near', 'the ||end|| is near')).toBe(true)
+    expect(stoatSameText('plain', 'plain  ')).toBe(true)
+    expect(stoatSameText('one', 'two')).toBe(false)
+  })
+
+  it('a custom emoji typed by name is the picture token logged', () => {
+    expect(stoatSameText('yay :party:', 'yay [stoat:emoji:party:file:///home/me/.cache/nobilis/stoat-media/abc.png]')).toBe(true)
+    expect(stoatSameText('yay :other:', 'yay [stoat:emoji:party:file:///home/me/.cache/nobilis/stoat-media/abc.png]')).toBe(false)
+  })
+
+  it('draws a custom emoji from the daemon’s own cache folder and from nowhere else', () => {
+    const own = formatMessage('hi [stoat:emoji:party:file:///home/me/.cache/nobilis/stoat-media/abc.png]')
+    expect(own).toContain('<img src="file:///home/me/.cache/nobilis/stoat-media/abc.png" class="custom-emoji" alt=":party:">')
+    const forged = formatMessage('hi [stoat:emoji:x:file:///etc/passwd]')
+    expect(forged).not.toContain('<img')
+  })
+
+  it('is picked by name between colons', () => {
+    expect(sourcePick('stoat', { id: '01ABC', name: 'party' })).toBe(':party:')
   })
 })

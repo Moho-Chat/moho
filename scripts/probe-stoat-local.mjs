@@ -23,6 +23,7 @@ const shot = async (name) => {
   const { data } = await page.call('Page.captureScreenshot', { format: 'png' })
   fs.writeFileSync(path.join(out, name), Buffer.from(data, 'base64'))
 }
+let crashed = false
 const results = []
 const check = (what, ok, detail = '') => {
   results.push(ok)
@@ -119,6 +120,47 @@ try {
   const spoiled = await until('spoiler seen', async () => (await as('bob', 'GET', `/channels/${channel}/messages?limit=10`)).find((m) => m.content === 'hidden' && m.attachments?.length))
   check('and one marked as a spoiler goes under the name Stoat reads as one', !!spoiled && /^SPOILER_/.test(spoiled.attachments[0].filename))
 
+  // Custom emoji: one made on the server is offered, drawn in what others say, and sent by name.
+  const emojiFile = await upload('alice', 'party.png', png, 'image/png', 'emojis')
+  const emojiName = `party${Date.now().toString(36).slice(-4)}`
+  await as('alice', 'PUT', `/custom/emoji/${emojiFile}`, { name: emojiName, parent: { type: 'Server', id: acc.server.id } })
+  const offered = await until('emoji offered', async () => {
+    const sources = await rpc('listAllEmoji', { bufferId: general })
+    return sources.find((s) => s.service === 'stoat' && s.emoji.some((e) => e.name === emojiName))
+  })
+  check('a custom emoji made on the server is offered in the picker under the server’s name', !!offered && offered.name === 'Test Hall', JSON.stringify(offered && [offered.name, offered.emoji.length, offered.usableHere]))
+  await as('bob', 'POST', `/channels/${channel}/messages`, { content: `yay :${emojiFile}:` })
+  const drawn = await until('emoji heard', async () => (await rpc('getBacklog', { bufferId: general })).find((m) => m.body.startsWith(`yay [stoat:emoji:${emojiName}:`)))
+  check('and one in what bob says is a picture token naming the cache', !!drawn && new RegExp(`^yay \\[stoat:emoji:${emojiName}:file://.*/stoat-media/[0-9a-f]+\\.png\\]$`).test(drawn.body), drawn?.body)
+  await rpc('sendMessage', { bufferId: general, body: `back :${emojiName}: !!and a secret!!` })
+  const said = await until('emoji seen', async () => (await as('bob', 'GET', `/channels/${channel}/messages?limit=10`)).find((m) => (m.content ?? '').startsWith('back :')))
+  check('what alice types by name goes out as the emoji’s id', said?.content === `back :${emojiFile}: !!and a secret!!`, said?.content)
+
+  // Moderation: roles, a timeout, removing and barring, and an invite to the server.
+  const powers = await rpc('getStoatPowers', { bufferId: general })
+  check('the owner may kick, ban, silence and hand out roles', powers.canKick && powers.canBan && powers.canMute && powers.canAssignRoles, JSON.stringify(powers))
+  const role = await as('alice', 'POST', `/servers/${acc.server.id}/roles`, { name: `Helpers ${Date.now().toString(36).slice(-3)}` })
+  await until('role heard', async () => (await rpc('getStoatPowers', { bufferId: general })).roles.some((r) => r.id === role.id))
+  check('a role made on the server is one the menu can give', true)
+  await rpc('setStoatMemberRole', { bufferId: general, userId: acc.bob.id, roleId: role.id, give: true })
+  check('giving it reaches bob', (await as('alice', 'GET', `/servers/${acc.server.id}/members/${acc.bob.id}`)).roles.includes(role.id))
+  await rpc('setStoatMemberRole', { bufferId: general, userId: acc.bob.id, roleId: role.id, give: false })
+  check('and taking it away does too', !(await as('alice', 'GET', `/servers/${acc.server.id}/members/${acc.bob.id}`)).roles.includes(role.id))
+  await rpc('moderateStoatMember', { bufferId: general, userId: acc.bob.id, action: 'mute', minutes: 5 })
+  check('a timeout is put on bob', !!(await as('alice', 'GET', `/servers/${acc.server.id}/members/${acc.bob.id}`)).timeout)
+  await rpc('moderateStoatMember', { bufferId: general, userId: acc.bob.id, action: 'unmute' })
+  check('and lifted', !(await as('alice', 'GET', `/servers/${acc.server.id}/members/${acc.bob.id}`)).timeout)
+  const link = await rpc('createStoatInvite', { bufferId: general })
+  check('an invite link is made, on the instance’s own web app', /^http:\/\/localhost:8880\/invite\/[A-Za-z0-9]+$/.test(link.link), link.link)
+  await stranger.call('POST', `/invites/${link.link.split('/').pop()}`, {})
+  check('and the stranger joins by it', (await stranger.call('GET', `/servers/${acc.server.id}/members/${stranger.id}`))._id.user === stranger.id)
+  await rpc('moderateStoatMember', { bufferId: general, userId: stranger.id, action: 'kick' })
+  check('kicking removes the stranger', await stranger.call('GET', `/servers/${acc.server.id}/members/${stranger.id}`).then(() => false, () => true))
+  await stranger.call('POST', `/invites/${link.link.split('/').pop()}`, {})
+  await rpc('moderateStoatMember', { bufferId: general, userId: stranger.id, action: 'ban', reason: 'probe' })
+  check('barring does too, and the stranger cannot come back', await stranger.call('POST', `/invites/${link.link.split('/').pop()}`, {}).then(() => false, () => true))
+  await rpc('moderateStoatMember', { bufferId: general, userId: stranger.id, action: 'unban' })
+
   // A conversation with bob, both ways.
   const opened = await rpc('openDirectMessage', { accountId: account, userId: acc.bob.id, nick: 'bob' })
   const dm = opened.bufferId ?? opened
@@ -167,8 +209,11 @@ try {
   await ev(`window.__mohoShots.store.refreshBuffers(); window.__mohoShots.store.selectBuffer(${JSON.stringify(general)})`)
   await sleep(800)
   await shot('stoat-local.png')
+} catch (e) {
+  crashed = true
+  console.log('CRASHED:', e.message)
 } finally {
   await stop()
-  console.log(results.every(Boolean) ? 'ALL OK' : 'SOME FAILED')
-  process.exitCode = results.every(Boolean) ? 0 : 1
+  console.log(results.every(Boolean) && !crashed ? 'ALL OK' : 'SOME FAILED')
+  process.exitCode = results.every(Boolean) && !crashed ? 0 : 1
 }

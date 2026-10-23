@@ -75,6 +75,8 @@ interface TileProps {
   onToggleMute: () => void
   /** Absent where there is nothing to leave - an account's own entry. */
   onLeave?: () => void
+  /** Makes an invite link to the server and copies it. Stoat. */
+  onInvite?: () => void
   /** Only a Matrix space has rooms to look through. */
   onBrowse?: () => void
   /** Only a Steam chat group keeps settings of its own: rooms, roles, invite links. */
@@ -285,6 +287,15 @@ function RailTile(props: TileProps): JSX.Element {
                     label: 'Browse rooms',
                     icon: 'workspaces',
                     onClick: props.onBrowse
+                  } as const
+                ]
+              : []),
+            ...(props.onInvite
+              ? [
+                  {
+                    label: 'Copy invite link',
+                    icon: 'link',
+                    onClick: props.onInvite
                   } as const
                 ]
               : []),
@@ -575,6 +586,18 @@ export function ServerRail(): JSX.Element | null {
           g.kind === 'guild' || g.kind === 'space' ? () => setLeaving(g) : undefined
         }
         onBrowse={g.kind === 'space' ? () => setBrowsing(g) : undefined}
+        onInvite={
+          g.service === 'stoat' && g.kind === 'guild'
+            ? () => {
+                const inside = buffers.find((b) => b.groupId === g.id)
+                if (!inside) return
+                void window.moho
+                  .rpc<{ link: string }>('createStoatInvite', { bufferId: inside.id })
+                  .then((r) => window.moho.copyText(r.link).then(() => store.toast('info', 'Invite link copied')))
+                  .catch((e: Error) => store.toast('error', e.message))
+              }
+            : undefined
+        }
         onSettings={steamGroupOfRail(g.id) ? () => setConfiguring(g) : undefined}
         unread={t?.unread ?? 0}
         highlight={t?.highlight ?? false}
