@@ -2281,6 +2281,18 @@ export class ChatStore {
       return
     }
 
+    // A Stoat invite joins the server, in the first Stoat account there is; with none, it is a web page for the browser.
+    if (link.service === 'stoat') {
+      const account = this.state.accounts.find((a) => a.service === 'stoat' && a.state === 'connected') ?? this.state.accounts.find((a) => a.service === 'stoat')
+      if (!account) {
+        void window.moho.openExternal(link.url)
+        return
+      }
+      this.set({ activePanel: '' })
+      void this.joinAndOpen(account.id, link.url)
+      return
+    }
+
     // A Telegram link goes to wherever it points: the chat, joined if the account is not in it, and the post.
     if (link.service === 'telegram') {
       void this.openTelegramLink(link.url)

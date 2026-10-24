@@ -36,7 +36,14 @@ export interface TelegramLink {
   url: string
 }
 
-export type DeepLink = IrcLink | KickLink | TelegramLink
+/** An invitation to a Stoat server: its link in a message, which joins it where the account has one. */
+export interface StoatInvite {
+  service: 'stoat'
+  code: string
+  url: string
+}
+
+export type DeepLink = IrcLink | KickLink | TelegramLink | StoatInvite
 
 /**
  * Schemes moho asks the desktop to send it.
@@ -50,7 +57,28 @@ export const DEEP_LINK_SCHEMES = ['irc', 'ircs', 'tg']
 /** Whether a string is a link this client would act on. */
 export function isDeepLink(value: string): boolean {
   const lower = value.toLowerCase()
-  return DEEP_LINK_SCHEMES.some((s) => lower.startsWith(`${s}:`)) ? isTelegramOrIrc(value) : !!kickHandle(value) || isTelegramLink(value)
+  return DEEP_LINK_SCHEMES.some((s) => lower.startsWith(`${s}:`)) ? isTelegramOrIrc(value) : !!kickHandle(value) || isTelegramLink(value) || !!stoatInviteCode(value)
+}
+
+/**
+ * The code in a link to a Stoat invite (`stoat.chat/invite/Code`, the same on the web app or Revolt's old names, or the
+ * short `rvlt.gg/Code`), or null. Only the official addresses: a self-hosted instance's own are joined by pasting them
+ * into the join panel, since nothing here can tell its address from any other website's.
+ */
+export function stoatInviteCode(value: string): string | null {
+  let url: URL
+  try {
+    url = new URL(value.trim())
+  } catch {
+    return null
+  }
+  if (!/^https?:$/.test(url.protocol)) return null
+  const host = url.hostname.replace(/^www\./, '').toLowerCase()
+  const parts = url.pathname.split('/').filter(Boolean)
+  let code: string | undefined
+  if (['stoat.chat', 'app.stoat.chat', 'revolt.chat', 'app.revolt.chat'].includes(host) && parts.length === 2 && parts[0] === 'invite') code = parts[1]
+  else if (['rvlt.gg', 'stt.gg'].includes(host) && parts.length === 1) code = parts[0]
+  return code && /^[A-Za-z0-9_-]{1,32}$/.test(code) ? code : null
 }
 
 /** A `tg:` link is only one of ours if it is a kind that opens a chat; the others (login, proxy, themes) are not. */
@@ -143,6 +171,8 @@ export function parseDeepLink(value: string): DeepLink | null {
   const kick = kickHandle(value)
   if (kick) return { service: 'kick', handle: kick }
   if (isTelegramLink(value)) return { service: 'telegram', url: value.trim() }
+  const invite = stoatInviteCode(value)
+  if (invite) return { service: 'stoat', code: invite, url: value.trim() }
 
   let url: URL
   try {
