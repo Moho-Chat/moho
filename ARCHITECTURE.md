@@ -236,8 +236,20 @@ called `subscribe` for that buffer.
   messages, edits and deletions, formatting both ways, replies and forwards, service messages as cards, media
   fetched on demand into a cache, reactions, pins, polls, search in a chat or everywhere, members and profiles,
   threads and a channel's comments, join by @name or link, administrator actions, and a mute that follows the
-  account. Not supported: secret chats, calls, stories, payments; sign-in by QR code, folders, forum topics,
-  drafts and scheduled messages are not done yet. The code is `nobilis/src/backend/telegram/`.
+  account. Also stickers, group bot commands, forum topics with their own unread counts, sign-in by QR code, and
+  folders kept in step with moho's categories both ways. Not supported: secret chats, calls, stories, payments,
+  drafts and scheduled messages. The code is `nobilis/src/backend/telegram/`.
+
+- **Stoat** (formerly Revolt; on the `protocol/stoat` branch, not yet released) - the REST api plus the events
+  websocket, for the official instance or a self-hosted one the account names. Sign-in by email and password
+  (with its MFA code) or a pasted token; a captcha or email check is said in words and left to Stoat's own app.
+  Servers, categories, channels, groups and DMs; the account's permissions worked out per channel (so a channel it
+  may not write in shows why); history and live messages, edits, deletions, replies, embeds, masquerade names,
+  system messages as cards, files both ways through Autumn, reactions, custom emoji, members with roles and
+  presence, profile cards, friends, blocks, invites, moderation (kick, ban, timeout, roles), and voice calls on
+  LiveKit through the same client Matrix uses. Limits and slowmode are kept to before a request is made. The
+  code is `nobilis/src/backend/stoat/`; the verification scripts run it against a self-hosted instance in docker
+  (`scripts/probe-stoat-local.mjs`, `probe-stoat-voice.mjs`).
 
 ### Notifications are cards
 
