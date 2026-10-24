@@ -2642,7 +2642,7 @@ export class ChatStore {
    */
   async setPresence(
     accountId: string,
-    status: 'online' | 'idle' | 'dnd' | 'invisible' | 'offline',
+    status: 'online' | 'idle' | 'focus' | 'dnd' | 'invisible' | 'offline',
     statusText?: string
   ): Promise<void> {
     if (status === 'offline') return this.setAccountConnected(accountId, false)
@@ -2664,16 +2664,16 @@ export class ChatStore {
    * stepping away from all of them at once. An account that is signed out is
    * left alone - choosing a status is not a request to connect it.
    */
-  async setStatusEverywhere(status: 'online' | 'idle' | 'dnd' | 'invisible', statusText?: string): Promise<void> {
+  async setStatusEverywhere(status: 'online' | 'idle' | 'focus' | 'dnd' | 'invisible', statusText?: string): Promise<void> {
     // Only the accounts of a service that has this status: an idle for the
     // others is not asked of them, and they stay as they were.
     const connected = this.state.accounts.filter((a) => a.state === 'connected' && supportsStatus(a.service, status))
-    await Promise.all(connected.map((a) => this.setAccountStatus(a.id, status, a.service === 'discord' || a.service === 'matrix' ? statusText : undefined)))
+    await Promise.all(connected.map((a) => this.setAccountStatus(a.id, status, a.service === 'discord' || a.service === 'matrix' || a.service === 'stoat' ? statusText : undefined)))
   }
 
   async setAccountStatus(
     accountId: string,
-    status: 'online' | 'idle' | 'dnd' | 'invisible',
+    status: 'online' | 'idle' | 'focus' | 'dnd' | 'invisible',
     statusText?: string
   ): Promise<void> {
     try {

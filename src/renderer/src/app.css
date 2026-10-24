@@ -6310,6 +6310,11 @@ video.lightbox-media {
   background: var(--danger);
 }
 
+/* Stoat's Focus: only mentions reach the person. */
+.presence-focus {
+  background: var(--info, var(--primary));
+}
+
 /* Away and gone are a ring with nothing in it, as Discord draws them - which
    a solid grey could not be told from a picture that failed to load. */
 .presence-offline {
