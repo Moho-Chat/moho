@@ -595,9 +595,20 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
           staged.map((att) => att.path),
           staged.filter((att) => att.spoiler).map((att) => att.path)
         )
+      } else if (service === 'stoat') {
+        // Stoat carries several files in one message (up to five; the daemon says if the account is allowed fewer), and
+        // names a spoiler by the file's name, so each file's mark has to go with it.
+        for (let i = 0; i < staged.length; i += 5) {
+          const batch = staged.slice(i, i + 5)
+          void post(
+            i === 0 ? body : '',
+            batch.map((att) => att.path),
+            batch.filter((att) => att.spoiler).map((att) => att.path)
+          )
+        }
       } else {
         staged.forEach((att, i) => {
-          void post(i === 0 ? body : '', att.path)
+          void post(i === 0 ? body : '', att.path, att.spoiler ? [att.path] : undefined)
         })
       }
       setStaged([])

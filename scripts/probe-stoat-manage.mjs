@@ -15,7 +15,12 @@ import { accounts, as, upload, API } from './lib/stoat-local.mjs'
 const out = process.argv[2] ?? '.'
 fs.mkdirSync(out, { recursive: true })
 const acc = accounts()
-const { page, stop } = await launchApp({ env: { MOHO_UI_SHOTS: '1' } })
+const png0 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+const pickA = path.resolve(out, 'staged.png')
+const pickB = path.resolve(out, 'staged-two.png')
+fs.writeFileSync(pickA, png0)
+fs.writeFileSync(pickB, png0)
+const { page, stop } = await launchApp({ env: { MOHO_UI_SHOTS: '1', MOHO_PICK_FILES: `${pickA}\n${pickB}` } })
 const ev = (code) => page.evaluate(code)
 const rpc = (method, params = {}) => ev(`window.moho.rpc(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
 const shot = async (name) => {
@@ -271,6 +276,23 @@ try {
   await as('bob', 'DELETE', `/channels/${channelId.General}/messages/${first._id}`).catch(() => {})
   await as('bob', 'DELETE', `/channels/${channelId.General}/messages/${second._id}`).catch(() => {})
 
+  // --- A file marked as a spoiler in the message box is sent as one, through the box itself.
+  await ev(`window.__mohoShots.store.selectBuffer(${JSON.stringify(general)})`)
+  await sleep(800)
+  for (let n = 0; n < 2; n++) {
+    await ev(`document.querySelector('.composer-plus').click()`)
+    await sleep(300)
+    await ev(`[...document.querySelectorAll('.context-menu-item')].find((b) => /Upload a file/.test(b.textContent))?.click()`)
+    await sleep(500)
+  }
+  await ev(`(() => { const cards = [...document.querySelectorAll('.staged-card')]; cards[0].querySelector('.staged-action').click() })()`)
+  await sleep(300)
+  check('two staged files, the first marked as a spoiler in the tray', (await ev(`document.querySelectorAll('.staged-card').length`)) === 2 && (await ev(`document.querySelectorAll('.staged-card.is-spoiler').length`)) === 1)
+  await ev(`(() => { const box = document.querySelector('.composer-input-wrap [contenteditable]'); box.focus(); document.execCommand('insertText', false, 'from the tray'); box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })) })()`)
+  const sentOne = await until(async () => (await as('bob', 'GET', `/channels/${channelId.General}/messages?limit=10`)).find((m) => m.content === 'from the tray' && m.attachments?.length === 2), 20000)
+  check('and they go as one message, only the marked one named as a spoiler', !!sentOne && sentOne.attachments.filter((a) => /^SPOILER_/.test(a.filename)).length === 1 && /^SPOILER_/.test(sentOne.attachments[0].filename), JSON.stringify(sentOne?.attachments?.map((a) => a.filename)))
+  if (sentOne) await as('alice', 'DELETE', `/channels/${channelId.General}/messages/${sentOne._id}`).catch(() => {})
+
   // --- An emoji from a server this account is not in is still a picture.
   const away = await as('bob', 'POST', '/servers/create', { name: `Elsewhere ${Date.now().toString(36).slice(-4)}` })
   const awayServer = away.server?._id ?? away._id
@@ -321,8 +343,7 @@ try {
   await tab('Webhooks')
   await shot('stoat-settings-webhooks.png')
   await tab('Audit log')
-  await sleep(600)
-  const audit = await ev(`document.querySelector('.stoat-server .room-settings-body').innerText`)
+  const audit = (await until(async () => { const t = await ev(`document.querySelector('.stoat-server .room-settings-body').innerText`); return /made|changed|deleted/.test(t) ? t : null }, 30000)) ?? ''
   check('the audit log tab reads in words', /Alice|alice/.test(audit) && /made|changed|deleted/.test(audit), audit.slice(0, 100).replace(/\n/g, ' | '))
   await shot('stoat-settings-audit.png')
   await ev(`document.querySelector('.modal-scrim').click()`)
