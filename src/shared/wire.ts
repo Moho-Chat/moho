@@ -547,6 +547,8 @@ export interface Embed {
   mediaUrl?: string
   /** Whether `mediaUrl` is a video or a picture, as the daemon knows it. */
   mediaKind?: 'video' | 'image'
+  /** What the card is about, where it is about one thing: an invite's server, by id. */
+  target?: string
   /** Its size, so the row is laid out before it has loaded. */
   width?: number
   height?: number

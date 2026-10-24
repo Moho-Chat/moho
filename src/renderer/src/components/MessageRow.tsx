@@ -11,6 +11,7 @@ import { MediaEmbed } from './MediaEmbed'
 import { LinkCard } from './LinkCard'
 import { isPlainEmoji } from '../lib/recents'
 import { KickEventCard, NotificationCard, isKickEvent } from './KickEventCard'
+import { InviteCard } from './InviteCard'
 import { COMMON_EMOJI, EmojiPicker, readRecent, type StickerEntry } from './EmojiPicker'
 import { reactionLabel, reactorsSentence } from '../lib/reactions'
 import { UploadMeter } from './UploadMeter'
@@ -1319,7 +1320,9 @@ function MessageRowBody({
           ))}
 
           {(message.embeds || []).map((embed, i) =>
-            embed.kind === 'gif' || isKickEvent(embed) ? null : service === 'telegram' ? (
+            embed.kind === 'gif' || isKickEvent(embed) ? null : embed.kind === 'invite' ? (
+              <InviteCard key={`e${i}`} embed={embed} accountId={store.accountFor(bufferId)?.id ?? ''} />
+            ) : service === 'telegram' ? (
               <LinkCard key={`e${i}`} embed={embed} bufferId={bufferId} messageId={message.id} />
             ) : (
             <div

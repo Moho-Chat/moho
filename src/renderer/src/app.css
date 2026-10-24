@@ -3544,6 +3544,37 @@ img.smilie {
   max-width: 520px;
 }
 
+.invite-card {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-m);
+  margin: var(--spacing-xs) 0;
+  padding: var(--spacing-s) var(--spacing-m);
+  max-width: 420px;
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-low);
+}
+
+.invite-card .avatar,
+.invite-card .avatar img,
+.invite-card .avatar-fallback {
+  border-radius: var(--corner-radius);
+}
+
+.invite-card-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.invite-card-name {
+  font-weight: var(--weight-semibold);
+}
+
+.invite-card-join {
+  flex: none;
+}
+
 .rich-embed-title {
   display: block;
   font-weight: var(--weight-semibold);

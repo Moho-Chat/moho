@@ -218,6 +218,31 @@ try {
   await shot('stoat-spoiler.png')
   await as('bob', 'DELETE', `/channels/${channelId.General}/messages/${covered._id}`).catch(() => {})
 
+  // --- A link to a server is a card to join it.
+  const lonely = await as('bob', 'POST', '/servers/create', { name: `Kittens ${Date.now().toString(36).slice(-4)}` })
+  const lonelyId = lonely.server?._id ?? lonely._id
+  const lonelyChannel = (lonely.channels ?? [])[0]?._id ?? lonely.server?.channels?.[0]
+  const lonelyInvite = await as('bob', 'POST', `/channels/${lonelyChannel}/invites`, {})
+  const ownApp = (await (await fetch(API + '/')).json()).app
+  const invitePost = await as('bob', 'POST', `/channels/${channelId.General}/messages`, { content: `come join ${ownApp}/invite/${lonelyInvite._id} or back at ${ownApp}/invite/${acc.server.invite}` })
+  const cards = await until(async () => {
+    const m = (await rpc('getBacklog', { bufferId: general })).find((x) => x.id === invitePost._id)
+    return m?.embeds?.filter((e) => e.kind === 'invite').length === 2 ? m.embeds : null
+  }, 20000)
+  check('links to two servers are drawn as cards: one to join, one already joined', !!cards && cards.some((e) => e.cta?.label === 'Join' && /^Kittens/.test(e.title)) && cards.some((e) => e.cta?.label === 'Joined'), JSON.stringify(cards?.map((e) => [e.title, e.description, e.cta?.label])))
+  await ev(`window.__mohoShots.store.selectBuffer(${JSON.stringify(general)})`)
+  const drawnCard = await until(async () => ev(`document.querySelectorAll('.invite-card').length === 2`), 15000)
+  check('and the window shows them', !!drawnCard)
+  await shot('stoat-invite-cards.png')
+  await ev(`[...document.querySelectorAll('.invite-card')].find((c) => /Kittens/.test(c.textContent)).querySelector('button').click()`)
+  const nowIn = await until(async () => (await rpc('listBufferGroups').catch(() => [])).some?.((g) => g.id === `${account}|server:${lonelyId}`) || (await ev(`window.__mohoShots.state().groups.some((g) => g.id === ${JSON.stringify(`${account}|server:${lonelyId}`)})`)), 20000)
+  check('pressing Join joins that server', !!nowIn)
+  const flipped = await until(async () => ev(`[...document.querySelectorAll('.invite-card button')].every((b) => b.textContent === 'Joined')`), 10000)
+  check('and its card says Joined', !!flipped)
+  await as('alice', 'DELETE', `/servers/${lonelyId}`).catch(() => {})
+  await as('bob', 'DELETE', `/servers/${lonelyId}`).catch(() => {})
+  await as('bob', 'DELETE', `/channels/${channelId.General}/messages/${invitePost._id}`).catch(() => {})
+
   // --- Reactions are counted once: this account's own comes back as an event, and was once counted again here.
   const counted = await as('bob', 'POST', `/channels/${channelId.General}/messages`, { content: 'count me' })
   const tally = async () => (await rpc('getBacklog', { bufferId: general })).find((m) => m.id === counted._id)?.reactions?.find((r) => r.emoji === '👍')
