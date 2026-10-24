@@ -202,6 +202,17 @@ try {
   await shot('stoat-spoiler.png')
   await as('bob', 'DELETE', `/channels/${channelId.General}/messages/${covered._id}`).catch(() => {})
 
+  // --- An emoji from a server this account is not in is still a picture.
+  const away = await as('bob', 'POST', '/servers/create', { name: `Elsewhere ${Date.now().toString(36).slice(-4)}` })
+  const awayServer = away.server?._id ?? away._id
+  const foreignFile = await upload('bob', 'far.png', png, 'image/png', 'emojis')
+  await as('bob', 'PUT', `/custom/emoji/${foreignFile}`, { name: 'faraway', parent: { type: 'Server', id: awayServer } })
+  const foreign = await as('bob', 'POST', `/channels/${channelId.General}/messages`, { content: `look :${foreignFile}:` })
+  const seenForeign = await until(async () => (await rpc('getBacklog', { bufferId: general })).find((m) => m.id === foreign._id)?.body)
+  check('an emoji from a server alice is not in is drawn as a picture', new RegExp(`^look \\[stoat:emoji:${foreignFile}:file://.*/stoat-media/[0-9a-f]+\\.png\\]$`).test(seenForeign ?? ''), seenForeign)
+  await as('bob', 'DELETE', `/servers/${awayServer}`).catch(() => {})
+  await as('bob', 'DELETE', `/channels/${channelId.General}/messages/${foreign._id}`).catch(() => {})
+
   // --- Pictures actually load in the window: a person's avatar in the member list, and the server's icon on the rail.
   const loaded = (selector) => ev(`[...document.querySelectorAll(${JSON.stringify(selector)})].some((i) => i.complete && i.naturalWidth > 0)`)
   const avatarId = await upload('bob', 'bob.png', png, 'image/png', 'avatars')
