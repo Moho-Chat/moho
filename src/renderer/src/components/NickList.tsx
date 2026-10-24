@@ -90,6 +90,8 @@ function kickPermissions(members: Member[], me: string): Record<string, boolean>
  * Why the list says what it says, for the one service where it needs saying.
  */
 function rosterNote(service: string | undefined, total: number, listed: number): string | undefined {
+  // A server too large to list whole: those online, the most senior first.
+  if (service === 'stoat') return total > listed ? `${total.toLocaleString()} are online. Only the ${listed.toLocaleString()} most senior are listed` : undefined
   if (service !== 'kick' && service !== 'twitch') return undefined
   const base = `${service === 'twitch' ? 'Twitch' : 'Kick'} has no viewer list — this counts everybody who has spoken here since you opened it`
   return total > listed ? `${base}. The ${listed.toLocaleString()} most recent are listed.` : base
@@ -266,7 +268,7 @@ export function NickList(): JSX.Element {
           // ask for - it is built from who has spoken - and calling that
           // "members" would claim to know something nobody here can know.
           <span className="small muted ellipsis" title={rosterNote(account?.service, total, members.length)}>
-            {total.toLocaleString()} {account?.service === 'kick' || account?.service === 'twitch' ? 'recently talking' : 'members'}
+            {total.toLocaleString()} {account?.service === 'kick' || account?.service === 'twitch' ? 'recently talking' : account?.service === 'stoat' && !members.some((m) => m.away) ? 'online' : 'members'}
           </span>
         )}
         <IconButton
