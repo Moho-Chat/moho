@@ -672,7 +672,7 @@ function MessageRowBody({
     // rather than gated on a power level read here: the server decides, and
     // it refuses in words worth showing - hiding the action from somebody who
     // could have used it is the worse mistake.
-    ...((service === 'matrix' || service === 'discord' || service === 'telegram') && !isSystem
+    ...((service === 'matrix' || service === 'discord' || service === 'telegram' || service === 'stoat') && !isSystem
       ? ([
           {
             label: pinned ? 'Unpin from this conversation' : 'Pin to this conversation',
@@ -1810,6 +1810,9 @@ function ReactionEmoji({ emoji }: { emoji: string }): JSX.Element {
   // Steam's, held as a token naming the emoticon or sticker.
   const steam = steamTokenOf(emoji)
   if (steam) return <img className="reaction-emoji" src={steamPictureUrl(steam.kind, steam.name)} alt={steam.name} />
+  // Stoat's, which the daemon holds as the picture's own token (see format.ts) so the pill is drawn with it.
+  const stoat = emoji.match(/^\[stoat:emoji:([A-Za-z0-9_]{1,32}):(file:\/\/[^\]\s]*\/stoat-media\/[A-Za-z0-9._-]+)\]$/)
+  if (stoat) return <img className="reaction-emoji" src={media(stoat[2])} alt={stoat[1]} />
   const custom = emoji.match(/^<?a?:?([A-Za-z0-9_~]{2,32}):(\d+)>?$/)
   if (!custom) return <span>{emoji}</span>
   return <img className="reaction-emoji" src={media(discordEmojiUrl(custom[2]))} alt={custom[1]} />

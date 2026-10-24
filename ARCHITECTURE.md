@@ -246,10 +246,14 @@ called `subscribe` for that buffer.
   Servers, categories, channels, groups and DMs; the account's permissions worked out per channel (so a channel it
   may not write in shows why); history and live messages, edits, deletions, replies, embeds, masquerade names,
   system messages as cards, files both ways through Autumn, reactions, custom emoji, members with roles and
-  presence, profile cards, friends, blocks, invites, moderation (kick, ban, timeout, roles), and voice calls on
-  LiveKit through the same client Matrix uses. Limits and slowmode are kept to before a request is made. The
-  code is `nobilis/src/backend/stoat/`; the verification scripts run it against a self-hosted instance in docker
-  (`scripts/probe-stoat-local.mjs`, `probe-stoat-voice.mjs`).
+  presence, profile cards, friends, blocks, invites, moderation (kick, ban, timeout, roles), searching and pins,
+  mutes kept in the account's own settings, the account's own profile and presence, and voice calls on LiveKit
+  through the same client Matrix uses (a call begun in a direct message rings the other, and one begun there rings
+  here). A server's owner or moderators get its settings: channels and their headings, roles and permissions by
+  name, who may do what in one channel, webhooks and the audit log. Limits and slowmode are kept to before a
+  request is made. The code is `nobilis/src/backend/stoat/`; the verification scripts run it against a
+  self-hosted instance in docker (`scripts/probe-stoat-local.mjs`, `probe-stoat-voice.mjs`,
+  `probe-stoat-manage.mjs`).
 
 ### Notifications are cards
 

@@ -343,7 +343,7 @@ export function BufferList(): JSX.Element {
   /** The call that sets a mute on the account itself, for a service that keeps one. */
   const accountMute = (accountId: string): string | null => {
     const service = accounts.find((a) => a.id === accountId)?.service
-    return service === 'matrix' ? 'setMatrixRoomMuted' : service === 'discord' ? 'setDiscordChannelMuted' : service === 'steam' ? 'steamSetFriendMuted' : service === 'telegram' ? 'setTelegramChatMuted' : null
+    return service === 'matrix' ? 'setMatrixRoomMuted' : service === 'discord' ? 'setDiscordChannelMuted' : service === 'steam' ? 'steamSetFriendMuted' : service === 'telegram' ? 'setTelegramChatMuted' : service === 'stoat' ? 'setStoatChannelMuted' : null
   }
   const isEffectivelyMuted = (buffer: BufferEntry): boolean =>
     isMutedBuffer(buffer, muted, mutedGroups)

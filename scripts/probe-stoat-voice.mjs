@@ -120,6 +120,29 @@ try {
   const left = await until(async () => (await b.ev(`(window.__mohoShots.state().stoatVoice[${JSON.stringify(b.room)}] ?? []).map((m) => m.name).join(',')`)) === 'bob')
   check('when alice hangs up, bob is alone in it', !!left)
   await b.ev(`window.__mohoShots.store.hangUpMatrixCall()`)
+
+  // A call begun in a direct message rings the other person's window, who answers it.
+  const dmA = (await a.rpc('openDirectMessage', { accountId: a.account, userId: acc.bob.id })).bufferId
+  const dmB = (await b.rpc('openDirectMessage', { accountId: b.account, userId: acc.alice.id })).bufferId
+  await a.ev(`window.__mohoShots.store.joinStoatCall(${JSON.stringify(dmA)}, false)`)
+  const rung = await until(async () => (await b.ev(`window.__mohoShots.state().incomingCalls.some((c) => c.bufferId === ${JSON.stringify(dmB)} && c.ringing)`)) === true)
+  check('a call alice begins in her direct message with bob rings bob’s window', !!rung)
+  await b.shot('stoat-ring-bob.png')
+  await b.ev(`window.__mohoShots.store.acceptCall(${JSON.stringify(dmB)})`)
+  check('and bob answers it', !!(await until(async () => (await b.ev(`window.__mohoShots.state().activeCall?.phase`)) === 'connected')))
+  check('and it stops ringing', (await b.ev(`window.__mohoShots.state().incomingCalls.some((c) => c.ringing)`)) === false)
+  const together = await until(async () => (await a.ev(`(window.__mohoShots.state().stoatVoice[${JSON.stringify(dmA)}] ?? []).map((m) => m.name).sort().join(',')`)) === 'alice,bob')
+  check('with both in it', !!together)
+  await b.ev(`window.__mohoShots.store.hangUpMatrixCall()`)
+  await a.ev(`window.__mohoShots.store.hangUpMatrixCall()`)
+  // A ring declined stops, and the call carries on without them.
+  await a.ev(`window.__mohoShots.store.joinStoatCall(${JSON.stringify(dmA)}, false)`)
+  await until(async () => (await b.ev(`window.__mohoShots.state().incomingCalls.some((c) => c.ringing)`)) === true)
+  await b.ev(`window.__mohoShots.store.declineCall(${JSON.stringify(dmB)})`)
+  check('a ring turned down stops', (await b.ev(`window.__mohoShots.state().incomingCalls.some((c) => c.ringing)`)) === false)
+  await a.ev(`window.__mohoShots.store.hangUpMatrixCall()`)
+  const quiet = await until(async () => (await b.ev(`window.__mohoShots.state().incomingCalls.length`)) === 0)
+  check('and nothing rings once the caller has gone', !!quiet)
 } catch (e) {
   crashed = true
   console.log('CRASHED:', e.message)

@@ -728,6 +728,8 @@ export interface Member {
   bot?: boolean
   /** The roles this person holds here, by name. Discord only. */
   roles?: string[]
+  /** What they are to this account where the service keeps friends: "Friend", "Blocked", "None"... Stoat only. */
+  relationship?: string
   powerLevel?: number
   /**
    * The protocol's own presence word - "online", "idle", "dnd", "offline".

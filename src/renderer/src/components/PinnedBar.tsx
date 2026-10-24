@@ -89,7 +89,7 @@ function PinnedMessagesBanner({ bufferId }: { bufferId: string }): JSX.Element |
   const rows = useChat((s) => s.pinnedRows)[bufferId]
   const [at, setAt] = useState(0)
   const [, redraw] = useState(0)
-  const hasPins = account.startsWith('discord:') || account.startsWith('matrix:') || account.startsWith('telegram:')
+  const hasPins = account.startsWith('discord:') || account.startsWith('matrix:') || account.startsWith('telegram:') || account.startsWith('stoat:')
 
   useEffect(() => {
     setAt(0)

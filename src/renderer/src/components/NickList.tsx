@@ -339,6 +339,16 @@ export function NickList(): JSX.Element {
                       }
                     : undefined
                 }
+                onUnfriend={
+                  account?.service === 'stoat' && member.relationship === 'Friend' && member.userId
+                    ? () => {
+                        void window.moho
+                          .rpc('answerStoatFriendRequest', { accountId: account.id, userId: member.userId, accept: false })
+                          .then(() => store.toast('info', `${member.nick} is no longer a friend`))
+                          .catch((e: Error) => store.toast('error', e.message))
+                      }
+                    : undefined
+                }
                 onToggleBlock={toggleBlocked}
                 onIgnore={(ignored) => {
                   if (!account) return
@@ -554,6 +564,8 @@ interface MemberRowProps {
   onProfile?: () => void
   /** Matrix only: tell the homeserver's moderators about this person. */
   onReport?: (reason: string) => void
+  /** Stoat only: stop being friends with somebody who is one. */
+  onUnfriend?: () => void
   onCall: () => void
 }
 
@@ -580,6 +592,7 @@ function MemberRow({
   onCall,
   onProfile,
   onReport,
+  onUnfriend,
   onRemoveFromGroup
 }: MemberRowProps): JSX.Element {
   const { menu, open, close } = useContextMenu()
@@ -694,6 +707,7 @@ function MemberRow({
     // somebody does for themselves; kicking and banning need power here and
     // reach only this room. This is the one that reaches whoever can act
     // across all of them, and anybody may send it.
+    ...(onUnfriend ? ([{ separator: true }, { label: 'Remove friend', icon: 'person_remove', danger: true, onClick: onUnfriend }] as MenuEntry[]) : []),
     ...(onReport
       ? ([
           { separator: true },

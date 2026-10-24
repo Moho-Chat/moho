@@ -12,6 +12,8 @@ import { steamTokenOf } from './format'
 export function reactionLabel(emoji: string, unicodeNames: ReadonlyMap<string, string> = new Map()): string {
   const custom = emoji.match(/^<a?:([A-Za-z0-9_~]{2,32}):\d+>$/)
   if (custom) return `:${custom[1]}:`
+  const stoat = emoji.match(/^\[stoat:emoji:([A-Za-z0-9_]{1,32}):file:\/\/[^\]\s]*\]$/)
+  if (stoat) return `:${stoat[1]}:`
   const steam = steamTokenOf(emoji)
   if (steam) return `:${steam.name}:`
   const name = unicodeNames.get(emoji)

@@ -3,6 +3,7 @@ import { SwitchRow } from './Switch'
 import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton, ServiceMark } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
+import { StoatAccountTools } from './StoatAccountTools'
 import { SteamAccountTools } from './SteamAccountTools'
 import { TwitchSignIn } from './TwitchSignIn'
 import { IgnoreList } from './IgnoreList'
@@ -477,6 +478,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
           {account.service === 'matrix' && <MatrixAccountTools account={account} />}
 
           {account.service === 'steam' && <SteamAccountTools account={account} />}
+          {account.service === 'stoat' && <StoatAccountTools account={account} />}
           {account.service === 'twitch' && <TwitchAccountTools account={account} />}
 
           {account.service === 'sneedchat' && (
@@ -1900,6 +1902,11 @@ function StoatForm({ onDone }: { onDone: () => void }): JSX.Element {
       <p className="small muted">
         Sign in to your Stoat (formerly Revolt) account. Making an account, and answering its captcha or email check, is
         done in Stoat&apos;s own app first. moho keeps only the session Stoat issues, never the password.
+      </p>
+      <p className="small muted">
+        What a third-party client does here: it signs in once and keeps that session, shown in Stoat&apos;s own list of sessions
+        as &ldquo;moho (your system)&rdquo;, and it never signs in again to get over a dropped connection. Ending the session in Stoat signs moho out.
+        It keeps to the instance&apos;s limits, tells you when one applies, and does not make accounts, run bots or answer captchas.
       </p>
       <TorSwitch service="stoat" on={useTor} onChange={setUseTor} />
       <label className="field">

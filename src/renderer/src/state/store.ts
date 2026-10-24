@@ -2176,6 +2176,12 @@ export class ChatStore {
     // Optimistic: the ringing stops the instant it is answered, rather than a
     // round trip later with the ringtone still going.
     this.setRinging({ ...this.callFor(bufferId), ringing: false })
+    // A Stoat call is answered by joining it on its media server.
+    if (this.state.buffers.find((b) => b.id === bufferId)?.accountId.startsWith('stoat:')) {
+      await this.selectBuffer(bufferId, true)
+      await this.joinStoatCall(bufferId, false)
+      return
+    }
     try {
       await window.moho.rpc('acceptCall', { bufferId })
       await this.selectBuffer(bufferId, true)
@@ -2188,7 +2194,7 @@ export class ChatStore {
   async declineCall(bufferId: string): Promise<void> {
     this.setRinging({ ...this.callFor(bufferId), ringing: false })
     try {
-      await window.moho.rpc('declineCall', { bufferId })
+      await window.moho.rpc(this.state.buffers.find((b) => b.id === bufferId)?.accountId.startsWith('stoat:') ? 'declineStoatCall' : 'declineCall', { bufferId })
     } catch (e) {
       this.toast('error', `Couldn't decline: ${(e as Error).message}`)
     }
@@ -3288,7 +3294,9 @@ export class ChatStore {
       activeCall: { accountId: account.id, bufferId, phase: 'connecting', video, muted: false, sharingScreen: false, cameraOn: video, onServer: true }
     })
     try {
-      const way = await window.moho.rpc<{ token: string; url: string }>('joinStoatCall', { bufferId })
+      const way = await window.moho.rpc<{ token: string; url: string; note?: string | null }>('joinStoatCall', { bufferId })
+      // What a new account is held to is said once, as the call starts.
+      if (way.note) this.toast('info', way.note)
       let wasConnected = false
       const sfu = new SfuCall(
         {
@@ -4284,8 +4292,13 @@ export class ChatStore {
             [data.bufferId as string]: (data.pinned as string[]) || []
           }
         })
-        // The pins changed under rows already read: read them again.
-        if (this.state.pinnedRows[data.bufferId as string]) void this.loadPins(data.bufferId as string).catch(() => {})
+        // The pins changed under rows already read: read them again. Only when they did - the daemon says the pins
+        // each time it is asked for them, and reading again on every telling would ask for ever.
+        {
+          const held = this.state.pinnedRows[data.bufferId as string]
+          const now = (data.pinned as string[]) || []
+          if (held && (held.length !== now.length || held.some((m) => !now.includes(m.id)))) void this.loadPins(data.bufferId as string).catch(() => {})
+        }
         break
 
       case 'pinnedMessage': {

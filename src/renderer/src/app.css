@@ -11356,6 +11356,22 @@ html[data-reduce-motion] *::after {
   box-shadow: var(--shadow-3);
 }
 
+.stoat-server {
+  width: 680px;
+}
+
+/* A choice sits at the row's right-hand end and leaves the words their room; a row's buttons are the small kind. */
+.stoat-server .field-row > select.text-field {
+  flex: 0 0 9rem;
+  width: 9rem;
+}
+
+.stoat-server .steam-group-row .button,
+.stoat-server .steam-group-row .confirm-button .button {
+  padding: 2px 10px;
+  font-size: var(--font-size-small);
+}
+
 .steam-group-body {
   padding-top: var(--spacing-s);
 }

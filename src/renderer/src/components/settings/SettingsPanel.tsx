@@ -130,6 +130,7 @@ const CATEGORIES: { id: string; label: string; group: string; icon?: string; ser
   { id: 'kick', label: 'Kick', group: 'Networks', service: 'kick' },
   { id: 'twitch', label: 'Twitch', group: 'Networks', service: 'twitch' },
   { id: 'telegram', label: 'Telegram', group: 'Networks', service: 'telegram' },
+  { id: 'stoat', label: 'Stoat', group: 'Networks', service: 'stoat' },
   { id: 'about', label: 'About', group: 'About' }
 ]
 
@@ -252,6 +253,8 @@ function Page({ id }: { id: string }): JSX.Element | null {
       return <TwitchSettings />
     case 'telegram':
       return <TelegramSettings />
+    case 'stoat':
+      return <StoatSettings />
     case 'about':
       return <AboutSettings />
     default:
@@ -1325,6 +1328,57 @@ function TelegramSettings(): JSX.Element {
       <SettingsSection
         title="What moho does not do"
         description="Secret chats, voice and video calls, stories, payments and bots' inline mode are not part of moho. Signing in by QR code, folders, forum topics, drafts and scheduled messages are not done yet."
+      />
+    </>
+  )
+}
+
+/**
+ * Stoat (formerly Revolt). What is built is in Gitea issue #32; this says how the parts that are not obvious behave.
+ */
+function StoatSettings(): JSX.Element {
+  return (
+    <>
+      <SettingsSection
+        title="Stoat"
+        description="An account names its instance (the official one, or one you or a friend host) and signs in once with email and password, or with a session token pasted from another app. moho keeps the session, never the password, and does not make accounts or answer captchas: do that in Stoat's own app first. Add an account from the Accounts pane."
+      />
+
+      <SettingsSection
+        title="Typing"
+        description="Stoat's own apps tell the others when you are typing, and so does moho. Turn it off here if you would rather not."
+      >
+        <ToggleSetting settingKey="stoat.sendTyping" label="Tell others when I am typing" defaultValue={true} />
+      </SettingsSection>
+
+      <SettingsSection
+        title="Muting and notifications"
+        description="Muting a conversation from its menu is kept in your Stoat account's own settings, so it holds in the app on your phone as well, and one you muted there is muted here. A server you muted there silences its channels here too."
+      />
+
+      <SettingsSection
+        title="Presence"
+        description="Online, Idle, Do not disturb (Stoat's Busy) and Invisible from the status menu are Stoat's own presences for the account. The line you write beside your status is set under the account in the Accounts pane, with your display name, pronouns, about text and picture."
+      />
+
+      <SettingsSection
+        title="Calls"
+        description="Voice channels and direct messages use Stoat's media servers: microphone, camera and a shared screen. Starting a call in a direct message or a group rings the others on their phones, and one that begins there while you are away rings here. While an account is new (the instance says for how long) Stoat holds sound and video to lower limits, and moho says so as the call begins."
+      />
+
+      <SettingsSection
+        title="Servers you look after"
+        description="Where your permissions allow it, a server's menu opens its settings: name, picture and description, channels and their headings, roles and what each may do, who may do what in one channel, webhooks, and the record of what moderators did. moho shows only what you may do, and Stoat checks again and says why in words if it refuses."
+      />
+
+      <SettingsSection
+        title="Limits"
+        description="The instance says how long a message may be, how many files, how large each, how many servers, roles, channels and reactions, and how many friend requests may wait. moho keeps to them before it asks, and says which one it is when one applies."
+      />
+
+      <SettingsSection
+        title="What moho does not do"
+        description="Making or deleting accounts, changing the email or password, bots and their invites, the server discovery list, web push, and Stoat's plugin API are not part of moho. Stoat has no stickers, so there is no sticker button."
       />
     </>
   )
