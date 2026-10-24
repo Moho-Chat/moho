@@ -2734,10 +2734,27 @@ export class ChatStore {
   ackIfReading(bufferId: string): void {
     if (bufferId !== this.state.activeBufferId || !this.windowIsActive()) return
     const now = Date.now()
-    if (now - (this.ackedAt.get(bufferId) ?? 0) < 5000) return
+    const wait = 5000 - (now - (this.ackedAt.get(bufferId) ?? 0))
+    if (wait > 0) {
+      // Too soon after the last: said when the few seconds are up instead of never. A message that arrived inside them is
+      // the newest, and without this it was left unread on the phone until another one came.
+      if (!this.ackLater.has(bufferId)) {
+        this.ackLater.set(
+          bufferId,
+          setTimeout(() => {
+            this.ackLater.delete(bufferId)
+            this.ackIfReading(bufferId)
+          }, wait + 50)
+        )
+      }
+      return
+    }
     this.ackedAt.set(bufferId, now)
     bestEffort(this.ackRead(bufferId), 'ack read')
   }
+
+  /** A conversation's turn to be told is read that came too soon after the last, waiting for it. */
+  private ackLater = new Map<string, ReturnType<typeof setTimeout>>()
 
   private windowIsActive(): boolean {
     return document.visibilityState === 'visible' && document.hasFocus()

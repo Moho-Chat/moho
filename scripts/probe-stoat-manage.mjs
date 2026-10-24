@@ -259,6 +259,18 @@ try {
   check('and bob’s alongside it, and taken away again, leave the count right', (await tally())?.count === 1 && (await tally())?.me === false, JSON.stringify(await tally()))
   await as('bob', 'DELETE', `/channels/${channelId.General}/messages/${counted._id}`).catch(() => {})
 
+  // --- Reading here is reading there: what arrives in the channel on screen is told to Stoat as read, even two in a few seconds.
+  await page.call('Emulation.setFocusEmulationEnabled', { enabled: true })
+  await ev(`window.__mohoShots.store.selectBuffer(${JSON.stringify(general)})`)
+  await sleep(2500)
+  const lastRead = async () => (await as('alice', 'GET', '/sync/unreads')).find((u) => u._id.channel === channelId.General)?.last_id
+  const first = await as('bob', 'POST', `/channels/${channelId.General}/messages`, { content: 'read me once' })
+  await sleep(2000)
+  const second = await as('bob', 'POST', `/channels/${channelId.General}/messages`, { content: 'read me twice' })
+  check('a message that arrives in the open channel is told to Stoat as read, and a second soon after is too', !!(await until(async () => (await lastRead()) === second._id, 15000)), JSON.stringify([first._id, second._id, await lastRead()]))
+  await as('bob', 'DELETE', `/channels/${channelId.General}/messages/${first._id}`).catch(() => {})
+  await as('bob', 'DELETE', `/channels/${channelId.General}/messages/${second._id}`).catch(() => {})
+
   // --- An emoji from a server this account is not in is still a picture.
   const away = await as('bob', 'POST', '/servers/create', { name: `Elsewhere ${Date.now().toString(36).slice(-4)}` })
   const awayServer = away.server?._id ?? away._id

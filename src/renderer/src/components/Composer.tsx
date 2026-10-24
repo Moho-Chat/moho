@@ -39,7 +39,7 @@ interface StagedAttachment {
   preview?: string
   /** In bytes, once it has been asked. */
   size?: number | null
-  /** Sent hidden behind a spoiler: Discord and Steam. */
+  /** Sent hidden behind a spoiler: Discord, Steam, Telegram and Stoat. */
   spoiler: boolean
 }
 
@@ -1105,7 +1105,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
               {/* On the card's corner, and there only while it is pointed at
                   or focused - they would be a dozen buttons otherwise. */}
               <div className="staged-actions">
-                {(service === 'discord' || service === 'steam' || service === 'telegram') && (
+                {(service === 'discord' || service === 'steam' || service === 'telegram' || service === 'stoat') && (
                   <button
                     type="button"
                     className={classes('staged-action', att.spoiler && 'on')}
