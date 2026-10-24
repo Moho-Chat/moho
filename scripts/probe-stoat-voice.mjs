@@ -92,6 +92,9 @@ try {
   check('and what alice sends reaches bob', !!arrivingB)
   const video = await until(async () => (await a.ev(`window.__mohoShots.store.callTiles().find((t) => t.label === 'bob')?.hasVideo`)) === true)
   check('bob’s picture is video', !!video)
+  await a.ev(`window.__mohoShots.store.selectBuffer(${JSON.stringify(a.room)})`)
+  const listed = await until(async () => (await a.ev(`[...document.querySelectorAll('.bufferlist .voice-member, .voice-member')].map((e) => e.textContent.trim()).join(',')`)).includes('bob'))
+  check('the channel list names who is in the voice room under it', !!listed)
   await a.shot('stoat-call-alice.png')
 
   // The camera and the microphone, from the buttons' own methods.

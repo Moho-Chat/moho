@@ -1,11 +1,12 @@
 import { useMediaUrl } from '../lib/route'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { bufferLink } from '../lib/bufferlink'
 import { Icon, IconButton, ServiceMark } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { bufferMenuEntries } from '../lib/buffermenu'
 import { UserFooter } from './UserFooter'
 import { VoiceChannels } from './VoiceChannels'
+import { StoatVoiceWho } from './StoatVoiceWho'
 import { SteamVoiceRooms } from './SteamVoiceRooms'
 import { VoicePanel } from './VoicePanel'
 import { presenceClass, presenceLabel } from '../lib/presence'
@@ -381,8 +382,8 @@ export function BufferList(): JSX.Element {
   }
 
   const renderRow = (b: BufferEntry): JSX.Element => (
+    <Fragment key={b.id}>
     <BufferRow
-      key={b.id}
       buffer={b}
       active={b.id === activeBufferId}
       muted={isEffectivelyMuted(b)}
@@ -458,6 +459,9 @@ export function BufferList(): JSX.Element {
       onDragEnd={endDrag}
       filed={telegramPage ? !!viewAssignment[b.id] : !!assignment[b.id] && myCategories.some((c) => c.id === assignment[b.id])}
     />
+    {/* Who is in a Stoat voice channel, under it. */}
+    {b.accountId.startsWith('stoat:') && b.nameIcon === 'volume_up' && <StoatVoiceWho bufferId={b.id} accountId={b.accountId} />}
+    </Fragment>
   )
 
   // What is in flight lives in a ref as well as in state, for the reason the

@@ -10,7 +10,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { launchApp, sleep } from './lib/harness.mjs'
-import { accounts, as, API } from './lib/stoat-local.mjs'
+import { accounts, as, upload, API } from './lib/stoat-local.mjs'
 
 const out = process.argv[2] ?? '.'
 fs.mkdirSync(out, { recursive: true })
@@ -192,6 +192,15 @@ try {
     }
   }
   await as('alice', 'DELETE', `/channels/${channelId.General}/messages/${relayed._id}`).catch(() => {})
+
+  // --- A picture sent as a spoiler is covered until it is clicked.
+  const hiddenFile = await upload('bob', 'SPOILER_dot.png', png, 'image/png')
+  const covered = await as('bob', 'POST', `/channels/${channelId.General}/messages`, { content: 'a hidden one', attachments: [hiddenFile] })
+  await ev(`window.__mohoShots.store.selectBuffer(${JSON.stringify(general)})`)
+  const cover = await until(async () => ev(`!!document.querySelector('.spoiler-cover')`), 20000)
+  check('a spoilered picture from somebody else is covered in the log', !!cover)
+  await shot('stoat-spoiler.png')
+  await as('bob', 'DELETE', `/channels/${channelId.General}/messages/${covered._id}`).catch(() => {})
 
   // --- The window: the server’s settings opened from its tile on the rail, against the live local server.
   await ev(`window.__mohoShots.store.selectBuffer(${JSON.stringify(general)})`)
