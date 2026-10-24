@@ -202,6 +202,21 @@ try {
   await shot('stoat-spoiler.png')
   await as('bob', 'DELETE', `/channels/${channelId.General}/messages/${covered._id}`).catch(() => {})
 
+  // --- Pictures actually load in the window: a person's avatar in the member list, and the server's icon on the rail.
+  const loaded = (selector) => ev(`[...document.querySelectorAll(${JSON.stringify(selector)})].some((i) => i.complete && i.naturalWidth > 0)`)
+  const avatarId = await upload('bob', 'bob.png', png, 'image/png', 'avatars')
+  await as('bob', 'PATCH', '/users/@me', { avatar: avatarId })
+  await rpc('requestMemberList', { bufferId: general })
+  await ev(`window.__mohoShots.store.selectBuffer(${JSON.stringify(general)})`)
+  check('a person’s avatar loads in the member list', !!(await until(async () => loaded('.nick-row img'), 20000)))
+  await as('bob', 'PATCH', '/users/@me', { remove: ['Avatar'] })
+  const iconPath = path.join(out, 'icon.png')
+  fs.writeFileSync(iconPath, png)
+  await rpc('stoatManage', { bufferId: general, action: 'editServer', icon: iconPath })
+  check('and the server’s icon loads on the rail', !!(await until(async () => loaded('.rail-tile[aria-label="Test Hall"] img.rail-icon'), 20000)))
+  await shot('stoat-pictures.png')
+  await rpc('stoatManage', { bufferId: general, action: 'editServer', icon: '' })
+
   // --- The window: the server’s settings opened from its tile on the rail, against the live local server.
   await ev(`window.__mohoShots.store.selectBuffer(${JSON.stringify(general)})`)
   await sleep(800)
