@@ -64,7 +64,7 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
       filed: !!assignment[buffer.id],
       inCall: voiceSessions.some((s) => s.bufferId === buffer.id),
       poppedOut: popouts.open.includes(buffer.id),
-      canCall: (account?.service === 'discord' || account?.service === 'steam') && buffer.kind === 'dm',
+      canCall: (account?.service === 'discord' || account?.service === 'steam' || account?.service === 'stoat') && buffer.kind === 'dm',
       live,
       watched,
       autojoins: store.autojoins(buffer.accountId, name),

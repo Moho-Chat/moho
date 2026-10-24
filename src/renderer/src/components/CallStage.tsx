@@ -356,6 +356,49 @@ export function RoomCallBar({ bufferId }: { bufferId: string }): JSX.Element | n
 }
 
 /**
+ * A Stoat conversation's call, and the way into it.
+ *
+ * A voice room, a direct message and a group can each be called into; who is in the call is said by the daemon as
+ * they come and go, so a room says who is talking before anybody joins. The call itself is held on a media server and
+ * drawn by the same stage every other call is.
+ */
+export function StoatCallBar({ bufferId }: { bufferId: string }): JSX.Element | null {
+  const store = useStore()
+  const buffer = useChat((s) => s.buffers).find((b) => b.id === bufferId)
+  const members = useChat((s) => s.stoatVoice[bufferId]) ?? []
+  const activeCall = useChat((s) => s.activeCall)
+  if (!buffer?.accountId.startsWith('stoat:')) return null
+  const callable = buffer.nameIcon === 'volume_up' || buffer.kind === 'dm' || buffer.category === 'Groups'
+  if (!callable) return null
+  const inIt = activeCall?.bufferId === bufferId
+  // A conversation nobody is calling in has no bar: a direct message is called from its header, and a voice room has
+  // its own entry beside the box.
+  if (members.length === 0 && buffer.nameIcon !== 'volume_up') return null
+  const who =
+    members.length === 0
+      ? 'Nobody is in the voice room yet'
+      : members.length === 1
+        ? `${members[0].name} is in the call`
+        : `${members.length} people are in the call: ${members.map((m) => m.name).join(', ')}`
+  return (
+    <div className="room-call-bar">
+      <Icon name={members.some((m) => m.camera || m.screen) ? 'videocam' : 'volume_up'} size={16} />
+      <span className="small ellipsis">{who}</span>
+      {!inIt && (
+        <>
+          <button type="button" className="button" onClick={() => void store.joinStoatCall(bufferId, false)}>
+            Join voice
+          </button>
+          <button type="button" className="button" onClick={() => void store.joinStoatCall(bufferId, true)}>
+            Join with video
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
  * Which screen or window to show the room.
  *
  * A grid of what is actually open, with a still of each, because the names

@@ -4,7 +4,7 @@ import { MessageRow, useRowContext, type MessageMode } from './MessageRow'
 import { LiveCards } from './LiveCards'
 import { PinnedBar } from './PinnedBar'
 import { CallView } from './CallView'
-import { CallStage, RoomCallBar } from './CallStage'
+import { CallStage, RoomCallBar, StoatCallBar } from './CallStage'
 import { StreamStage } from './StreamStage'
 import { ServiceBanner } from './ServiceBanner'
 import { ConversationNotice } from './ConversationNotice'
@@ -810,6 +810,7 @@ export function MessageList(): JSX.Element {
       {/* And a call already happening here, which nobody was invited to
           because a group call has no invitation - only people in it. */}
       <RoomCallBar bufferId={bufferId} />
+      <StoatCallBar bufferId={bufferId} />
       {/* And a Kick stream in the same place, for the same reason: the picture
           and the chat about it are one conversation. Never both at once - the
           store refuses to start a stream during a call. */}

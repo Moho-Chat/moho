@@ -35,6 +35,7 @@ import { listInvitations, type Invitation } from '../lib/invitations'
 import { ircNetworkFor } from '../lib/networks'
 import { parseDeepLink, type IrcLink } from '../../../shared/deeplink'
 import { MatrixCalls, type CallMember, type MatrixCallEvent, type RingingCall } from '../lib/matrixcall'
+import { SfuCall, type SfuParticipant } from '../lib/livekit'
 import type { CallPhase } from '../lib/webrtc'
 import { Levels } from '../lib/levels'
 import { firstFrame, SCREEN_CHOICE_MS } from '../lib/capture'
@@ -701,6 +702,8 @@ export interface ChatState {
   discordCameras: Record<string, true>
   /** The stream being watched, if any. One at a time, deliberately. */
   discordWatching: { accountId: string; streamKey: string; userId: string; nick: string } | null
+  /** Who is in each Stoat conversation's call, by buffer, as the daemon last said. */
+  stoatVoice: Record<string, StoatVoiceMember[]>
   activeCall: {
     accountId: string
     bufferId: string
@@ -774,6 +777,16 @@ interface SteamPerson {
 
 function personToRequest(p: SteamPerson): FriendRequest {
   return { id: p.steamid, name: p.name, avatarUrl: p.avatarUrl }
+}
+
+/** One person in a Stoat call. */
+export interface StoatVoiceMember {
+  userId: string
+  name: string
+  avatarUrl?: string | null
+  camera: boolean
+  screen: boolean
+  muted: boolean
 }
 
 export type Toast = ToastItem
@@ -850,6 +863,7 @@ const INITIAL: ChatState = {
   dismissedLiveEvents: [],
   eventsPane: null,
   eventCreate: null,
+  stoatVoice: {},
   activeCall: null,
   discordSharing: null,
   discordShareStream: null,
@@ -1138,6 +1152,8 @@ export class ChatStore {
   private toastSeq = 0
   /** Who is talking in a call this window is holding. */
   private levels = new Levels()
+  /** The Stoat call this window is in, which is held on a media server like Element's. */
+  private stoatCall: { sfu: SfuCall; bufferId: string; people: SfuParticipant[]; local: MediaStream | null } | null = null
   /**
    * The Discord screen share, while one is running.
    *
@@ -2202,6 +2218,11 @@ export class ChatStore {
    * resolves it to the channel the call happens in.
    */
   async callBuffer(bufferId: string): Promise<void> {
+    // A Stoat conversation is called into on its media server, with the camera off until it is asked for.
+    if (this.state.buffers.find((b) => b.id === bufferId)?.accountId.startsWith('stoat:')) {
+      await this.joinStoatCall(bufferId, false)
+      return
+    }
     if (this.state.buffers.find((b) => b.id === bufferId)?.accountId.startsWith('steam:')) {
       await this.callSteamFriend(bufferId)
       return
@@ -2864,6 +2885,14 @@ export class ChatStore {
     }
   }
 
+  /** Asks who is in a Stoat account's calls, for when it has just connected: the daemon says the changes after. */
+  loadStoatVoice(accountId: string): void {
+    void window.moho
+      .rpc<Record<string, StoatVoiceMember[]>>('listStoatVoice', { accountId })
+      .then((voice) => this.set({ stoatVoice: { ...this.state.stoatVoice, ...voice } }))
+      .catch(() => {})
+  }
+
   /** Asks what folders a Telegram account has, for when it has just connected. */
   loadTelegramFolders(accountId: string): void {
     void window.moho
@@ -3192,6 +3221,7 @@ export class ChatStore {
   /** What is actually arriving in a call held on a media server, if one is
    *  up: a check that the media is readable rather than merely connected. */
   async callArrivals(): Promise<unknown> {
+    if (this.stoatCall) return this.stoatCall.sfu.arriving()
     const group = this.matrixCalls.currentGroup
     return group?.sfu ? group.sfu.arriving() : []
   }
@@ -3227,7 +3257,77 @@ export class ChatStore {
     }
   }
 
+  /**
+   * Joins the call in a Stoat conversation, starting one if nobody is in it.
+   *
+   * Stoat holds calls on a LiveKit server, as Element does, so the window is the client: the daemon asks Stoat for the
+   * way in and the rest is the same machinery a Matrix call on a media server runs on - the tiles, the buttons and
+   * the screen picker are the ones every other call has.
+   */
+  async joinStoatCall(bufferId: string, video: boolean): Promise<void> {
+    const account = this.accountFor(bufferId)
+    if (!account || account.service !== 'stoat') return
+    if (this.state.activeCall || this.stoatCall) {
+      this.toast('info', 'Leave the call you are in first')
+      return
+    }
+    this.set({
+      callMinimized: false,
+      activeCall: { accountId: account.id, bufferId, phase: 'connecting', video, muted: false, sharingScreen: false, cameraOn: video, onServer: true }
+    })
+    try {
+      const way = await window.moho.rpc<{ token: string; url: string }>('joinStoatCall', { bufferId })
+      let wasConnected = false
+      const sfu = new SfuCall(
+        {
+          onParticipants: (people) => {
+            if (this.stoatCall) this.stoatCall.people = people
+            this.set({})
+          },
+          onConnected: (connected) => {
+            if (!this.stoatCall) return
+            // Connecting is the room's first state, and not being connected: only losing a connection that was made
+            // ends the call.
+            if (connected) wasConnected = true
+            if (!connected && wasConnected && this.state.activeCall?.bufferId === bufferId) {
+              this.stoatCall = null
+              this.levels.dispose()
+              this.set({ activeCall: null })
+              return
+            }
+            if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, phase: connected ? 'connected' : 'connecting' } })
+          },
+          onError: (message) => this.toast('error', message)
+        },
+        false
+      )
+      this.stoatCall = { sfu, bufferId, people: [], local: null }
+      await sfu.join(way.url, way.token, video)
+      if (this.stoatCall) this.stoatCall.local = sfu.local
+      const current = this.state.activeCall as ChatState['activeCall']
+      if (current) this.set({ activeCall: { ...current, cameraOn: sfu.cameraOn } })
+    } catch (e) {
+      this.stoatCall?.sfu.leave().catch(() => {})
+      this.stoatCall = null
+      this.set({ activeCall: null })
+      this.toast('error', `Couldn't join the call: ${(e as Error).message}`)
+    }
+  }
+
+  /** Somebody's name in a Stoat call: the daemon's, which knows people the roster has not listed. */
+  private stoatCallName(bufferId: string, userId: string): string {
+    return this.state.stoatVoice[bufferId]?.find((m) => m.userId === userId)?.name ?? this.matrixDisplayName(bufferId, userId)
+  }
+
   hangUpMatrixCall(): void {
+    if (this.stoatCall) {
+      const call = this.stoatCall
+      this.stoatCall = null
+      void call.sfu.leave().catch(() => {})
+      this.levels.dispose()
+      this.set({ activeCall: null })
+      return
+    }
     // Whichever kind is up: leaving a room's call withdraws the membership
     // that says this end is in it, as well as hanging up on everybody.
     if (this.matrixCalls.currentGroup) {
@@ -3347,6 +3447,33 @@ export class ChatStore {
   }
 
   callTiles(): CallTile[] {
+    // A call on a Stoat server: this end and everybody the media server sends.
+    const stoat = this.stoatCall
+    if (stoat) {
+      this.levels.watch('self', stoat.sfu.local)
+      const tiles: CallTile[] = [
+        {
+          id: 'self',
+          label: this.ownNameIn(stoat.bufferId) || 'You',
+          stream: stoat.sfu.local,
+          hasVideo: !!stoat.sfu.local?.getVideoTracks().some((t) => t.readyState === 'live' && !t.muted),
+          self: true,
+          muted: !!this.state.activeCall?.muted,
+          speaking: !this.state.activeCall?.muted && this.levels.speaking('self')
+        }
+      ]
+      for (const person of stoat.people) {
+        this.levels.watch(person.key, person.stream)
+        tiles.push({
+          id: person.key,
+          label: this.stoatCallName(stoat.bufferId, person.userId),
+          stream: person.stream,
+          hasVideo: person.hasVideo,
+          speaking: this.levels.speaking(person.key)
+        })
+      }
+      return tiles
+    }
     // A call between everybody in a room: one tile for this end and one per
     // person answered, which is what the fitted grid was built for.
     const group = this.matrixCalls.currentGroup
@@ -3441,6 +3568,12 @@ export class ChatStore {
     if (!this.state.activeCall) return
     // Three kinds of call reach this button and the button does not care:
     // one to one, a mesh in a room, and a room call held on a media server.
+    if (this.stoatCall) {
+      void this.stoatCall.sfu.toggleMute().then((muted) => {
+        if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, muted } })
+      })
+      return
+    }
     const group = this.matrixCalls.currentGroup
     if (group?.sfu) {
       void group.sfu.toggleMute().then((muted) => {
@@ -3473,6 +3606,14 @@ export class ChatStore {
    */
   async toggleCamera(): Promise<void> {
     if (!this.state.activeCall) return
+    if (this.stoatCall) {
+      const on = await this.stoatCall.sfu.toggleCamera().catch((e: Error) => {
+        this.toast('error', `Couldn't turn the camera on: ${e.message}`)
+        return false
+      })
+      if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, cameraOn: on } })
+      return
+    }
     const want = !this.matrixCalls.cameraOn
     const on = await this.matrixCalls.setCamera(want).catch((e: Error) => {
       // The usual failure is a machine with no camera, or one already taken
@@ -3506,8 +3647,9 @@ export class ChatStore {
     // On a media server the screen is opened here, exactly as for the other
     // two, and handed to LiveKit to publish.
     const group = this.matrixCalls.currentGroup
-    if (group?.sfu) {
-      const sfu = group.sfu
+    const serverCall = this.stoatCall?.sfu ?? group?.sfu
+    if (serverCall) {
+      const sfu = serverCall
       try {
         let sharing: boolean
         if (sfu.sharingScreen) {
@@ -4303,6 +4445,16 @@ export class ChatStore {
       // Stoat says who has asked an account to be their friend, whenever that changes.
       case 'stoatFriendRequests': {
         this.set({ friendRequests: { ...this.state.friendRequests, [data.accountId as string]: (data.incoming ?? []) as FriendRequest[] } })
+        break
+      }
+
+      // Who is in a Stoat conversation's call, said as people come and go.
+      case 'stoatVoice': {
+        const members = (data.members ?? []) as StoatVoiceMember[]
+        const next = { ...this.state.stoatVoice }
+        if (members.length > 0) next[data.bufferId as string] = members
+        else delete next[data.bufferId as string]
+        this.set({ stoatVoice: next })
         break
       }
 

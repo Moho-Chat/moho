@@ -1151,7 +1151,7 @@ function BufferRow({
   // Calling from the row it belongs to, as well as from the header of the
   // conversation once it is open - the list is where you look for somebody
   // you want to reach, so it is where reaching them should be offered.
-  const canCall = (account?.service === 'discord' || account?.service === 'steam') && buffer.kind === 'dm'
+  const canCall = (account?.service === 'discord' || account?.service === 'steam' || account?.service === 'stoat') && buffer.kind === 'dm'
 
   // The same entries the header's nameplate opens - see lib/buffermenu.ts for
   // why they live there rather than here.
