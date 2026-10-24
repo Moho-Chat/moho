@@ -202,6 +202,22 @@ try {
   await shot('stoat-spoiler.png')
   await as('bob', 'DELETE', `/channels/${channelId.General}/messages/${covered._id}`).catch(() => {})
 
+  // --- Reactions are counted once: this account's own comes back as an event, and was once counted again here.
+  const counted = await as('bob', 'POST', `/channels/${channelId.General}/messages`, { content: 'count me' })
+  const tally = async () => (await rpc('getBacklog', { bufferId: general })).find((m) => m.id === counted._id)?.reactions?.find((r) => r.emoji === '👍')
+  await until(async () => (await rpc('getBacklog', { bufferId: general })).some((m) => m.id === counted._id))
+  await rpc('toggleReaction', { bufferId: general, messageId: counted._id, emoji: '👍', add: true })
+  await until(async () => (await tally())?.count >= 1)
+  await sleep(1200)
+  check('a reaction of this account is counted once', (await tally())?.count === 1 && (await tally())?.me === true, JSON.stringify(await tally()))
+  await as('bob', 'PUT', `/channels/${channelId.General}/messages/${counted._id}/reactions/${encodeURIComponent('👍')}`)
+  await until(async () => (await tally())?.count === 2)
+  await rpc('toggleReaction', { bufferId: general, messageId: counted._id, emoji: '👍', add: false })
+  await until(async () => (await tally())?.count === 1)
+  await sleep(1200)
+  check('and bob’s alongside it, and taken away again, leave the count right', (await tally())?.count === 1 && (await tally())?.me === false, JSON.stringify(await tally()))
+  await as('bob', 'DELETE', `/channels/${channelId.General}/messages/${counted._id}`).catch(() => {})
+
   // --- An emoji from a server this account is not in is still a picture.
   const away = await as('bob', 'POST', '/servers/create', { name: `Elsewhere ${Date.now().toString(36).slice(-4)}` })
   const awayServer = away.server?._id ?? away._id
