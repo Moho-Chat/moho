@@ -104,10 +104,10 @@ const ROLE_WORDS: Record<string, string> = ((): Record<string, string> => {
     // A cheer: bits sent with the message.
     cheer: 'BITS',
     // Discord's mark on a bot or application, and on one Discord has verified.
-    app: 'APP',
+    app: 'BOT',
     // What Discord's own account sends, so a message that claims to be from Discord can be told from one that is.
     official: '✓ OFFICIAL',
-    'verified-app': '✓ APP',
+    'verified-app': '✓ BOT',
     lead_moderator: 'MOD'
   }
   return short
@@ -1022,7 +1022,7 @@ function MessageRowBody({
               >
                 {message.isAction ? `* ${message.from}` : message.from}
               </span>
-              {/* Beside the name, ahead of the time: a mark on who is talking, as Discord puts its APP pill. */}
+              {/* Beside the name, ahead of the time: a mark on who is talking, as Discord puts its bot pill. */}
               {message.badges?.map((badge) =>
                 badge.image && showBadgePictures ? (
                   // The service's own pictures, unless they are turned off. The tooltip
