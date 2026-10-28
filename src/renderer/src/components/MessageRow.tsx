@@ -17,7 +17,7 @@ import { reactionLabel, reactorsSentence } from '../lib/reactions'
 import { UploadMeter } from './UploadMeter'
 import { RichText } from '../lib/richtext'
 import { ReplyBody } from './ReplyBody'
-import { useChat, usePref, useStore } from '../state/hooks'
+import { useChat, useIdSetPref, usePref, useStore } from '../state/hooks'
 import { DEFAULT_SEARCH_ENGINE, engineName, searchUrl, shortened } from '../lib/searchengines'
 import { useTick } from '../lib/clock'
 import { useSniffedTypes, sniffUrl } from '../lib/sniff'
@@ -372,6 +372,9 @@ function MessageRowBody({
   const strictRoute = useStrictRoute()
   const store = useStore()
   const { menu, open, close } = useContextMenu()
+  // Which picture or video the right click was on, if it was on one: the menu then offers to hide it.
+  const mediaClicked = useRef<string | null>(null)
+  const [, toggleLocalSpoiler, hiddenHere] = useIdSetPref('localSpoilers')
   // The message this one answers, if it is on screen to be asked: its name
   // colour and picture are the author's, and are not in the reply's own
   // preview. The object itself, so the row only re-renders when that one
@@ -609,7 +612,17 @@ function MessageRowBody({
     seenReactions.current = Object.fromEntries((message.reactions ?? []).map((r) => [r.emoji, r.count]))
   }, [message.reactions])
 
+  const mediaKeyHere = mediaClicked.current
   const entries: MenuEntry[] = [
+    // On a picture or a video: hide it here, for whoever is looking (somebody posted something they would rather not see).
+    ...(mediaKeyHere
+      ? ([
+          hiddenHere(mediaKeyHere)
+            ? { label: 'Remove local spoiler', icon: 'visibility', onClick: () => toggleLocalSpoiler(mediaKeyHere) }
+            : { label: 'Spoiler Media (Local)', icon: 'visibility_off', onClick: () => toggleLocalSpoiler(mediaKeyHere) },
+          { separator: true }
+        ] as MenuEntry[])
+      : []),
     // First, above what to do about the message: the question a right click
     // on somebody's line usually asks is who they are, and finding them in a
     // member list of four hundred to ask it is work nobody should have to do.
@@ -939,6 +952,7 @@ function MessageRowBody({
         data-buffer-id={bufferId}
         onContextMenu={(e) => {
           selectedRef.current = window.getSelection()?.toString().trim() ?? ''
+          mediaClicked.current = (e.target as HTMLElement).closest?.('[data-media-key]')?.getAttribute('data-media-key') ?? null
           open(e)
         }}
       >

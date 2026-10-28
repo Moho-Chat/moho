@@ -10586,6 +10586,31 @@ video.lightbox-media {
 }
 
 /* --- hidden behind a spoiler -------------------------------------------- */
+.media-spoiler-button {
+  position: absolute;
+  top: var(--spacing-xs);
+  left: var(--spacing-xs);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.55);
+  border: none;
+  border-radius: var(--corner-radius-small);
+  color: var(--on-accent);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 120ms;
+}
+
+.media-embed-wrap:hover .media-spoiler-button,
+.media-spoiler-button:focus-visible {
+  opacity: 1;
+}
+
 .media-embed-wrap.spoilered {
   overflow: hidden;
   border-radius: var(--corner-radius-small);
