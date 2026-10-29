@@ -13,6 +13,7 @@ import { RAIL_TIP, hideRailTip, showRailTip, type RailTipDetail } from '../lib/r
 import { bufferDisplayName, classes, nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
 import { SpaceRooms } from './SpaceRooms'
 import { SteamGroupSettings } from './SteamGroupSettings'
+import { StoatServerSettings } from './StoatServerSettings'
 import { steamGroupOfRail } from '../lib/steamchat'
 import {
   isFixedEntry,
@@ -75,6 +76,8 @@ interface TileProps {
   onToggleMute: () => void
   /** Absent where there is nothing to leave - an account's own entry. */
   onLeave?: () => void
+  /** Makes an invite link to the server and copies it. Stoat. */
+  onInvite?: () => void
   /** Only a Matrix space has rooms to look through. */
   onBrowse?: () => void
   /** Only a Steam chat group keeps settings of its own: rooms, roles, invite links. */
@@ -288,10 +291,19 @@ function RailTile(props: TileProps): JSX.Element {
                   } as const
                 ]
               : []),
+            ...(props.onInvite
+              ? [
+                  {
+                    label: 'Copy invite link',
+                    icon: 'link',
+                    onClick: props.onInvite
+                  } as const
+                ]
+              : []),
             ...(props.onSettings
               ? [
                   {
-                    label: 'Group settings',
+                    label: props.group.service === 'stoat' ? 'Server settings' : 'Group settings',
                     icon: 'settings',
                     onClick: props.onSettings
                   } as const
@@ -423,6 +435,7 @@ export function ServerRail(): JSX.Element | null {
   const [browsing, setBrowsing] = useState<RailGroup | null>(null)
   /** The Steam chat group whose settings are open, if any. */
   const [configuring, setConfiguring] = useState<RailGroup | null>(null)
+  const [stoatSettings, setStoatSettings] = useState<RailGroup | null>(null)
   /** Hovering the space below the column, which means "put it last". */
   const [tailTarget, setTailTarget] = useState(false)
 
@@ -575,7 +588,19 @@ export function ServerRail(): JSX.Element | null {
           g.kind === 'guild' || g.kind === 'space' ? () => setLeaving(g) : undefined
         }
         onBrowse={g.kind === 'space' ? () => setBrowsing(g) : undefined}
-        onSettings={steamGroupOfRail(g.id) ? () => setConfiguring(g) : undefined}
+        onInvite={
+          g.service === 'stoat' && g.kind === 'guild'
+            ? () => {
+                const inside = buffers.find((b) => b.groupId === g.id)
+                if (!inside) return
+                void window.moho
+                  .rpc<{ link: string }>('createStoatInvite', { bufferId: inside.id })
+                  .then((r) => window.moho.copyText(r.link).then(() => store.toast('info', 'Invite link copied')))
+                  .catch((e: Error) => store.toast('error', e.message))
+              }
+            : undefined
+        }
+        onSettings={steamGroupOfRail(g.id) ? () => setConfiguring(g) : g.service === 'stoat' && g.kind === 'guild' ? () => setStoatSettings(g) : undefined}
         unread={t?.unread ?? 0}
         highlight={t?.highlight ?? false}
         mentions={t?.mentions ?? 0}
@@ -749,6 +774,7 @@ export function ServerRail(): JSX.Element | null {
         />
       )}
 
+      {stoatSettings && buffers.find((b) => b.groupId === stoatSettings.id) && <StoatServerSettings bufferId={buffers.find((b) => b.groupId === stoatSettings.id)!.id} onClose={() => setStoatSettings(null)} />}
       {configuring && <SteamGroupSettings accountId={configuring.accountId} railId={configuring.id} onClose={() => setConfiguring(null)} />}
       {browsing && (
         <SpaceRooms

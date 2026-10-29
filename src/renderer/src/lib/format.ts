@@ -178,6 +178,8 @@ export function sourcePick(service: string, e: { id: string; name?: string; anim
   // into the box (and the recent list) as the bare digits. It leaves as the form Discord parses, which the box draws
   // as its picture - and which Nitro lets any server take.
   if (service === 'discord' && /^\d+$/.test(e.id)) return `<${e.animated ? 'a' : ''}:${e.name || 'emoji'}:${e.id}>`
+  // Stoat's is typed by name between colons; the daemon turns it into the id Stoat reads as it goes out.
+  if (service === 'stoat') return `:${e.name || e.id}:`
   return e.id
 }
 
@@ -194,6 +196,19 @@ export function sneedGreentext(body: string): string {
 /** Whether a Sneedchat line that came back is the one that was sent, allowing for the site's greentext. */
 export function sneedSameText(sent: string, logged: string): boolean {
   return sent.trim() === sneedGreentext(logged).trim()
+}
+
+/**
+ * Whether what was typed into a Stoat conversation is what Stoat logged.
+ *
+ * Not spelled alike when the message holds a spoiler (`!!x!!` is typed and Stoat's marks are carried here as `||x||`) or a custom
+ * emoji (typed `:party:`, logged as the daemon's picture token): matched strictly, the message sat grey until it timed out as
+ * failed, with its own echo shown beside it.
+ */
+export function stoatSameText(sent: string, logged: string): boolean {
+  const sentForm = sent.replace(/!!([^\n]+?)!!/g, '||$1||').trim()
+  const loggedForm = logged.replace(/\[stoat:emoji:([A-Za-z0-9_]+):file:\/\/[^\]\s]*\]/g, ':$1:').trim()
+  return sentForm === loggedForm
 }
 
 /**
@@ -601,6 +616,12 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   // account is not in.
   out = out.replace(/&lt;(a?):([A-Za-z0-9_~]{2,32}):(\d+)&gt;/g, (_m, _anim: string, name: string, id: string) =>
     stow(`<img src="${discordEmojiUrl(id, 48)}" class="custom-emoji" alt=":${name}:">`)
+  )
+
+  // Stoat's custom emoji, which the daemon writes as `[stoat:emoji:name:file://...]`: the picture is a file it has named in
+  // its own cache (and fetches when this draws it), and only that folder is accepted, so a message cannot name another.
+  out = out.replace(/\[stoat:emoji:([A-Za-z0-9_]{1,32}):(file:\/\/[^\]\s]*\/stoat-media\/[A-Za-z0-9._-]+)\]/g, (_m, name: string, src: string) =>
+    stow(`<img src="${src}" class="custom-emoji" alt=":${name}:">`)
   )
 
   // Kick emotes, which arrive as `[emote:1082364:xqcAM]`. Like Discord's

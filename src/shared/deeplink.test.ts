@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isDeepLink, isTelegramLink, parseDeepLink } from './deeplink'
+import { isDeepLink, isTelegramLink, parseDeepLink, stoatInviteCode } from './deeplink'
 
 describe('a Telegram link', () => {
   it('is what the View in Telegram button of a post opens, and what a message says', () => {
@@ -42,5 +42,19 @@ describe('a Telegram link', () => {
     expect(isDeepLink('irc://irc.libera.chat/moho')).toBe(true)
     expect(parseDeepLink('tg://login?token=abc')).toBeNull()
     expect(parseDeepLink('https://kick.com/xqc')?.service).toBe('kick')
+  })
+})
+
+describe('a Stoat invite', () => {
+  it('is read from the official addresses, and only those', () => {
+    expect(stoatInviteCode('https://stoat.chat/invite/gJhyqXTt')).toBe('gJhyqXTt')
+    expect(stoatInviteCode('https://app.stoat.chat/invite/gJhyqXTt/')).toBe('gJhyqXTt')
+    expect(stoatInviteCode('https://rvlt.gg/Abc123')).toBe('Abc123')
+    expect(stoatInviteCode('https://stoat.chat/')).toBeNull()
+    expect(stoatInviteCode('https://example.com/invite/abc')).toBeNull()
+    expect(stoatInviteCode('https://stoat.chat.example.com/invite/abc')).toBeNull()
+    expect(stoatInviteCode('https://stoat.chat/invite/a b')).toBeNull()
+    expect(parseDeepLink('https://stoat.chat/invite/gJhyqXTt')).toEqual({ service: 'stoat', code: 'gJhyqXTt', url: 'https://stoat.chat/invite/gJhyqXTt' })
+    expect(isDeepLink('https://stoat.chat/invite/gJhyqXTt')).toBe(true)
   })
 })

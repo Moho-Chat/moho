@@ -15,7 +15,7 @@
  * this client lets you choose for yourself.
  */
 
-export type Presence = 'online' | 'idle' | 'dnd' | 'connecting' | 'offline'
+export type Presence = 'online' | 'idle' | 'focus' | 'dnd' | 'connecting' | 'offline'
 
 /** Which of the five a service's word for it is. Anything unknown is offline. */
 export function presenceKind(status?: string): Presence {
@@ -25,6 +25,8 @@ export function presenceKind(status?: string): Presence {
       return 'online'
     case 'idle':
       return 'idle'
+    case 'focus':
+      return 'focus'
     case 'dnd':
       return 'dnd'
     case 'connecting':
@@ -49,6 +51,8 @@ export function presenceColor(status?: string): string {
       return 'var(--success)'
     case 'idle':
       return 'var(--warning)'
+    case 'focus':
+      return 'var(--info, var(--primary))'
     case 'dnd':
       return 'var(--danger)'
     default:
@@ -62,6 +66,8 @@ export function presenceLabel(status?: string): string {
       return 'Online'
     case 'idle':
       return 'Idle'
+    case 'focus':
+      return 'Focus'
     case 'dnd':
       return 'Do not disturb'
     case 'connecting':

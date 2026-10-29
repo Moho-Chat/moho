@@ -3,6 +3,7 @@ import { SwitchRow } from './Switch'
 import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton, ServiceMark } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
+import { StoatAccountTools } from './StoatAccountTools'
 import { SteamAccountTools } from './SteamAccountTools'
 import { TwitchSignIn } from './TwitchSignIn'
 import { IgnoreList } from './IgnoreList'
@@ -25,7 +26,7 @@ import type { Account } from '../../../shared/wire'
  * that gains a backend appears here as soon as it gains a form, and one the
  * daemon stops offering disappears without this file being touched.
  */
-const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram'] as const
+const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram', 'stoat'] as const
 type AddableService = (typeof FORMS)[number]
 
 /** What `listProtocols` answers with. */
@@ -139,6 +140,7 @@ export function AccountsPanel(): JSX.Element {
         {adding === 'steam' && <SteamForm onDone={() => setAdding(null)} />}
         {adding === 'twitch' && <TwitchForm onDone={() => setAdding(null)} />}
         {adding === 'telegram' && <TelegramForm onDone={() => setAdding(null)} />}
+        {adding === 'stoat' && <StoatForm onDone={() => setAdding(null)} />}
         {adding && (
           <button type="button" className="button subtle small" onClick={() => setAdding(null)}>
             Cancel
@@ -476,6 +478,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
           {account.service === 'matrix' && <MatrixAccountTools account={account} />}
 
           {account.service === 'steam' && <SteamAccountTools account={account} />}
+          {account.service === 'stoat' && <StoatAccountTools account={account} />}
           {account.service === 'twitch' && <TwitchAccountTools account={account} />}
 
           {account.service === 'sneedchat' && (
@@ -1743,6 +1746,230 @@ function TelegramForm({ onDone }: { onDone: () => void }): JSX.Element {
         </button>
         <button type="button" className="button" disabled={busy || apiId.trim() === '' || apiHash.trim() === ''} onClick={beginQr}>
           Sign in with a QR code
+        </button>
+        {busy && (
+          <button type="button" className="button" onClick={cancel}>
+            Cancel
+          </button>
+        )}
+      </div>
+      {busy && detail && <p className="small muted">{detail}…</p>}
+    </div>
+  )
+}
+
+/**
+ * Adding a Stoat account (formerly Revolt): an email and password, then the code of its authenticator app or a recovery
+ * code if the account has a second factor; or a session token pasted from another app.
+ *
+ * Stoat can be hosted by anybody, so the instance can be named; left empty it is the official one. Nothing typed here
+ * is kept but the session Stoat issues, and moho does not make accounts: that is done in Stoat's own app, where its
+ * captcha and email check are.
+ */
+function StoatForm({ onDone }: { onDone: () => void }): JSX.Element {
+  const store = useStore()
+  const [instance, setInstance] = useState('')
+  const [method, setMethod] = useState<'password' | 'token'>('password')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [token, setToken] = useState('')
+  const [useTor, setUseTor] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [loginId, setLoginId] = useState('')
+  const [detail, setDetail] = useState('')
+  const [needs, setNeeds] = useState<{ methods: string[]; error?: string } | null>(null)
+  const [typed, setTyped] = useState('')
+
+  // Held in a ref as well: the first event can be handled before the render that follows the answer that started the
+  // sign-in. Nothing else is signing in from this form, so an event with no id known yet is this one's.
+  const current = useRef('')
+  const setId = (id: string): void => {
+    current.current = id
+    setLoginId(id)
+  }
+
+  useEffect(() => {
+    const off = window.moho.onEvent((e) => {
+      const d = e.data as { loginId?: string; text?: string; methods?: string[]; error?: string; success?: boolean }
+      if (!e.event.startsWith('stoatLogin')) return
+      if (current.current && d.loginId !== current.current) return
+      if (e.event === 'stoatLoginStatus') {
+        setDetail(d.text || '')
+      } else if (e.event === 'stoatLoginNeeds') {
+        setNeeds({ methods: d.methods ?? [], error: d.error ?? undefined })
+        setTyped('')
+        setDetail('')
+      } else if (e.event === 'stoatLoginResult') {
+        setNeeds(null)
+        setId('')
+        setBusy(false)
+        setDetail('')
+        if (d.success) {
+          setPassword('')
+          setToken('')
+          void store.refreshAccounts()
+          onDone()
+        } else {
+          store.toast('error', d.error || 'Stoat sign-in failed')
+        }
+      }
+    })
+    return off
+  }, [onDone, store])
+
+  // Closing the form on a sign-in that is still waiting tells the daemon nobody is.
+  useEffect(
+    () => () => {
+      if (current.current) void window.moho.rpc('cancelStoatLogin', { loginId: current.current }).catch(() => {})
+    },
+    []
+  )
+
+  const begin = (): void => {
+    setBusy(true)
+    setDetail('')
+    setNeeds(null)
+    current.current = ''
+    const call =
+      method === 'password'
+        ? window.moho.rpc<{ loginId: string }>('addStoatAccount', { instance: instance.trim(), email: email.trim(), password, useTor })
+        : window.moho.rpc<{ loginId: string }>('addStoatAccountToken', { instance: instance.trim(), token: token.trim(), useTor })
+    void call
+      .then((r) => setId(r.loginId))
+      .catch((e: Error) => {
+        setBusy(false)
+        store.toast('error', e.message)
+      })
+  }
+
+  const send = (): void => {
+    const value = typed.trim()
+    if (!value || !loginId || !needs) return
+    void window.moho
+      .rpc('submitStoatCode', { loginId, value })
+      .then(() => setDetail('checking'))
+      .catch((e: Error) => store.toast('error', e.message))
+  }
+
+  const cancel = (): void => {
+    if (current.current) void window.moho.rpc('cancelStoatLogin', { loginId: current.current }).catch(() => {})
+    setId('')
+    setNeeds(null)
+    setDetail('')
+    setBusy(false)
+  }
+
+  if (needs) {
+    return (
+      <div className="add-form">
+        <p>This account has a second factor. Type the six-digit code from your authenticator app, or a recovery code.</p>
+        <label className="field">
+          <span className="small muted">Code</span>
+          <input
+            className="text-field"
+            autoFocus
+            autoComplete="off"
+            spellCheck={false}
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') send()
+            }}
+          />
+        </label>
+        {needs.error && (
+          <div className="warning-note">
+            <Icon name="warning" size={16} />
+            <span>{needs.error}</span>
+          </div>
+        )}
+        {detail && <p className="small muted">{detail}…</p>}
+        <div className="field-row">
+          <button type="button" className="button primary" disabled={!typed.trim()} onClick={send}>
+            Submit code
+          </button>
+          <button type="button" className="button" onClick={cancel}>
+            Cancel sign-in
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const ready = method === 'password' ? email.trim() !== '' && password !== '' : token.trim() !== ''
+  return (
+    <div className="add-form">
+      <p className="small muted">
+        Sign in to your Stoat (formerly Revolt) account. Making an account, and answering its captcha or email check, is
+        done in Stoat&apos;s own app first. moho keeps only the session Stoat issues, never the password.
+      </p>
+      <p className="small muted">
+        What a third-party client does here: it signs in once and keeps that session, shown in Stoat&apos;s own list of sessions
+        as &ldquo;moho (your system)&rdquo;, and it never signs in again to get over a dropped connection. Ending the session in Stoat signs moho out.
+        It keeps to the instance&apos;s limits, tells you when one applies, and does not make accounts, run bots or answer captchas.
+      </p>
+      <TorSwitch service="stoat" on={useTor} onChange={setUseTor} />
+      <label className="field">
+        <span className="small muted">Instance (leave empty for the official one, stoat.chat)</span>
+        <input
+          className="text-field"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="https://api.stoat.chat"
+          value={instance}
+          disabled={busy}
+          onChange={(e) => setInstance(e.target.value)}
+        />
+      </label>
+      <div className="segmented">
+        <button type="button" className={method === 'password' ? 'active' : undefined} disabled={busy} onClick={() => setMethod('password')}>
+          Email and password
+        </button>
+        <button type="button" className={method === 'token' ? 'active' : undefined} disabled={busy} onClick={() => setMethod('token')}>
+          Session token
+        </button>
+      </div>
+      {method === 'password' ? (
+        <div className="field-row">
+          <label className="field">
+            <span className="small muted">Email</span>
+            <input className="text-field" type="email" autoComplete="off" spellCheck={false} value={email} disabled={busy} onChange={(e) => setEmail(e.target.value)} />
+          </label>
+          <label className="field">
+            <span className="small muted">Password</span>
+            <input
+              className="text-field"
+              type="password"
+              autoComplete="off"
+              value={password}
+              disabled={busy}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && ready && !busy) begin()
+              }}
+            />
+          </label>
+        </div>
+      ) : (
+        <label className="field">
+          <span className="small muted">Session token</span>
+          <input
+            className="text-field"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={token}
+            disabled={busy}
+            onChange={(e) => setToken(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && ready && !busy) begin()
+            }}
+          />
+        </label>
+      )}
+      <div className="field-row">
+        <button type="button" className="button primary" disabled={busy || !ready} onClick={begin}>
+          {busy ? 'Signing in…' : 'Sign in'}
         </button>
         {busy && (
           <button type="button" className="button" onClick={cancel}>

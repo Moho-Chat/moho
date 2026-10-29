@@ -124,6 +124,8 @@ const DAEMON_MEDIA_DIRS = [
   'discord-sounds',
   'telegram-media',
   'telegram-avatars',
+  'stoat-media',
+  'stoat-avatars',
   'transient'
 ]
 

@@ -21,7 +21,7 @@ import { resolveMediaUrl } from './util'
 
 /** The caches the daemon can restore from, by folder. Kick's emotes are
  *  not here: lib/emotecache puts Kick's own picture up at once instead. */
-const RESTORABLE = /[\\/]nobilis[\\/](matrix-media|sneedchat-attachments|sneedchat-avatars|discord-thumbnails|discord-icons|telegram-media|telegram-avatars)[\\/]/
+const RESTORABLE = /[\\/]nobilis[\\/](matrix-media|sneedchat-attachments|sneedchat-avatars|discord-thumbnails|discord-icons|telegram-media|telegram-avatars|stoat-media|stoat-avatars)[\\/]/
 
 /** Paths being fetched, so a picture drawn twice asks once. */
 const inFlight = new Map<string, Promise<string | null>>()

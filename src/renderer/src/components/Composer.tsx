@@ -39,7 +39,7 @@ interface StagedAttachment {
   preview?: string
   /** In bytes, once it has been asked. */
   size?: number | null
-  /** Sent hidden behind a spoiler: Discord and Steam. */
+  /** Sent hidden behind a spoiler: Discord, Steam, Telegram and Stoat. */
   spoiler: boolean
 }
 
@@ -141,6 +141,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const [stickerPicker, setStickerPicker] = useState(false)
   const [gifPicker, setGifPicker] = useState(false)
   const [discordTyping] = usePref<boolean>('discord.sendTyping', false)
+  const [stoatTyping] = usePref<boolean>('stoat.sendTyping', true)
   /**
    * What to do with files dropped on the window: they land in the tray, to be
    * looked over and sent with the next message rather than going out on the
@@ -276,7 +277,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   // here rather than left as the one service where the button is dead.
   // Steam takes a picture or a short video, and says which and how big.
   const supportsAttachments =
-    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc' || service === 'steam' || service === 'telegram'
+    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc' || service === 'steam' || service === 'telegram' || service === 'stoat'
 
   // Starting a reply puts the cursor in the box: the next thing anybody does
   // is write the answer.
@@ -462,6 +463,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
     // Not on Discord unless asked for: its own clients send it, but a third-party client that does is one more thing
     // Discord can tell it apart by, and Dissent does without it altogether. A setting in Settings > Discord.
     if (service === 'discord' && !discordTyping) return
+    if (service === 'stoat' && !stoatTyping) return
     const now = Date.now()
     if (now - typingSentAt.current < TYPING_REPEAT_MS) return
     typingSentAt.current = now
@@ -593,9 +595,20 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
           staged.map((att) => att.path),
           staged.filter((att) => att.spoiler).map((att) => att.path)
         )
+      } else if (service === 'stoat') {
+        // Stoat carries several files in one message (up to five; the daemon says if the account is allowed fewer), and
+        // names a spoiler by the file's name, so each file's mark has to go with it.
+        for (let i = 0; i < staged.length; i += 5) {
+          const batch = staged.slice(i, i + 5)
+          void post(
+            i === 0 ? body : '',
+            batch.map((att) => att.path),
+            batch.filter((att) => att.spoiler).map((att) => att.path)
+          )
+        }
       } else {
         staged.forEach((att, i) => {
-          void post(i === 0 ? body : '', att.path)
+          void post(i === 0 ? body : '', att.path, att.spoiler ? [att.path] : undefined)
         })
       }
       setStaged([])
@@ -1103,7 +1116,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
               {/* On the card's corner, and there only while it is pointed at
                   or focused - they would be a dozen buttons otherwise. */}
               <div className="staged-actions">
-                {(service === 'discord' || service === 'steam' || service === 'telegram') && (
+                {(service === 'discord' || service === 'steam' || service === 'telegram' || service === 'stoat') && (
                   <button
                     type="button"
                     className={classes('staged-action', att.spoiler && 'on')}
@@ -1302,7 +1315,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
                 !e.altKey &&
                 !e.metaKey &&
                 !text &&
-                (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram')
+                (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat')
               ) {
                 const last = store.lastEditableOwn(buffer.id)
                 if (last) {

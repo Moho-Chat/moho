@@ -64,7 +64,7 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
       filed: !!assignment[buffer.id],
       inCall: voiceSessions.some((s) => s.bufferId === buffer.id),
       poppedOut: popouts.open.includes(buffer.id),
-      canCall: (account?.service === 'discord' || account?.service === 'steam') && buffer.kind === 'dm',
+      canCall: (account?.service === 'discord' || account?.service === 'steam' || account?.service === 'stoat') && buffer.kind === 'dm',
       live,
       watched,
       autojoins: store.autojoins(buffer.accountId, name),
@@ -72,17 +72,17 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
       onTogglePin: () => togglePin(buffer.id),
       onToggleMute: () => {
         toggleMute(buffer.id)
-        if (account?.service === 'matrix' || account?.service === 'steam' || account?.service === 'telegram') {
+        if (account?.service === 'matrix' || account?.service === 'steam' || account?.service === 'telegram' || account?.service === 'stoat') {
           void window.moho
-            .rpc(account.service === 'steam' ? 'steamSetFriendMuted' : account.service === 'telegram' ? 'setTelegramChatMuted' : 'setMatrixRoomMuted', { bufferId: buffer.id, muted: !isMuted(buffer.id) })
+            .rpc(account.service === 'steam' ? 'steamSetFriendMuted' : account.service === 'telegram' ? 'setTelegramChatMuted' : account.service === 'stoat' ? 'setStoatChannelMuted' : 'setMatrixRoomMuted', { bufferId: buffer.id, muted: !isMuted(buffer.id) })
             .catch((e: Error) => store.toast('error', e.message))
         }
       },
       onUnmuteAccount:
-        account?.service === 'matrix' || account?.service === 'steam' || account?.service === 'telegram'
+        account?.service === 'matrix' || account?.service === 'steam' || account?.service === 'telegram' || account?.service === 'stoat'
           ? () =>
               void window.moho
-                .rpc(account.service === 'steam' ? 'steamSetFriendMuted' : account.service === 'telegram' ? 'setTelegramChatMuted' : 'setMatrixRoomMuted', { bufferId: buffer.id, muted: false })
+                .rpc(account.service === 'steam' ? 'steamSetFriendMuted' : account.service === 'telegram' ? 'setTelegramChatMuted' : account.service === 'stoat' ? 'setStoatChannelMuted' : 'setMatrixRoomMuted', { bufferId: buffer.id, muted: false })
                 .catch((e: Error) => store.toast('error', e.message))
           : undefined,
       onToggleAutojoin:

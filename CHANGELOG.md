@@ -17,6 +17,20 @@ Each section has two parts:
   that made it, including dependency updates
   (`node scripts/changelog-deps.mjs <previous tag>` lists those).
 
+## [1.4.0]
+
+### Major features
+
+- **Stoat** (formerly Revolt) is a protocol: sign in to the official instance or one you or a friend host, with email and password (and its second factor) or a pasted session token. Servers with their categories and channels, direct messages and groups, history and live messages, edits, deletions, replies, reactions and custom emoji (including from servers you are not in), files both ways with spoilers, embeds and the link cards Stoat draws, members with roles and presence, profile cards, friends and blocks, invites (a link to a server is drawn as a card to join it), moderation (kick, ban, timeout, roles), search and pins, mutes kept in the account's own settings, your own profile and the statuses Online, Idle, Focus, Do not disturb and Invisible with a line beside them, voice and video calls and screen sharing on Stoat's media servers (a call begun in a direct message rings the other), and, for those who look after a server, its settings: channels and headings, roles and permissions, webhooks and the audit log. It keeps to the limits an instance states and is written for any instance, not only the official one
+
+### Fixes, patches and changes
+
+- A picture or a video can be hidden behind a spoiler after it was sent, on every service: a button on its corner while it is pointed at, and Spoiler Media (Local) on right click, kept per picture on this computer ([moho `ce8897c`](https://github.com/Moho-Chat/moho/commit/ce8897c))
+- A file marked as a spoiler in the message box is sent as one on Telegram as well, and several files go as one message on Stoat ([moho `56a0e63`](https://github.com/Moho-Chat/moho/commit/56a0e63))
+- The pill beside a bot's name says BOT, not APP, and the verified one says ✓ BOT ([moho `d53474c`](https://github.com/Moho-Chat/moho/commit/d53474c), [nobilis `eee5cbf`](https://github.com/Moho-Chat/nobilis/commit/eee5cbf))
+- A conversation read here is told to the service when the few seconds' wait since the last such notice is up, instead of the notice being dropped and the last message left unread on the phone ([moho `ccf86fe`](https://github.com/Moho-Chat/moho/commit/ccf86fe))
+- The pins of a conversation are read again only when they changed, instead of the daemon's telling and the window's asking again for ever ([moho `ccf86fe`](https://github.com/Moho-Chat/moho/commit/ccf86fe))
+
 ## [1.3.3]
 
 ### Fixes, patches and changes

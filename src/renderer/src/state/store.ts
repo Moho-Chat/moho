@@ -26,7 +26,7 @@ import { addToast, type ToastAction, type ToastItem } from '../lib/toasts'
 import { ALL_STATUSES, statusesFor, supportsStatus } from '../lib/status'
 import type { SteamGroup, GroupCall } from '../lib/steamgroups'
 import type { TelegramFolder } from '../lib/telegramfolders'
-import { buildSmilieIndex, sneedSameText, steamSameText, type SmilieEntry, type SmilieIndex } from '../lib/format'
+import { buildSmilieIndex, sneedSameText, steamSameText, stoatSameText, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
 import { runExport } from '../lib/exporter'
 import type { ForumPost } from '../lib/forum'
@@ -35,6 +35,7 @@ import { listInvitations, type Invitation } from '../lib/invitations'
 import { ircNetworkFor } from '../lib/networks'
 import { parseDeepLink, type IrcLink } from '../../../shared/deeplink'
 import { MatrixCalls, type CallMember, type MatrixCallEvent, type RingingCall } from '../lib/matrixcall'
+import { SfuCall, type SfuParticipant } from '../lib/livekit'
 import type { CallPhase } from '../lib/webrtc'
 import { Levels } from '../lib/levels'
 import { firstFrame, SCREEN_CHOICE_MS } from '../lib/capture'
@@ -701,6 +702,8 @@ export interface ChatState {
   discordCameras: Record<string, true>
   /** The stream being watched, if any. One at a time, deliberately. */
   discordWatching: { accountId: string; streamKey: string; userId: string; nick: string } | null
+  /** Who is in each Stoat conversation's call, by buffer, as the daemon last said. */
+  stoatVoice: Record<string, StoatVoiceMember[]>
   activeCall: {
     accountId: string
     bufferId: string
@@ -774,6 +777,16 @@ interface SteamPerson {
 
 function personToRequest(p: SteamPerson): FriendRequest {
   return { id: p.steamid, name: p.name, avatarUrl: p.avatarUrl }
+}
+
+/** One person in a Stoat call. */
+export interface StoatVoiceMember {
+  userId: string
+  name: string
+  avatarUrl?: string | null
+  camera: boolean
+  screen: boolean
+  muted: boolean
 }
 
 export type Toast = ToastItem
@@ -850,6 +863,7 @@ const INITIAL: ChatState = {
   dismissedLiveEvents: [],
   eventsPane: null,
   eventCreate: null,
+  stoatVoice: {},
   activeCall: null,
   discordSharing: null,
   discordShareStream: null,
@@ -910,6 +924,7 @@ function echoMatches(echo: ChatMessage, real: Message): boolean {
   if (echo.pendingBody === real.body) return true
   if (real.bufferId.startsWith('steam:') && echo.pendingBody !== undefined && steamSameText(echo.pendingBody, real.body)) return true
   if (real.bufferId.startsWith('sneedchat:') && echo.pendingBody !== undefined && sneedSameText(echo.pendingBody, real.body)) return true
+  if (real.bufferId.startsWith('stoat:') && echo.pendingBody !== undefined && stoatSameText(echo.pendingBody, real.body)) return true
   // A file is posted as markup the daemon builds - a BBCode image tag on
   // Sneedchat, a bare link on IRC - so what comes back is never what was
   // typed, and usually nothing was typed at all. Matching on the whole body
@@ -1137,6 +1152,8 @@ export class ChatStore {
   private toastSeq = 0
   /** Who is talking in a call this window is holding. */
   private levels = new Levels()
+  /** The Stoat call this window is in, which is held on a media server like Element's. */
+  private stoatCall: { sfu: SfuCall; bufferId: string; people: SfuParticipant[]; local: MediaStream | null } | null = null
   /**
    * The Discord screen share, while one is running.
    *
@@ -1567,6 +1584,15 @@ export class ChatStore {
         // Not connected yet, or an older daemon: nothing to answer.
       }
     }
+    // Stoat's are the people whose relationship to this account is "incoming": the daemon lists them.
+    for (const account of this.state.accounts.filter((a) => a.service === 'stoat' && a.state === 'connected')) {
+      try {
+        const r = await window.moho.rpc<{ incoming: FriendRequest[] }>('stoatFriendRequests', { accountId: account.id })
+        next[account.id] = r.incoming
+      } catch {
+        // Not connected yet: the daemon's own push fills it in.
+      }
+    }
     this.set({ friendRequests: next })
     // Discord keeps its requests among its friends; the daemon pushes changes,
     // and this is the first reading, so one that arrived while moho was
@@ -1615,6 +1641,8 @@ export class ChatStore {
       } else if (invitation.kind === 'friend') {
         if (invitation.service === 'discord') {
           await window.moho.rpc('answerDiscordFriendRequest', { accountId, userId: id, accept })
+        } else if (invitation.service === 'stoat') {
+          await window.moho.rpc('answerStoatFriendRequest', { accountId, userId: id, accept })
         } else {
           await window.moho.rpc('steamAnswerFriendRequest', { accountId, steamid: id, accept })
         }
@@ -2148,6 +2176,12 @@ export class ChatStore {
     // Optimistic: the ringing stops the instant it is answered, rather than a
     // round trip later with the ringtone still going.
     this.setRinging({ ...this.callFor(bufferId), ringing: false })
+    // A Stoat call is answered by joining it on its media server.
+    if (this.state.buffers.find((b) => b.id === bufferId)?.accountId.startsWith('stoat:')) {
+      await this.selectBuffer(bufferId, true)
+      await this.joinStoatCall(bufferId, false)
+      return
+    }
     try {
       await window.moho.rpc('acceptCall', { bufferId })
       await this.selectBuffer(bufferId, true)
@@ -2160,7 +2194,7 @@ export class ChatStore {
   async declineCall(bufferId: string): Promise<void> {
     this.setRinging({ ...this.callFor(bufferId), ringing: false })
     try {
-      await window.moho.rpc('declineCall', { bufferId })
+      await window.moho.rpc(this.state.buffers.find((b) => b.id === bufferId)?.accountId.startsWith('stoat:') ? 'declineStoatCall' : 'declineCall', { bufferId })
     } catch (e) {
       this.toast('error', `Couldn't decline: ${(e as Error).message}`)
     }
@@ -2190,6 +2224,11 @@ export class ChatStore {
    * resolves it to the channel the call happens in.
    */
   async callBuffer(bufferId: string): Promise<void> {
+    // A Stoat conversation is called into on its media server, with the camera off until it is asked for.
+    if (this.state.buffers.find((b) => b.id === bufferId)?.accountId.startsWith('stoat:')) {
+      await this.joinStoatCall(bufferId, false)
+      return
+    }
     if (this.state.buffers.find((b) => b.id === bufferId)?.accountId.startsWith('steam:')) {
       await this.callSteamFriend(bufferId)
       return
@@ -2245,6 +2284,18 @@ export class ChatStore {
     const link = parseDeepLink(url)
     if (!link) {
       this.toast('error', 'That link is not one moho understands')
+      return
+    }
+
+    // A Stoat invite joins the server, in the first Stoat account there is; with none, it is a web page for the browser.
+    if (link.service === 'stoat') {
+      const account = this.state.accounts.find((a) => a.service === 'stoat' && a.state === 'connected') ?? this.state.accounts.find((a) => a.service === 'stoat')
+      if (!account) {
+        void window.moho.openExternal(link.url)
+        return
+      }
+      this.set({ activePanel: '' })
+      void this.joinAndOpen(account.id, link.url)
       return
     }
 
@@ -2591,7 +2642,7 @@ export class ChatStore {
    */
   async setPresence(
     accountId: string,
-    status: 'online' | 'idle' | 'dnd' | 'invisible' | 'offline',
+    status: 'online' | 'idle' | 'focus' | 'dnd' | 'invisible' | 'offline',
     statusText?: string
   ): Promise<void> {
     if (status === 'offline') return this.setAccountConnected(accountId, false)
@@ -2613,16 +2664,16 @@ export class ChatStore {
    * stepping away from all of them at once. An account that is signed out is
    * left alone - choosing a status is not a request to connect it.
    */
-  async setStatusEverywhere(status: 'online' | 'idle' | 'dnd' | 'invisible', statusText?: string): Promise<void> {
+  async setStatusEverywhere(status: 'online' | 'idle' | 'focus' | 'dnd' | 'invisible', statusText?: string): Promise<void> {
     // Only the accounts of a service that has this status: an idle for the
     // others is not asked of them, and they stay as they were.
     const connected = this.state.accounts.filter((a) => a.state === 'connected' && supportsStatus(a.service, status))
-    await Promise.all(connected.map((a) => this.setAccountStatus(a.id, status, a.service === 'discord' || a.service === 'matrix' ? statusText : undefined)))
+    await Promise.all(connected.map((a) => this.setAccountStatus(a.id, status, a.service === 'discord' || a.service === 'matrix' || a.service === 'stoat' ? statusText : undefined)))
   }
 
   async setAccountStatus(
     accountId: string,
-    status: 'online' | 'idle' | 'dnd' | 'invisible',
+    status: 'online' | 'idle' | 'focus' | 'dnd' | 'invisible',
     statusText?: string
   ): Promise<void> {
     try {
@@ -2683,10 +2734,27 @@ export class ChatStore {
   ackIfReading(bufferId: string): void {
     if (bufferId !== this.state.activeBufferId || !this.windowIsActive()) return
     const now = Date.now()
-    if (now - (this.ackedAt.get(bufferId) ?? 0) < 5000) return
+    const wait = 5000 - (now - (this.ackedAt.get(bufferId) ?? 0))
+    if (wait > 0) {
+      // Too soon after the last: said when the few seconds are up instead of never. A message that arrived inside them is
+      // the newest, and without this it was left unread on the phone until another one came.
+      if (!this.ackLater.has(bufferId)) {
+        this.ackLater.set(
+          bufferId,
+          setTimeout(() => {
+            this.ackLater.delete(bufferId)
+            this.ackIfReading(bufferId)
+          }, wait + 50)
+        )
+      }
+      return
+    }
     this.ackedAt.set(bufferId, now)
     bestEffort(this.ackRead(bufferId), 'ack read')
   }
+
+  /** A conversation's turn to be told is read that came too soon after the last, waiting for it. */
+  private ackLater = new Map<string, ReturnType<typeof setTimeout>>()
 
   private windowIsActive(): boolean {
     return document.visibilityState === 'visible' && document.hasFocus()
@@ -2850,6 +2918,14 @@ export class ChatStore {
         .rpc('steamGroupChange', { accountId: call.accountId, action: call.action, groupId: call.groupId, steamid: call.steamid, name: call.name })
         .catch((e: Error) => this.toast('error', `Steam did not change the group: ${e.message}`))
     }
+  }
+
+  /** Asks who is in a Stoat account's calls, for when it has just connected: the daemon says the changes after. */
+  loadStoatVoice(accountId: string): void {
+    void window.moho
+      .rpc<Record<string, StoatVoiceMember[]>>('listStoatVoice', { accountId })
+      .then((voice) => this.set({ stoatVoice: { ...this.state.stoatVoice, ...voice } }))
+      .catch(() => {})
   }
 
   /** Asks what folders a Telegram account has, for when it has just connected. */
@@ -3180,6 +3256,7 @@ export class ChatStore {
   /** What is actually arriving in a call held on a media server, if one is
    *  up: a check that the media is readable rather than merely connected. */
   async callArrivals(): Promise<unknown> {
+    if (this.stoatCall) return this.stoatCall.sfu.arriving()
     const group = this.matrixCalls.currentGroup
     return group?.sfu ? group.sfu.arriving() : []
   }
@@ -3215,7 +3292,79 @@ export class ChatStore {
     }
   }
 
+  /**
+   * Joins the call in a Stoat conversation, starting one if nobody is in it.
+   *
+   * Stoat holds calls on a LiveKit server, as Element does, so the window is the client: the daemon asks Stoat for the
+   * way in and the rest is the same machinery a Matrix call on a media server runs on - the tiles, the buttons and
+   * the screen picker are the ones every other call has.
+   */
+  async joinStoatCall(bufferId: string, video: boolean): Promise<void> {
+    const account = this.accountFor(bufferId)
+    if (!account || account.service !== 'stoat') return
+    if (this.state.activeCall || this.stoatCall) {
+      this.toast('info', 'Leave the call you are in first')
+      return
+    }
+    this.set({
+      callMinimized: false,
+      activeCall: { accountId: account.id, bufferId, phase: 'connecting', video, muted: false, sharingScreen: false, cameraOn: video, onServer: true }
+    })
+    try {
+      const way = await window.moho.rpc<{ token: string; url: string; note?: string | null }>('joinStoatCall', { bufferId })
+      // What a new account is held to is said once, as the call starts.
+      if (way.note) this.toast('info', way.note)
+      let wasConnected = false
+      const sfu = new SfuCall(
+        {
+          onParticipants: (people) => {
+            if (this.stoatCall) this.stoatCall.people = people
+            this.set({})
+          },
+          onConnected: (connected) => {
+            if (!this.stoatCall) return
+            // Connecting is the room's first state, and not being connected: only losing a connection that was made
+            // ends the call.
+            if (connected) wasConnected = true
+            if (!connected && wasConnected && this.state.activeCall?.bufferId === bufferId) {
+              this.stoatCall = null
+              this.levels.dispose()
+              this.set({ activeCall: null })
+              return
+            }
+            if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, phase: connected ? 'connected' : 'connecting' } })
+          },
+          onError: (message) => this.toast('error', message)
+        },
+        false
+      )
+      this.stoatCall = { sfu, bufferId, people: [], local: null }
+      await sfu.join(way.url, way.token, video)
+      if (this.stoatCall) this.stoatCall.local = sfu.local
+      const current = this.state.activeCall as ChatState['activeCall']
+      if (current) this.set({ activeCall: { ...current, cameraOn: sfu.cameraOn } })
+    } catch (e) {
+      this.stoatCall?.sfu.leave().catch(() => {})
+      this.stoatCall = null
+      this.set({ activeCall: null })
+      this.toast('error', `Couldn't join the call: ${(e as Error).message}`)
+    }
+  }
+
+  /** Somebody's name in a Stoat call: the daemon's, which knows people the roster has not listed. */
+  private stoatCallName(bufferId: string, userId: string): string {
+    return this.state.stoatVoice[bufferId]?.find((m) => m.userId === userId)?.name ?? this.matrixDisplayName(bufferId, userId)
+  }
+
   hangUpMatrixCall(): void {
+    if (this.stoatCall) {
+      const call = this.stoatCall
+      this.stoatCall = null
+      void call.sfu.leave().catch(() => {})
+      this.levels.dispose()
+      this.set({ activeCall: null })
+      return
+    }
     // Whichever kind is up: leaving a room's call withdraws the membership
     // that says this end is in it, as well as hanging up on everybody.
     if (this.matrixCalls.currentGroup) {
@@ -3335,6 +3484,33 @@ export class ChatStore {
   }
 
   callTiles(): CallTile[] {
+    // A call on a Stoat server: this end and everybody the media server sends.
+    const stoat = this.stoatCall
+    if (stoat) {
+      this.levels.watch('self', stoat.sfu.local)
+      const tiles: CallTile[] = [
+        {
+          id: 'self',
+          label: this.ownNameIn(stoat.bufferId) || 'You',
+          stream: stoat.sfu.local,
+          hasVideo: !!stoat.sfu.local?.getVideoTracks().some((t) => t.readyState === 'live' && !t.muted),
+          self: true,
+          muted: !!this.state.activeCall?.muted,
+          speaking: !this.state.activeCall?.muted && this.levels.speaking('self')
+        }
+      ]
+      for (const person of stoat.people) {
+        this.levels.watch(person.key, person.stream)
+        tiles.push({
+          id: person.key,
+          label: this.stoatCallName(stoat.bufferId, person.userId),
+          stream: person.stream,
+          hasVideo: person.hasVideo,
+          speaking: this.levels.speaking(person.key)
+        })
+      }
+      return tiles
+    }
     // A call between everybody in a room: one tile for this end and one per
     // person answered, which is what the fitted grid was built for.
     const group = this.matrixCalls.currentGroup
@@ -3429,6 +3605,12 @@ export class ChatStore {
     if (!this.state.activeCall) return
     // Three kinds of call reach this button and the button does not care:
     // one to one, a mesh in a room, and a room call held on a media server.
+    if (this.stoatCall) {
+      void this.stoatCall.sfu.toggleMute().then((muted) => {
+        if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, muted } })
+      })
+      return
+    }
     const group = this.matrixCalls.currentGroup
     if (group?.sfu) {
       void group.sfu.toggleMute().then((muted) => {
@@ -3461,6 +3643,14 @@ export class ChatStore {
    */
   async toggleCamera(): Promise<void> {
     if (!this.state.activeCall) return
+    if (this.stoatCall) {
+      const on = await this.stoatCall.sfu.toggleCamera().catch((e: Error) => {
+        this.toast('error', `Couldn't turn the camera on: ${e.message}`)
+        return false
+      })
+      if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, cameraOn: on } })
+      return
+    }
     const want = !this.matrixCalls.cameraOn
     const on = await this.matrixCalls.setCamera(want).catch((e: Error) => {
       // The usual failure is a machine with no camera, or one already taken
@@ -3494,8 +3684,9 @@ export class ChatStore {
     // On a media server the screen is opened here, exactly as for the other
     // two, and handed to LiveKit to publish.
     const group = this.matrixCalls.currentGroup
-    if (group?.sfu) {
-      const sfu = group.sfu
+    const serverCall = this.stoatCall?.sfu ?? group?.sfu
+    if (serverCall) {
+      const sfu = serverCall
       try {
         let sharing: boolean
         if (sfu.sharingScreen) {
@@ -4118,8 +4309,13 @@ export class ChatStore {
             [data.bufferId as string]: (data.pinned as string[]) || []
           }
         })
-        // The pins changed under rows already read: read them again.
-        if (this.state.pinnedRows[data.bufferId as string]) void this.loadPins(data.bufferId as string).catch(() => {})
+        // The pins changed under rows already read: read them again. Only when they did - the daemon says the pins
+        // each time it is asked for them, and reading again on every telling would ask for ever.
+        {
+          const held = this.state.pinnedRows[data.bufferId as string]
+          const now = (data.pinned as string[]) || []
+          if (held && (held.length !== now.length || held.some((m) => !now.includes(m.id)))) void this.loadPins(data.bufferId as string).catch(() => {})
+        }
         break
 
       case 'pinnedMessage': {
@@ -4287,6 +4483,22 @@ export class ChatStore {
         }
         void this.refreshAccounts()
         break
+
+      // Stoat says who has asked an account to be their friend, whenever that changes.
+      case 'stoatFriendRequests': {
+        this.set({ friendRequests: { ...this.state.friendRequests, [data.accountId as string]: (data.incoming ?? []) as FriendRequest[] } })
+        break
+      }
+
+      // Who is in a Stoat conversation's call, said as people come and go.
+      case 'stoatVoice': {
+        const members = (data.members ?? []) as StoatVoiceMember[]
+        const next = { ...this.state.stoatVoice }
+        if (members.length > 0) next[data.bufferId as string] = members
+        else delete next[data.bufferId as string]
+        this.set({ stoatVoice: next })
+        break
+      }
 
       case 'steamFriendRequests': {
         const incoming = ((data.requests as { incoming?: SteamPerson[] } | undefined)?.incoming ?? []).map(personToRequest)

@@ -11,12 +11,13 @@ import { MediaEmbed } from './MediaEmbed'
 import { LinkCard } from './LinkCard'
 import { isPlainEmoji } from '../lib/recents'
 import { KickEventCard, NotificationCard, isKickEvent } from './KickEventCard'
+import { InviteCard } from './InviteCard'
 import { COMMON_EMOJI, EmojiPicker, readRecent, type StickerEntry } from './EmojiPicker'
 import { reactionLabel, reactorsSentence } from '../lib/reactions'
 import { UploadMeter } from './UploadMeter'
 import { RichText } from '../lib/richtext'
 import { ReplyBody } from './ReplyBody'
-import { useChat, usePref, useStore } from '../state/hooks'
+import { useChat, useIdSetPref, usePref, useStore } from '../state/hooks'
 import { DEFAULT_SEARCH_ENGINE, engineName, searchUrl, shortened } from '../lib/searchengines'
 import { useTick } from '../lib/clock'
 import { useSniffedTypes, sniffUrl } from '../lib/sniff'
@@ -104,10 +105,10 @@ const ROLE_WORDS: Record<string, string> = ((): Record<string, string> => {
     // A cheer: bits sent with the message.
     cheer: 'BITS',
     // Discord's mark on a bot or application, and on one Discord has verified.
-    app: 'APP',
+    app: 'BOT',
     // What Discord's own account sends, so a message that claims to be from Discord can be told from one that is.
     official: '✓ OFFICIAL',
-    'verified-app': '✓ APP',
+    'verified-app': '✓ BOT',
     lead_moderator: 'MOD'
   }
   return short
@@ -371,6 +372,9 @@ function MessageRowBody({
   const strictRoute = useStrictRoute()
   const store = useStore()
   const { menu, open, close } = useContextMenu()
+  // Which picture or video the right click was on, if it was on one: the menu then offers to hide it.
+  const mediaClicked = useRef<string | null>(null)
+  const [, toggleLocalSpoiler, hiddenHere] = useIdSetPref('localSpoilers')
   // The message this one answers, if it is on screen to be asked: its name
   // colour and picture are the author's, and are not in the reply's own
   // preview. The object itself, so the row only re-renders when that one
@@ -423,12 +427,12 @@ function MessageRowBody({
   // Discord, Sneedchat and Matrix support editing and deleting your own
   // messages; IRC has no such concept.
   const canEditDelete =
-    !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram')
+    !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat')
   const beginEdit = (): void => {
     setDraft(message.body)
     setEditing(true)
   }
-  const canReact = service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram'
+  const canReact = service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram' || service === 'stoat'
   // Steam's stickers, asked for when the reaction picker opens: it reacts with them too.
   const [steamStickers, setSteamStickers] = useState<StickerEntry[]>([])
   useEffect(() => {
@@ -608,7 +612,17 @@ function MessageRowBody({
     seenReactions.current = Object.fromEntries((message.reactions ?? []).map((r) => [r.emoji, r.count]))
   }, [message.reactions])
 
+  const mediaKeyHere = mediaClicked.current
   const entries: MenuEntry[] = [
+    // On a picture or a video: hide it here, for whoever is looking (somebody posted something they would rather not see).
+    ...(mediaKeyHere
+      ? ([
+          hiddenHere(mediaKeyHere)
+            ? { label: 'Remove local spoiler', icon: 'visibility', onClick: () => toggleLocalSpoiler(mediaKeyHere) }
+            : { label: 'Spoiler Media (Local)', icon: 'visibility_off', onClick: () => toggleLocalSpoiler(mediaKeyHere) },
+          { separator: true }
+        ] as MenuEntry[])
+      : []),
     // First, above what to do about the message: the question a right click
     // on somebody's line usually asks is who they are, and finding them in a
     // member list of four hundred to ask it is work nobody should have to do.
@@ -672,7 +686,7 @@ function MessageRowBody({
     // rather than gated on a power level read here: the server decides, and
     // it refuses in words worth showing - hiding the action from somebody who
     // could have used it is the worse mistake.
-    ...((service === 'matrix' || service === 'discord' || service === 'telegram') && !isSystem
+    ...((service === 'matrix' || service === 'discord' || service === 'telegram' || service === 'stoat') && !isSystem
       ? ([
           {
             label: pinned ? 'Unpin from this conversation' : 'Pin to this conversation',
@@ -938,6 +952,7 @@ function MessageRowBody({
         data-buffer-id={bufferId}
         onContextMenu={(e) => {
           selectedRef.current = window.getSelection()?.toString().trim() ?? ''
+          mediaClicked.current = (e.target as HTMLElement).closest?.('[data-media-key]')?.getAttribute('data-media-key') ?? null
           open(e)
         }}
       >
@@ -1022,7 +1037,7 @@ function MessageRowBody({
               >
                 {message.isAction ? `* ${message.from}` : message.from}
               </span>
-              {/* Beside the name, ahead of the time: a mark on who is talking, as Discord puts its APP pill. */}
+              {/* Beside the name, ahead of the time: a mark on who is talking, as Discord puts its bot pill. */}
               {message.badges?.map((badge) =>
                 badge.image && showBadgePictures ? (
                   // The service's own pictures, unless they are turned off. The tooltip
@@ -1319,7 +1334,9 @@ function MessageRowBody({
           ))}
 
           {(message.embeds || []).map((embed, i) =>
-            embed.kind === 'gif' || isKickEvent(embed) ? null : service === 'telegram' ? (
+            embed.kind === 'gif' || isKickEvent(embed) ? null : embed.kind === 'invite' ? (
+              <InviteCard key={`e${i}`} embed={embed} accountId={store.accountFor(bufferId)?.id ?? ''} />
+            ) : service === 'telegram' ? (
               <LinkCard key={`e${i}`} embed={embed} bufferId={bufferId} messageId={message.id} />
             ) : (
             <div
@@ -1810,6 +1827,9 @@ function ReactionEmoji({ emoji }: { emoji: string }): JSX.Element {
   // Steam's, held as a token naming the emoticon or sticker.
   const steam = steamTokenOf(emoji)
   if (steam) return <img className="reaction-emoji" src={steamPictureUrl(steam.kind, steam.name)} alt={steam.name} />
+  // Stoat's, which the daemon holds as the picture's own token (see format.ts) so the pill is drawn with it.
+  const stoat = emoji.match(/^\[stoat:emoji:([A-Za-z0-9_]{1,32}):(file:\/\/[^\]\s]*\/stoat-media\/[A-Za-z0-9._-]+)\]$/)
+  if (stoat) return <img className="reaction-emoji" src={media(stoat[2])} alt={stoat[1]} />
   const custom = emoji.match(/^<?a?:?([A-Za-z0-9_~]{2,32}):(\d+)>?$/)
   if (!custom) return <span>{emoji}</span>
   return <img className="reaction-emoji" src={media(discordEmojiUrl(custom[2]))} alt={custom[1]} />

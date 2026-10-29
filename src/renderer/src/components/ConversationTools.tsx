@@ -616,6 +616,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   const filterMenu = suggestions(query)
   const isMatrix = buffer.accountId.startsWith('matrix:')
   const isTelegram = buffer.accountId.startsWith('telegram:')
+  const isStoat = buffer.accountId.startsWith('stoat:')
   const isSteam = buffer.accountId.startsWith('steam:')
   const stream = useChat((s) => s.kickStreams)[buffer.id]
   // Whether this window is the one playing this channel. Per window rather
@@ -683,11 +684,11 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
                 if (filtered) setResults([])
               })
           }
-          if (!isMatrix && !isTelegram) return
+          if (!isMatrix && !isTelegram && !isStoat) return
           // Then the server, which has what this client never downloaded
           // - including everything said before this account joined.
           return window.moho
-            .rpc<MatrixSearch>(isTelegram ? 'searchTelegramMessages' : 'searchMatrixMessages', {
+            .rpc<MatrixSearch>(isTelegram ? 'searchTelegramMessages' : isStoat ? 'searchStoatMessages' : 'searchMatrixMessages', {
               bufferId: buffer.id,
               query: text,
               scope,
@@ -712,7 +713,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
         .finally(() => setSearching(false))
     }, 250)
     return () => clearTimeout(timer)
-  }, [query, buffer.id, store, isMatrix, isTelegram, isDiscord, scope])
+  }, [query, buffer.id, store, isMatrix, isTelegram, isStoat, isDiscord, scope])
 
   // A viewer count that never moves is worse than none, and Kick pushes a
   // stream starting and stopping but never the count. The followed channels
@@ -953,6 +954,18 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
         />
       )}
 
+      {/* Stoat's calls are held on a media server and drawn by the same stage as Matrix's: a direct message, a group or a
+          voice room is joined, with the camera as a second choice. */}
+      {buffer.accountId.startsWith('stoat:') && (buffer.kind === 'dm' || buffer.category === 'Groups' || buffer.nameIcon === 'volume_up') && matrixCall?.bufferId !== buffer.id && !matrixCall && (
+        <>
+          <IconButton name="call" title="Join the call" onClick={() => void store.joinStoatCall(buffer.id, false)} />
+          <IconButton name="videocam" title="Join the call with video" onClick={() => void store.joinStoatCall(buffer.id, true)} />
+        </>
+      )}
+      {buffer.accountId.startsWith('stoat:') && matrixCall?.bufferId === buffer.id && (
+        <IconButton name="call_end" title="Hang up" className="calling" onClick={() => store.hangUpMatrixCall()} />
+      )}
+
       {(isDiscord || isSteam) && isDm && (
         <IconButton
           name={inCall ? 'call_end' : 'call'}
@@ -981,7 +994,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
 
       {isMatrix && buffer.kind !== 'server' && <ThreadList buffer={buffer} />}
       {isDiscord && buffer.kind === 'channel' && <DiscordThreads buffer={buffer} />}
-      {(isMatrix || isDiscord || buffer.accountId.startsWith('telegram:')) && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
+      {(isMatrix || isDiscord || buffer.accountId.startsWith('telegram:') || isStoat) && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
 
       {/* Beside the pins, because it is the same kind of fact about a room:
           something the room keeps, rather than something said in it. */}

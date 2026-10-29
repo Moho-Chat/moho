@@ -8,6 +8,8 @@ import { LottieSticker, lottieStickerId } from './LottieSticker'
 import { fullImageFor, knownFullImage } from '../lib/fullimage'
 import { useMediaUrl, useStrictRoute } from '../lib/route'
 import { classes, humanSize } from '../lib/util'
+import { mediaKey } from '../lib/mediaSpoiler'
+import { useIdSetPref } from '../state/hooks'
 import type { MediaItem } from '../lib/format'
 import type { Attachment } from '../../../shared/wire'
 
@@ -117,8 +119,50 @@ export function MediaEmbed({
   const [seen, setSeen] = useState<{ width: number; height: number } | null>(null)
   const [playing, setPlaying] = useState(false)
   // Hidden until it is clicked, as Discord does with a file sent as a spoiler.
-  const spoiler = !!attachment?.filename?.startsWith(SPOILER_PREFIX) || !!item?.spoiler
+  //
+  // Or hidden here, by the person looking: somebody posted something they would rather not see. That is kept on this
+  // computer per picture, and is not the sender's spoiler: it can be taken off again.
+  const key = mediaKey(messageId, attachment?.filename ?? item?.url ?? attachment?.url)
+  const [, toggleLocal, isLocal] = useIdSetPref('localSpoilers')
+  const local = !!key && isLocal(key)
+  const spoiler = !!attachment?.filename?.startsWith(SPOILER_PREFIX) || !!item?.spoiler || local
   const [revealed, setRevealed] = useState(false)
+  // Hidden here means hidden now, even if it was open a moment ago.
+  useEffect(() => {
+    if (local) setRevealed(false)
+  }, [local])
+  /**
+   * On the corner of a picture that is showing, while it is pointed at: cover it again - a spoiler of the sender's that
+   * was opened, or one made here. For a picture the sender did not hide it is the way to hide it, and it is kept.
+   */
+  const spoilerButton =
+    key && !spoiler ? (
+      <button
+        type="button"
+        className="media-spoiler-button"
+        title="Spoiler media (local): hide it here"
+        aria-label="Spoiler media (local)"
+        onClick={(e) => {
+          e.stopPropagation()
+          toggleLocal(key)
+        }}
+      >
+        <Icon name="visibility_off" size={16} />
+      </button>
+    ) : spoiler && revealed ? (
+      <button
+        type="button"
+        className="media-spoiler-button"
+        title="Cover it again"
+        aria-label="Cover it again"
+        onClick={(e) => {
+          e.stopPropagation()
+          setRevealed(false)
+        }}
+      >
+        <Icon name="visibility_off" size={16} />
+      </button>
+    ) : null
   const hidden = spoiler && !revealed
   // What it is called, less the marker: that is not part of the name.
   const shownName = spoiler ? attachment?.filename?.slice(SPOILER_PREFIX.length) : attachment?.filename
@@ -376,6 +420,7 @@ export function MediaEmbed({
         ref={wrapRef}
         className={classes('media-embed-wrap', tile && 'tile', hidden && 'spoilered')}
         style={ratio}
+        data-media-key={key ?? undefined}
         {...reveal}
       >
         <img
@@ -403,6 +448,7 @@ export function MediaEmbed({
           onClick={load}
         />
         {cover}
+        {!hidden && spoilerButton}
         {showingPreview && stale && (
           <span className="expired-overlay small">
             <Icon name={refreshing ? 'hourglass_empty' : 'refresh'} size={16} />
@@ -434,7 +480,7 @@ export function MediaEmbed({
       !attachment?.gif && !!attachment?.thumbnailPath && !previewGone && !playing && /[\\/]telegram-media[\\/]/.test(fullSrc)
     if (deferred) {
       return (
-        <span className={classes('media-embed-wrap video', tile && 'tile', hidden && 'spoilered')} style={{ ...ratio, position: 'relative' }} {...reveal}>
+        <span className={classes('media-embed-wrap video', tile && 'tile', hidden && 'spoilered')} style={{ ...ratio, position: 'relative' }} data-media-key={key ?? undefined} {...reveal}>
           <img
             className="media-embed"
             style={ratio}
@@ -462,6 +508,7 @@ export function MediaEmbed({
           ref={wrapRef}
           className={classes('media-embed-wrap video', tile && 'tile', hidden && 'spoilered')}
           style={ratio}
+          data-media-key={key ?? undefined}
           {...reveal}
         >
           {attachment?.gif ? (
@@ -507,6 +554,7 @@ export function MediaEmbed({
             </button>
           )}
           {cover}
+          {!hidden && spoilerButton}
         </span>
       </>
     )

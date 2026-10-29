@@ -1,6 +1,6 @@
 {
   "name": "moho",
-  "version": "1.3.3",
+  "version": "1.4.0",
   "description": "Unified desktop chat client for IRC, Discord, Sneedchat and Matrix",
   "author": "Salastil <salastil@cock.li>",
   "license": "GPL-3.0-or-later",

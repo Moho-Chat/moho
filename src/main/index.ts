@@ -959,9 +959,16 @@ function wireIpc(): void {
     return res.canceled || !res.filePath ? null : res.filePath
   })
 
+  // Only for the check scripts, which cannot press a native dialog: files named in the environment are handed out in turn.
+  const scriptedPicks = process.env.MOHO_UI_SHOTS === '1' && process.env.MOHO_PICK_FILES ? process.env.MOHO_PICK_FILES.split('\n').filter(Boolean) : []
   ipcMain.handle(IPC.pickFile, async (e, extensions?: string[]) => {
     const parent = callerWindow(e) ?? mainWindow
     if (!parent) return null
+    const scripted = scriptedPicks.shift()
+    if (scripted) {
+      allowPickedFile(scripted)
+      return scripted
+    }
     // Where a service takes only some kinds of file, the dialog shows only
     // those and has no "all files" to widen it: a file that would be refused
     // is not offered. Extensions only, as the dialog wants them - no dots.

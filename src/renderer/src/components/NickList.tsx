@@ -90,6 +90,8 @@ function kickPermissions(members: Member[], me: string): Record<string, boolean>
  * Why the list says what it says, for the one service where it needs saying.
  */
 function rosterNote(service: string | undefined, total: number, listed: number): string | undefined {
+  // A server too large to list whole: those online, the most senior first.
+  if (service === 'stoat') return total > listed ? `${total.toLocaleString()} are online. Only the ${listed.toLocaleString()} most senior are listed` : undefined
   if (service !== 'kick' && service !== 'twitch') return undefined
   const base = `${service === 'twitch' ? 'Twitch' : 'Kick'} has no viewer list — this counts everybody who has spoken here since you opened it`
   return total > listed ? `${base}. The ${listed.toLocaleString()} most recent are listed.` : base
@@ -172,9 +174,9 @@ export function NickList(): JSX.Element {
   const [discordPowers, setDiscordPowers] = useState<DiscordPowers | null>(null)
   useEffect(() => {
     setDiscordPowers(null)
-    if (account?.service !== 'discord' || !buffer) return
+    if ((account?.service !== 'discord' && account?.service !== 'stoat') || !buffer) return
     void window.moho
-      .rpc<DiscordPowers>('getDiscordPowers', { bufferId: buffer.id })
+      .rpc<DiscordPowers>(account.service === 'stoat' ? 'getStoatPowers' : 'getDiscordPowers', { bufferId: buffer.id })
       .then(setDiscordPowers)
       .catch(() => {
         /* advisory only: no answer means no moderation entries */
@@ -206,7 +208,7 @@ export function NickList(): JSX.Element {
       ? ircPermissions(members, account.currentNick)
       : account?.service === 'kick'
         ? kickPermissions(members, account.currentNick)
-        : account?.service === 'discord'
+        : account?.service === 'discord' || account?.service === 'stoat'
           ? discordPowers ?? {}
           : (buffer && permissions[buffer.id]) || {}
 
@@ -266,7 +268,7 @@ export function NickList(): JSX.Element {
           // ask for - it is built from who has spoken - and calling that
           // "members" would claim to know something nobody here can know.
           <span className="small muted ellipsis" title={rosterNote(account?.service, total, members.length)}>
-            {total.toLocaleString()} {account?.service === 'kick' || account?.service === 'twitch' ? 'recently talking' : 'members'}
+            {total.toLocaleString()} {account?.service === 'kick' || account?.service === 'twitch' ? 'recently talking' : account?.service === 'stoat' && !members.some((m) => m.away) ? 'online' : 'members'}
           </span>
         )}
         <IconButton
@@ -339,6 +341,16 @@ export function NickList(): JSX.Element {
                       }
                     : undefined
                 }
+                onUnfriend={
+                  account?.service === 'stoat' && member.relationship === 'Friend' && member.userId
+                    ? () => {
+                        void window.moho
+                          .rpc('answerStoatFriendRequest', { accountId: account.id, userId: member.userId, accept: false })
+                          .then(() => store.toast('info', `${member.nick} is no longer a friend`))
+                          .catch((e: Error) => store.toast('error', e.message))
+                      }
+                    : undefined
+                }
                 onToggleBlock={toggleBlocked}
                 onIgnore={(ignored) => {
                   if (!account) return
@@ -407,6 +419,14 @@ export function NickList(): JSX.Element {
                       .catch((e: Error) => store.toast('error', e.message))
                     return
                   }
+                  if (account.service === 'stoat') {
+                    if (action !== 'kick' && action !== 'ban' && action !== 'mute') return
+                    void window.moho
+                      .rpc('moderateStoatMember', { bufferId: buffer.id, userId: member.userId, action, minutes: 10 })
+                      .then(() => store.toast('info', `${action === 'ban' ? 'Banned' : action === 'mute' ? 'Muted for 10 minutes' : 'Removed'} ${member.nick}`))
+                      .catch((e: Error) => store.toast('error', e.message))
+                    return
+                  }
                   if (account.service === 'discord') {
                     // Discord's own three, and "mute" is a timeout there -
                     // the same word this menu uses everywhere, meaning what
@@ -442,7 +462,7 @@ export function NickList(): JSX.Element {
                 onSetRole={(roleId, give) => {
                   if (!buffer) return
                   void window.moho
-                    .rpc('setDiscordMemberRole', {
+                    .rpc(account?.service === 'stoat' ? 'setStoatMemberRole' : 'setDiscordMemberRole', {
                       bufferId: buffer.id,
                       userId: member.userId || member.nick,
                       roleId,
@@ -546,6 +566,8 @@ interface MemberRowProps {
   onProfile?: () => void
   /** Matrix only: tell the homeserver's moderators about this person. */
   onReport?: (reason: string) => void
+  /** Stoat only: stop being friends with somebody who is one. */
+  onUnfriend?: () => void
   onCall: () => void
 }
 
@@ -572,6 +594,7 @@ function MemberRow({
   onCall,
   onProfile,
   onReport,
+  onUnfriend,
   onRemoveFromGroup
 }: MemberRowProps): JSX.Element {
   const { menu, open, close } = useContextMenu()
@@ -655,7 +678,7 @@ function MemberRow({
     // Discord's roles, offered as entries rather than a submenu: a guild has
     // a handful worth giving by hand, and the rest are managed by bots and
     // were filtered out before they got here.
-    ...(service === 'discord' && perms.canAssignRoles && (perms.roles?.length ?? 0) > 0
+    ...((service === 'discord' || service === 'stoat') && perms.canAssignRoles && (perms.roles?.length ?? 0) > 0
       ? ([
           { separator: true },
           ...(perms.roles ?? []).slice(0, 12).map((role) => ({
@@ -686,6 +709,7 @@ function MemberRow({
     // somebody does for themselves; kicking and banning need power here and
     // reach only this room. This is the one that reaches whoever can act
     // across all of them, and anybody may send it.
+    ...(onUnfriend ? ([{ separator: true }, { label: 'Remove friend', icon: 'person_remove', danger: true, onClick: onUnfriend }] as MenuEntry[]) : []),
     ...(onReport
       ? ([
           { separator: true },

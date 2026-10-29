@@ -1,11 +1,12 @@
 import { useMediaUrl } from '../lib/route'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { bufferLink } from '../lib/bufferlink'
 import { Icon, IconButton, ServiceMark } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { bufferMenuEntries } from '../lib/buffermenu'
 import { UserFooter } from './UserFooter'
 import { VoiceChannels } from './VoiceChannels'
+import { StoatVoiceWho } from './StoatVoiceWho'
 import { SteamVoiceRooms } from './SteamVoiceRooms'
 import { VoicePanel } from './VoicePanel'
 import { presenceClass, presenceLabel } from '../lib/presence'
@@ -343,7 +344,7 @@ export function BufferList(): JSX.Element {
   /** The call that sets a mute on the account itself, for a service that keeps one. */
   const accountMute = (accountId: string): string | null => {
     const service = accounts.find((a) => a.id === accountId)?.service
-    return service === 'matrix' ? 'setMatrixRoomMuted' : service === 'discord' ? 'setDiscordChannelMuted' : service === 'steam' ? 'steamSetFriendMuted' : service === 'telegram' ? 'setTelegramChatMuted' : null
+    return service === 'matrix' ? 'setMatrixRoomMuted' : service === 'discord' ? 'setDiscordChannelMuted' : service === 'steam' ? 'steamSetFriendMuted' : service === 'telegram' ? 'setTelegramChatMuted' : service === 'stoat' ? 'setStoatChannelMuted' : null
   }
   const isEffectivelyMuted = (buffer: BufferEntry): boolean =>
     isMutedBuffer(buffer, muted, mutedGroups)
@@ -381,8 +382,8 @@ export function BufferList(): JSX.Element {
   }
 
   const renderRow = (b: BufferEntry): JSX.Element => (
+    <Fragment key={b.id}>
     <BufferRow
-      key={b.id}
       buffer={b}
       active={b.id === activeBufferId}
       muted={isEffectivelyMuted(b)}
@@ -458,6 +459,9 @@ export function BufferList(): JSX.Element {
       onDragEnd={endDrag}
       filed={telegramPage ? !!viewAssignment[b.id] : !!assignment[b.id] && myCategories.some((c) => c.id === assignment[b.id])}
     />
+    {/* Who is in a Stoat voice channel, under it. */}
+    {b.accountId.startsWith('stoat:') && b.nameIcon === 'volume_up' && <StoatVoiceWho bufferId={b.id} accountId={b.accountId} />}
+    </Fragment>
   )
 
   // What is in flight lives in a ref as well as in state, for the reason the
@@ -1151,7 +1155,7 @@ function BufferRow({
   // Calling from the row it belongs to, as well as from the header of the
   // conversation once it is open - the list is where you look for somebody
   // you want to reach, so it is where reaching them should be offered.
-  const canCall = (account?.service === 'discord' || account?.service === 'steam') && buffer.kind === 'dm'
+  const canCall = (account?.service === 'discord' || account?.service === 'steam' || account?.service === 'stoat') && buffer.kind === 'dm'
 
   // The same entries the header's nameplate opens - see lib/buffermenu.ts for
   // why they live there rather than here.

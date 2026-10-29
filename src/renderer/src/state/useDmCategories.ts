@@ -44,6 +44,12 @@ export function useDmCategories(): void {
     for (const id of connectedTelegram.split(',').filter(Boolean)) store.loadTelegramFolders(id)
   }, [connectedTelegram, store])
 
+  // And who is in a Stoat account's calls.
+  const connectedStoat = accounts.filter((a) => a.service === 'stoat' && a.state === 'connected').map((a) => a.id).join(',')
+  useEffect(() => {
+    for (const id of connectedStoat.split(',').filter(Boolean)) store.loadStoatVoice(id)
+  }, [connectedStoat, store])
+
   useEffect(() => {
     if (!ready) return
     // The account headings first, then the Steam groups on top of what they

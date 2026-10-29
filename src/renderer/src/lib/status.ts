@@ -11,9 +11,9 @@
  * them - and only Discord has a real state for it, which also holds back its
  * phone notifications.
  */
-export type Choosable = 'online' | 'idle' | 'dnd' | 'invisible'
+export type Choosable = 'online' | 'idle' | 'focus' | 'dnd' | 'invisible'
 
-export const ALL_STATUSES: Choosable[] = ['online', 'idle', 'dnd', 'invisible']
+export const ALL_STATUSES: Choosable[] = ['online', 'idle', 'focus', 'dnd', 'invisible']
 
 export function supportsStatus(service: string, status: Choosable): boolean {
   switch (status) {
@@ -21,9 +21,12 @@ export function supportsStatus(service: string, status: Choosable): boolean {
     case 'dnd':
       return true
     case 'idle':
-      return service === 'discord' || service === 'irc' || service === 'steam'
+      return service === 'discord' || service === 'irc' || service === 'steam' || service === 'stoat'
+    // Stoat's own: only mentions reach you.
+    case 'focus':
+      return service === 'stoat'
     case 'invisible':
-      return service === 'discord' || service === 'matrix' || service === 'steam'
+      return service === 'discord' || service === 'matrix' || service === 'steam' || service === 'stoat'
   }
 }
 
@@ -41,5 +44,5 @@ export function statusesFor(service: string): Choosable[] {
  */
 export function statusName(service: string, status: Choosable): string {
   if (status === 'invisible' && service === 'matrix') return 'Offline'
-  return { online: 'Online', idle: 'Idle', dnd: 'Do not disturb', invisible: 'Invisible' }[status]
+  return { online: 'Online', idle: 'Idle', focus: 'Focus', dnd: 'Do not disturb', invisible: 'Invisible' }[status]
 }

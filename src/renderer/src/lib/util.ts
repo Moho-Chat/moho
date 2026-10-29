@@ -5,6 +5,7 @@ import kickSvg from '../assets/kick.svg'
 import steamSvg from '../assets/steam-mark.svg'
 import twitchSvg from '../assets/twitch-mark.svg'
 import telegramSvg from '../assets/telegram-mark.svg'
+import stoatSvg from '../assets/stoat-mark.svg'
 
 /**
  * Discord channel buffers are named "GuildName/#channel" internally - that's
@@ -63,7 +64,7 @@ export interface ServiceIcon {
  * the same menus, as "Whisper".
  */
 export function hasDirectMessages(service: string | undefined): boolean {
-  return service === 'irc' || service === 'discord' || service === 'matrix' || service === 'twitch' || service === 'telegram'
+  return service === 'irc' || service === 'discord' || service === 'matrix' || service === 'twitch' || service === 'telegram' || service === 'stoat'
 }
 
 export function serviceIcon(service: string): ServiceIcon {
@@ -78,6 +79,8 @@ export function serviceIcon(service: string): ServiceIcon {
       return { mark: twitchSvg }
     case 'telegram':
       return { mark: telegramSvg }
+    case 'stoat':
+      return { mark: stoatSvg }
     case 'irc':
       return { glyph: 'tag' }
     case 'slack':
@@ -115,6 +118,8 @@ export function serviceLabel(service: string): string {
       return 'Twitch'
     case 'telegram':
       return 'Telegram'
+    case 'stoat':
+      return 'Stoat'
     case 'slack':
       return 'Slack'
     case 'jabber':

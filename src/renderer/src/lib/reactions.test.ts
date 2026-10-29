@@ -6,6 +6,9 @@ describe('reactionLabel', () => {
     expect(reactionLabel('<:pepe_sad:12345>')).toBe(':pepe_sad:')
     expect(reactionLabel('<a:party_parrot:999>')).toBe(':party_parrot:')
   })
+  it('names a Stoat emoji from its picture token', () => {
+    expect(reactionLabel('[stoat:emoji:party:file:///home/me/.cache/nobilis/stoat-media/abc.png]')).toBe(':party:')
+  })
   it('looks a Unicode one up, and shows it as itself when there is no name', () => {
     const names = new Map([['🔥', 'fire']])
     expect(reactionLabel('🔥', names)).toBe(':fire:')

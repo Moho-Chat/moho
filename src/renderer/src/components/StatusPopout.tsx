@@ -13,6 +13,8 @@ import type { Status } from './UserFooter'
 const CHOICES: { id: Exclude<Status, 'offline'>; label: string; hint?: string; dot: string }[] = [
   { id: 'online', label: 'Online', dot: 'online' },
   { id: 'idle', label: 'Idle', dot: 'idle' },
+  // Stoat's: only mentions will reach you.
+  { id: 'focus', label: 'Focus', hint: 'Only mentions will reach you', dot: 'focus' },
   { id: 'dnd', label: 'Do not disturb', dot: 'dnd' },
   // Connected and reading, and counted as away by everybody looking.
   { id: 'invisible', label: 'Invisible', hint: 'You will appear offline', dot: 'offline' }
@@ -44,7 +46,7 @@ export function StatusPopout({
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ left: number; bottom: number } | null>(null)
   const [applyAll, setApplyAll] = usePref<boolean>('status.applyToAll', false)
-  const canSay = account.service === 'discord' || account.service === 'matrix'
+  const canSay = account.service === 'discord' || account.service === 'matrix' || account.service === 'stoat'
   const [text, setText] = useState(account.statusText ?? '')
 
   useEscapeLayer(onClose)

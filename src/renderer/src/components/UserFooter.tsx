@@ -19,7 +19,7 @@ import type { Account } from '../../../shared/wire'
  * the plaque.
  */
 
-export type Status = 'online' | 'idle' | 'dnd' | 'invisible' | 'offline'
+export type Status = 'online' | 'idle' | 'focus' | 'dnd' | 'invisible' | 'offline'
 
 /**
  * What the plaque should say, which is not always what the account last chose.
