@@ -15,6 +15,13 @@ import path from 'path'
  * of stdout, while nobilis-process pipes the daemon's entire output through
  * here - so the app would die as soon as the daemon said anything.
  *
+ * A pipe fails the other way round. Started from a terminal that is then
+ * closed, or from a launcher whose reader has exited, stdout is a pipe with no
+ * reader and the write raises EPIPE as an 'error' *event* on the stream, a tick
+ * after `console.log` has returned and taken its own temporary listener off. With
+ * no listener left that is an uncaught exception and the same modal dialog, so
+ * the streams get a permanent listener here that does the same as the catch.
+ *
  * Once a write has failed there is nowhere for logs to go, so the rest are
  * dropped rather than re-attempted per line.
  *
@@ -27,6 +34,13 @@ import path from 'path'
  */
 
 let broken = false
+
+for (const stream of [process.stdout, process.stderr]) {
+  // Optional-chained because a process without stdio has no such stream.
+  stream?.on('error', () => {
+    broken = true
+  })
+}
 
 function write(method: 'log' | 'warn' | 'error', args: unknown[]): void {
   toFile(method, args)
