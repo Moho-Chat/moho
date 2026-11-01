@@ -17,6 +17,13 @@ Each section has two parts:
   that made it, including dependency updates
   (`node scripts/changelog-deps.mjs <previous tag>` lists those).
 
+## [1.4.1]
+
+### Fixes, patches and changes
+
+- A closed output pipe no longer ends moho with a "JavaScript error occurred in the main process" dialog: started from a launcher such as rofi, whose reader goes away, the next line of the log raised EPIPE after the write had returned, and the log now lets go of the console and keeps writing to its file ([moho `842200a`](https://github.com/Moho-Chat/moho/commit/842200a))
+- A Discord message that arrived while the daemon was down and was found again on reconnecting is shown in a window that was already open, and counts as unread; it was kept in the scrollback and never told to the window ([nobilis `90dd0f0`](https://github.com/Moho-Chat/nobilis/commit/90dd0f0))
+
 ## [1.4.0]
 
 ### Major features
