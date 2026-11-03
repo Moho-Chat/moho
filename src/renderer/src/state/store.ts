@@ -1713,9 +1713,13 @@ export class ChatStore {
     // Discord's friends are not conversations until one is opened: asking for
     // it is what makes the direct message exist, so it does not have to be
     // waited for.
-    if (invitation.service === 'discord' && invitation.kind === 'friend') {
+    // Stoat's are not either, and its conversations are named by channel, not by person.
+    if ((invitation.service === 'discord' || invitation.service === 'stoat') && invitation.kind === 'friend') {
       try {
-        const r = await window.moho.rpc<{ bufferId: string }>('openDiscordDm', { accountId: invitation.accountId, userId: invitation.id })
+        const r = await window.moho.rpc<{ bufferId: string }>(invitation.service === 'discord' ? 'openDiscordDm' : 'openDirectMessage', {
+          accountId: invitation.accountId,
+          userId: invitation.id
+        })
         await this.refreshBuffers()
         await this.selectBuffer(r.bufferId)
         return true

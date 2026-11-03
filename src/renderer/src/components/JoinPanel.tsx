@@ -389,7 +389,37 @@ function StoatJoin({ account }: { account: Account }): JSX.Element {
   const store = useStore()
   const [friend, setFriend] = useState('')
   const [busy, setBusy] = useState(false)
+  const [people, setPeople] = useState<StoatPeople>({ friends: [], outgoing: [], blocked: [] })
   const connected = account.state === 'connected'
+
+  // Friends, the requests still waiting on the other side, and who is blocked. The daemon says them again
+  // whenever any relationship changes, and the first reading is asked for.
+  useEffect(() => {
+    let live = true
+    if (connected) {
+      void window.moho
+        .rpc<StoatPeople>('stoatFriendRequests', { accountId: account.id })
+        .then((r) => live && setPeople(r))
+        .catch(() => {})
+    }
+    const off = window.moho.onEvent((e) => {
+      if (e.event !== 'stoatFriendRequests') return
+      const d = e.data as Partial<StoatPeople> & { accountId?: string }
+      if (d.accountId === account.id) setPeople({ friends: d.friends ?? [], outgoing: d.outgoing ?? [], blocked: d.blocked ?? [] })
+    })
+    return () => {
+      live = false
+      off()
+    }
+  }, [account.id, connected])
+
+  const act = (method: string, params: Record<string, unknown>, done?: string): void => {
+    void window.moho
+      .rpc(method, { accountId: account.id, ...params })
+      .then(() => done && store.toast('info', done))
+      .catch((e: Error) => store.toast('error', e.message))
+  }
+  const label = (p: StoatPerson): string => p.name || p.id
   const ask = (): void => {
     const typed = friend.trim()
     if (!typed) return
@@ -432,8 +462,70 @@ function StoatJoin({ account }: { account: Account }): JSX.Element {
         Somebody who asks to be your friend waits as a tile in the server list, where you answer. Closing a server
         from its menu leaves it, unless you own it.
       </p>
+
+      {people.friends.length > 0 && (
+        <>
+          <span className="small muted">Friends</span>
+          {people.friends.map((p) => (
+            <div key={p.id} className="field-row">
+              <span className="grow ellipsis" title={p.statusText || undefined}>
+                {label(p)}
+                {p.online ? '' : ' (offline)'}
+              </span>
+              <button type="button" className="button subtle small" onClick={() => void store.openDirectMessage(account.id, p.id, label(p))}>
+                Message
+              </button>
+              <button type="button" className="button subtle small" onClick={() => act('answerStoatFriendRequest', { userId: p.id, accept: false }, `Removed ${label(p)}`)}>
+                Remove
+              </button>
+            </div>
+          ))}
+        </>
+      )}
+
+      {people.outgoing.length > 0 && (
+        <>
+          <span className="small muted">Waiting for them to accept</span>
+          {people.outgoing.map((p) => (
+            <div key={p.id} className="field-row">
+              <span className="grow ellipsis">{label(p)}</span>
+              <button type="button" className="button subtle small" onClick={() => act('answerStoatFriendRequest', { userId: p.id, accept: false })}>
+                Cancel request
+              </button>
+            </div>
+          ))}
+        </>
+      )}
+
+      {people.blocked.length > 0 && (
+        <>
+          <span className="small muted">Blocked</span>
+          {people.blocked.map((p) => (
+            <div key={p.id} className="field-row">
+              <span className="grow ellipsis">{label(p)}</span>
+              <button type="button" className="button subtle small" disabled={!connected} onClick={() => act('stoatBlock', { userId: p.id, block: false }, `Unblocked ${label(p)}`)}>
+                Unblock
+              </button>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   )
+}
+
+/** One person on a Stoat account's friends page. */
+interface StoatPerson {
+  id: string
+  name: string | null
+  online?: boolean
+  statusText?: string | null
+}
+
+interface StoatPeople {
+  friends: StoatPerson[]
+  outgoing: StoatPerson[]
+  blocked: StoatPerson[]
 }
 
 function TelegramJoin({ account }: { account: Account }): JSX.Element {
