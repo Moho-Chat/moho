@@ -210,9 +210,10 @@ function HiddenAndMuted({ accountId }: { accountId: string }): JSX.Element | nul
   const [muted, setMuted] = usePref<string[]>('mutedBuffers', [])
   const [hidden, setHidden] = usePref<string[]>('hiddenBuffers', [])
 
-  const mine = buffers.filter(
-    (b) => b.accountId === accountId && (muted.includes(b.id) || hidden.includes(b.id))
-  )
+  const store = useStore()
+  // Muted by the old list in this window, or by the level the daemon keeps now.
+  const isMutedNow = (b: { id: string; notify?: string }): boolean => muted.includes(b.id) || b.notify === 'mute'
+  const mine = buffers.filter((b) => b.accountId === accountId && (isMutedNow(b) || hidden.includes(b.id)))
   if (!mine.length) return null
 
   const drop = (list: string[], id: string): string[] => list.filter((x) => x !== id)
@@ -224,7 +225,7 @@ function HiddenAndMuted({ accountId }: { accountId: string }): JSX.Element | nul
       </summary>
       {mine.map((b) => {
         const isHidden = hidden.includes(b.id)
-        const isMuted = muted.includes(b.id)
+        const isMuted = isMutedNow(b)
         return (
           <div key={b.id} className="recover-row">
             <span className="ellipsis recover-name" title={b.name}>
@@ -239,7 +240,14 @@ function HiddenAndMuted({ accountId }: { accountId: string }): JSX.Element | nul
               </button>
             )}
             {isMuted && (
-              <button type="button" className="button subtle" onClick={() => setMuted(drop(muted, b.id))}>
+              <button
+                type="button"
+                className="button subtle"
+                onClick={() => {
+                  if (muted.includes(b.id)) setMuted(drop(muted, b.id))
+                  if (b.notify === 'mute') void store.setNotifyLevel(b.id, 'default')
+                }}
+              >
                 Unmute
               </button>
             )}

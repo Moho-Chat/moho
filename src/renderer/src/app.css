@@ -2917,6 +2917,17 @@ img.custom-emoji.steam-sticker {
   background: var(--outline-medium);
 }
 
+/* A word over a group of choices: not a button, so not tabbable or selectable. */
+.context-menu-heading {
+  padding: var(--spacing-xs) var(--spacing-s) 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  user-select: none;
+}
+
 /* --- toasts ----------------------------------------------------------- */
 
 /* A note that is a caution rather than an aside. Muted grey is right for

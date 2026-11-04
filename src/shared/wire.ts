@@ -148,15 +148,22 @@ export interface Buffer {
   /** Where the service orders it: category rank and channel rank folded. */
   position?: number
   /**
-   * Muted on the account itself rather than in this window.
+   * What this conversation is set to: every message, only what mentions you,
+   * or nothing. Absent is the default, which says nothing at all.
    *
-   * A Discord guild or channel silenced in the official client, a Matrix room
-   * silenced by a push rule. The setting travels with the account, so every
-   * device signed in to it is already honouring it - and it cannot be undone
-   * from here, which is why it is separate from this window's own mute rather
-   * than folded into it.
+   * Kept on the account where the service has a setting for it (Matrix push
+   * rules, a Discord channel override), so a change made on a phone arrives
+   * here and one made here arrives there; kept by the daemon everywhere else.
+   * The window draws and offers it the same either way - it is the daemon's
+   * to decide what a level means for a message, and this is only its answer.
    */
-  serverMuted?: boolean
+  notify?: 'all' | 'mentions' | 'mute'
+  /**
+   * What actually applies, where that is not what was set on this
+   * conversation: a channel left on its default inside a server somebody muted
+   * is silent. Absent when it is the same as `notify`.
+   */
+  notifyApplied?: 'default' | 'all' | 'mentions' | 'mute'
   /**
    * Starred on the account itself - Matrix's `m.favourite` tag today.
    *

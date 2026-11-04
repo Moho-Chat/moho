@@ -103,7 +103,7 @@ export default function App(): JSX.Element {
   // the same rule, from the same lists, said to the main process whenever the
   // answer changes. Told only when it has, since most changes to the buffers
   // are not to what is waiting.
-  const [trayMuted] = usePref<string[]>('mutedBuffers', [])
+  const [trayMuted, setLegacyMutes] = usePref<string[]>('mutedBuffers', [])
   const [trayHidden] = usePref<string[]>('hiddenBuffers', [])
   const [trayMutedGroups] = usePref<string[]>('mutedGroups', [])
   const lastTray = useRef('')
@@ -114,6 +114,23 @@ export default function App(): JSX.Element {
     lastTray.current = said
     window.moho.setTrayUnread(count)
   }, [allBuffers, trayMuted, trayHidden, trayMutedGroups])
+  // The mutes this window used to keep for itself go to the daemon, once the
+  // conversations they name are known. Run again only if the list changes: what
+  // could not be moved yet is asked about next launch, not in a loop.
+  const migratingMutes = useRef(false)
+  const haveBuffers = allBuffers.length > 0
+  useEffect(() => {
+    if (!haveBuffers || trayMuted.length === 0 || migratingMutes.current) return
+    migratingMutes.current = true
+    void store
+      .migrateMutedBuffers(trayMuted)
+      .then((keep) => {
+        if (keep.length !== trayMuted.length) setLegacyMutes(keep)
+      })
+      .finally(() => {
+        migratingMutes.current = false
+      })
+  }, [haveBuffers, trayMuted, store])
   const [savedBufferId] = usePref<string>('ui.activeBufferId', '')
   const [savedGroupId] = usePref<string>('ui.activeGroupId', '')
 

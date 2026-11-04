@@ -28,6 +28,7 @@ import type { SteamGroup, GroupCall } from '../lib/steamgroups'
 import type { TelegramFolder } from '../lib/telegramfolders'
 import { buildSmilieIndex, sneedSameText, steamSameText, stoatSameText, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
+import { heldOnAccount, type NotifyLevel } from '../lib/notifylevels'
 import { runExport } from '../lib/exporter'
 import type { ForumPost } from '../lib/forum'
 import { DM_GROUP_ID, INVITATIONS_GROUP_ID, isDirectMessage } from '../lib/groups'
@@ -2510,6 +2511,53 @@ export class ChatStore {
    * priority takes the low priority off rather than leaving a room that
    * claims both.
    */
+  /**
+   * Sets how much a conversation may interrupt.
+   *
+   * Not applied here first. Where the service keeps the setting on the account
+   * the daemon writes it there and reads it back, and what it says is what the
+   * row then shows - a change the server did not take is an error toast and a
+   * row that still says what it was, rather than a menu that claims one thing
+   * while the account holds another.
+   */
+  async setNotifyLevel(bufferId: string, level: NotifyLevel): Promise<void> {
+    try {
+      await window.moho.rpc('setNotifyLevel', { bufferId, level })
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
+  }
+
+  /**
+   * Takes the mutes this window used to keep for itself into the daemon, and
+   * says which of them to keep asking about.
+   *
+   * A mute was a list in this window's preferences, written beside the
+   * account's own where there was one - which is how a room unmuted on a phone
+   * stayed muted here. Now the daemon keeps it: for a service that holds the
+   * setting on the account the old entry was only ever a copy and is dropped,
+   * and for the rest it becomes the daemon's own mute. One whose conversation
+   * is not known yet is kept for the next time, rather than losing the mute of
+   * a channel that has simply not connected.
+   */
+  async migrateMutedBuffers(legacy: string[]): Promise<string[]> {
+    const keep: string[] = []
+    for (const id of legacy) {
+      const account = id.slice(0, Math.max(0, id.indexOf('|')))
+      if (heldOnAccount(account)) continue
+      if (!this.state.buffers.some((b) => b.id === id)) {
+        keep.push(id)
+        continue
+      }
+      try {
+        await window.moho.rpc('setNotifyLevel', { bufferId: id, level: 'mute' })
+      } catch {
+        keep.push(id)
+      }
+    }
+    return keep
+  }
+
   async setRoomTag(bufferId: string, tag: 'favourite' | 'lowPriority', on: boolean): Promise<void> {
     const other = tag === 'favourite' ? 'lowPriority' : 'favourite'
     const name = tag === 'favourite' ? 'm.favourite' : 'm.lowpriority'
@@ -4659,7 +4707,11 @@ export class ChatStore {
                 notice: data.notice,
                 syncing: data.syncing,
                 topic: data.topic,
-                serverMuted: data.serverMuted ?? false,
+                // As sent: the daemon leaves the default out, so absent has to
+                // mean "back to the default" - a room set to mentions only and
+                // then left alone elsewhere stayed ticked as mentions here.
+                notify: data.notify,
+                notifyApplied: data.notifyApplied,
                 favourite: data.favourite ?? false,
                 lowPriority: data.lowPriority ?? false,
                 readOnly: data.readOnly,

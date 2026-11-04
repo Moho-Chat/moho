@@ -84,10 +84,21 @@ describe('what a muted place still says', () => {
   const buf = (extra: Partial<BufferEntry>): BufferEntry =>
     ({ id: 'a|#x', accountId: 'a', kind: 'channel', name: '#x', lastActivityTs: 0, groupId: 'g', unread: 3, highlight: false, mentions: 0, ...extra }) as BufferEntry
 
+  it('counts what a conversation is set to the way it interrupts: mentions only counts mentions even in a direct message, and every message counts every one', () => {
+    const dm = (extra: Record<string, unknown>) => buf({ kind: 'dm', unread: 7, mentions: 1, ...extra })
+    expect(countedFor(dm({}), [], [])).toBe(7)
+    expect(countedFor(dm({ notify: 'mentions' }), [], [])).toBe(1)
+    expect(countedFor(dm({ notify: 'mute' }), [], [])).toBe(0)
+    expect(countedFor(buf({ unread: 9, mentions: 2 }), [], [])).toBe(2)
+    expect(countedFor(buf({ unread: 9, mentions: 2, notify: 'all' }), [], [])).toBe(9)
+    // Silent because of its server, whatever it was itself set to.
+    expect(countedFor(dm({ notifyApplied: 'mute' }), [], [])).toBe(0)
+  })
+
   it('counts a muted channel by its mentions, since muting is not hiding that you were asked for', () => {
     expect(countedFor(buf({ highlight: true, mentions: 2 }), ['a|#x'], [])).toBe(2)
     expect(countedFor(buf({ highlight: true, mentions: 2 }), [], [], ['g'])).toBe(2)
-    expect(countedFor(buf({ highlight: true, mentions: 2, serverMuted: true }), [], [])).toBe(2)
+    expect(countedFor(buf({ highlight: true, mentions: 2, notify: 'mute' }), [], [])).toBe(2)
     // Everything else said in it is not counted whether muted or not.
     expect(countedFor(buf({ unread: 97 }), ['a|#x'], [])).toBe(0)
   })

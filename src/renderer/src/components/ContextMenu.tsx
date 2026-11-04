@@ -37,7 +37,17 @@ export interface MenuSlider {
   onChange: (value: number) => void
 }
 
-export type MenuEntry = MenuItem | MenuSeparator | MenuSlider
+/**
+ * A word over the entries that follow it, which cannot be pressed or moved
+ * onto. For a group of choices that would otherwise read as a run of
+ * unrelated commands.
+ */
+export interface MenuHeading {
+  heading: string
+  separator?: false
+}
+
+export type MenuEntry = MenuItem | MenuSeparator | MenuSlider | MenuHeading
 
 interface Props {
   x: number
@@ -156,6 +166,10 @@ export function ContextMenu({ x, y, entries, above, onClose }: Props): JSX.Eleme
       {entries.map((entry, i) =>
         entry.separator ? (
           <div key={i} className="context-menu-separator" />
+        ) : 'heading' in entry ? (
+          <div key={i} className="context-menu-heading" role="presentation">
+            {entry.heading}
+          </div>
         ) : 'slider' in entry ? (
           <label key={i} className="context-menu-slider">
             <span className="context-menu-slider-label">

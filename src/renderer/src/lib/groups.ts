@@ -1,5 +1,6 @@
 import type { BufferGroup } from '../../../shared/wire'
 import type { BufferEntry } from '../state/store'
+import { appliedLevelOf } from './notifylevels'
 
 /**
  * A rail entry as the UI knows it: everything nobilis reports, plus the
@@ -89,13 +90,23 @@ export function isDirectMessage(buffer: BufferEntry): boolean {
  * addressed to you, so it is counted by each unread message - unless it is
  * muted, which is asking not to hear about it at all.
  *
+ * What a conversation is set to bends the rule the way it bends what
+ * interrupts: mentions only counts only mentions even in a direct message, and
+ * every message counts every message even in a channel.
+ *
  * A muted channel still counts the times your name was used in it. Muting is
  * about being interrupted - a popup, a sound, a phone buzzing - not about
  * hiding that you were asked for; Discord and Element both keep that badge.
  */
 export function waitingCount(buffer: BufferEntry, muted = false): number {
-  if (isDirectMessage(buffer)) return muted ? 0 : buffer.unread
-  return buffer.mentions
+  const level = appliedLevelOf(buffer)
+  if (isDirectMessage(buffer)) {
+    if (muted) return 0
+    // Told only of what names you, a direct message is counted like a channel.
+    return level === 'mentions' ? buffer.mentions : buffer.unread
+  }
+  // Told of every message, each is an interruption and each is counted.
+  return level === 'all' ? buffer.unread : buffer.mentions
 }
 
 export function pinnedGroup(): RailGroup {
@@ -254,10 +265,11 @@ export function isMutedBuffer(
   // An explicit mute on this buffer always stands.
   if (muted.includes(buffer.id)) return true
 
-  // And so does one made on the account itself - a Discord server silenced in
-  // the official client, a Matrix room silenced by a push rule. Every other
-  // device signed in to that account is already keeping quiet about it.
-  if (buffer.serverMuted) return true
+  // And so does one that is muted by whoever keeps the setting - the account
+  // for Matrix and Discord, the daemon for the rest - including a channel left
+  // on its default inside a server that is muted. Every other device signed in
+  // to that account is already keeping quiet about it.
+  if (appliedLevelOf(buffer) === 'mute') return true
 
   // A muted server, guild or space silences everything under it.
   return !!buffer.groupId && mutedGroups.includes(buffer.groupId)

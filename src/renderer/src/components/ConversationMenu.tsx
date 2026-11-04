@@ -5,6 +5,7 @@ import { ExportDialog } from './ExportDialog'
 import { ReasonPrompt } from './ReasonPrompt'
 import { Avatar } from './Avatar'
 import { bufferMenuEntries } from '../lib/buffermenu'
+import { notifyLevelsFor } from '../lib/notifylevels'
 import { dmStatus } from './BufferList'
 import { activityLabel, dmActivity } from '../lib/activity'
 import { bufferDisplayName, classes } from '../lib/util'
@@ -42,7 +43,6 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
 
   const [reporting, setReporting] = useState(false)
   const [, togglePin, isPinned] = useIdSetPref('pinnedBuffers')
-  const [, toggleMute, isMuted] = useIdSetPref('mutedBuffers')
   const [hidden, setHidden] = usePref<string[]>('hiddenBuffers', [])
   const [assignment, setAssignment] = useMapPref<string>('channelCategory')
 
@@ -59,7 +59,6 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
     ...bufferMenuEntries({
       buffer,
       account,
-      muted: isMuted(buffer.id),
       pinned: isPinned(buffer.id),
       filed: !!assignment[buffer.id],
       inCall: voiceSessions.some((s) => s.bufferId === buffer.id),
@@ -70,21 +69,8 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
       autojoins: store.autojoins(buffer.accountId, name),
       spaces: groups.filter((g) => g.kind === 'space' && g.accountId === buffer.accountId),
       onTogglePin: () => togglePin(buffer.id),
-      onToggleMute: () => {
-        toggleMute(buffer.id)
-        if (account?.service === 'matrix' || account?.service === 'steam' || account?.service === 'telegram' || account?.service === 'stoat') {
-          void window.moho
-            .rpc(account.service === 'steam' ? 'steamSetFriendMuted' : account.service === 'telegram' ? 'setTelegramChatMuted' : account.service === 'stoat' ? 'setStoatChannelMuted' : 'setMatrixRoomMuted', { bufferId: buffer.id, muted: !isMuted(buffer.id) })
-            .catch((e: Error) => store.toast('error', e.message))
-        }
-      },
-      onUnmuteAccount:
-        account?.service === 'matrix' || account?.service === 'steam' || account?.service === 'telegram' || account?.service === 'stoat'
-          ? () =>
-              void window.moho
-                .rpc(account.service === 'steam' ? 'steamSetFriendMuted' : account.service === 'telegram' ? 'setTelegramChatMuted' : account.service === 'stoat' ? 'setStoatChannelMuted' : 'setMatrixRoomMuted', { bufferId: buffer.id, muted: false })
-                .catch((e: Error) => store.toast('error', e.message))
-          : undefined,
+      notifyLevels: notifyLevelsFor(account?.service, buffer),
+      onSetNotify: (level) => void store.setNotifyLevel(buffer.id, level),
       onToggleAutojoin:
         buffer.kind === 'channel' && account?.service === 'irc'
           ? () => store.toggleAutojoin(buffer.accountId, name)

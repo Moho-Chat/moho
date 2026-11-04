@@ -1,5 +1,6 @@
 import type { MenuEntry } from '../components/ContextMenu'
 import { serviceLabel } from './util'
+import { appliedLevelOf, levelIcon, levelLabel, levelOf, type NotifyLevel } from './notifylevels'
 import type { Account, BufferGroup } from '../../../shared/wire'
 import type { BufferEntry } from '../state/store'
 
@@ -19,7 +20,6 @@ import type { BufferEntry } from '../state/store'
 export interface BufferMenuInput {
   buffer: BufferEntry
   account?: Account
-  muted: boolean
   pinned: boolean
   filed: boolean
   inCall: boolean
@@ -31,9 +31,12 @@ export interface BufferMenuInput {
   autojoins?: boolean
   spaces?: BufferGroup[]
   onTogglePin: () => void
-  onToggleMute: () => void
-  /** Takes off a mute the account itself holds, where the service lets it be taken off from here. */
-  onUnmuteAccount?: () => void
+  /**
+   * Which of the four notification levels this conversation can be set to,
+   * and how to set one. Only what the service can keep: see notifyLevelsFor.
+   */
+  notifyLevels: NotifyLevel[]
+  onSetNotify: (level: NotifyLevel) => void
   /**
    * Filing the conversation on the account rather than in this window -
    * Matrix's room tags. Absent for every service that has no such idea, which
@@ -75,6 +78,51 @@ export interface BufferMenuInput {
   onProfile?: () => void
 }
 
+/**
+ * How much this conversation may interrupt, as a group of choices with the
+ * current one ticked.
+ *
+ * One list for every service, which is the point: where the service keeps the
+ * setting on the account it is the account's answer being ticked, and where it
+ * does not it is the daemon's own - and either way the same four words, in the
+ * service's own where it has them.
+ *
+ * What is ticked is what was set on *this* conversation. A channel left on its
+ * default inside a server somebody muted is ticked as the default and is
+ * silent all the same, and the entry below says why rather than leaving a menu
+ * that claims one thing and a row that does another.
+ */
+export function notifyEntries(
+  buffer: BufferEntry,
+  service: string | undefined,
+  levels: NotifyLevel[],
+  onSet: (level: NotifyLevel) => void
+): MenuEntry[] {
+  const now = levelOf(buffer)
+  const entries: MenuEntry[] = levels.map((level) => ({
+    label: levelLabel(level, service, buffer.kind),
+    icon: levelIcon(level),
+    checked: level === now,
+    onClick: () => onSet(level)
+  }))
+  const applied = appliedLevelOf(buffer)
+  const silencedElsewhere = applied === 'mute' && now !== 'mute'
+  return [
+    { heading: 'Notifications' },
+    ...entries,
+    ...(silencedElsewhere
+      ? ([
+          {
+            label: service ? `Silenced by its ${serviceLabel(service)} server` : 'Silenced by its server',
+            icon: 'info',
+            disabled: true,
+            onClick: () => {}
+          }
+        ] as MenuEntry[])
+      : [])
+  ]
+}
+
 /** What leaving is called, which depends on what is being left. */
 export function leaveLabel(buffer: BufferEntry, service?: string): string {
   if (buffer.kind === 'dm') return service === 'discord' ? 'Close conversation' : 'Leave conversation'
@@ -89,7 +137,6 @@ export function leaveLabel(buffer: BufferEntry, service?: string): string {
 export function bufferMenuEntries({
   buffer,
   account,
-  muted,
   pinned,
   filed,
   inCall,
@@ -100,8 +147,8 @@ export function bufferMenuEntries({
   autojoins,
   spaces,
   onTogglePin,
-  onToggleMute,
-  onUnmuteAccount,
+  notifyLevels,
+  onSetNotify,
   onTag,
   onToggleAutojoin,
   onSpace,
@@ -227,21 +274,8 @@ export function bufferMenuEntries({
           }
         ] as MenuEntry[])
       : []),
-    // A mute made on the account itself - Matrix keeps it on the server, as a
-    // push rule - is the account's to take off, and where the service lets it
-    // be taken off from here that is what this does. Where it does not, the
-    // entry says where the mute is rather than offering an "Unmute" that quietly
-    // did nothing.
-    buffer.serverMuted
-      ? onUnmuteAccount
-        ? { label: 'Unmute', icon: 'notifications', onClick: onUnmuteAccount }
-        : {
-            label: account ? `Muted on ${serviceLabel(account.service)}` : 'Muted on this account',
-            icon: 'notifications_off',
-            disabled: true,
-            onClick: () => {}
-          }
-      : { label: muted ? 'Unmute' : 'Mute', icon: muted ? 'notifications' : 'notifications_off', onClick: onToggleMute },
+    { separator: true },
+    ...notifyEntries(buffer, account?.service, notifyLevels, onSetNotify),
     { separator: true },
     // Filing is a drag onto the heading now, not an entry per heading. That
     // list grew with the number of headings and had no ceiling - on a server

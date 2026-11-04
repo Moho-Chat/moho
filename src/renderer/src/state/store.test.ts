@@ -15,12 +15,13 @@ function after(update: Record<string, unknown>, before: Record<string, unknown> 
 }
 
 describe('an update to a conversation the window already has', () => {
-  it('takes a mute off when the daemon leaves it out', () => {
-    // The daemon omits a flag that is off, so absent has to mean cleared: a
-    // room unmuted on the account stayed drawn as muted, with an Unmute that
-    // had nothing left to do.
-    expect(after({}, { serverMuted: true }).serverMuted).toBe(false)
-    expect(after({ serverMuted: true }, {}).serverMuted).toBe(true)
+  it('takes a level off when the daemon leaves it out', () => {
+    // The daemon leaves the default out, so absent has to mean cleared: a room
+    // set back to its default on the account stayed ticked as muted here, with
+    // a choice that had nothing left to do.
+    expect(after({}, { notify: 'mute' }).notify).toBeUndefined()
+    expect(after({ notify: 'mute' }, {}).notify).toBe('mute')
+    expect(after({}, { notifyApplied: 'mute' }).notifyApplied).toBeUndefined()
   })
 
   it('clears the other flags the same way, and keeps the unread count it holds', () => {

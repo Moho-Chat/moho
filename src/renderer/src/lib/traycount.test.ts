@@ -25,8 +25,8 @@ describe('the number on the tray', () => {
   it('counts the mentions in what is muted, and nothing else there', () => {
     const rows = [buf({ id: 'a|#m', mentions: 4, unread: 90 }), buf({ id: 'a|gm', mentions: 6, groupId: 'muted-group' })]
     expect(trayCount(rows, ['a|#m'], [], ['muted-group'])).toEqual({ dms: 0, mentions: 10, latest: 'a|#m' })
-    expect(trayCount([buf({ mentions: 2, serverMuted: true })], [], [], [])).toMatchObject({ mentions: 2 })
-    expect(trayCount([buf({ unread: 50, serverMuted: true })], [], [], [])).toMatchObject({ mentions: 0 })
+    expect(trayCount([buf({ mentions: 2, notify: 'mute' })], [], [], [])).toMatchObject({ mentions: 2 })
+    expect(trayCount([buf({ unread: 50, notify: 'mute' })], [], [], [])).toMatchObject({ mentions: 0 })
   })
 
   it('counts a muted direct message for nothing', () => {
