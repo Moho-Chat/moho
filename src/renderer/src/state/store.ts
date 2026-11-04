@@ -1689,7 +1689,10 @@ export class ChatStore {
         )
       },
       // Accepted, the check carries on in its dialog; declined, it is over.
-      matrixVerification: invitation.kind === 'verification' && v?.verificationId === id ? (v.state === 'requested' ? { ...v, incoming: false } : v) : v
+      // Whatever state it has reached by now: the daemon's "ready" push can
+      // beat the reply to the accept call, and keying this on "requested"
+      // left the request waiting on the tile with its emoji hidden behind it.
+      matrixVerification: invitation.kind === 'verification' && v?.verificationId === id ? { ...v, incoming: false } : v
     }
   }
 
@@ -4460,9 +4463,13 @@ export class ChatStore {
         )
         break
 
+      // Both of these only happen once the request has been accepted, so
+      // neither can still be waiting on the Invitations tile - and neither
+      // carries the flag itself, so without clearing it here a push that
+      // beat the accept call's reply left the check hidden for good.
       case 'matrixVerificationStatus':
         this.set({
-          matrixVerification: { ...(this.state.matrixVerification || {}), ...data }
+          matrixVerification: { ...(this.state.matrixVerification || {}), ...data, incoming: false }
         })
         break
       case 'matrixVerificationEmoji':
@@ -4470,6 +4477,7 @@ export class ChatStore {
           matrixVerification: {
             ...(this.state.matrixVerification || {}),
             ...data,
+            incoming: false,
             state: 'emoji'
           }
         })

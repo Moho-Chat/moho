@@ -88,3 +88,36 @@ describe('a conversation whose service keeps its own unread count', () => {
     expect(store.state.buffers[0].unread).toBe(0)
   })
 })
+
+describe('a verification request that was accepted', () => {
+  type Held = { incoming?: boolean; state?: string; emoji?: unknown[] } | null
+  const accountId = 'matrix:@a:b'
+  const verificationId = 'flow1'
+  function asked(): { store: ChatStore; held: () => Held; push: (event: string, data: Record<string, unknown>) => void } {
+    const rpc = vi.fn().mockResolvedValue(undefined)
+    ;(globalThis as unknown as { window: unknown }).window = { moho: { rpc } }
+    const store = new ChatStore() as unknown as { state: { matrixVerification: Held }; handleEvent: (f: { event: string; data: unknown }) => void }
+    const push = (event: string, data: Record<string, unknown>): void => store.handleEvent({ event, data: { accountId, verificationId, ...data } })
+    push('matrixVerificationIncoming', { fromUser: '@a:b', fromDevice: 'D', isSelf: true })
+    return { store: store as unknown as ChatStore, held: () => store.state.matrixVerification, push }
+  }
+  const invitation = { kind: 'verification', accountId, id: verificationId, service: 'matrix' } as unknown as Parameters<ChatStore['answerInvitation']>[0]
+
+  it('stops waiting on the Invitations tile when the daemon moved on before the reply to the accept arrived', async () => {
+    // The daemon pushes "ready" as soon as it has sent the accept, and that
+    // can reach the window ahead of the reply to the call that caused it.
+    const { store, held, push } = asked()
+    const answering = store.answerInvitation(invitation, true)
+    push('matrixVerificationStatus', { state: 'ready' })
+    await answering
+    expect(held()?.incoming).toBe(false)
+  })
+
+  it('shows its emoji rather than keeping them behind the request', () => {
+    const { held, push } = asked()
+    push('matrixVerificationStatus', { state: 'ready' })
+    push('matrixVerificationEmoji', { emoji: [{ symbol: 'x', description: 'x' }] })
+    expect(held()?.incoming).toBe(false)
+    expect(held()?.emoji).toHaveLength(1)
+  })
+})
