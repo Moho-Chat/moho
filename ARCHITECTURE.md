@@ -255,6 +255,25 @@ called `subscribe` for that buffer.
   self-hosted instance in docker (`scripts/probe-stoat-local.mjs`, `probe-stoat-voice.mjs`,
   `probe-stoat-manage.mjs`).
 
+- **Signal** (on the `protocol/signal` branch, not yet released, and not yet run against the real service: no test
+  account exists) - moho links to an existing Signal account as a secondary device, the way Signal Desktop does, by
+  a QR code scanned with Signal on the phone; it never registers a number or answers a captcha. The protocol is
+  Signal's own `libsignal` reached through Whisperfish's `libsignal-service-rs` and `presage` (AGPL-3.0, see the
+  nobilis README). The library's stores are not `Send`, so each account's `Manager` lives on a thread of its own with
+  a single-threaded runtime, and the rest of the daemon talks to it by sending `Command`s. The account's keys,
+  sessions, contacts, groups and messages are one private SQLite file per account (presage's store re-written over
+  rusqlite, because its own needs a SQLCipher that cannot share a binary with this one). A message has no id on
+  Signal: it is the author and the time they stamped it, which is also how a reply, reaction, edit or delete names
+  it. Built: text with styles and mentions, replies, reactions, edits, deletes, files both ways (fetched when
+  looked at), link cards, disappearing messages (the timer starts when a received message is looked at, and what
+  falls due is removed from both stores), delivery and read receipts and typing (sent only as the phone's own privacy
+  settings say), what is sent from the phone appearing here and reading there clearing here, people's names and
+  pictures from their profiles, the person card with a safety number, a changed safety number told in the
+  conversation, the phone's call log as lines, and the list of linked devices. Not built or not possible with the
+  library as it stands: Tor or a proxy (it makes its own connections; an account set to one refuses to connect rather
+  than go out directly), creating or changing groups, message requests, blocking, stories, calls themselves,
+  looking up a number. The code is `nobilis/src/backend/signal/`.
+
 ### Notifications are cards
 
 Anything a service *says* rather than somebody *saying* - a join or part, a topic or mode change, a kick,
