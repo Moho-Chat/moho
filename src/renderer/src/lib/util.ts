@@ -5,6 +5,7 @@ import kickSvg from '../assets/kick.svg'
 import steamSvg from '../assets/steam-mark.svg'
 import twitchSvg from '../assets/twitch-mark.svg'
 import telegramSvg from '../assets/telegram-mark.svg'
+import signalSvg from '../assets/signal-mark.svg'
 import stoatSvg from '../assets/stoat-mark.svg'
 
 /**
@@ -81,6 +82,8 @@ export function serviceIcon(service: string): ServiceIcon {
       return { mark: telegramSvg }
     case 'stoat':
       return { mark: stoatSvg }
+    case 'signal':
+      return { mark: signalSvg }
     case 'irc':
       return { glyph: 'tag' }
     case 'slack':
@@ -120,6 +123,8 @@ export function serviceLabel(service: string): string {
       return 'Telegram'
     case 'stoat':
       return 'Stoat'
+    case 'signal':
+      return 'Signal'
     case 'slack':
       return 'Slack'
     case 'jabber':

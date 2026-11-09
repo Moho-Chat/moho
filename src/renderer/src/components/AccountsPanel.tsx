@@ -26,7 +26,7 @@ import type { Account } from '../../../shared/wire'
  * that gains a backend appears here as soon as it gains a form, and one the
  * daemon stops offering disappears without this file being touched.
  */
-const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram', 'stoat'] as const
+const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram', 'stoat', 'signal'] as const
 type AddableService = (typeof FORMS)[number]
 
 /** What `listProtocols` answers with. */
@@ -141,6 +141,7 @@ export function AccountsPanel(): JSX.Element {
         {adding === 'twitch' && <TwitchForm onDone={() => setAdding(null)} />}
         {adding === 'telegram' && <TelegramForm onDone={() => setAdding(null)} />}
         {adding === 'stoat' && <StoatForm onDone={() => setAdding(null)} />}
+        {adding === 'signal' && <SignalForm onDone={() => setAdding(null)} />}
         {adding && (
           <button type="button" className="button subtle small" onClick={() => setAdding(null)}>
             Cancel
@@ -1762,6 +1763,126 @@ function TelegramForm({ onDone }: { onDone: () => void }): JSX.Element {
         )}
       </div>
       {busy && detail && <p className="small muted">{detail}…</p>}
+    </div>
+  )
+}
+
+/**
+ * Linking a Signal account: moho becomes a linked device of the account on a phone, the way Signal Desktop does. Nothing
+ * is typed; a code is drawn here and scanned with Signal on the phone. moho never makes a Signal account, asks for a
+ * number or answers a captcha - an account that does not exist yet is made in Signal's own app first.
+ */
+function SignalForm({ onDone }: { onDone: () => void }): JSX.Element {
+  const store = useStore()
+  const [busy, setBusy] = useState(false)
+  const [detail, setDetail] = useState('')
+  /** The code to scan, and when it was drawn (a new one replaces it every couple of minutes). */
+  const [qr, setQr] = useState<{ path: string; at: number } | null>(null)
+
+  // Held in a ref as well: the first event can be handled before the render that follows the answer that started the
+  // link. Nothing else is linking from this form, so an event with no id known yet is this one's.
+  const current = useRef('')
+
+  useEffect(() => {
+    const off = window.moho.onEvent((e) => {
+      const d = e.data as { loginId?: string; text?: string; path?: string; success?: boolean; error?: string }
+      if (!e.event.startsWith('signalLink')) return
+      if (current.current && d.loginId !== current.current) return
+      if (e.event === 'signalLinkStatus') {
+        setDetail(d.text || '')
+      } else if (e.event === 'signalLinkQr') {
+        if (d.path) setQr({ path: d.path, at: Date.now() })
+      } else if (e.event === 'signalLinkResult') {
+        current.current = ''
+        setQr(null)
+        setBusy(false)
+        setDetail('')
+        if (d.success) {
+          void store.refreshAccounts()
+          onDone()
+        } else {
+          store.toast('error', d.error || 'Linking Signal failed')
+        }
+      }
+    })
+    return off
+  }, [onDone, store])
+
+  // Closing the form on a link that is still waiting tells the daemon nobody is.
+  useEffect(
+    () => () => {
+      if (current.current) void window.moho.rpc('cancelSignalLink', { loginId: current.current }).catch(() => {})
+    },
+    []
+  )
+
+  const begin = (): void => {
+    setBusy(true)
+    setDetail('')
+    setQr(null)
+    current.current = ''
+    void window.moho
+      .rpc<{ loginId: string }>('addSignalAccount', {})
+      .then((r) => {
+        current.current = r.loginId
+      })
+      .catch((e: Error) => {
+        setBusy(false)
+        store.toast('error', e.message)
+      })
+  }
+
+  const cancel = (): void => {
+    if (current.current) void window.moho.rpc('cancelSignalLink', { loginId: current.current }).catch(() => {})
+    current.current = ''
+    setQr(null)
+    setDetail('')
+    setBusy(false)
+  }
+
+  if (qr) {
+    return (
+      <div className="add-form">
+        <p>Scan this with Signal on your phone.</p>
+        <p className="small muted">
+          In the app, open Settings, then Linked devices, then Link new device, and point the phone at the code. It is
+          replaced with a new one if it is not scanned in a couple of minutes.
+        </p>
+        <img className="qr-image" src={resolveMediaUrl(`file://${qr.path}#${qr.at}`)} alt="Signal link QR code" />
+        {detail && <p className="small muted">{detail}</p>}
+        <div className="field-row">
+          <button type="button" className="button" onClick={cancel}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="add-form">
+      <p className="small muted">
+        moho links to your Signal account as a second device, the way Signal Desktop does: you scan a code with Signal on
+        your phone. It never makes an account, asks for your number or answers a captcha - make the account in
+        Signal&apos;s own app first. The device is named &ldquo;moho (your system)&rdquo; in the phone&apos;s list of linked
+        devices, where it can be removed at any time.
+      </p>
+      <p className="small muted">
+        Signal does not make third-party apps welcome: it may unlink one, and what a linked device can do is whatever
+        Signal&apos;s libraries offer. A linked device that stays away for about a month is unlinked by Signal itself.
+        Signal cannot be reached through Tor from here yet.
+      </p>
+      <div className="field-row">
+        <button type="button" className="button primary" disabled={busy} onClick={begin}>
+          {busy ? 'Linking…' : 'Link with a QR code'}
+        </button>
+        {busy && (
+          <button type="button" className="button" onClick={cancel}>
+            Cancel
+          </button>
+        )}
+      </div>
+      {busy && detail && <p className="small muted">{detail}</p>}
     </div>
   )
 }
