@@ -31,7 +31,9 @@ const CAPABILITIES: Record<string, FormatKind[]> = {
   // which turns [b], [i], [u] and [strike] into literal text and drops [code],
   // [quote] and [spoiler] to their contents. So there is nothing to offer, and
   // what it does read - emoticons - is not a format.
-  steam: []
+  steam: [],
+  // Signal's own markers (*bold*, _italic_, ~strike~, `code`, ||spoiler||), which the daemon turns into body ranges (signal/compose.rs).
+  signal: ['bold', 'italic', 'strike', 'code', 'spoiler']
 }
 
 export function formatsFor(service: string | undefined): FormatKind[] {
@@ -143,6 +145,16 @@ export function wrap(service: string | undefined, kind: FormatKind, inner: strin
       case 'spoiler': return marked('[spoiler]', '[/spoiler]')
       case 'quote': return marked('[quote]', '[/quote]')
       case 'color': return colour ? marked(`[color=${colour}]`, '[/color]') : inner
+    }
+  }
+  if (service === 'signal') {
+    switch (kind) {
+      case 'bold': return marked('*')
+      case 'italic': return marked('_')
+      case 'strike': return marked('~')
+      case 'code': return marked('`')
+      case 'spoiler': return marked('||')
+      default: return inner
     }
   }
   if (service === 'irc') {

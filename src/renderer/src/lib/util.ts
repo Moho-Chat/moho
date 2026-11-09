@@ -65,7 +65,7 @@ export interface ServiceIcon {
  * the same menus, as "Whisper".
  */
 export function hasDirectMessages(service: string | undefined): boolean {
-  return service === 'irc' || service === 'discord' || service === 'matrix' || service === 'twitch' || service === 'telegram' || service === 'stoat'
+  return service === 'irc' || service === 'discord' || service === 'matrix' || service === 'twitch' || service === 'telegram' || service === 'stoat' || service === 'signal'
 }
 
 export function serviceIcon(service: string): ServiceIcon {

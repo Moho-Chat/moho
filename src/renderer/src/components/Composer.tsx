@@ -1315,7 +1315,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
                 !e.altKey &&
                 !e.metaKey &&
                 !text &&
-                (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat')
+                (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'signal')
               ) {
                 const last = store.lastEditableOwn(buffer.id)
                 if (last) {
