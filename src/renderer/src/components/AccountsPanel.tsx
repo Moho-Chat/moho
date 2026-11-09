@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton, ServiceMark } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
 import { StoatAccountTools } from './StoatAccountTools'
+import { SignalAccountTools } from './SignalAccountTools'
 import { SteamAccountTools } from './SteamAccountTools'
 import { TwitchSignIn } from './TwitchSignIn'
 import { IgnoreList } from './IgnoreList'
@@ -478,7 +479,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
             </>
           )}
 
-          {account.service !== 'sneedchat' && (
+          {account.service !== 'sneedchat' && account.service !== 'signal' && (
             <RouteLevel account={account} onChange={(level) => call('setAccountRoute', { accountId: account.id, level })} />
           )}
 
@@ -488,6 +489,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
 
           {account.service === 'steam' && <SteamAccountTools account={account} />}
           {account.service === 'stoat' && <StoatAccountTools account={account} />}
+          {account.service === 'signal' && <SignalAccountTools account={account} />}
           {account.service === 'twitch' && <TwitchAccountTools account={account} />}
 
           {account.service === 'sneedchat' && (
