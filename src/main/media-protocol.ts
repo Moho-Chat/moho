@@ -126,6 +126,8 @@ const DAEMON_MEDIA_DIRS = [
   'telegram-avatars',
   'stoat-media',
   'stoat-avatars',
+  'signal-media',
+  'signal-avatars',
   'transient'
 ]
 
