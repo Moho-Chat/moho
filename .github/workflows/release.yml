@@ -113,11 +113,14 @@ jobs:
       # static opus through CMake, which is what we want in something that has
       # to run on a machine we know nothing about. libasound2-dev is not
       # optional - cpal reaches alsa-sys, which wants it.
+      # protobuf-compiler is for the Signal crates (libsignal, libsignal-service, presage), whose build scripts compile
+      # their .proto files. Those crates are git dependencies, so the fetch step below needs the network, which a runner
+      # has.
       - name: system build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential cmake pkg-config libasound2-dev xvfb
+            build-essential cmake pkg-config libasound2-dev xvfb protobuf-compiler
 
       # The image ships a stable rust, but its version floats and this tree's
       # effective floor is 1.93 (matrix-sdk-crypto). Ask explicitly.
@@ -393,7 +396,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential cmake gcc-mingw-w64-x86-64
+            build-essential cmake gcc-mingw-w64-x86-64 protobuf-compiler
           # i386 as well as amd64, because the program wine is needed for is
           # a 32-bit one: electron-builder writes the icon and version
           # metadata into the .exe with rcedit-ia32.exe, and a 64-bit-only

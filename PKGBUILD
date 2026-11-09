@@ -7,7 +7,7 @@ arch=('x86_64')
 url="https://github.com/Moho-Chat/moho"
 license=('GPL3')
 depends=('gtk3' 'nss' 'alsa-lib' 'libxss' 'libnotify')
-makedepends=('git' 'cargo' 'nodejs' 'npm')
+makedepends=('git' 'cargo' 'nodejs' 'npm' 'protobuf')
 provides=('moho')
 conflicts=('moho')
 source=("git+https://github.com/Moho-Chat/moho.git")
@@ -25,6 +25,8 @@ prepare() {
   cd "$srcdir/moho"
   git submodule update --init --recursive
   npm ci
+  # The Signal crates are git dependencies (see nobilis/Cargo.toml), so this needs the network.
+  cargo fetch --locked --manifest-path nobilis/Cargo.toml
 }
 
 build() {
