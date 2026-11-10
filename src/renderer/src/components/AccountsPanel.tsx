@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton, ServiceMark } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
 import { StoatAccountTools } from './StoatAccountTools'
+import { XmppAccountTools } from './XmppAccountTools'
 import { SteamAccountTools } from './SteamAccountTools'
 import { TwitchSignIn } from './TwitchSignIn'
 import { IgnoreList } from './IgnoreList'
@@ -26,7 +27,7 @@ import type { Account } from '../../../shared/wire'
  * that gains a backend appears here as soon as it gains a form, and one the
  * daemon stops offering disappears without this file being touched.
  */
-const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram', 'stoat'] as const
+const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram', 'stoat', 'xmpp'] as const
 type AddableService = (typeof FORMS)[number]
 
 /** What `listProtocols` answers with. */
@@ -141,6 +142,7 @@ export function AccountsPanel(): JSX.Element {
         {adding === 'twitch' && <TwitchForm onDone={() => setAdding(null)} />}
         {adding === 'telegram' && <TelegramForm onDone={() => setAdding(null)} />}
         {adding === 'stoat' && <StoatForm onDone={() => setAdding(null)} />}
+        {adding === 'xmpp' && <XmppForm onDone={() => setAdding(null)} />}
         {adding && (
           <button type="button" className="button subtle small" onClick={() => setAdding(null)}>
             Cancel
@@ -487,6 +489,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
 
           {account.service === 'steam' && <SteamAccountTools account={account} />}
           {account.service === 'stoat' && <StoatAccountTools account={account} />}
+          {account.service === 'xmpp' && <XmppAccountTools account={account} />}
           {account.service === 'twitch' && <TwitchAccountTools account={account} />}
 
           {account.service === 'sneedchat' && (
@@ -2174,6 +2177,119 @@ function RouteLevel({ account, onChange }: { account: Account; onChange: (level:
       </div>
       <p className="small muted route-level-desc">{describe[level]}</p>
       {level !== 'clearnet' && <TorWarning service={account.service} />}
+    </div>
+  )
+}
+
+/**
+ * Adding an XMPP account. XMPP has no operator: the account is an address on a server of its own choosing, so there is
+ * no sign-in page to open, only the address and the password. The server is found from the address by DNS; the
+ * advanced section is for a server that DNS does not describe, or one with a certificate of its own.
+ */
+function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
+  const store = useStore()
+  const [jid, setJid] = useState('')
+  const [password, setPassword] = useState('')
+  const [useTor, setUseTor] = useState(false)
+  const [advanced, setAdvanced] = useState(false)
+  const [host, setHost] = useState('')
+  const [port, setPort] = useState('')
+  const [security, setSecurity] = useState<'starttls' | 'direct'>('starttls')
+  const [caPem, setCaPem] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const ready = /^[^@\s/]+@[^@\s/]+$/.test(jid.trim()) && password !== ''
+  const add = (): void => {
+    setBusy(true)
+    void window.moho
+      .rpc('addXmppAccount', {
+        jid: jid.trim(),
+        password,
+        host: host.trim(),
+        port: port.trim() ? Number(port) : 0,
+        security,
+        caPem: caPem.trim(),
+        useTor
+      })
+      .then(() => {
+        setPassword('')
+        void store.refreshAccounts()
+        onDone()
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <div className="add-form">
+      <p className="small muted">
+        Sign in to an XMPP account on any server. The server is found from the address; moho connects only over TLS, checks the
+        server&apos;s certificate, and keeps the password only on this computer. Making an account is done on the server&apos;s own
+        page first.
+      </p>
+      <div className="field-row">
+        <label className="field">
+          <span className="small muted">Address</span>
+          <input
+            className="text-field"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="you@example.org"
+            value={jid}
+            disabled={busy}
+            onChange={(e) => setJid(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span className="small muted">Password</span>
+          <input
+            className="text-field"
+            type="password"
+            autoComplete="off"
+            value={password}
+            disabled={busy}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && ready && !busy) add()
+            }}
+          />
+        </label>
+      </div>
+      <TorSwitch service="xmpp" on={useTor} onChange={setUseTor} />
+      <button type="button" className="button subtle small" onClick={() => setAdvanced(!advanced)}>
+        {advanced ? 'Fewer settings' : 'More settings'}
+      </button>
+      {advanced && (
+        <div className="add-form-advanced">
+          <div className="field-row">
+            <label className="field">
+              <span className="small muted">Server (leave empty to look it up)</span>
+              <input className="text-field" autoComplete="off" spellCheck={false} placeholder="xmpp.example.org" value={host} disabled={busy} onChange={(e) => setHost(e.target.value)} />
+            </label>
+            <label className="field">
+              <span className="small muted">Port</span>
+              <input className="text-field" inputMode="numeric" placeholder={security === 'direct' ? '5223' : '5222'} value={port} disabled={busy} onChange={(e) => setPort(e.target.value.replace(/\D/g, ''))} />
+            </label>
+          </div>
+          <div className="segmented">
+            <button type="button" className={security === 'starttls' ? 'active' : undefined} disabled={busy} onClick={() => setSecurity('starttls')}>
+              STARTTLS
+            </button>
+            <button type="button" className={security === 'direct' ? 'active' : undefined} disabled={busy} onClick={() => setSecurity('direct')}>
+              Direct TLS
+            </button>
+          </div>
+          <label className="field">
+            <span className="small muted">Certificate authority to trust, besides the system&apos;s (PEM) — for a server with a private one</span>
+            <textarea className="text-field" rows={4} spellCheck={false} placeholder="-----BEGIN CERTIFICATE-----" value={caPem} disabled={busy} onChange={(e) => setCaPem(e.target.value)} />
+          </label>
+        </div>
+      )}
+      <div className="field-row">
+        <button type="button" className="button primary" disabled={busy || !ready} onClick={add}>
+          {busy ? 'Adding…' : 'Add account'}
+        </button>
+      </div>
     </div>
   )
 }
