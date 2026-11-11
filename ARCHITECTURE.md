@@ -256,19 +256,28 @@ called `subscribe` for that buffer.
   `probe-stoat-manage.mjs`).
 
 - **XMPP** (on the `protocol/xmpp` branch, not yet released) - an account is an address on a server of its own choosing, over the
-  xmpp-rs stack (`tokio-xmpp`, `xmpp-parsers`; MPL-2.0) with a connector and a reconnector of our own: TCP through the account's route
-  (Tor, SOCKS5), STARTTLS or direct TLS, the server trusted by the system's roots, a certificate authority the account lists, or one
-  certificate pinned after being shown, and a stop - not a loop - on a refused password, certificate or setup. One-to-one chat with
-  the roster, presence, carbons, the archive (MAM) for catch-up and scrollback, receipts, markers, typing, corrections, retractions,
-  reactions, replies and blocking; group chats with bookmarks, occupant ids, the room's archive, moderation (including moderated
-  retraction), room settings as data forms, and invitations; files over HTTP Upload and shared files in all three forms; avatars from
-  PEP and vCards; making an account in-band (a captcha refused in words), password and account removal, ad-hoc commands, `xmpp:` links;
-  and OMEMO (the older namespace every client speaks), whose Signal-protocol session code is written in `omemo/` and tested against
-  python-omemo. Not supported: calls (Jingle), OMEMO 2, encrypted rooms and files, WebSocket/BOSH, client state indication, SASL2.
-  The code is `nobilis/src/backend/xmpp/` (`transport` and `connect` reach and keep the server; `dispatch` routes each stanza;
-  `messages`, `incoming`, `roster`, `muc`, `mam`, `send`, `upload`, `avatars` and `omemo/` do the work; `dataform` and `adhoc` are the
-  generic parts). The verification scripts run it against a local ejabberd 26.09 and Prosody 13 with other implementations as the other
-  side (`scripts/probe-xmpp-*.mjs`, `scripts/check-xmpp-*.mjs`); the plan and what has and has not been run is Gitea issue #23.
+  xmpp-rs stack (`tokio-xmpp`, `xmpp-parsers`; MPL-2.0), which carries the stanza stream and stream management. What it does not do is
+  ours: reaching the server (TCP through the account's route - Tor, SOCKS5 - or a WebSocket; STARTTLS or direct TLS; the server trusted
+  by the system's roots, a certificate authority the account lists, or one certificate pinned after being shown) and **signing in**,
+  which runs on the raw stream before the library is handed it (`login` over `wire`): SASL2 with Bind2 and FAST tokens where the
+  server has them, else RFC 6120 SASL; the strongest SCRAM (SHA-512/256/1) bound to the TLS channel (`-PLUS`, tls-exporter or
+  tls-server-end-point), the server's signed list of mechanisms checked (XEP-0474), PLAIN only for a server that never offered better.
+  `wire` then plays the library a stream restart and answers its resource binding, so stream management and resumption stay the
+  library's. A refused password, certificate or setup stops the account rather than looping; a stream error is said in words
+  (`see-other-host` followed once, a `conflict` answered with a resource of its own); a wake from sleep is noticed by the clocks and
+  the connection checked at once. One-to-one chat with the roster, presence, carbons, the archive (MAM) for catch-up and
+  scrollback, receipts, markers and displayed sync, typing, corrections, retractions, reactions, replies, mentions, spoilers and
+  blocking; client state indication; group chats with bookmarks, occupant ids, hats, the room's archive, moderation (including
+  moderated retraction), room settings as data forms, and invitations; files over HTTP Upload and shared files in all three forms;
+  avatars from PEP and vCards; making an account in-band (a captcha refused in words), password and account removal, ad-hoc
+  commands, `xmpp:` links; OMEMO (the older namespace every client speaks) in conversations, rooms and files, whose Signal-protocol
+  session code is written in `omemo/` and tested against python-omemo; and calls (Jingle Message Initiation and Jingle RTP), which
+  the daemon translates to and from the window's existing call vocabulary in `calls/`. Not supported: OMEMO 2, BOSH, group calls.
+  The code is `nobilis/src/backend/xmpp/` (`transport`, `login`, `wire` and `connect` reach and keep the server; `dispatch` routes
+  each stanza; `messages`, `incoming`, `roster`, `muc`, `mam`, `send`, `upload`, `avatars`, `calls/` and `omemo/` do the work;
+  `dataform` and `adhoc` are the generic parts). The verification scripts run it against a local ejabberd 26.09 and Prosody 13 with
+  other implementations as the other side (`scripts/probe-xmpp-*.mjs`, `scripts/check-xmpp-*.mjs`); the plan and what has and has
+  not been run is Gitea issue #23.
 
 ### Notifications are cards
 

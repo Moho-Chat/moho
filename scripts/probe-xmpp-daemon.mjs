@@ -115,7 +115,7 @@ try {
   const listed = await account(id)
   check('it is listed as an XMPP account', listed?.service === 'xmpp' && listed?.displayName === alice.jid, JSON.stringify(listed)?.slice(0, 160))
   const cfg = fs.readFileSync(path.join(scratch, 'config', 'nobilis', 'accounts.toml'), 'utf8')
-  const resource = /resource = "(moho\.[a-z0-9]{8})"/.exec(cfg)?.[1]
+  const resource = /resource = "(moho[^"]+)"/.exec(cfg)?.[1]
   check('it made a resource and kept it', !!resource, resource ?? cfg.slice(0, 200))
 
   console.log('disconnect and connect again')
@@ -200,5 +200,6 @@ try {
 }
 check('no daemon left behind', left.trim() === '', left)
 const ok = results.every(Boolean)
+if (process.env.XMPP_PROBE_LOG) console.log(log)
 console.log(ok ? 'ALL OK' : 'FAILED')
 process.exit(ok ? 0 : 1)

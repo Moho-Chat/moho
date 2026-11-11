@@ -55,13 +55,37 @@ export async function start({ people = 2 } = {}) {
   const runtime = path.join(scratch, 'run')
   fs.mkdirSync(runtime, { recursive: true, mode: 0o700 })
   const env = { ...process.env, HOME: scratch, XDG_CONFIG_HOME: path.join(scratch, 'config'), XDG_DATA_HOME: path.join(scratch, 'data'), XDG_CACHE_HOME: path.join(scratch, 'cache'), XDG_RUNTIME_DIR: runtime }
-  const daemon = spawn(path.join(root, 'nobilis/target/release/nobilis'), [], { env, stdio: ['ignore', 'pipe', 'pipe'] })
   const probe = { accounts, scratch, stamp, log: '', events: [], results: [] }
-  daemon.stdout.on('data', (d) => (probe.log += d))
-  daemon.stderr.on('data', (d) => (probe.log += d))
+  let daemon = null
+  let conn = null
+  let nextId = 1
+  const waiting = new Map()
+  const sock = path.join(runtime, 'nobilis', 'nobilis.sock')
+  // The daemon and the socket to it: made here, and again by restart().
+  const launch = async () => {
+    daemon = spawn(path.join(root, 'nobilis/target/release/nobilis'), [], { env, stdio: ['ignore', 'pipe', 'pipe'] })
+    daemon.stdout.on('data', (d) => (probe.log += d))
+    daemon.stderr.on('data', (d) => (probe.log += d))
+    for (let i = 0; i < 100 && !fs.existsSync(sock); i++) await sleep(100)
+    if (!fs.existsSync(sock)) throw new Error('the daemon did not open its socket\n' + probe.log)
+    conn = net.connect(sock)
+    let buf = ''
+    conn.on('data', (d) => {
+      buf += d
+      const lines = buf.split('\n')
+      buf = lines.pop()
+      for (const line of lines) {
+        const m = JSON.parse(line)
+        if (m.id && waiting.has(m.id)) {
+          waiting.get(m.id)(m)
+          waiting.delete(m.id)
+        } else if (m.event) probe.events.push(m)
+      }
+    })
+  }
   probe.cleanup = () => {
     try {
-      daemon.kill('SIGKILL')
+      daemon?.kill('SIGKILL')
     } catch {
       /* gone */
     }
@@ -75,31 +99,31 @@ export async function start({ people = 2 } = {}) {
     fs.rmSync(scratch, { recursive: true, force: true })
   }
   process.on('exit', probe.cleanup)
-  const sock = path.join(runtime, 'nobilis', 'nobilis.sock')
-  for (let i = 0; i < 100 && !fs.existsSync(sock); i++) await sleep(100)
-  if (!fs.existsSync(sock)) throw new Error('the daemon did not open its socket\n' + probe.log)
-  const conn = net.connect(sock)
-  let buf = ''
-  let nextId = 1
-  const waiting = new Map()
-  conn.on('data', (d) => {
-    buf += d
-    const lines = buf.split('\n')
-    buf = lines.pop()
-    for (const line of lines) {
-      const m = JSON.parse(line)
-      if (m.id && waiting.has(m.id)) {
-        waiting.get(m.id)(m)
-        waiting.delete(m.id)
-      } else if (m.event) probe.events.push(m)
-    }
-  })
+  await launch()
   probe.rpc = (method, params = {}) =>
     new Promise((resolve, reject) => {
       const id = nextId++
       waiting.set(id, (m) => (m.error ? reject(new Error(m.error)) : resolve(m.result)))
       conn.write(JSON.stringify({ id, method, params }) + '\n')
     })
+  /** The account file, as the daemon wrote it. */
+  probe.accountsToml = () => fs.readFileSync(path.join(scratch, 'config', 'nobilis', 'accounts.toml'), 'utf8')
+  /** Stops the daemon, lets `edit` change its account file (text in, text out), and starts it again on the same files. */
+  probe.restart = async (edit = (t) => t) => {
+    conn.destroy()
+    const gone = new Promise((r) => daemon.once('exit', r))
+    daemon.kill('SIGTERM')
+    await Promise.race([gone, sleep(5000)])
+    try {
+      daemon.kill('SIGKILL')
+    } catch {
+      /* gone */
+    }
+    const file = path.join(scratch, 'config', 'nobilis', 'accounts.toml')
+    fs.writeFileSync(file, edit(fs.readFileSync(file, 'utf8')))
+    fs.rmSync(sock, { force: true })
+    await launch()
+  }
   probe.peer = async (who, steps) => {
     const { stdout } = await run(python, [path.join(root, 'scripts/lib/xmpp-peer.py'), who.name, JSON.stringify(steps)], { env: { ...process.env, XMPP_TEST_ACCOUNTS: accountsFile, XMPP_TEST_PORT: String(PORT) }, maxBuffer: 1 << 24 })
     return JSON.parse(stdout)
