@@ -31,7 +31,10 @@ const CAPABILITIES: Record<string, FormatKind[]> = {
   // which turns [b], [i], [u] and [strike] into literal text and drops [code],
   // [quote] and [spoiler] to their contents. So there is nothing to offer, and
   // what it does read - emoticons - is not a format.
-  steam: []
+  steam: [],
+  // Message styling (XEP-0393): *bold*, _italic_, ~strike~ and `code`, which every XMPP client reads and a client that does
+  // not shows as the plain marks.
+  xmpp: ['bold', 'italic', 'strike', 'code']
 }
 
 export function formatsFor(service: string | undefined): FormatKind[] {
@@ -143,6 +146,15 @@ export function wrap(service: string | undefined, kind: FormatKind, inner: strin
       case 'spoiler': return marked('[spoiler]', '[/spoiler]')
       case 'quote': return marked('[quote]', '[/quote]')
       case 'color': return colour ? marked(`[color=${colour}]`, '[/color]') : inner
+    }
+  }
+  if (service === 'xmpp') {
+    switch (kind) {
+      case 'bold': return marked('*')
+      case 'italic': return marked('_')
+      case 'strike': return marked('~')
+      case 'code': return marked('`')
+      default: return inner
     }
   }
   if (service === 'irc') {

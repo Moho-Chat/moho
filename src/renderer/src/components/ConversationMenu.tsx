@@ -3,6 +3,7 @@ import { HeaderTopic } from './HeaderTopic'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { ExportDialog } from './ExportDialog'
 import { ReasonPrompt } from './ReasonPrompt'
+import { XmppRoomDialog } from './XmppRoomDialog'
 import { Avatar } from './Avatar'
 import { bufferMenuEntries } from '../lib/buffermenu'
 import { notifyLevelsFor } from '../lib/notifylevels'
@@ -42,6 +43,7 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
   const watched = useChat((s) => s.watching?.bufferId === buffer.id)
 
   const [reporting, setReporting] = useState(false)
+  const [roomDialog, setRoomDialog] = useState(false)
   const [, togglePin, isPinned] = useIdSetPref('pinnedBuffers')
   const [hidden, setHidden] = usePref<string[]>('hiddenBuffers', [])
   const [assignment, setAssignment] = useMapPref<string>('channelCategory')
@@ -121,6 +123,10 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
           .finally(() => setExporting(true))
       }
     },
+    // An XMPP room has controls of its own: its settings, who holds what standing in it, an invitation, the subject.
+    ...(account?.service === 'xmpp' && buffer.kind === 'channel'
+      ? ([{ label: 'Room settings…', icon: 'settings', onClick: () => setRoomDialog(true) }] as MenuEntry[])
+      : []),
     // Matrix only, and about the room rather than anything in it. Reporting a
     // message says "this line was wrong"; there was no way to say "this place
     // is", which is the report a room made for something awful actually
@@ -169,6 +175,8 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
       {buffer.topic && <HeaderTopic topic={buffer.topic} />}
 
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={entries} onClose={close} />}
+
+      {roomDialog && <XmppRoomDialog bufferId={buffer.id} name={name} onClose={() => setRoomDialog(false)} />}
 
       {reporting && (
         <ReasonPrompt

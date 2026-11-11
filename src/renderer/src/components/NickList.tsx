@@ -174,9 +174,9 @@ export function NickList(): JSX.Element {
   const [discordPowers, setDiscordPowers] = useState<DiscordPowers | null>(null)
   useEffect(() => {
     setDiscordPowers(null)
-    if ((account?.service !== 'discord' && account?.service !== 'stoat') || !buffer) return
+    if ((account?.service !== 'discord' && account?.service !== 'stoat' && account?.service !== 'xmpp') || !buffer) return
     void window.moho
-      .rpc<DiscordPowers>(account.service === 'stoat' ? 'getStoatPowers' : 'getDiscordPowers', { bufferId: buffer.id })
+      .rpc<DiscordPowers>(account.service === 'stoat' ? 'getStoatPowers' : account.service === 'xmpp' ? 'getXmppPowers' : 'getDiscordPowers', { bufferId: buffer.id })
       .then(setDiscordPowers)
       .catch(() => {
         /* advisory only: no answer means no moderation entries */
@@ -208,7 +208,7 @@ export function NickList(): JSX.Element {
       ? ircPermissions(members, account.currentNick)
       : account?.service === 'kick'
         ? kickPermissions(members, account.currentNick)
-        : account?.service === 'discord' || account?.service === 'stoat'
+        : account?.service === 'discord' || account?.service === 'stoat' || account?.service === 'xmpp'
           ? discordPowers ?? {}
           : (buffer && permissions[buffer.id]) || {}
 
@@ -416,6 +416,17 @@ export function NickList(): JSX.Element {
                         banned: true
                       })
                       .then(() => store.toast('info', `${action === 'ban' ? 'Banned' : action === 'mute' ? 'Muted' : 'Removed'} ${member.nick}`))
+                      .catch((e: Error) => store.toast('error', e.message))
+                    return
+                  }
+                  if (account.service === 'xmpp') {
+                    // A role is by nickname and standing by address, which the room only shows where it is not anonymous.
+                    const mapped: Record<string, string> = { kick: 'kick', ban: 'ban', mute: 'mute', voice: 'voice', op: 'moderator', deop: 'voice' }
+                    const act = mapped[action]
+                    if (!act) return
+                    void window.moho
+                      .rpc('xmppRoomAction', { bufferId: buffer.id, action: act, nick: member.nick, jid: member.userId && member.userId.includes('@') && !member.userId.includes('/') ? member.userId : undefined })
+                      .then(() => store.toast('info', `${act === 'ban' ? 'Banned' : act === 'kick' ? 'Removed' : 'Changed'} ${member.nick}`))
                       .catch((e: Error) => store.toast('error', e.message))
                     return
                   }

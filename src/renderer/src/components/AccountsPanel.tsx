@@ -5,6 +5,7 @@ import { Icon, IconButton, ServiceMark } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
 import { StoatAccountTools } from './StoatAccountTools'
 import { XmppAccountTools } from './XmppAccountTools'
+import { XmppDataForm, type XmppForm } from './XmppDataForm'
 import { SteamAccountTools } from './SteamAccountTools'
 import { TwitchSignIn } from './TwitchSignIn'
 import { IgnoreList } from './IgnoreList'
@@ -2198,6 +2199,29 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
   const [caPem, setCaPem] = useState('')
   const [busy, setBusy] = useState(false)
 
+  const [making, setMaking] = useState(false)
+  const [server, setServer] = useState('')
+  const [asked, setAsked] = useState<{ form: XmppForm | null; instructions: string; web: string | null } | null>(null)
+  const advancedParams = (): Record<string, unknown> => ({ jid: server.trim(), host: host.trim(), port: port.trim() ? Number(port) : 0, security, caPem: caPem.trim(), useTor })
+  const ask = (): void => {
+    setBusy(true)
+    void window.moho
+      .rpc<{ form: XmppForm | null; instructions: string; web: string | null }>('xmppRegistrationForm', advancedParams())
+      .then(setAsked)
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+  const make = (answers: Record<string, unknown>): void => {
+    setBusy(true)
+    void window.moho
+      .rpc('xmppRegister', { ...advancedParams(), answers })
+      .then(() => {
+        void store.refreshAccounts()
+        onDone()
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
   const ready = /^[^@\s/]+@[^@\s/]+$/.test(jid.trim()) && password !== ''
   const add = (): void => {
     setBusy(true)
@@ -2224,10 +2248,9 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
     <div className="add-form">
       <p className="small muted">
         Sign in to an XMPP account on any server. The server is found from the address; moho connects only over TLS, checks the
-        server&apos;s certificate, and keeps the password only on this computer. Making an account is done on the server&apos;s own
-        page first.
+        server&apos;s certificate, and keeps the password only on this computer. Choose &ldquo;Make one&rdquo; to ask a server for an account.
       </p>
-      <div className="field-row">
+      <div className="field-row" hidden={making}>
         <label className="field">
           <span className="small muted">Address</span>
           <input
@@ -2255,6 +2278,34 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
           />
         </label>
       </div>
+      <div className="segmented">
+        <button type="button" className={!making ? 'active' : undefined} onClick={() => setMaking(false)}>
+          I have an account
+        </button>
+        <button type="button" className={making ? 'active' : undefined} onClick={() => setMaking(true)}>
+          Make one
+        </button>
+      </div>
+      {making && (
+        <div className="add-form">
+          <label className="field">
+            <span className="small muted">Server to make it on</span>
+            <input className="text-field" autoComplete="off" spellCheck={false} placeholder="example.org" value={server} disabled={busy} onChange={(e) => setServer(e.target.value)} />
+          </label>
+          {!asked && (
+            <button type="button" className="button primary" disabled={busy || !server.trim()} onClick={ask}>
+              {busy ? 'Asking…' : 'See what it asks for'}
+            </button>
+          )}
+          {asked?.web && (
+            <p className="small muted">
+              This server wants its own page used: <a href={asked.web}>{asked.web}</a>
+            </p>
+          )}
+          {asked?.form && <XmppDataForm form={asked.form} submitLabel="Make the account" busy={busy} onSubmit={make} onCancel={() => setAsked(null)} />}
+          <p className="small muted">A captcha, an e-mail check or a page to visit is for the server&apos;s own page: moho does not answer captchas.</p>
+        </div>
+      )}
       <TorSwitch service="xmpp" on={useTor} onChange={setUseTor} />
       <button type="button" className="button subtle small" onClick={() => setAdvanced(!advanced)}>
         {advanced ? 'Fewer settings' : 'More settings'}
@@ -2285,7 +2336,7 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
           </label>
         </div>
       )}
-      <div className="field-row">
+      <div className="field-row" hidden={making}>
         <button type="button" className="button primary" disabled={busy || !ready} onClick={add}>
           {busy ? 'Adding…' : 'Add account'}
         </button>

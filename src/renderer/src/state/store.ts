@@ -1594,6 +1594,15 @@ export class ChatStore {
         // Not connected yet: the daemon's own push fills it in.
       }
     }
+    // XMPP's are the people who asked to see the account's presence and have not been answered.
+    for (const account of this.state.accounts.filter((a) => a.service === 'xmpp' && a.state === 'connected')) {
+      try {
+        const r = await window.moho.rpc<{ requests: { jid: string; text: string }[] }>('xmppRequests', { accountId: account.id })
+        next[account.id] = r.requests.map((q) => ({ id: q.jid, name: q.jid }))
+      } catch {
+        // Not connected yet: the daemon's own push fills it in.
+      }
+    }
     this.set({ friendRequests: next })
     // Discord keeps its requests among its friends; the daemon pushes changes,
     // and this is the first reading, so one that arrived while moho was
@@ -1644,6 +1653,8 @@ export class ChatStore {
           await window.moho.rpc('answerDiscordFriendRequest', { accountId, userId: id, accept })
         } else if (invitation.service === 'stoat') {
           await window.moho.rpc('answerStoatFriendRequest', { accountId, userId: id, accept })
+        } else if (invitation.service === 'xmpp') {
+          await window.moho.rpc('xmppAnswerRequest', { accountId, jid: id, accept })
         } else {
           await window.moho.rpc('steamAnswerFriendRequest', { accountId, steamid: id, accept })
         }
@@ -4547,6 +4558,13 @@ export class ChatStore {
       // Stoat says who has asked an account to be their friend, whenever that changes.
       case 'stoatFriendRequests': {
         this.set({ friendRequests: { ...this.state.friendRequests, [data.accountId as string]: (data.incoming ?? []) as FriendRequest[] } })
+        break
+      }
+
+      // XMPP says who has asked to see an account's presence, whenever that changes.
+      case 'xmppRequests': {
+        const requests = ((data.requests ?? []) as { jid: string; text: string }[]).map((q) => ({ id: q.jid, name: q.jid }))
+        this.set({ friendRequests: { ...this.state.friendRequests, [data.accountId as string]: requests } })
         break
       }
 

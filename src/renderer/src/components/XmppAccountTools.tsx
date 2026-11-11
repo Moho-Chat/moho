@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
+import { XmppDataForm, type XmppForm } from './XmppDataForm'
 import { useStore } from '../state/hooks'
 import type { Account } from '../../../shared/wire'
 
@@ -8,6 +9,233 @@ import type { Account } from '../../../shared/wire'
  * trusted or not, and a new password for one it refused.
  */
 export function XmppAccountTools({ account }: { account: Account }): JSX.Element | null {
+  if (account.state === 'connected') return <XmppConnectedTools account={account} />
+  return <XmppStoppedTools account={account} />
+}
+
+interface ServerInfo {
+  software?: string | null
+  version?: string | null
+  contacts: Record<string, string[]>
+  features: { var: string; xep?: string | null }[]
+}
+
+interface CommandStep {
+  status: string
+  sessionId: string
+  form: XmppForm | null
+  notes: [string, string][]
+  actions: string[]
+}
+
+/** What an account that is signed in can do on its server: its picture, its password, who it has blocked, what the server is, and
+ * the server's own commands. */
+function XmppConnectedTools({ account }: { account: Account }): JSX.Element {
+  const store = useStore()
+  const [section, setSection] = useState<'' | 'picture' | 'password' | 'blocked' | 'server' | 'commands' | 'delete'>('')
+  const [password, setPassword] = useState('')
+  const [blocked, setBlocked] = useState<string[]>([])
+  const [toBlock, setToBlock] = useState('')
+  const [info, setInfo] = useState<ServerInfo | null>(null)
+  const [commands, setCommands] = useState<{ node: string; name: string }[] | null>(null)
+  const [step, setStep] = useState<CommandStep | null>(null)
+  const [node, setNode] = useState('')
+  const [typed, setTyped] = useState('')
+  const say = (e: Error): void => store.toast('error', e.message)
+  const call = <T,>(method: string, params: Record<string, unknown> = {}): Promise<T> => window.moho.rpc<T>(method, { accountId: account.id, ...params })
+
+  useEffect(() => {
+    if (section === 'blocked') void call<{ blocked: string[] }>('xmppBlocklist').then((r) => setBlocked(r.blocked)).catch(say)
+    if (section === 'server') void call<ServerInfo>('xmppServerInfo').then(setInfo).catch(say)
+    if (section === 'commands') void call<{ commands: { node: string; name: string }[] }>('xmppCommands').then((r) => setCommands(r.commands)).catch(say)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section])
+
+  const run = (n: string, action = 'execute', answers: Record<string, unknown> = {}): void => {
+    setNode(n)
+    void call<CommandStep>('xmppCommand', { node: n, sessionId: step?.sessionId ?? '', action, form: step?.form ?? undefined, answers })
+      .then((r) => setStep(r.status === 'executing' ? r : { ...r, form: r.form }))
+      .catch(say)
+  }
+  const tab = (id: typeof section, label: string): JSX.Element => (
+    <button type="button" className={section === id ? 'active' : undefined} onClick={() => setSection(section === id ? '' : id)}>
+      {label}
+    </button>
+  )
+  return (
+    <div className="account-tools">
+      <div className="segmented">
+        {tab('picture', 'Picture')}
+        {tab('password', 'Password')}
+        {tab('blocked', 'Blocked')}
+        {tab('server', 'Server')}
+        {tab('commands', 'Commands')}
+        {tab('delete', 'Delete')}
+      </div>
+      {section === 'picture' && (
+        <div className="field-row">
+          <button
+            type="button"
+            className="button"
+            onClick={() =>
+              void window.moho.pickFile().then((path) => {
+                if (path) void call('xmppSetAvatar', { path }).then(() => store.toast('info', 'Picture changed')).catch(say)
+              })
+            }
+          >
+            Choose a picture…
+          </button>
+          <button type="button" className="button subtle" onClick={() => void call('xmppSetAvatar', { path: '' }).then(() => store.toast('info', 'Picture taken off')).catch(say)}>
+            Take it off
+          </button>
+        </div>
+      )}
+      {section === 'password' && (
+        <div className="field-row">
+          <input className="text-field" type="password" autoComplete="off" placeholder="New password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <button
+            type="button"
+            className="button"
+            disabled={!password}
+            onClick={() =>
+              void call('xmppChangePassword', { password })
+                .then(() => {
+                  setPassword('')
+                  store.toast('info', 'Password changed')
+                })
+                .catch(say)
+            }
+          >
+            Change
+          </button>
+        </div>
+      )}
+      {section === 'blocked' && (
+        <div className="add-form">
+          <ul className="plain-list">
+            {blocked.map((b) => (
+              <li key={b} className="field-row">
+                <span className="ellipsis">{b}</span>
+                <button type="button" className="button small" onClick={() => void call('xmppBlock', { jid: b, block: false }).then(() => setBlocked(blocked.filter((x) => x !== b))).catch(say)}>
+                  Unblock
+                </button>
+              </li>
+            ))}
+            {blocked.length === 0 && <li className="small muted">Nobody is blocked</li>}
+          </ul>
+          <div className="field-row">
+            <input className="text-field" placeholder="Address or server to block" value={toBlock} onChange={(e) => setToBlock(e.target.value)} />
+            <button type="button" className="button" disabled={!toBlock.trim()} onClick={() => void call('xmppBlock', { jid: toBlock.trim(), block: true }).then(() => { setBlocked([...blocked, toBlock.trim()]); setToBlock('') }).catch(say)}>
+              Block
+            </button>
+          </div>
+        </div>
+      )}
+      {section === 'server' &&
+        (info ? (
+          <div className="add-form">
+            <p>
+              {info.software ?? 'Unknown software'} {info.version ?? ''}
+            </p>
+            {Object.entries(info.contacts).map(([kind, list]) => (
+              <p key={kind} className="small muted">
+                {kind}: {list.join(', ')}
+              </p>
+            ))}
+            <details>
+              <summary className="small muted">What it can do ({info.features.length})</summary>
+              <ul className="plain-list small">
+                {info.features.map((f) => (
+                  <li key={f.var}>{f.xep ? `${f.xep} (${f.var})` : f.var}</li>
+                ))}
+              </ul>
+            </details>
+          </div>
+        ) : (
+          <p className="small muted">Asking the server…</p>
+        ))}
+      {section === 'commands' && (
+        <div className="add-form">
+          {step ? (
+            <>
+              {step.notes.map(([kind, text], i) => (
+                <p key={i} className={kind === 'error' ? 'warning-note' : 'small muted'}>
+                  {text}
+                </p>
+              ))}
+              {step.form && step.status === 'executing' && (
+                <XmppDataForm
+                  form={step.form}
+                  submitLabel={step.actions.includes('next') ? 'Next' : 'Done'}
+                  onSubmit={(answers) => run(node, step.actions.includes('next') ? 'next' : 'complete', answers)}
+                  onCancel={() => {
+                    run(node, 'cancel')
+                    setStep(null)
+                  }}
+                />
+              )}
+              {step.form && step.status !== 'executing' && (
+                <ul className="plain-list small">
+                  {step.form.fields.map((f) => (
+                    <li key={f.var}>
+                      {f.label || f.var}: {f.values.join(', ')}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {step.status !== 'executing' && (
+                <button type="button" className="button" onClick={() => setStep(null)}>
+                  Back to the list
+                </button>
+              )}
+            </>
+          ) : commands ? (
+            <>
+              <ul className="plain-list">
+                {commands.map((c) => (
+                  <li key={c.node} className="field-row">
+                    <span className="ellipsis">{c.name}</span>
+                    <button type="button" className="button small" onClick={() => run(c.node)}>
+                      Run
+                    </button>
+                  </li>
+                ))}
+                {commands.length === 0 && <li className="small muted">The server offers this account no commands</li>}
+              </ul>
+            </>
+          ) : (
+            <p className="small muted">Asking the server…</p>
+          )}
+        </div>
+      )}
+      {section === 'delete' && (
+        <div className="add-form">
+          <p className="warning-note">
+            <Icon name="warning" size={16} /> This removes the account from {account.displayName.split('@')[1] ?? 'the server'}, with its contacts and its archive. It cannot be undone. Type the address to confirm.
+          </p>
+          <div className="field-row">
+            <input className="text-field" value={typed} placeholder={account.displayName} onChange={(e) => setTyped(e.target.value)} />
+            <button
+              type="button"
+              className="button danger"
+              disabled={typed.trim() !== account.id.replace(/^xmpp:/, '')}
+              onClick={() =>
+                void call('xmppDeleteAccount')
+                  .then(() => window.moho.rpc('removeAccount', { accountId: account.id }))
+                  .then(() => store.refreshAccounts())
+                  .catch(say)
+              }
+            >
+              Delete the account
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function XmppStoppedTools({ account }: { account: Account }): JSX.Element | null {
   const store = useStore()
   const [cert, setCert] = useState<{ sha256?: string; refused?: string } | null>(null)
   const [password, setPassword] = useState('')
