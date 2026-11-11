@@ -2195,7 +2195,7 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
   const [advanced, setAdvanced] = useState(false)
   const [host, setHost] = useState('')
   const [port, setPort] = useState('')
-  const [security, setSecurity] = useState<'starttls' | 'direct'>('starttls')
+  const [security, setSecurity] = useState<'starttls' | 'direct' | 'websocket'>('starttls')
   const [caPem, setCaPem] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -2314,7 +2314,7 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
         <div className="add-form-advanced">
           <div className="field-row">
             <label className="field">
-              <span className="small muted">Server (leave empty to look it up)</span>
+              <span className="small muted">{security === 'websocket' ? 'WebSocket address (wss://…, or empty to look it up)' : 'Server (leave empty to look it up)'}</span>
               <input className="text-field" autoComplete="off" spellCheck={false} placeholder="xmpp.example.org" value={host} disabled={busy} onChange={(e) => setHost(e.target.value)} />
             </label>
             <label className="field">
@@ -2328,6 +2328,9 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
             </button>
             <button type="button" className={security === 'direct' ? 'active' : undefined} disabled={busy} onClick={() => setSecurity('direct')}>
               Direct TLS
+            </button>
+            <button type="button" className={security === 'websocket' ? 'active' : undefined} disabled={busy} onClick={() => setSecurity('websocket')} title="For a server that offers only the web: give its wss:// address as the server, or leave it empty to look it up">
+              WebSocket
             </button>
           </div>
           <label className="field">
