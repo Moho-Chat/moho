@@ -559,6 +559,7 @@ function MessageRowBody({
           smilies: smilieIndex,
           channels,
           markdownEscapes: service === 'discord',
+          xmppStyling: service === 'xmpp',
           // Only IRC's own traffic is drawn with IRC's codes. Elsewhere they
           // are stripped, which is what the formatter does when not told.
           ircFormatting: service === 'irc' && ircColours ? 'render' : 'strip'

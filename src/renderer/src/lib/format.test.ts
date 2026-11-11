@@ -413,3 +413,16 @@ describe('Stoat text', () => {
     expect(sourcePick('stoat', { id: '01ABC', name: 'party' })).toBe(':party:')
   })
 })
+
+import { xmppStyle } from './format'
+describe('XEP-0393 styling', () => {
+  it('draws the four marks where they open and close a word', () => {
+    expect(xmppStyle('a *bold* and _slanted_ and ~gone~ word')).toBe('a <b>bold</b> and <i>slanted</i> and <s>gone</s> word')
+    expect(xmppStyle('*bold at the start*, and (_in brackets_).')).toBe('<b>bold at the start</b>, and (<i>in brackets</i>).')
+  })
+  it('leaves what is only shaped like it', () => {
+    expect(xmppStyle('2*3*4 and snake_case_name and a * b * c')).toBe('2*3*4 and snake_case_name and a * b * c')
+    expect(xmppStyle('** empty **')).toBe('** empty **')
+    expect(xmppStyle('* spaced *')).toBe('* spaced *')
+  })
+})

@@ -408,6 +408,11 @@ export interface FormatOptions {
    * into IRC has backslashes that mean themselves.
    */
   markdownEscapes?: boolean
+  /**
+   * XMPP's message styling (XEP-0393) instead of Markdown: `*bold*`, `_italic_`, `~strike~`, each only where the mark opens a word and
+   * closes one, so `2*3*4` and `snake_case_name` are left alone.
+   */
+  xmppStyling?: boolean
 }
 
 /**
@@ -548,6 +553,22 @@ export function ircFormat(text: string, mode: 'render' | 'strip'): string {
   while (open > 0) {
     out += '</span>'
     open--
+  }
+  return out
+}
+
+/**
+ * Inline styling as XEP-0393 reads it, on text that is already escaped: a span opens after whitespace, the start, or an opening
+ * bracket; its first character is not whitespace; it closes before whitespace, the end, or closing punctuation; and it stays on one
+ * line. A span cannot be empty (`**` is two marks).
+ */
+export function xmppStyle(escaped: string): string {
+  const marks: [string, string][] = [['*', 'b'], ['_', 'i'], ['~', 's']]
+  let out = escaped
+  for (const [mark, tag] of marks) {
+    const m = mark.replace(/[*_~]/g, (c) => `\\${c}`)
+    const re = new RegExp(`(^|[\\s(\\[{>])${m}(?=\\S)([^${m}\\n]*?\\S)${m}(?=$|[\\s.,;:!?)\\]}<])`, 'g')
+    out = out.replace(re, (_x, lead: string, inner: string) => `${lead}<${tag}>${inner}</${tag}>`)
   }
   return out
 }
@@ -726,6 +747,9 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
     (_m, c: string, inner: string) => `<span style="color:${c}">${inner}</span>`
   )
 
+  if (opts.xmppStyling) {
+    out = xmppStyle(out)
+  } else {
   // Markdown emphasis - bold and strikethrough first, so their delimiters
   // aren't left stray for the italic pass to mangle.
   out = out.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
@@ -733,6 +757,7 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   out = out.replace(/~~([^~]+)~~/g, '<s>$1</s>')
   out = out.replace(/\*([^*]+)\*/g, '<i>$1</i>')
   out = out.replace(/(^|\s)_([^_]+)_(?=\s|$)/g, '$1<i>$2</i>')
+  }
 
   // Any bare URL not already wrapped by one of the formats above.
   // ircs? alongside the web schemes: a link to a channel is a link, and one
