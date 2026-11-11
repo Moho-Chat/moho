@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton, ServiceMark } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
 import { StoatAccountTools } from './StoatAccountTools'
-import { XmppAccountTools } from './XmppAccountTools'
+import { XmppAccountTools, xmppStateWords } from './XmppAccountTools'
 import { XmppDataForm, type XmppForm } from './XmppDataForm'
 import { SteamAccountTools } from './SteamAccountTools'
 import { TwitchSignIn } from './TwitchSignIn'
@@ -365,7 +365,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
         <div className="account-card-title">
           <div className="ellipsis">{account.displayName || account.id}</div>
           <div className="small muted">
-            {serviceLabel(account.service)} · {account.state}
+            {serviceLabel(account.service)} · {account.service === 'xmpp' ? xmppStateWords(account) : account.state}
           </div>
           {detail && <div className={classes('small muted account-detail', held && 'held')} title={detail}>{detail}</div>}
           {/* Held for having logged in too often (see nobilis's identify_budget): said in full, with the way past it. */}
@@ -2197,6 +2197,8 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
   const [port, setPort] = useState('')
   const [security, setSecurity] = useState<'starttls' | 'direct' | 'websocket'>('starttls')
   const [caPem, setCaPem] = useState('')
+  const [pin, setPin] = useState('')
+  const [resource, setResource] = useState('')
   const [busy, setBusy] = useState(false)
 
   const [making, setMaking] = useState(false)
@@ -2233,6 +2235,8 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
         port: port.trim() ? Number(port) : 0,
         security,
         caPem: caPem.trim(),
+        pinSha256: pin.trim(),
+        resource: resource.trim(),
         useTor
       })
       .then(() => {
@@ -2336,6 +2340,14 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
           <label className="field">
             <span className="small muted">Certificate authority to trust, besides the system&apos;s (PEM) — for a server with a private one</span>
             <textarea className="text-field" rows={4} spellCheck={false} placeholder="-----BEGIN CERTIFICATE-----" value={caPem} disabled={busy} onChange={(e) => setCaPem(e.target.value)} />
+          </label>
+          <label className="field">
+            <span className="small muted">Or one certificate to trust whatever signed it (its SHA-256 fingerprint) — a self-signed server whose fingerprint you were given</span>
+            <input className="text-field mono" autoComplete="off" spellCheck={false} placeholder="ab:cd:… (64 hex digits)" value={pin} disabled={busy} onChange={(e) => setPin(e.target.value)} />
+          </label>
+          <label className="field">
+            <span className="small muted">Resource (this device&apos;s name to the server; empty for one made up, and a server that offers Bind 2 chooses it)</span>
+            <input className="text-field mono" autoComplete="off" spellCheck={false} placeholder="moho.…" value={resource} disabled={busy} onChange={(e) => setResource(e.target.value)} />
           </label>
         </div>
       )}

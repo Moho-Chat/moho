@@ -4857,6 +4857,8 @@ export class ChatStore {
       // showed nowhere on the left until its first conversation arrived.
       this.refreshGroupsSoon()
     }
+    // An account that stopped says why in its own fields (an XMPP account's stopReason): read again so the card can say it.
+    if (data.state === 'auth_failed') void this.refreshAccounts()
     if (data.error) this.toast('error', `${data.accountId}: ${data.error}`)
   }
 

@@ -9,8 +9,159 @@ import type { Account } from '../../../shared/wire'
  * trusted or not, and a new password for one it refused.
  */
 export function XmppAccountTools({ account }: { account: Account }): JSX.Element | null {
-  if (account.state === 'connected') return <XmppConnectedTools account={account} />
-  return <XmppStoppedTools account={account} />
+  return (
+    <>
+      {account.state === 'connected' ? <XmppConnectedTools account={account} /> : <XmppStoppedTools account={account} />}
+      <XmppConnectionSettings account={account} />
+    </>
+  )
+}
+
+/** The card's state line for an XMPP account, in words: what stopped it, rather than "auth_failed". */
+export function xmppStateWords(account: Account): string {
+  if (account.state !== 'auth_failed') return account.state
+  switch (account.stopReason) {
+    case 'password':
+      return 'needs a password'
+    case 'certificate':
+      return 'certificate not trusted'
+    case 'certificate-changed':
+      return 'certificate changed'
+    case 'setup':
+      return 'settings need a look'
+    default:
+      return 'stopped'
+  }
+}
+
+interface CertDetails {
+  subject: string
+  issuer: string
+  notBefore: string
+  notAfter: string
+  names: string[]
+  selfSigned: boolean
+}
+
+interface XmppSettings {
+  jid: string
+  host: string
+  port: number
+  security: 'starttls' | 'direct' | 'websocket'
+  caPem: string
+  pinSha256: string
+  pinned: CertDetails | null
+  resource: string
+  lastConnected: string
+  lastMechanism: string
+  fastToken: boolean
+  fastExpiry: string
+  scramOnly: boolean
+}
+
+const day = (iso: string): string => (iso ? new Date(iso).toLocaleString() : '')
+
+/** What a certificate says about itself, for somebody deciding whether to trust it. */
+function CertificateFacts({ details }: { details: CertDetails }): JSX.Element {
+  return (
+    <dl className="facts small">
+      <dt>Issued to</dt>
+      <dd className="mono">{details.subject || '(nobody named)'}</dd>
+      <dt>Names</dt>
+      <dd className="mono">{details.names.join(', ') || '(none)'}</dd>
+      <dt>Signed by</dt>
+      <dd className="mono">{details.selfSigned ? 'itself (self-signed)' : details.issuer}</dd>
+      <dt>Valid</dt>
+      <dd>
+        {day(details.notBefore)} – {day(details.notAfter)}
+        {new Date(details.notAfter) < new Date() ? ' (expired)' : ''}
+      </dd>
+    </dl>
+  )
+}
+
+/**
+ * How the account reaches its server, changed in place: the server and port, the security, the authority or the one certificate
+ * it trusts, the resource. And how it last signed in. Saved settings make it connect again with them.
+ */
+function XmppConnectionSettings({ account }: { account: Account }): JSX.Element {
+  const store = useStore()
+  const [open, setOpen] = useState(false)
+  const [s, setS] = useState<XmppSettings | null>(null)
+  const [busy, setBusy] = useState(false)
+  const load = (): void => void window.moho.rpc<XmppSettings>('getXmppSettings', { accountId: account.id }).then(setS).catch((e: Error) => store.toast('error', e.message))
+  useEffect(() => {
+    if (open) load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, account.state])
+  const save = (): void => {
+    if (!s) return
+    setBusy(true)
+    void window.moho
+      .rpc<{ changed: boolean }>('editXmppAccount', { accountId: account.id, host: s.host, port: Number(s.port) || 0, security: s.security, caPem: s.caPem, pinSha256: s.pinSha256, resource: s.resource })
+      .then((r) => {
+        store.toast('info', r.changed ? 'Saved; connecting with the new settings' : 'Nothing changed')
+        void store.refreshAccounts()
+        load()
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+  const set = (patch: Partial<XmppSettings>): void => setS(s ? { ...s, ...patch } : s)
+  return (
+    <div className="account-tools">
+      <button type="button" className="button subtle small" onClick={() => setOpen(!open)}>
+        {open ? 'Hide connection settings' : 'Connection settings'}
+      </button>
+      {open && s && (
+        <div className="add-form">
+          {s.lastConnected && (
+            <p className="small muted">
+              Last signed in {day(s.lastConnected)}
+              {s.lastMechanism ? ` with ${s.lastMechanism}` : ''}
+              {s.fastToken ? `; it has a sign-in token${s.fastExpiry ? ` until ${day(s.fastExpiry)}` : ''}, so it reconnects without sending the password` : ''}.
+              {s.scramOnly ? ' The password is only ever sent hashed (SCRAM): a server that offers only PLAIN is refused.' : ''}
+            </p>
+          )}
+          <div className="field-row">
+            <label className="field">
+              <span className="small muted">{s.security === 'websocket' ? 'WebSocket address (wss://…, or empty to look it up)' : 'Server (empty to look it up)'}</span>
+              <input className="text-field" autoComplete="off" spellCheck={false} placeholder="xmpp.example.org" value={s.host} disabled={busy} onChange={(e) => set({ host: e.target.value })} />
+            </label>
+            <label className="field">
+              <span className="small muted">Port</span>
+              <input className="text-field" inputMode="numeric" placeholder={s.security === 'direct' ? '5223' : '5222'} value={s.port || ''} disabled={busy} onChange={(e) => set({ port: Number(e.target.value.replace(/\D/g, '')) || 0 })} />
+            </label>
+          </div>
+          <div className="segmented">
+            {(['starttls', 'direct', 'websocket'] as const).map((m) => (
+              <button key={m} type="button" className={s.security === m ? 'active' : undefined} disabled={busy} onClick={() => set({ security: m })}>
+                {m === 'starttls' ? 'STARTTLS' : m === 'direct' ? 'Direct TLS' : 'WebSocket'}
+              </button>
+            ))}
+          </div>
+          <label className="field">
+            <span className="small muted">Certificate authority to trust, besides the system&apos;s (PEM)</span>
+            <textarea className="text-field" rows={3} spellCheck={false} placeholder="-----BEGIN CERTIFICATE-----" value={s.caPem} disabled={busy} onChange={(e) => set({ caPem: e.target.value })} />
+          </label>
+          <label className="field">
+            <span className="small muted">Trusted certificate (SHA-256 fingerprint), whatever signed it</span>
+            <input className="text-field mono" autoComplete="off" spellCheck={false} placeholder="ab:cd:… (64 hex digits)" value={s.pinSha256} disabled={busy} onChange={(e) => set({ pinSha256: e.target.value })} />
+          </label>
+          {s.pinned && s.pinSha256 && <CertificateFacts details={s.pinned} />}
+          <label className="field">
+            <span className="small muted">Resource (this device&apos;s name to the server; a server that offers Bind 2 chooses it)</span>
+            <input className="text-field mono" autoComplete="off" spellCheck={false} value={s.resource} disabled={busy} onChange={(e) => set({ resource: e.target.value })} />
+          </label>
+          <div className="field-row">
+            <button type="button" className="button primary" disabled={busy} onClick={save}>
+              {busy ? 'Saving…' : 'Save and reconnect'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 interface ServerInfo {
@@ -255,7 +406,7 @@ function XmppConnectedTools({ account }: { account: Account }): JSX.Element {
 
 function XmppStoppedTools({ account }: { account: Account }): JSX.Element | null {
   const store = useStore()
-  const [cert, setCert] = useState<{ sha256?: string; refused?: string } | null>(null)
+  const [cert, setCert] = useState<{ sha256?: string; refused?: string; details?: CertDetails | null; pinned?: CertDetails | null; changed?: string[] } | null>(null)
   const [password, setPassword] = useState('')
   const stopped = account.state === 'auth_failed'
 
@@ -265,7 +416,7 @@ function XmppStoppedTools({ account }: { account: Account }): JSX.Element | null
       return
     }
     void window.moho
-      .rpc<{ sha256?: string; refused?: string }>('getXmppCertificate', { accountId: account.id })
+      .rpc<{ sha256?: string; refused?: string; details?: CertDetails | null; pinned?: CertDetails | null; changed?: string[] }>('getXmppCertificate', { accountId: account.id })
       .then(setCert)
       .catch(() => setCert(null))
   }, [account.id, stopped])
@@ -298,10 +449,25 @@ function XmppStoppedTools({ account }: { account: Account }): JSX.Element | null
         <div className="warning-note">
           <Icon name="warning" size={16} />
           <div>
-            <p>
-              The server showed a certificate moho does not trust{cert.refused ? ` (${cert.refused})` : ''}. Compare this fingerprint with the one your
-              server publishes before trusting it:
-            </p>
+            {cert.pinned ? (
+              <p>
+                The server showed a <strong>different certificate</strong> from the one trusted for this account{cert.refused ? ` (${cert.refused})` : ''}. A
+                server renewing its certificate does this; so does somebody in the middle. What is different:
+              </p>
+            ) : (
+              <p>
+                The server showed a certificate moho does not trust{cert.refused ? ` (${cert.refused})` : ''}. Compare this fingerprint with the one your
+                server publishes before trusting it:
+              </p>
+            )}
+            {cert.pinned && (
+              <ul className="small">
+                {(cert.changed?.length ? cert.changed : ['nothing that is shown here, only the key itself']).map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+            )}
+            {cert.details && <CertificateFacts details={cert.details} />}
             <p className="mono small">{cert.sha256.match(/.{2}/g)?.join(':')}</p>
             <button type="button" className="button" onClick={trust}>
               Trust this certificate

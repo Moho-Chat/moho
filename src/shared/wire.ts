@@ -94,6 +94,8 @@ export interface Account {
    * out, ban, change a room's modes) and to whisper. Off unless the person turned it on.
    */
   moderation?: boolean
+  /** XMPP only: why a stopped account stopped - `password`, `certificate`, `certificate-changed` or `setup`. */
+  stopReason?: string
 }
 
 export interface SneedChatRoom {

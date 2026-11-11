@@ -11731,3 +11731,18 @@ html[data-reduce-motion] *::after {
 .reward-picked {
   padding: 0 2px;
 }
+
+/* What a certificate says about itself (the XMPP trust prompt and connection settings): a label column and its value. */
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 6px 0;
+}
+.facts dt {
+  color: var(--text-muted);
+}
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

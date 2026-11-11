@@ -4,18 +4,20 @@
 
     xmpp-fake-server.py <port> <condition> [text-content]
 
+XMPP_FAKE_CERT / XMPP_FAKE_KEY name another certificate and key to show (one the account does not trust, say).
+
 It listens on 127.0.0.1:<port> with direct TLS (the test server's own certificate, so the account trusts it the same way),
 answers each stream header with a header of its own and `<stream:error><condition>text-content</condition></stream:error>`,
 and closes. It prints "ready" when listening and one line per connection it served.
 """
-import socket, ssl, sys, threading
+import os, socket, ssl, sys, threading
 
 PKI = "/1tb/xmpp-test/pki"
 port, condition = int(sys.argv[1]), sys.argv[2]
 content = sys.argv[3] if len(sys.argv) > 3 else ""
 
 ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-ctx.load_cert_chain(f"{PKI}/server.crt", f"{PKI}/server.key")
+ctx.load_cert_chain(os.environ.get("XMPP_FAKE_CERT", f"{PKI}/server.crt"), os.environ.get("XMPP_FAKE_KEY", f"{PKI}/server.key"))
 ctx.set_alpn_protocols(["xmpp-client"])
 
 
