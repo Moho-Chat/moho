@@ -229,6 +229,16 @@ try {
   const dup = (text) => bl2.filter((m) => m.body === text).length
   check('and nothing that was already held is held twice', dup('hello there') === 1 && dup('I agree') === 1 && dup('while you were out') === 1 && dup('from my phone') === 1, JSON.stringify(['hello there', 'I agree', 'while you were out', 'from my phone'].map(dup)))
   check('catching up does not notify for what is old', !seen('notification', (d) => d.body === 'hello there'))
+
+  console.log('what is read on one device')
+  await rpc('markBufferRead', { bufferId: b.id })
+  await sleep(1200)
+  const items = await peer(me, [{ raw: `<iq xmlns='jabber:client' type='get' id='mds1'><pubsub xmlns='http://jabber.org/protocol/pubsub'><items node='urn:xmpp:mds:displayed:0'/></pubsub></iq>` }, { wait_for: 'mds1', timeout: 6 }])
+  const stanza = /<stanza-id[^>]*id=['"]([^'"]+)['"]/.exec(items.received.slice(items.received.indexOf("id='mds1'")))?.[1]
+  check('reading a conversation tells the account\'s other devices up to which message', !!stanza && items.received.includes(yourJid), items.received.slice(-400))
+  events.length = 0
+  await peer(me, [{ raw: `<iq xmlns='jabber:client' type='set' id='mds2'><pubsub xmlns='http://jabber.org/protocol/pubsub'><publish node='urn:xmpp:mds:displayed:0'><item id='${yourJid}'><displayed xmlns='urn:xmpp:mds:displayed:0'><stanza-id xmlns='urn:xmpp:sid:0' by='${myJid}' id='${stanza}'/></displayed></item></publish></pubsub></iq>` }, { sleep: 1.5 }])
+  check('and when another device reads, it is read here', events.some((e) => e.event === 'bufferRead' && e.data.bufferId === b.id), JSON.stringify(events.map((e) => e.event)))
 } catch (err) {
   console.log('  FAIL', err.message)
   results.push(false)
