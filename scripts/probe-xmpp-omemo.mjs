@@ -10,7 +10,7 @@ import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { promisify } from 'node:util'
-import { start, sleep, PORT } from './lib/xmpp-daemon.mjs'
+import { start, sleep, PORT, CONF } from './lib/xmpp-daemon.mjs'
 import { root } from './lib/harness.mjs'
 
 const run = promisify(execFile)
@@ -71,6 +71,41 @@ try {
   await t.rpc('sendMessage', { bufferId: b.id, body: 'verified now' })
   const verified = await omemoPeer([{ expect: 'verified now', timeout: 20 }])
   t.check('once it is trusted again it is', verified.received.includes('verified now'), JSON.stringify(verified.received))
+
+  console.log('files')
+  await t.rpc('xmppSetEncryption', { bufferId: b.id, on: true })
+  const secretFile = path.join(t.scratch, 'secret.txt')
+  fs.writeFileSync(secretFile, 'the words in an encrypted file')
+  await t.rpc('sendMessage', { bufferId: b.id, body: '', attachmentPath: secretFile })
+  const gotFile = await omemoPeer([{ expect_file: 'the words in an encrypted file', timeout: 20 }])
+  t.check('an encrypted file is fetched and decrypted by the other implementation', gotFile.received.includes('FILE-OK:the words in an encrypted file'), JSON.stringify(gotFile.received) + gotFile.failed)
+  const sentFile = (await t.rpc('getBacklog', { bufferId: b.id, limit: 30 })).find((m) => m.attachments?.length && /^aesgcm:\/\//.test(m.attachments[0].url))
+  t.check('and here it is an attachment whose link carries the key', !!sentFile && sentFile.attachments[0].filename === 'secret.txt', JSON.stringify(sentFile))
+
+  console.log('a room')
+  const room = `omemoroom${t.stamp}@${CONF}`
+  await t.rpc('xmppJoinRoom', { accountId: myId, jid: room, nick: 'mohonick' })
+  const rb = await t.until(async () => (await t.rpc('listBuffers')).find((x) => x.accountId === myId && x.remoteId === room && x.kind === 'channel') ?? null)
+  await t.rpc('subscribe', { bufferId: rb.id })
+  await sleep(1500)
+  let hidden = ''
+  await t.rpc('xmppSetEncryption', { bufferId: rb.id, on: true }).catch((e) => (hidden = e.message))
+  t.check('a room that hides addresses cannot be encrypted, and says why', /does not show people's addresses/.test(hidden), hidden)
+  await t.rpc('xmppSetRoomConfig', { bufferId: rb.id, answers: { 'muc#roomconfig_whois': 'anyone', 'muc#roomconfig_membersonly': true, 'muc#roomconfig_persistentroom': true } })
+  await t.rpc('xmppRoomAction', { bufferId: rb.id, action: 'member', jid: you.jid })
+  await sleep(800)
+  t.events.length = 0
+  const inRoom = omemoPeer([{ join: room, nick: 'peer' }, { sleep: 1 }, { send_room: 'hello encrypted room', room, recipients: [me.jid] }, { expect: 'a reply from moho in the room', timeout: 40 }])
+  await t.until(async () => (await t.rpc('listBuffers')).find((x) => x.id === rb.id) && t.events.some((e) => e.event === 'presenceChange' && e.data.members?.some((m) => m.nick === 'peer')), 20000)
+  await sleep(1500)
+  await t.rpc('xmppSetEncryption', { bufferId: rb.id, on: true })
+  await sleep(3000)
+  await t.rpc('sendMessage', { bufferId: rb.id, body: 'a reply from moho in the room' })
+  const roomRead = await inRoom
+  t.check('what the other implementation says in an encrypted room is read here', !!(await t.until(async () => (await t.rpc('getBacklog', { bufferId: rb.id, limit: 50 })).some((m) => m.body === 'hello encrypted room'), 5000)) || !!t.seen('message', (d) => d.body === 'hello encrypted room'), JSON.stringify(roomRead.received) + roomRead.failed)
+  t.check('and what moho says there is read by it', roomRead.received.includes('a reply from moho in the room'), JSON.stringify(roomRead.received) + roomRead.failed)
+  const mine = (await t.rpc('getBacklog', { bufferId: rb.id, limit: 50 })).filter((m) => m.body === 'a reply from moho in the room')
+  t.check('shown once here, as its own', mine.length === 1 && mine[0].isOwn, JSON.stringify(mine))
 
   console.log('turning it off')
   await t.rpc('xmppSetEncryption', { bufferId: b.id, on: false })

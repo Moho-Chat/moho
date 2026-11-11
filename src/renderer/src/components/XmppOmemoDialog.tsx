@@ -48,7 +48,7 @@ export function XmppOmemoDialog({ bufferId, accountId, jid, name, encrypted, onC
           <span>Encrypt what I send in this conversation (OMEMO)</span>
         </label>
         <p className="small muted">
-          Messages are encrypted to each trusted device of {jid} and to your other devices. Files are not encrypted yet, so none can be sent while this is on.
+          Messages are encrypted to each trusted device of {jid} and to your other devices.
         </p>
         {error && <p className="warning-note">{error}</p>}
         {info && (

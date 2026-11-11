@@ -1195,7 +1195,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
               <MaskIcon src={torMark} size={16} color="var(--primary)" />
             </span>
           ))}
-        {service === 'xmpp' && buffer.kind === 'dm' && (
+        {service === 'xmpp' && (buffer.kind === 'dm' || buffer.kind === 'channel') && (
           <button
             type="button"
             className="composer-lock"

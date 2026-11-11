@@ -131,6 +131,9 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
       : []),
     // An XMPP room has controls of its own: its settings, who holds what standing in it, an invitation, the subject.
     ...(account?.service === 'xmpp' && buffer.kind === 'channel'
+      ? ([{ label: buffer.encrypted ? 'Stop encrypting this room' : 'Encrypt this room', icon: buffer.encrypted ? 'lock' : 'lock_open', onClick: () => void window.moho.rpc('xmppSetEncryption', { bufferId: buffer.id, on: !buffer.encrypted }).catch((e: Error) => store.toast('error', e.message)) }] as MenuEntry[])
+      : []),
+    ...(account?.service === 'xmpp' && buffer.kind === 'channel'
       ? ([{ label: 'Room settings…', icon: 'settings', onClick: () => setRoomDialog(true) }] as MenuEntry[])
       : []),
     // Matrix only, and about the room rather than anything in it. Reporting a

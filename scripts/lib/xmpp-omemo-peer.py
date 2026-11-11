@@ -11,7 +11,7 @@ Steps:
     {"send_to_devices": "text", "to": "jid"}      same as send (kept for clarity)
 Prints {"ok": bool, "received": [decrypted bodies], "raw": "<all XML received>", "failed": "..."}.
 """
-import asyncio, json, os, sys
+import asyncio, json, os, ssl, sys, urllib.request
 import slixmpp
 from slixmpp.plugins import register_plugin
 from slixmpp_omemo import TrustLevel, XEP_0384
@@ -83,7 +83,7 @@ class Peer(slixmpp.ClientXMPP):
         self.raw = []
         self.received = []
         self.ssl_context.load_verify_locations(cafile=CA)
-        for p in ("xep_0030", "xep_0060", "xep_0163", "xep_0280", "xep_0334", "xep_0199", "xep_0004"):
+        for p in ("xep_0030", "xep_0060", "xep_0163", "xep_0280", "xep_0334", "xep_0199", "xep_0004", "xep_0045"):
             self.register_plugin(p)
         self.register_plugin("xep_0384")
         self.add_event_handler("session_start", self.started)
@@ -106,7 +106,9 @@ class Peer(slixmpp.ClientXMPP):
 
     async def on_message(self, msg):
         plugin = self["xep_0384"]
-        if msg["type"] not in ("chat", "normal"):
+        if msg["type"] not in ("chat", "normal", "groupchat"):
+            return
+        if msg["type"] == "groupchat" and str(msg["from"].resource) == self.nick_in_room:
             return
         if not plugin.is_encrypted(msg):
             if msg["body"]:
@@ -117,6 +119,29 @@ class Peer(slixmpp.ClientXMPP):
             self.received.append(decrypted["body"])
         except Exception as e:  # noqa: BLE001
             self.received.append("UNREADABLE:" + repr(e))
+
+    nick_in_room = "peer"
+
+    async def send_room(self, room, text, recipients):
+        msg = self.make_message(mto=room, mtype="groupchat")
+        msg["body"] = text
+        msg.set_to(room)
+        msg.set_from(self.boundjid)
+        encrypted, errors = await self["xep_0384"].encrypt_message(msg, {slixmpp.JID(r) for r in recipients})
+        if encrypted is None:
+            raise RuntimeError("could not encrypt: %r" % (errors,))
+        encrypted.send()
+
+    def fetch_aesgcm(self, url):
+        """Fetch an encrypted file from its aesgcm:// link and decrypt it, as another client would."""
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        rest = url[len("aesgcm://"):]
+        path, fragment = rest.split("#")
+        raw = bytes.fromhex(fragment)
+        iv, key = raw[:-32], raw[-32:]
+        ctx = ssl.create_default_context(cafile=CA)
+        data = urllib.request.urlopen("https://" + path, context=ctx).read()
+        return AESGCM(key).decrypt(iv, data, None)
 
     async def send_encrypted(self, to, text):
         msg = self.make_message(mto=to, mtype="chat")
@@ -142,6 +167,27 @@ async def main():
         try:
             if "send" in step:
                 await peer.send_encrypted(step["to"], step["send"])
+            elif "join" in step:
+                peer.nick_in_room = step.get("nick", "peer")
+                peer.plugin["xep_0045"].join_muc(step["join"], peer.nick_in_room)
+                await asyncio.sleep(step.get("wait", 2))
+            elif "send_room" in step:
+                await peer.send_room(step["room"], step["send_room"], step["recipients"])
+            elif "expect_file" in step:
+                end = asyncio.get_event_loop().time() + step.get("timeout", 15)
+                found = None
+                while found is None:
+                    for r in peer.received:
+                        if r.startswith("aesgcm://"):
+                            found = r
+                    if found is None:
+                        if asyncio.get_event_loop().time() > end:
+                            raise TimeoutError("no encrypted file link arrived")
+                        await asyncio.sleep(0.1)
+                content = peer.fetch_aesgcm(found)
+                if content.decode("utf-8", "replace") != step["expect_file"]:
+                    raise ValueError("the file's contents were %r" % content[:50])
+                peer.received.append("FILE-OK:" + step["expect_file"])
             elif "sleep" in step:
                 await asyncio.sleep(step["sleep"])
             elif "expect" in step:
