@@ -255,6 +255,21 @@ called `subscribe` for that buffer.
   self-hosted instance in docker (`scripts/probe-stoat-local.mjs`, `probe-stoat-voice.mjs`,
   `probe-stoat-manage.mjs`).
 
+- **XMPP** (on the `protocol/xmpp` branch, not yet released) - an account is an address on a server of its own choosing, over the
+  xmpp-rs stack (`tokio-xmpp`, `xmpp-parsers`; MPL-2.0) with a connector and a reconnector of our own: TCP through the account's route
+  (Tor, SOCKS5), STARTTLS or direct TLS, the server trusted by the system's roots, a certificate authority the account lists, or one
+  certificate pinned after being shown, and a stop - not a loop - on a refused password, certificate or setup. One-to-one chat with
+  the roster, presence, carbons, the archive (MAM) for catch-up and scrollback, receipts, markers, typing, corrections, retractions,
+  reactions, replies and blocking; group chats with bookmarks, occupant ids, the room's archive, moderation (including moderated
+  retraction), room settings as data forms, and invitations; files over HTTP Upload and shared files in all three forms; avatars from
+  PEP and vCards; making an account in-band (a captcha refused in words), password and account removal, ad-hoc commands, `xmpp:` links;
+  and OMEMO (the older namespace every client speaks), whose Signal-protocol session code is written in `omemo/` and tested against
+  python-omemo. Not supported: calls (Jingle), OMEMO 2, encrypted rooms and files, WebSocket/BOSH, client state indication, SASL2.
+  The code is `nobilis/src/backend/xmpp/` (`transport` and `connect` reach and keep the server; `dispatch` routes each stanza;
+  `messages`, `incoming`, `roster`, `muc`, `mam`, `send`, `upload`, `avatars` and `omemo/` do the work; `dataform` and `adhoc` are the
+  generic parts). The verification scripts run it against a local ejabberd 26.09 and Prosody 13 with other implementations as the other
+  side (`scripts/probe-xmpp-*.mjs`, `scripts/check-xmpp-*.mjs`); the plan and what has and has not been run is Gitea issue #23.
+
 ### Notifications are cards
 
 Anything a service *says* rather than somebody *saying* - a join or part, a topic or mode change, a kick,

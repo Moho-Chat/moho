@@ -18,6 +18,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { root, sleep } from './lib/harness.mjs'
+import { DOMAIN, PORT, registerUser, unregisterUser } from './lib/xmpp-daemon.mjs'
 
 const run = promisify(execFile)
 const ctl = (...args) => execFileSync(path.join(os.homedir(), '.local/share/moho-dev/xmpp-test.sh'), ['ctl', ...args]).toString()
@@ -28,16 +29,16 @@ const python = process.env.XMPP_PEER_PYTHON ?? '/1tb/xmpp-test/venv/bin/python'
 const stamp = Date.now().toString(36)
 const me = { name: `pa${stamp}`, password: `pw-${stamp}-a` }
 const you = { name: `pb${stamp}`, password: `pw-${stamp}-b` }
-for (const p of [me, you]) ctl('register', p.name, 'localhost', p.password)
+for (const p of [me, you]) registerUser(p.name, p.password)
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'moho-xmpp-chat-'))
 const accountsFile = path.join(scratch, 'accounts.txt')
-fs.writeFileSync(accountsFile, [me, you].map((p) => `${p.name}@localhost ${p.password}`).join('\n') + '\n', { mode: 0o600 })
-const myJid = `${me.name}@localhost`
-const yourJid = `${you.name}@localhost`
+fs.writeFileSync(accountsFile, [me, you].map((p) => `${p.name}@${DOMAIN} ${p.password}`).join('\n') + '\n', { mode: 0o600 })
+const myJid = `${me.name}@${DOMAIN}`
+const yourJid = `${you.name}@${DOMAIN}`
 const myId = `xmpp:${myJid}`
 
 const peer = async (who, steps) => {
-  const { stdout } = await run(python, [path.join(root, 'scripts/lib/xmpp-peer.py'), who.name, JSON.stringify(steps)], { env: { ...process.env, XMPP_TEST_ACCOUNTS: accountsFile }, maxBuffer: 1 << 24 })
+  const { stdout } = await run(python, [path.join(root, 'scripts/lib/xmpp-peer.py'), who.name, JSON.stringify(steps)], { env: { ...process.env, XMPP_TEST_ACCOUNTS: accountsFile, XMPP_TEST_PORT: String(PORT) }, maxBuffer: 1 << 24 })
   return JSON.parse(stdout)
 }
 
@@ -56,7 +57,7 @@ const cleanup = () => {
   }
   for (const p of [me, you]) {
     try {
-      ctl('unregister', p.name, 'localhost')
+      unregisterUser(p.name)
     } catch {
       /* already gone */
     }
@@ -112,7 +113,7 @@ const backlog = async (b) => rpc('getBacklog', { bufferId: b.id, limit: 100 })
 const messageWith = (events_, text) => events_.find((e) => e.event === 'message' && e.data.body === text)?.data
 
 try {
-  await rpc('addXmppAccount', { jid: myJid, password: me.password, host: '127.0.0.1', caPem: ca })
+  await rpc('addXmppAccount', { jid: myJid, password: me.password, host: '127.0.0.1', port: PORT, caPem: ca })
   check('the account signs in', await until(async () => (await rpc('listAccounts')).find((a) => a.id === myId)?.state === 'connected'))
   await sleep(800)
 

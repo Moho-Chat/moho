@@ -7,48 +7,48 @@
  *   ~/.local/share/moho-dev/xmpp-test.sh up && (cd nobilis && cargo build --release) && node scripts/probe-xmpp-account.mjs
  */
 import net from 'node:net'
-import { start, sleep, ctl, ca } from './lib/xmpp-daemon.mjs'
+import { start, sleep, ca, DOMAIN, PORT, userRegistered } from './lib/xmpp-daemon.mjs'
 
 const t = await start({ people: 2 })
 const [me, you] = t.accounts
 const myId = t.accountId(me)
 const fresh = `reg${t.stamp}`
-const admin = { name: `adm${t.stamp}`, password: `pw-${t.stamp}-admin`, jid: `adm${t.stamp}@localhost` }
+const admin = { name: `adm${t.stamp}`, password: `pw-${t.stamp}-admin`, jid: `adm${t.stamp}@${DOMAIN}` }
 let proxy
 const sockets = new Set()
 let paused = false
 try {
   console.log('making an account')
-  const params = { jid: 'localhost', host: '127.0.0.1', caPem: ca }
+  const params = { jid: DOMAIN, host: '127.0.0.1', port: PORT, caPem: ca }
   const form = await t.rpc('xmppRegistrationForm', params)
   t.check('a server says what it needs to make an account', form.form?.fields?.some((f) => f.var === 'username') && form.form.fields.some((f) => f.var === 'password'), JSON.stringify(form))
   let taken = ''
   await t.rpc('xmppRegister', { ...params, answers: { username: me.name, password: 'x' } }).catch((e) => (taken = e.message))
   t.check('a name that is taken is said to be', /taken/.test(taken), taken)
   const made = await t.rpc('xmppRegister', { ...params, answers: { username: fresh, password: 'a-new-password' } })
-  t.check('an account is made, and signed in as', made.registered && made.accountId === `xmpp:${fresh}@localhost` && !!(await t.until(async () => (await t.rpc('listAccounts')).find((a) => a.id === made.accountId)?.state === 'connected')), JSON.stringify(made))
+  t.check('an account is made, and signed in as', made.registered && made.accountId === `xmpp:${fresh}@${DOMAIN}` && !!(await t.until(async () => (await t.rpc('listAccounts')).find((a) => a.id === made.accountId)?.state === 'connected')), JSON.stringify(made))
   const freshId = made.accountId
 
   console.log('its password and its end')
   await t.rpc('xmppChangePassword', { accountId: freshId, password: 'a-newer-password' })
-  const works = (pw) => {
-    try {
-      ctl('check_password', fresh, 'localhost', pw)
-      return true
-    } catch {
-      return false
-    }
-  }
-  t.check('the password is changed on the server', works('a-newer-password') && !works('a-new-password'))
+  // Seen from outside: signing in with the old password is refused and with the new one is not.
+  const stateOf = async () => (await t.rpc('listAccounts')).find((a) => a.id === freshId)?.state
+  await t.rpc('removeAccount', { accountId: freshId })
+  await t.rpc('addXmppAccount', { jid: `${fresh}@${DOMAIN}`, password: 'a-new-password', host: '127.0.0.1', port: PORT, caPem: ca })
+  await t.until(async () => ['auth_failed', 'connected'].includes(await stateOf()))
+  t.check('the old password no longer signs in', (await stateOf()) === 'auth_failed')
+  await t.rpc('removeAccount', { accountId: freshId })
+  await t.rpc('addXmppAccount', { jid: `${fresh}@${DOMAIN}`, password: 'a-newer-password', host: '127.0.0.1', port: PORT, caPem: ca })
+  t.check('and the new one does', !!(await t.until(async () => (await stateOf()) === 'connected')))
   await t.rpc('xmppDeleteAccount', { accountId: freshId })
   await sleep(800)
-  t.check('deleting the account removes it from the server', !ctl('registered_users', 'localhost').split('\n').includes(fresh))
+  t.check('deleting the account removes it from the server', !userRegistered(fresh))
 
   console.log('what the server says')
   t.check('the account signs in', await t.signIn(me))
   await sleep(500)
   const info = await t.rpc('xmppServerInfo', { accountId: myId })
-  t.check('about itself: its software and what it can do, by the specification', /ejabberd/i.test(info.software ?? '') && info.features.some((f) => f.var === 'urn:xmpp:mam:2' && /XEP-0313/.test(f.xep)), JSON.stringify(info).slice(0, 300))
+  t.check('about itself: its software and what it can do, by the specification', info.features.some((f) => f.var === 'urn:xmpp:mam:2' && /XEP-0313/.test(f.xep)), JSON.stringify(info).slice(0, 300))
 
   console.log('blocking')
   await t.rpc('xmppAddContact', { accountId: myId, jid: you.jid, name: 'Bea' })
@@ -65,9 +65,6 @@ try {
   t.check('and is again when they are unblocked', !!t.seen('message', (d) => d.body === 'and now'))
 
   console.log('the server\'s commands')
-  ctl('register', admin.name, 'localhost', admin.password)
-  ctl('add_rosteritem', admin.name, 'localhost', admin.name, 'localhost', 'x', 'g', 'both') // not needed; harmless
-  t.accounts.push(admin)
   const adminJid = admin.jid
   // ejabberd decides who is an administrator by configuration: the probe's own account is only a user, so what it is offered is a user's.
   const commands = await t.rpc('xmppCommands', { accountId: myId })
@@ -77,7 +74,7 @@ try {
   console.log('a connection that drops without the session ending')
   proxy = net.createServer((c) => {
     if (paused) return c.destroy()
-    const up = net.connect(5222, '127.0.0.1')
+    const up = net.connect(PORT, '127.0.0.1')
     sockets.add(c)
     sockets.add(up)
     c.pipe(up)

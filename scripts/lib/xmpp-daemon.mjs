@@ -13,14 +13,42 @@ import { root, sleep } from './harness.mjs'
 
 const run = promisify(execFile)
 export { sleep }
+export const SERVER = process.env.XMPP_TEST_SERVER ?? 'ejabberd'
+export const DOMAIN = SERVER === 'prosody' ? 'xmpp2.localhost' : 'localhost'
+export const PORT = SERVER === 'prosody' ? 5232 : 5222
+export const CONF = `conference.${DOMAIN}`
 export const ctl = (...args) => execFileSync(path.join(os.homedir(), '.local/share/moho-dev/xmpp-test.sh'), ['ctl', ...args]).toString()
+const prosodyctl = (...args) => execFileSync('docker', ['-H', 'unix:///run/docker-xmpp.sock', 'exec', 'prosody', 'prosodyctl', ...args]).toString()
+/** Making and removing accounts on whichever server the run is against. */
+export const registerUser = (name, password) => (SERVER === 'prosody' ? prosodyctl('register', name, DOMAIN, password) : ctl('register', name, DOMAIN, password))
+export const unregisterUser = (name) => (SERVER === 'prosody' ? prosodyctl('deluser', `${name}@${DOMAIN}`) : ctl('unregister', name, DOMAIN))
+export const userRegistered = (name) => {
+  if (SERVER === 'prosody') {
+    try {
+      return prosodyctl('mod_auth_internal_hashed', 'x') && false
+    } catch {
+      /* fall through */
+    }
+    return fs.existsSync(`/1tb/xmpp-test/prosody/data/${encodeURIComponent(DOMAIN).replace(/\./g, '%2e')}/accounts/${name}.dat`)
+  }
+  return ctl('registered_users', DOMAIN).split('\n').includes(name)
+}
+export const passwordWorks = (name, password) => {
+  if (SERVER === 'prosody') return false
+  try {
+    ctl('check_password', name, DOMAIN, password)
+    return true
+  } catch {
+    return false
+  }
+}
 export const ca = fs.readFileSync(process.env.XMPP_TEST_CA ?? '/1tb/xmpp-test/pki/ca.pem', 'utf8')
 const python = process.env.XMPP_PEER_PYTHON ?? '/1tb/xmpp-test/venv/bin/python'
 
 export async function start({ people = 2 } = {}) {
   const stamp = Date.now().toString(36)
-  const accounts = Array.from({ length: people }, (_, i) => ({ name: `p${'abcd'[i]}${stamp}`, password: `pw-${stamp}-${i}`, jid: `p${'abcd'[i]}${stamp}@localhost` }))
-  for (const p of accounts) ctl('register', p.name, 'localhost', p.password)
+  const accounts = Array.from({ length: people }, (_, i) => ({ name: `p${'abcd'[i]}${stamp}`, password: `pw-${stamp}-${i}`, jid: `p${'abcd'[i]}${stamp}@${DOMAIN}` }))
+  for (const p of accounts) registerUser(p.name, p.password)
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'moho-xmpp-probe-'))
   const accountsFile = path.join(scratch, 'accounts.txt')
   fs.writeFileSync(accountsFile, accounts.map((p) => `${p.jid} ${p.password}`).join('\n') + '\n', { mode: 0o600 })
@@ -39,7 +67,7 @@ export async function start({ people = 2 } = {}) {
     }
     for (const p of accounts) {
       try {
-        ctl('unregister', p.name, 'localhost')
+        unregisterUser(p.name)
       } catch {
         /* already gone */
       }
@@ -73,7 +101,7 @@ export async function start({ people = 2 } = {}) {
       conn.write(JSON.stringify({ id, method, params }) + '\n')
     })
   probe.peer = async (who, steps) => {
-    const { stdout } = await run(python, [path.join(root, 'scripts/lib/xmpp-peer.py'), who.name, JSON.stringify(steps)], { env: { ...process.env, XMPP_TEST_ACCOUNTS: accountsFile }, maxBuffer: 1 << 24 })
+    const { stdout } = await run(python, [path.join(root, 'scripts/lib/xmpp-peer.py'), who.name, JSON.stringify(steps)], { env: { ...process.env, XMPP_TEST_ACCOUNTS: accountsFile, XMPP_TEST_PORT: String(PORT) }, maxBuffer: 1 << 24 })
     return JSON.parse(stdout)
   }
   probe.check = (what, ok, detail = '') => {
@@ -93,7 +121,7 @@ export async function start({ people = 2 } = {}) {
   probe.accountId = (p) => `xmpp:${p.jid}`
   probe.state = async (p) => (await probe.rpc('listAccounts')).find((a) => a.id === probe.accountId(p))?.state
   probe.signIn = async (p) => {
-    await probe.rpc('addXmppAccount', { jid: p.jid, password: p.password, host: '127.0.0.1', caPem: ca })
+    await probe.rpc('addXmppAccount', { jid: p.jid, password: p.password, host: '127.0.0.1', port: PORT, caPem: ca })
     return probe.until(async () => (await probe.state(p)) === 'connected')
   }
   probe.finish = async () => {

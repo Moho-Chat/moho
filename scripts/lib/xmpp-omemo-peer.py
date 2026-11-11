@@ -135,7 +135,7 @@ async def main():
     jid = next(j for j in accounts if j.split("@")[0] == name)
     peer = Peer(jid, accounts[jid])
     peer.ready = asyncio.get_event_loop().create_future()
-    peer.connect(HOST, 5222)
+    peer.connect(HOST, int(os.environ.get('XMPP_TEST_PORT', '5222')))
     await asyncio.wait_for(peer.ready, 30)
     failed = None
     for step in steps:

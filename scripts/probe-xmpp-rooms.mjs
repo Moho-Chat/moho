@@ -6,13 +6,13 @@
  *
  *   ~/.local/share/moho-dev/xmpp-test.sh up && (cd nobilis && cargo build --release) && node scripts/probe-xmpp-rooms.mjs
  */
-import { start, sleep } from './lib/xmpp-daemon.mjs'
+import { start, sleep, CONF } from './lib/xmpp-daemon.mjs'
 
 const t = await start({ people: 2 })
 const [me, you] = t.accounts
 const myId = t.accountId(me)
-const room = `room${t.stamp}@conference.localhost`
-const room2 = `other${t.stamp}@conference.localhost`
+const room = `room${t.stamp}@${CONF}`
+const room2 = `other${t.stamp}@${CONF}`
 const join = (r, nick) => `<presence xmlns='jabber:client' to='${r}/${nick}'><x xmlns='http://jabber.org/protocol/muc'><history maxchars='0'/></x></presence>`
 const say = (r, body, id, extra = '') => `<message xmlns='jabber:client' to='${r}' type='groupchat' id='${id}'><body>${body}</body><origin-id xmlns='urn:xmpp:sid:0' id='${id}'/>${extra}</message>`
 const buffers = async () => (await t.rpc('listBuffers')).filter((b) => b.accountId === myId)
@@ -75,12 +75,22 @@ try {
 
   console.log('moderation')
   t.events.length = 0
-  const watching = t.peer(you, [{ raw: join(room, 'pat') }, { sleep: 0.8 }, { raw: say(room, 'a message to be removed', 'r-7') }, { wait_for: 'moderated', timeout: 10 }])
-  await t.until(async () => t.seen('message', (d) => d.id === 'r-7'), 10000)
-  await t.rpc('deleteMessage', { bufferId: b.id, messageId: 'r-7' })
-  const removed = await watching
-  t.check('a moderator can remove what somebody else said, for everyone', /message-retract/.test(removed.received) && /moderated/.test(removed.received), removed.received.slice(-400))
-  t.check('and it is gone here, with the room saying so', !!t.seen('messageDeleted', (d) => d.id === 'r-7') && (await backlog(b)).some((m) => /A moderator removed a message/.test(m.body)))
+  // Moderating other people's messages (XEP-0425) is not in every server: Prosody 13 has it only as a community module.
+  const moderation = process.env.XMPP_TEST_SERVER !== 'prosody'
+  const watching = t.peer(you, [{ raw: join(room, 'pat') }, { sleep: 0.8 }, { raw: say(room, 'a message to be removed', 'r-7') }, moderation ? { wait_for: 'moderated', timeout: 10 } : { sleep: 2 }])
+  if (moderation) {
+    await t.until(async () => t.seen('message', (d) => d.id === 'r-7'), 10000)
+    await t.rpc('deleteMessage', { bufferId: b.id, messageId: 'r-7' })
+    const removed = await watching
+    t.check('a moderator can remove what somebody else said, for everyone', /message-retract/.test(removed.received) && /moderated/.test(removed.received), removed.received.slice(-400))
+    t.check('and it is gone here, with the room saying so', !!t.seen('messageDeleted', (d) => d.id === 'r-7') && (await backlog(b)).some((m) => /A moderator removed a message/.test(m.body)))
+  } else {
+    await t.until(async () => t.seen('message', (d) => d.id === 'r-7'), 10000)
+    let refused = ''
+    await t.rpc('deleteMessage', { bufferId: b.id, messageId: 'r-7' }).catch((e) => (refused = e.message))
+    await watching
+    t.check('a server without moderated retraction says so in words', /does not support/.test(refused), refused)
+  }
   t.events.length = 0
   const people = await t.rpc('xmppAffiliations', { bufferId: b.id, affiliation: 'owner' })
   t.check('the room says who owns it', people.people.some((p) => p.jid === me.jid), JSON.stringify(people))
