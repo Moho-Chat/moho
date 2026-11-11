@@ -4,6 +4,7 @@ import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { ExportDialog } from './ExportDialog'
 import { ReasonPrompt } from './ReasonPrompt'
 import { XmppRoomDialog } from './XmppRoomDialog'
+import { XmppOmemoDialog } from './XmppOmemoDialog'
 import { Avatar } from './Avatar'
 import { bufferMenuEntries } from '../lib/buffermenu'
 import { notifyLevelsFor } from '../lib/notifylevels'
@@ -44,6 +45,7 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
 
   const [reporting, setReporting] = useState(false)
   const [roomDialog, setRoomDialog] = useState(false)
+  const [omemoDialog, setOmemoDialog] = useState(false)
   const [, togglePin, isPinned] = useIdSetPref('pinnedBuffers')
   const [hidden, setHidden] = usePref<string[]>('hiddenBuffers', [])
   const [assignment, setAssignment] = useMapPref<string>('channelCategory')
@@ -123,6 +125,10 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
           .finally(() => setExporting(true))
       }
     },
+    // A conversation with a person on XMPP can be encrypted (OMEMO), and has devices whose fingerprints can be compared.
+    ...(account?.service === 'xmpp' && buffer.kind === 'dm'
+      ? ([{ label: buffer.encrypted ? 'Encryption…' : 'Encrypt…', icon: buffer.encrypted ? 'lock' : 'lock_open', onClick: () => setOmemoDialog(true) }] as MenuEntry[])
+      : []),
     // An XMPP room has controls of its own: its settings, who holds what standing in it, an invitation, the subject.
     ...(account?.service === 'xmpp' && buffer.kind === 'channel'
       ? ([{ label: 'Room settings…', icon: 'settings', onClick: () => setRoomDialog(true) }] as MenuEntry[])
@@ -175,6 +181,8 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
       {buffer.topic && <HeaderTopic topic={buffer.topic} />}
 
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={entries} onClose={close} />}
+
+      {omemoDialog && buffer.remoteId && <XmppOmemoDialog bufferId={buffer.id} accountId={buffer.accountId} jid={buffer.remoteId} name={name} encrypted={!!buffer.encrypted} onClose={() => setOmemoDialog(false)} />}
 
       {roomDialog && <XmppRoomDialog bufferId={buffer.id} name={name} onClose={() => setRoomDialog(false)} />}
 

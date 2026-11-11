@@ -1195,6 +1195,16 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
               <MaskIcon src={torMark} size={16} color="var(--primary)" />
             </span>
           ))}
+        {service === 'xmpp' && buffer.kind === 'dm' && (
+          <button
+            type="button"
+            className="composer-lock"
+            title={buffer.encrypted ? 'Encrypted with OMEMO. Click to turn it off' : 'Not encrypted. Click to turn on OMEMO'}
+            onClick={() => void window.moho.rpc('xmppSetEncryption', { bufferId: buffer.id, on: !buffer.encrypted }).catch((e: Error) => store.toast('error', e.message))}
+          >
+            <Icon name={buffer.encrypted ? 'lock' : 'lock_open'} size={16} color={buffer.encrypted ? 'var(--primary)' : 'var(--surface-variant-text)'} />
+          </button>
+        )}
         {service === 'matrix' && (
           <span className="composer-lock" title={buffer.encrypted ? 'Encrypted' : 'Not encrypted'}>
             <Icon
