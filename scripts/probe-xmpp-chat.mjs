@@ -142,7 +142,7 @@ try {
   ])
   const got = messageWith(events, 'hello there')
   check('a message arrives in its conversation', got?.bufferId === b.id && got?.from === 'Bea' && got?.isOwn === false, JSON.stringify(got)?.slice(0, 200))
-  check('and is answered with a receipt', /received[^>]*urn:xmpp:receipts[^>]*id=['"]in-1['"]|<received xmlns=['"]urn:xmpp:receipts['"] id=['"]in-1['"]/.test(theirs.received), theirs.received.slice(-400))
+  check('and is answered with a receipt', /<received\b(?=[^>]*urn:xmpp:receipts)(?=[^>]*\bid=['"]in-1['"])[^>]*>/.test(theirs.received), theirs.received.slice(-400))
   check('it notifies', !!seen('notification', (d) => d.bufferId === b.id && d.body === 'hello there'))
 
   console.log('typing')
@@ -203,7 +203,7 @@ try {
   await rpc('deleteMessage', { bufferId: b.id, messageId: sent.id })
   const wire = await peer(you, [{ wait_for: 'a reply', timeout: 8 }, { wait_for: 'message-retract', timeout: 8 }, { sleep: 0.3 }])
   check('an edit goes out as a correction naming the message', new RegExp(`urn:xmpp:message-correct:0['"][^>]*id=['"]${sent.id}['"]|id=['"]${sent.id}['"][^>]*message-correct`).test(wire.received) || (wire.received.includes('message-correct') && wire.received.includes('hi again')), wire.received.slice(-700))
-  check('a reaction goes out as the whole set', /<reactions[^>]*urn:xmpp:reactions:0[^>]*id=['"]in-1['"]|reactions xmlns=['"]urn:xmpp:reactions:0['"] id=['"]in-1['"]/.test(wire.received) && wire.received.includes('❤'), wire.received.slice(-500))
+  check('a reaction goes out as the whole set', /<reactions\b(?=[^>]*urn:xmpp:reactions:0)(?=[^>]*\bid=['"]in-1['"])[^>]*>/.test(wire.received) && wire.received.includes('❤'), wire.received.slice(-500))
   check('a reply goes out naming its target, with the quoted text as fallback', /<reply[^>]*in-1/.test(wire.received) && /urn:xmpp:fallback:0/.test(wire.received) && wire.received.includes('&gt; Bea'), wire.received.slice(-600))
   check('a deletion goes out as a retraction', wire.received.includes('message-retract') && wire.received.includes(sent.id), wire.received.slice(-400))
   const bl = await backlog(b)
