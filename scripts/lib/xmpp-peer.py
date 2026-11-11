@@ -7,7 +7,8 @@ written by somebody else, and what that library sends is what moho has to unders
 
 name is one of the accounts in the accounts file (alice, bob, carol). Steps, in order:
 
-    {"raw": "<message .../>"}              send this XML as it is
+    {"raw": "<message .../>"}              send this XML as it is; {{from_of:<text>}} in it is the sender (as the server stamped it)
+                                           of the last message or iq received that holds <text>
     {"sleep": 1.5}                         wait
     {"wait_for": "text", "timeout": 10}    wait until the raw text received so far holds this
     {"presence": "available"|"away"|"dnd"|"unavailable", "status": "..."}
@@ -17,9 +18,11 @@ name is one of the accounts in the accounts file (alice, bob, carol). Steps, in 
 
 Prints one JSON object: {"ok": bool, "received": "<all the XML received>", "failed": "<step>"}.
 """
-import asyncio, json, os, ssl, sys
+import asyncio, json, os, re, ssl, sys
 import slixmpp
 from slixmpp.xmlstream import ET
+from slixmpp.xmlstream.handler import Callback
+from slixmpp.xmlstream.matcher import MatchXPath
 
 ACCOUNTS = os.environ.get("XMPP_TEST_ACCOUNTS", "/1tb/xmpp-test/accounts.txt")
 CA = os.environ.get("XMPP_TEST_CA", "/1tb/xmpp-test/pki/ca.pem")
@@ -34,6 +37,8 @@ class Peer(slixmpp.ClientXMPP):
         self.register_plugin("xep_0030")
         self.register_plugin("xep_0199")
         self.register_plugin("xep_0313")
+        # A call's stanzas are acknowledged the way any client that answers calls does: with an empty result.
+        self.register_handler(Callback("jingle", MatchXPath("{jabber:client}iq/{urn:xmpp:jingle:1}jingle"), lambda iq: iq.reply().send()))
         self.add_event_handler("session_start", self.started)
         self.add_event_handler("presence_subscribe", lambda p: None)
 
@@ -45,6 +50,16 @@ class Peer(slixmpp.ClientXMPP):
         self.send_presence()
         await self.get_roster()
         self.started_ok.set_result(True)
+
+
+def from_of(peer, text):
+    whole = "".join(peer.received)
+    at = whole.rfind(text)
+    if at < 0:
+        raise ValueError("nothing received holds " + text)
+    start = max(whole.rfind("<message", 0, at), whole.rfind("<iq", 0, at))
+    tag = whole[start:whole.index(">", start)]
+    return re.search(r"from=['\"]([^'\"]+)['\"]", tag).group(1)
 
 
 async def main():
@@ -59,7 +74,7 @@ async def main():
     for step in steps:
         try:
             if "raw" in step:
-                peer.send_raw(step["raw"])
+                peer.send_raw(re.sub(r"\{\{from_of:(.*?)\}\}", lambda m: from_of(peer, m.group(1)), step["raw"]))
             elif "sleep" in step:
                 await asyncio.sleep(step["sleep"])
             elif "wait_for" in step:

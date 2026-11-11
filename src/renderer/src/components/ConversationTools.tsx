@@ -615,6 +615,8 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   // to a name half written.
   const filterMenu = suggestions(query)
   const isMatrix = buffer.accountId.startsWith('matrix:')
+  // XMPP calls are between two people and use the window's Matrix call engine, which is the window's call vocabulary.
+  const isXmppDm = buffer.accountId.startsWith('xmpp:') && buffer.kind === 'dm'
   const isTelegram = buffer.accountId.startsWith('telegram:')
   const isStoat = buffer.accountId.startsWith('stoat:')
   const isSteam = buffer.accountId.startsWith('steam:')
@@ -919,7 +921,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           two buttons because a video call is a different thing to start, and
           on a service where either is normal the choice belongs on the
           header rather than inside the call. */}
-      {isMatrix && buffer.kind !== 'server' && !matrixCall && (
+      {(isMatrix || isXmppDm) && buffer.kind !== 'server' && !matrixCall && (
         <>
           {/* A room's call is between everybody in it and a direct message's
               is between two people, which are different things to start: one
@@ -945,7 +947,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           />
         </>
       )}
-      {isMatrix && matrixCall?.bufferId === buffer.id && (
+      {(isMatrix || isXmppDm) && matrixCall?.bufferId === buffer.id && (
         <IconButton
           name="call_end"
           title="Hang up"
