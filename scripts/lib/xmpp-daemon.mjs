@@ -49,13 +49,18 @@ const python = process.env.XMPP_PEER_PYTHON ?? '/1tb/xmpp-test/venv/bin/python'
  * `resolver`: an address the daemon asks DNS of instead of the system's (the test DNS of `xmpp-test.sh dns`). The daemon then runs
  * in a mount namespace of its own (`unshare -Urm`, no privileges needed) with its own resolv.conf and nsswitch.conf.
  */
-export async function start({ people = 2, resolver = null } = {}) {
+// `home`: files to put in the scratch HOME before the daemon starts, by path relative to it (`.asoundrc`, say).
+export async function start({ people = 2, resolver = null, home = {} } = {}) {
   const stamp = Date.now().toString(36)
   const accounts = Array.from({ length: people }, (_, i) => ({ name: `p${'abcd'[i]}${stamp}`, password: `pw-${stamp}-${i}`, jid: `p${'abcd'[i]}${stamp}@${DOMAIN}` }))
   for (const p of accounts) registerUser(p.name, p.password)
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'moho-xmpp-probe-'))
   const accountsFile = path.join(scratch, 'accounts.txt')
   fs.writeFileSync(accountsFile, accounts.map((p) => `${p.jid} ${p.password}`).join('\n') + '\n', { mode: 0o600 })
+  for (const [rel, content] of Object.entries(home)) {
+    fs.mkdirSync(path.dirname(path.join(scratch, rel)), { recursive: true })
+    fs.writeFileSync(path.join(scratch, rel), content)
+  }
   const runtime = path.join(scratch, 'run')
   fs.mkdirSync(runtime, { recursive: true, mode: 0o700 })
   const env = { ...process.env, HOME: scratch, XDG_CONFIG_HOME: path.join(scratch, 'config'), XDG_DATA_HOME: path.join(scratch, 'data'), XDG_CACHE_HOME: path.join(scratch, 'cache'), XDG_RUNTIME_DIR: runtime }

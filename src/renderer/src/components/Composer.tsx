@@ -1441,7 +1441,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
             messages at all: Discord's flag and base64 waveform, and Matrix's
             MSC3245 marker with integers. The daemon speaks both from one
             recording, so this is the same button either way. */}
-        {!thread && (service === 'discord' || service === 'matrix' || service === 'telegram') && <VoiceRecorder bufferId={buffer.id} />}
+        {!thread && (service === 'discord' || service === 'matrix' || service === 'telegram' || service === 'xmpp') && <VoiceRecorder bufferId={buffer.id} />}
 
         {/* Sending is the one thing the box does that its own Enter does not
             say, so it is only drawn when there is something to send. */}
