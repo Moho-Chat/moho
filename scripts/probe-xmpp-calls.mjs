@@ -14,6 +14,8 @@ const myId = t.accountId(me)
 const ice = 'a=ice-ufrag:Zt3k\r\na=ice-pwd:aSecretPasswordForIce12345\r\na=ice-options:trickle\r\na=fingerprint:sha-256 AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99\r\n'
 const audio = (setup) => `m=audio 9 UDP/TLS/RTP/SAVPF 111 0\r\nc=IN IP4 0.0.0.0\r\na=rtcp:9 IN IP4 0.0.0.0\r\n${ice}a=setup:${setup}\r\na=mid:0\r\na=extmap:1 urn:ietf:rfc:ssrc-audio-level\r\na=sendrecv\r\na=rtcp-mux\r\na=rtpmap:111 opus/48000/2\r\na=rtcp-fb:111 transport-cc\r\na=fmtp:111 minptime=10;useinbandfec=1\r\na=rtpmap:0 PCMU/8000\r\na=ssrc:1001 cname:cn1\r\n`
 const sdp = (setup) => `v=0\r\no=- 4611731400430051336 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0\r\n${audio(setup)}`
+const video = (mid, direction) => `m=video 9 UDP/TLS/RTP/SAVPF 96\r\nc=IN IP4 0.0.0.0\r\na=rtcp:9 IN IP4 0.0.0.0\r\n${ice}a=setup:actpass\r\na=mid:${mid}\r\na=${direction}\r\na=rtcp-mux\r\na=rtpmap:96 VP8/90000\r\na=rtcp-fb:96 nack\r\n`
+const withVideo = (setup, mids, direction = 'sendrecv') => `v=0\r\no=- 4611731400430051336 3 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0 ${mids.join(' ')}\r\n${audio(setup)}${mids.map((m) => video(m, direction)).join('')}`
 const jingleOffer = (sid, from) => `<iq xmlns='jabber:client' type='set' to='{{from_of:id='${sid}'}}' id='ji-${sid}'><jingle xmlns='urn:xmpp:jingle:1' action='session-initiate' sid='${sid}' initiator='${from}'><group xmlns='urn:xmpp:jingle:apps:grouping:0' semantics='BUNDLE'><content name='0'/></group><content creator='initiator' name='0' senders='both'><description xmlns='urn:xmpp:jingle:apps:rtp:1' media='audio'><payload-type id='111' name='opus' clockrate='48000' channels='2'><parameter name='minptime' value='10'/><rtcp-fb xmlns='urn:xmpp:jingle:apps:rtp:rtcp-fb:0' type='transport-cc'/></payload-type><payload-type id='0' name='PCMU' clockrate='8000'/><rtcp-mux/><rtp-hdrext xmlns='urn:xmpp:jingle:apps:rtp:rtp-hdrext:0' id='1' uri='urn:ietf:params:rtp-hdrext:ssrc-audio-level'/><source xmlns='urn:xmpp:jingle:apps:rtp:ssma:0' ssrc='4242'><parameter name='cname' value='peer1'/></source></description><transport xmlns='urn:xmpp:jingle:transports:ice-udp:1' ufrag='PeerU' pwd='PeerPasswordForIce123456'><fingerprint xmlns='urn:xmpp:jingle:apps:dtls:0' hash='sha-256' setup='actpass'>11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00</fingerprint></transport></content></jingle></iq>`
 const candidateInfo = (sid, id) => `<iq xmlns='jabber:client' type='set' to='{{from_of:id='${sid}'}}' id='${id}'><jingle xmlns='urn:xmpp:jingle:1' action='transport-info' sid='${sid}'><content creator='initiator' name='0'><transport xmlns='urn:xmpp:jingle:transports:ice-udp:1' ufrag='PeerU' pwd='PeerPasswordForIce123456'><candidate component='1' foundation='1' generation='0' id='c1' ip='203.0.113.9' network='0' port='50500' priority='2122260223' protocol='udp' type='host'/></transport></content></jingle></iq>`
 const call = (bufferId, type, content) => t.rpc('sendMatrixCallEvent', { bufferId, type, content })
@@ -99,6 +101,14 @@ try {
     { raw: `<message xmlns='jabber:client' to='{{from_of:jingle-message:0}}' type='chat' id='pr-${sid5}'><proceed xmlns='urn:xmpp:jingle-message:0' id='${sid5}'/></message>` },
     { wait_for: 'session-initiate', timeout: 30 },
     { raw: `<iq xmlns='jabber:client' type='set' to='{{from_of:jingle-message:0}}' id='ac-${sid5}'><jingle xmlns='urn:xmpp:jingle:1' action='session-accept' sid='${sid5}' responder='${you.jid}/peer'><group xmlns='urn:xmpp:jingle:apps:grouping:0' semantics='BUNDLE'><content name='0'/></group><content creator='initiator' name='0' senders='both'><description xmlns='urn:xmpp:jingle:apps:rtp:1' media='audio'><payload-type id='111' name='opus' clockrate='48000' channels='2'/><rtcp-mux/></description><transport xmlns='urn:xmpp:jingle:transports:ice-udp:1' ufrag='AnsU' pwd='AnswerPasswordForIce12345'><fingerprint xmlns='urn:xmpp:jingle:apps:dtls:0' hash='sha-256' setup='active'>22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11</fingerprint></transport></content></jingle></iq>` },
+    // The picture added by the caller, taken by this end.
+    { wait_for: "action='content-add'", timeout: 30 },
+    { raw: `<iq xmlns='jabber:client' type='set' to='{{from_of:jingle-message:0}}' id='ca-${sid5}'><jingle xmlns='urn:xmpp:jingle:1' action='content-accept' sid='${sid5}'><content creator='initiator' name='1' senders='both'><description xmlns='urn:xmpp:jingle:apps:rtp:1' media='video'><payload-type id='96' name='VP8' clockrate='90000'/><rtcp-mux/></description><transport xmlns='urn:xmpp:jingle:transports:ice-udp:1' ufrag='AnsU' pwd='AnswerPasswordForIce12345'/></content></jingle></iq>` },
+    // The caller puts it away to a one-way picture; this end does nothing but acknowledge.
+    { wait_for: "action='content-modify'", timeout: 30 },
+    // A second picture, from this end.
+    { raw: `<iq xmlns='jabber:client' type='set' to='{{from_of:jingle-message:0}}' id='cb-${sid5}'><jingle xmlns='urn:xmpp:jingle:1' action='content-add' sid='${sid5}'><content creator='responder' name='2' senders='both'><description xmlns='urn:xmpp:jingle:apps:rtp:1' media='video'><payload-type id='96' name='VP8' clockrate='90000'/><rtcp-mux/></description><transport xmlns='urn:xmpp:jingle:transports:ice-udp:1' ufrag='AnsU' pwd='AnswerPasswordForIce12345'/></content></jingle></iq>` },
+    { wait_for: "action='content-accept'", timeout: 30 },
     { wait_for: 'transport-info', timeout: 30 },
     { wait_for: 'session-terminate', timeout: 30 }
   ])
@@ -106,12 +116,32 @@ try {
   const answered = await t.until(() => got('m.call.answer', sid5), 30000)
   const a = answered?.content.answer.sdp ?? ''
   t.check('the other end takes the call and their answer reaches the window as an SDP', /a=setup:active/.test(a) && /a=ice-ufrag:AnsU/.test(a) && /a=rtpmap:111 opus\/48000\/2/.test(a) && /a=mid:0/.test(a) && /a=rtcp-mux/.test(a), a)
+  console.log('a call that is changed while it is up')
+  t.events.length = 0
+  await call(b.id, 'm.call.negotiate', { call_id: sid5, description: { type: 'offer', sdp: withVideo('actpass', ['1']) } })
+  const added = await t.until(() => t.events.find((e) => e.event === 'matrixCall' && e.data.kind === 'm.call.negotiate' && e.data.callId === sid5 && e.data.content.description.type === 'answer')?.data ?? null, 20000)
+  const ad = added?.content.description.sdp ?? ''
+  t.check('a picture added to the call is taken by the other end, and the window is given the answer with a section for it', /^m=video 9 /m.test(ad) && /a=mid:1/.test(ad) && /a=rtpmap:96 VP8\/90000/.test(ad) && /a=sendrecv/.test(ad) && /a=group:BUNDLE 0 1/.test(ad), ad)
+  t.events.length = 0
+  await call(b.id, 'm.call.negotiate', { call_id: sid5, description: { type: 'offer', sdp: withVideo('actpass', ['1'], 'recvonly').replace('a=sendrecv\r\na=rtcp-mux\r\na=rtpmap:111', 'a=sendrecv\r\na=rtcp-mux\r\na=rtpmap:111') } })
+  const modified = await t.until(() => t.events.find((e) => e.event === 'matrixCall' && e.data.kind === 'm.call.negotiate' && e.data.content.description.type === 'answer')?.data ?? null, 20000)
+  const md = modified?.content.description.sdp ?? ''
+  t.check('using it another way is a modification, answered as soon as the other end has taken it', !!modified && /a=sendonly/.test(md), md)
+  const theirs = await t.until(() => t.events.find((e) => e.event === 'matrixCall' && e.data.kind === 'm.call.negotiate' && e.data.content.description.type === 'offer')?.data ?? null, 20000)
+  const offered = theirs?.content.description.sdp ?? ''
+  t.check('a picture the other end adds is offered to the window as the whole call with the new section in it', /a=mid:2/.test(offered) && (offered.match(/^m=video/gm) ?? []).length === 2 && /a=group:BUNDLE 0 1 2/.test(offered) && /a=ice-ufrag:AnsU/.test(offered), offered)
+  await call(b.id, 'm.call.negotiate', { call_id: sid5, description: { type: 'answer', sdp: withVideo('active', ['1', '2']) } })
+  await sleep(800)
   await call(b.id, 'm.call.candidates', { call_id: sid5, candidates: [{ candidate: 'candidate:842163049 1 udp 1677729535 192.0.2.10 54321 typ srflx raddr 10.0.0.5 rport 54321 generation 0', sdpMid: '0', sdpMLineIndex: 0 }] })
   await sleep(800)
   await call(b.id, 'm.call.hangup', { call_id: sid5, reason: 'user_hangup' })
   const out = await outgoing
   t.check('the offer went out as a session with what the browser offered', /<propose[^>]*jingle-message/.test(out.received) && /name=['"]opus['"]/.test(out.received) && /ufrag=['"]Zt3k['"]/.test(out.received) && /setup=['"]actpass['"]/.test(out.received) && /<group[^>]*BUNDLE/.test(out.received), out.received.slice(0, 1800))
   t.check('their candidates go out as transport-info with the credentials of the content', /action=['"]transport-info['"]/.test(out.received) && /ip=['"]192\.0\.2\.10['"]/.test(out.received) && /type=['"]srflx['"]/.test(out.received) && /rel-addr=['"]10\.0\.0\.5['"]/.test(out.received))
+  const element = (action) => (out.received.match(new RegExp(`<jingle[^>]*action=['"]${action}['"][\\s\\S]*?</jingle>`)) ?? [''])[0]
+  t.check('a picture added went out as a content-add that names the new section and its media', /name=['"]1['"]/.test(element('content-add')) && /media=['"]video['"]/.test(element('content-add')) && /creator=['"]initiator['"]/.test(element('content-add')) && /name=['"]VP8['"]/.test(element('content-add')), element('content-add'))
+  t.check('using it one way only went out as a content-modify that says who sends', /name=['"]1['"]/.test(element('content-modify')) && /senders=['"]responder['"]/.test(element('content-modify')), element('content-modify'))
+  t.check('and the window\'s answer to the other end\'s picture went out as a content-accept of the section, by whoever made it', /name=['"]2['"]/.test(element('content-accept')) && /creator=['"]responder['"]/.test(element('content-accept')) && /media=['"]video['"]/.test(element('content-accept')), element('content-accept'))
   t.check('and hanging up ends the session', /action=['"]session-terminate['"]/.test(out.received) && /<success/.test(out.received), out.received.slice(-500))
 } catch (err) {
   t.failed(err)

@@ -91,6 +91,21 @@ try {
         check(`${who} sees them`, picture && picture.frames > 5, JSON.stringify(picture))
       }
     }
+    if (!video) {
+      // The camera turned on in a call already running: a section added to it, which Jingle carries as a content-add.
+      await one.page.evaluate(`${S}.toggleCamera()`)
+      await sleep(4000)
+      const seen = await flowing(two, 'video')
+      check('a camera turned on during the call reaches the other end (a content-add through Jingle)', seen && seen.frames > 5, JSON.stringify(seen))
+      // And the other way, from the one who was called.
+      await two.page.evaluate(`${S}.toggleCamera()`)
+      await sleep(4000)
+      const back = await flowing(one, 'video')
+      check('and theirs reaches the caller', back && back.frames > 5, JSON.stringify(back))
+      await one.page.evaluate(`${S}.toggleCamera()`)
+      await sleep(2500)
+      check('turning it off leaves the call up', await until(one, `${S}.matrixCalls.current?.call?.pc?.connectionState === 'connected'`, 5000))
+    }
     // The one who called hangs up the voice call; the one who was called hangs up the video one.
     const [hanger, other] = video ? [two, one] : [one, two]
     await hanger.page.evaluate(`${S}.hangUpMatrixCall()`)
