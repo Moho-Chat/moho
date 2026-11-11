@@ -11746,3 +11746,15 @@ html[data-reduce-motion] *::after {
   margin: 0;
   overflow-wrap: anywhere;
 }
+
+/* A checkbox and the words beside it (XMPP's forms and tools): one row, the box aligned with the first line. */
+.check-row {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: flex-start;
+  font-size: var(--font-size-small);
+}
+.check-row input {
+  margin-top: 2px;
+  flex: none;
+}

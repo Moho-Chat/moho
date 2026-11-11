@@ -50,6 +50,7 @@ interface XmppSettings {
   security: 'starttls' | 'direct' | 'websocket'
   caPem: string
   pinSha256: string
+  clientCertPem: string
   pinned: CertDetails | null
   resource: string
   lastConnected: string
@@ -98,7 +99,7 @@ function XmppConnectionSettings({ account }: { account: Account }): JSX.Element 
     if (!s) return
     setBusy(true)
     void window.moho
-      .rpc<{ changed: boolean }>('editXmppAccount', { accountId: account.id, host: s.host, port: Number(s.port) || 0, security: s.security, caPem: s.caPem, pinSha256: s.pinSha256, resource: s.resource })
+      .rpc<{ changed: boolean }>('editXmppAccount', { accountId: account.id, host: s.host, port: Number(s.port) || 0, security: s.security, caPem: s.caPem, pinSha256: s.pinSha256, resource: s.resource, clientCertPem: s.clientCertPem })
       .then((r) => {
         store.toast('info', r.changed ? 'Saved; connecting with the new settings' : 'Nothing changed')
         void store.refreshAccounts()
@@ -149,6 +150,10 @@ function XmppConnectionSettings({ account }: { account: Account }): JSX.Element 
             <input className="text-field mono" autoComplete="off" spellCheck={false} placeholder="ab:cd:… (64 hex digits)" value={s.pinSha256} disabled={busy} onChange={(e) => set({ pinSha256: e.target.value })} />
           </label>
           {s.pinned && s.pinSha256 && <CertificateFacts details={s.pinned} />}
+          <label className="field">
+            <span className="small muted">Client certificate and its key (PEM), for a server that signs in by certificate</span>
+            <textarea className="text-field" rows={3} spellCheck={false} value={s.clientCertPem} disabled={busy} onChange={(e) => set({ clientCertPem: e.target.value })} />
+          </label>
           <label className="field">
             <span className="small muted">Resource (this device&apos;s name to the server; a server that offers Bind 2 chooses it)</span>
             <input className="text-field mono" autoComplete="off" spellCheck={false} value={s.resource} disabled={busy} onChange={(e) => set({ resource: e.target.value })} />

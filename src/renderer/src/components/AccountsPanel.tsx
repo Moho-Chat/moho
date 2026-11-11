@@ -2199,6 +2199,8 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
   const [caPem, setCaPem] = useState('')
   const [pin, setPin] = useState('')
   const [resource, setResource] = useState('')
+  const [clientCert, setClientCert] = useState('')
+  const [anonymous, setAnonymous] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const [making, setMaking] = useState(false)
@@ -2224,7 +2226,9 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
       .catch((e: Error) => store.toast('error', e.message))
       .finally(() => setBusy(false))
   }
-  const ready = /^[^@\s/]+@[^@\s/]+$/.test(jid.trim()) && password !== ''
+  // An account needs its address and a password - or a client certificate in place of the password; signing in with no account
+  // needs only the server's address.
+  const ready = anonymous ? /^[^@\s/]+\.[^@\s/]+$/.test(jid.trim()) : /^[^@\s/]+@[^@\s/]+$/.test(jid.trim()) && (password !== '' || clientCert.trim() !== '')
   const add = (): void => {
     setBusy(true)
     void window.moho
@@ -2237,6 +2241,8 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
         caPem: caPem.trim(),
         pinSha256: pin.trim(),
         resource: resource.trim(),
+        clientCertPem: clientCert.trim(),
+        anonymous,
         useTor
       })
       .then(() => {
@@ -2256,19 +2262,19 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
       </p>
       <div className="field-row" hidden={making}>
         <label className="field">
-          <span className="small muted">Address</span>
+          <span className="small muted">{anonymous ? 'Server' : 'Address'}</span>
           <input
             className="text-field"
             autoComplete="off"
             spellCheck={false}
-            placeholder="you@example.org"
+            placeholder={anonymous ? 'example.org' : 'you@example.org'}
             value={jid}
             disabled={busy}
             onChange={(e) => setJid(e.target.value)}
           />
         </label>
-        <label className="field">
-          <span className="small muted">Password</span>
+        <label className="field" hidden={anonymous}>
+          <span className="small muted">Password{clientCert.trim() ? ' (not needed with a certificate)' : ''}</span>
           <input
             className="text-field"
             type="password"
@@ -2348,6 +2354,14 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
           <label className="field">
             <span className="small muted">Resource (this device&apos;s name to the server; empty for one made up, and a server that offers Bind 2 chooses it)</span>
             <input className="text-field mono" autoComplete="off" spellCheck={false} placeholder="moho.…" value={resource} disabled={busy} onChange={(e) => setResource(e.target.value)} />
+          </label>
+          <label className="field">
+            <span className="small muted">Client certificate and its key (PEM) — for a server that signs you in by certificate (SASL EXTERNAL)</span>
+            <textarea className="text-field" rows={3} spellCheck={false} placeholder="-----BEGIN CERTIFICATE----- … -----BEGIN PRIVATE KEY-----" value={clientCert} disabled={busy} onChange={(e) => setClientCert(e.target.value)} />
+          </label>
+          <label className="check-row">
+            <input type="checkbox" checked={anonymous} disabled={busy} onChange={(e) => setAnonymous(e.target.checked)} />
+            <span>No account: sign in anonymously, where the server lets anybody in — it gives a new address each time</span>
           </label>
         </div>
       )}

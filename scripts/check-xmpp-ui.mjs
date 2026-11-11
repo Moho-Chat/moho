@@ -84,6 +84,7 @@ try {
   const adv = await ev(`document.querySelector('.add-form').innerText`)
   check('more settings offer the server, the port, the security mode and an authority', /Server/.test(adv) && /Port/.test(adv) && /Direct TLS/.test(adv) && /authority/i.test(adv))
   check('and a certificate to trust by its fingerprint, and the resource', /fingerprint/.test(adv) && /Resource/.test(adv))
+  check('and a client certificate, and signing in with no account', /Client certificate/.test(adv) && /No account/.test(adv))
   await fill('Password', people.alice.password)
   await fill('Server', '127.0.0.1')
   await fill('Certificate authority', ca, 'textarea')
