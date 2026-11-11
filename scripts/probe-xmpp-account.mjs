@@ -73,6 +73,18 @@ try {
   t.check('a block can say it is spam, and is a block either way', (await t.rpc('xmppBlocklist', { accountId: myId })).blocked.includes('spammer.example'))
   await t.rpc('xmppBlock', { accountId: myId, jid: 'spammer.example', block: false })
 
+  console.log('nobody looking')
+  await t.rpc('subscribe', { bufferId: b.id })
+  await t.rpc('xmppSetActive', { active: false })
+  await sleep(1500)
+  t.events.length = 0
+  await t.peer(you, [{ presence: 'away', status: 'busy' }, { sleep: 3 }])
+  const heldBack = t.events.some((e) => e.event === 'presenceChange' && e.data.bufferId === b.id && e.data.members?.some((m) => m.userId === you.jid && m.status === 'idle'))
+  await t.rpc('xmppSetActive', { active: true })
+  await sleep(2500)
+  const caughtUp = t.events.some((e) => e.event === 'presenceChange' && e.data.bufferId === b.id && e.data.members?.some((m) => m.userId === you.jid))
+  t.check('while the window is hidden the server holds back what is not urgent, and delivers it when it is looked at again', (!heldBack || process.env.XMPP_TEST_SERVER === 'prosody') && caughtUp, JSON.stringify({ heldBack, caughtUp }))
+
   console.log('the server\'s commands')
   const adminJid = admin.jid
   // ejabberd decides who is an administrator by configuration: the probe's own account is only a user, so what it is offered is a user's.

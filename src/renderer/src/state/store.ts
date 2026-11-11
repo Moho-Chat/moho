@@ -1395,6 +1395,13 @@ export class ChatStore {
     }
     window.addEventListener('focus', looked)
     document.addEventListener('visibilitychange', looked)
+    // Nobody looking is told to servers that can hold back what is not urgent (XMPP's client state indication).
+    const attention = (): void => {
+      void window.moho.rpc('xmppSetActive', { active: this.windowIsActive() }).catch(() => {})
+    }
+    window.addEventListener('focus', attention)
+    window.addEventListener('blur', attention)
+    document.addEventListener('visibilitychange', attention)
     void window.moho.popout.list().then((popouts) => this.set({ popouts }))
     window.moho.popout.onChange((popouts) => this.set({ popouts }))
 
