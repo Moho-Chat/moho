@@ -2202,7 +2202,7 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
   const [making, setMaking] = useState(false)
   const [server, setServer] = useState('')
   const [asked, setAsked] = useState<{ form: XmppForm | null; instructions: string; web: string | null } | null>(null)
-  const advancedParams = (): Record<string, unknown> => ({ jid: server.trim(), host: host.trim(), port: port.trim() ? Number(port) : 0, security, caPem: caPem.trim(), useTor })
+  const advancedParams = (): Record<string, unknown> => ({ jid: server.trim(), host: host.trim(), port: port.trim() ? Number(port) : 0, security, caPem: caPem.trim(), useTor, preauth: '' })
   const ask = (): void => {
     setBusy(true)
     void window.moho

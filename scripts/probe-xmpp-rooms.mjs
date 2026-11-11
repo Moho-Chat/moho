@@ -75,6 +75,13 @@ try {
 
   console.log('moderation')
   t.events.length = 0
+  const watching = t.peer(you, [{ raw: join(room, 'pat') }, { sleep: 0.8 }, { raw: say(room, 'a message to be removed', 'r-7') }, { wait_for: 'moderated', timeout: 10 }])
+  await t.until(async () => t.seen('message', (d) => d.id === 'r-7'), 10000)
+  await t.rpc('deleteMessage', { bufferId: b.id, messageId: 'r-7' })
+  const removed = await watching
+  t.check('a moderator can remove what somebody else said, for everyone', /message-retract/.test(removed.received) && /moderated/.test(removed.received), removed.received.slice(-400))
+  t.check('and it is gone here, with the room saying so', !!t.seen('messageDeleted', (d) => d.id === 'r-7') && (await backlog(b)).some((m) => /A moderator removed a message/.test(m.body)))
+  t.events.length = 0
   const people = await t.rpc('xmppAffiliations', { bufferId: b.id, affiliation: 'owner' })
   t.check('the room says who owns it', people.people.some((p) => p.jid === me.jid), JSON.stringify(people))
   const kick = t.peer(you, [{ raw: join(room, 'pat') }, { wait_for: "code='307'", timeout: 12 }, { sleep: 0.3 }])

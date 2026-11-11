@@ -34,7 +34,7 @@ import type { ForumPost } from '../lib/forum'
 import { DM_GROUP_ID, INVITATIONS_GROUP_ID, isDirectMessage } from '../lib/groups'
 import { listInvitations, type Invitation } from '../lib/invitations'
 import { ircNetworkFor } from '../lib/networks'
-import { parseDeepLink, type IrcLink } from '../../../shared/deeplink'
+import { parseDeepLink, type DeepLink, type IrcLink } from '../../../shared/deeplink'
 import { MatrixCalls, type CallMember, type MatrixCallEvent, type RingingCall } from '../lib/matrixcall'
 import { SfuCall, type SfuParticipant } from '../lib/livekit'
 import type { CallPhase } from '../lib/webrtc'
@@ -1617,6 +1617,32 @@ export class ChatStore {
     }
   }
 
+  /** What an `xmpp:` link asks for: a room joined, a contact asked, a conversation opened, or an account made. */
+  private async openXmppLink(link: Extract<DeepLink, { service: 'xmpp' }>): Promise<void> {
+    const account = this.state.accounts.find((a) => a.service === 'xmpp' && a.state === 'connected') ?? this.state.accounts.find((a) => a.service === 'xmpp')
+    if (link.action === 'register' || !account) {
+      this.set({ activePanel: 'accounts' })
+      this.toast('info', link.action === 'register' ? `Make an account on ${link.jid} from Accounts: choose XMPP, then Make one` : 'Add an XMPP account first')
+      return
+    }
+    try {
+      if (link.action === 'join') {
+        const r = await window.moho.rpc<{ bufferId?: string }>('xmppJoinRoom', { accountId: account.id, jid: link.jid, nick: link.params.nick ?? '', password: link.params.password ?? '' })
+        await this.refreshBuffers()
+        if (r.bufferId) await this.selectBuffer(r.bufferId)
+      } else if (link.action === 'roster' || link.action === 'subscribe') {
+        await window.moho.rpc('xmppAddContact', { accountId: account.id, jid: link.jid, name: link.params.name ?? '' })
+        this.toast('info', `Asked ${link.jid} to share presence`)
+      } else {
+        const r = await window.moho.rpc<{ bufferId: string }>('xmppOpenChat', { accountId: account.id, jid: link.jid })
+        await this.refreshBuffers()
+        await this.selectBuffer(r.bufferId)
+      }
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
+  }
+
   /** Everything waiting on a yes or a no, as the invitations tile lists it. */
   pendingInvitations(): Invitation[] {
     const s = this.state
@@ -2315,6 +2341,12 @@ export class ChatStore {
       }
       this.set({ activePanel: '' })
       void this.joinAndOpen(account.id, link.url)
+      return
+    }
+
+    // An xmpp: link does what its query says, on the account that is signed in (the first, if there are several).
+    if (link.service === 'xmpp') {
+      void this.openXmppLink(link)
       return
     }
 
