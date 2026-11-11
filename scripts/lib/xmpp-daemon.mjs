@@ -45,7 +45,11 @@ export const passwordWorks = (name, password) => {
 export const ca = fs.readFileSync(process.env.XMPP_TEST_CA ?? '/1tb/xmpp-test/pki/ca.pem', 'utf8')
 const python = process.env.XMPP_PEER_PYTHON ?? '/1tb/xmpp-test/venv/bin/python'
 
-export async function start({ people = 2 } = {}) {
+/**
+ * `resolver`: an address the daemon asks DNS of instead of the system's (the test DNS of `xmpp-test.sh dns`). The daemon then runs
+ * in a mount namespace of its own (`unshare -Urm`, no privileges needed) with its own resolv.conf and nsswitch.conf.
+ */
+export async function start({ people = 2, resolver = null } = {}) {
   const stamp = Date.now().toString(36)
   const accounts = Array.from({ length: people }, (_, i) => ({ name: `p${'abcd'[i]}${stamp}`, password: `pw-${stamp}-${i}`, jid: `p${'abcd'[i]}${stamp}@${DOMAIN}` }))
   for (const p of accounts) registerUser(p.name, p.password)
@@ -63,7 +67,16 @@ export async function start({ people = 2 } = {}) {
   const sock = path.join(runtime, 'nobilis', 'nobilis.sock')
   // The daemon and the socket to it: made here, and again by restart().
   const launch = async () => {
-    daemon = spawn(path.join(root, 'nobilis/target/release/nobilis'), [], { env, stdio: ['ignore', 'pipe', 'pipe'] })
+    const binary = path.join(root, 'nobilis/target/release/nobilis')
+    if (resolver) {
+      const conf = path.join(scratch, 'resolv.conf')
+      const nss = path.join(scratch, 'nsswitch.conf')
+      fs.writeFileSync(conf, `nameserver ${resolver}\noptions timeout:1 attempts:1\n`)
+      fs.writeFileSync(nss, fs.readFileSync('/etc/nsswitch.conf', 'utf8').replace(/^hosts:.*$/m, 'hosts: files dns'))
+      daemon = spawn('unshare', ['-Urm', 'sh', '-c', 'mount --bind "$0" /etc/resolv.conf && mount --bind "$1" /etc/nsswitch.conf && exec "$2"', conf, nss, binary], { env, stdio: ['ignore', 'pipe', 'pipe'] })
+    } else {
+      daemon = spawn(binary, [], { env, stdio: ['ignore', 'pipe', 'pipe'] })
+    }
     daemon.stdout.on('data', (d) => (probe.log += d))
     daemon.stderr.on('data', (d) => (probe.log += d))
     for (let i = 0; i < 100 && !fs.existsSync(sock); i++) await sleep(100)
