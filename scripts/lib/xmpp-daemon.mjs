@@ -97,7 +97,7 @@ export async function start({ people = 2 } = {}) {
     return probe.until(async () => (await probe.state(p)) === 'connected')
   }
   probe.finish = async () => {
-    if (!probe.results.every(Boolean) || process.env.XMPP_PROBE_LOG) console.log(probe.log.split('\n').filter((l) => /xmpp|WARN|ERROR/.test(l)).slice(-80).map((l) => l.slice(0, 260)).join('\n'))
+    if (!probe.results.every(Boolean) || process.env.XMPP_PROBE_LOG) console.log(probe.log.split('\n').filter((l) => /xmpp|WARN|ERROR/.test(l)).slice(process.env.XMPP_PROBE_LOG ? -1500 : -80).map((l) => l.slice(0, 400)).join('\n'))
     probe.cleanup()
     await sleep(200)
     const ok = probe.results.every(Boolean)
