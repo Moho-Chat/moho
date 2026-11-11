@@ -32,10 +32,12 @@ interface CommandStep {
  * the server's own commands. */
 function XmppConnectedTools({ account }: { account: Account }): JSX.Element {
   const store = useStore()
-  const [section, setSection] = useState<'' | 'picture' | 'password' | 'blocked' | 'server' | 'commands' | 'delete'>('')
+  const [section, setSection] = useState<'' | 'picture' | 'password' | 'blocked' | 'archive' | 'server' | 'commands' | 'delete'>('')
   const [password, setPassword] = useState('')
   const [blocked, setBlocked] = useState<string[]>([])
   const [toBlock, setToBlock] = useState('')
+  const [report, setReport] = useState(false)
+  const [keeps, setKeeps] = useState('always')
   const [info, setInfo] = useState<ServerInfo | null>(null)
   const [commands, setCommands] = useState<{ node: string; name: string }[] | null>(null)
   const [step, setStep] = useState<CommandStep | null>(null)
@@ -46,6 +48,7 @@ function XmppConnectedTools({ account }: { account: Account }): JSX.Element {
 
   useEffect(() => {
     if (section === 'blocked') void call<{ blocked: string[] }>('xmppBlocklist').then((r) => setBlocked(r.blocked)).catch(say)
+    if (section === 'archive') void call<{ default: string }>('xmppArchivePrefs').then((r) => setKeeps(r.default)).catch(say)
     if (section === 'server') void call<ServerInfo>('xmppServerInfo').then(setInfo).catch(say)
     if (section === 'commands') void call<{ commands: { node: string; name: string }[] }>('xmppCommands').then((r) => setCommands(r.commands)).catch(say)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -68,6 +71,7 @@ function XmppConnectedTools({ account }: { account: Account }): JSX.Element {
         {tab('picture', 'Picture')}
         {tab('password', 'Password')}
         {tab('blocked', 'Blocked')}
+        {tab('archive', 'History')}
         {tab('server', 'Server')}
         {tab('commands', 'Commands')}
         {tab('delete', 'Delete')}
@@ -125,10 +129,24 @@ function XmppConnectedTools({ account }: { account: Account }): JSX.Element {
           </ul>
           <div className="field-row">
             <input className="text-field" placeholder="Address or server to block" value={toBlock} onChange={(e) => setToBlock(e.target.value)} />
-            <button type="button" className="button" disabled={!toBlock.trim()} onClick={() => void call('xmppBlock', { jid: toBlock.trim(), block: true }).then(() => { setBlocked([...blocked, toBlock.trim()]); setToBlock('') }).catch(say)}>
+            <label className="check-row">
+              <input type="checkbox" checked={report} onChange={(e) => setReport(e.target.checked)} />
+              <span>Report as spam</span>
+            </label>
+            <button type="button" className="button" disabled={!toBlock.trim()} onClick={() => void call('xmppBlock', { jid: toBlock.trim(), block: true, report: report ? 'spam' : '' }).then(() => { setBlocked([...blocked, toBlock.trim()]); setToBlock('') }).catch(say)}>
               Block
             </button>
           </div>
+        </div>
+      )}
+      {section === 'archive' && (
+        <div className="add-form">
+          <p className="small muted">What your server keeps of your conversations, which is what lets you read them on a new device.</p>
+          <select className="text-field" value={keeps} onChange={(e) => void call('xmppSetArchivePrefs', { default: e.target.value, always: [], never: [] }).then(() => setKeeps(e.target.value)).catch(say)}>
+            <option value="always">Everything</option>
+            <option value="roster">Only conversations with people on my contact list</option>
+            <option value="never">Nothing</option>
+          </select>
         </div>
       )}
       {section === 'server' &&

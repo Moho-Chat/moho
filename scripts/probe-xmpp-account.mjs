@@ -64,6 +64,15 @@ try {
   await t.peer(you, [{ raw: `<message xmlns='jabber:client' to='${me.jid}' type='chat' id='b-2'><body>and now</body></message>` }, { sleep: 1 }])
   t.check('and is again when they are unblocked', !!t.seen('message', (d) => d.body === 'and now'))
 
+  const prefs = await t.rpc('xmppArchivePrefs', { accountId: myId })
+  t.check('what the server keeps is read', ['always', 'never', 'roster'].includes(prefs.default), JSON.stringify(prefs))
+  await t.rpc('xmppSetArchivePrefs', { accountId: myId, default: 'roster', always: [], never: [] })
+  t.check('and can be changed', (await t.rpc('xmppArchivePrefs', { accountId: myId })).default === 'roster')
+  await t.rpc('xmppSetArchivePrefs', { accountId: myId, default: 'always', always: [], never: [] })
+  await t.rpc('xmppBlock', { accountId: myId, jid: 'spammer.example', block: true, report: 'spam', reportText: 'sent unwanted advertisements' })
+  t.check('a block can say it is spam, and is a block either way', (await t.rpc('xmppBlocklist', { accountId: myId })).blocked.includes('spammer.example'))
+  await t.rpc('xmppBlock', { accountId: myId, jid: 'spammer.example', block: false })
+
   console.log('the server\'s commands')
   const adminJid = admin.jid
   // ejabberd decides who is an administrator by configuration: the probe's own account is only a user, so what it is offered is a user's.
