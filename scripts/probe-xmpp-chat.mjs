@@ -160,6 +160,17 @@ try {
   check('it goes out with the id it is stored under, twice, as XEP-0359 asks', !!origin && origin === mine?.id && out.received.includes(`id='${origin}'`) || out.received.includes(`id="${origin}"`), `${origin} ${mine?.id}`)
   check('asking for a receipt, markable, and saying it is active', /urn:xmpp:receipts/.test(out.received) && /chat-markers/.test(out.received) && /chatstates/.test(out.received), out.received.slice(-500))
 
+  console.log('spoilers')
+  events.length = 0
+  await peer(you, [
+    { raw: `<message xmlns='jabber:client' to='${myJid}' type='chat' id='sp-1'><body>the ship sinks</body><origin-id xmlns='urn:xmpp:sid:0' id='sp-1'/><spoiler xmlns='urn:xmpp:spoiler:0'>film ending</spoiler></message>` },
+    { sleep: 0.8 }
+  ])
+  check('a message that is a spoiler is drawn hidden, with its hint in the open', !!messageWith(events, 'film ending: ||the ship sinks||'), JSON.stringify(events.filter((e) => e.event === 'message').map((e) => e.data.body)))
+  await rpc('sendMessage', { bufferId: b.id, body: '||he was the killer||' })
+  const hid = await peer(you, [{ wait_for: 'the killer', timeout: 8 }, { sleep: 0.3 }])
+  check('what is typed wholly between bars is sent as a spoiler, without the bars', /<spoiler[^>]*urn:xmpp:spoiler:0/.test(hid.received) && /<body>he was the killer<\/body>/.test(hid.received), hid.received.slice(-500))
+
   console.log('what the other side does to its own messages')
   events.length = 0
   await peer(you, [

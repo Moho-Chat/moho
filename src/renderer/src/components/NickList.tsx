@@ -777,6 +777,11 @@ function MemberRow({
         {/* The network's own word for it, not a guess from the name. Drawn
             after the nick like any other badge, and only where the network
             actually said so. */}
+        {member.hats?.map((hat) => (
+          <span key={hat} className="sender-badge small" title={`${hat} in this room`}>
+            {hat}
+          </span>
+        ))}
         {member.bot && (
           <span className="sender-badge small bot" title="The network says this one is a program">
             BOT

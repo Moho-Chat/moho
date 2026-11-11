@@ -737,6 +737,8 @@ export interface Member {
   bot?: boolean
   /** The roles this person holds here, by name. Discord only. */
   roles?: string[]
+  /** What a room calls them (XMPP hats): titles the room gave this person, drawn as badges. */
+  hats?: string[]
   /** What they are to this account where the service keeps friends: "Friend", "Blocked", "None"... Stoat only. */
   relationship?: string
   powerLevel?: number
