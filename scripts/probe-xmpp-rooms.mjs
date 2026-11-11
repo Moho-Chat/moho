@@ -45,6 +45,9 @@ try {
   const mention = t.seen('message', (d) => /are you here/.test(d.body))
   t.check('being named is a mention', mention?.isHighlight === true, JSON.stringify(mention))
   t.check('what is not about the account is not', hello?.isHighlight === false)
+  t.events.length = 0
+  await t.peer(you, [{ raw: join(room, 'pat') }, { sleep: 0.5 }, { raw: `<message xmlns='jabber:client' to='${room}' type='groupchat' id='r-ref'><body>psst, this one is for you</body><reference xmlns='urn:xmpp:reference:0' type='mention' begin='0' end='4' uri='xmpp:${me.jid}'/></message>` }, { sleep: 0.8 }])
+  t.check('being named by a reference is a mention even when the nickname is not in the words', t.seen('message', (d) => /psst, this one/.test(d.body))?.isHighlight === true)
 
   console.log('saying things')
   await t.rpc('sendMessage', { bufferId: b.id, body: 'hello from moho' })
@@ -56,6 +59,11 @@ try {
   await t.rpc('sendMessage', { bufferId: b.id, body: 'moho speaks again' })
   const out = await listening
   t.check('and the room passes it on', out.received.includes('moho speaks again'), out.received.slice(-300))
+  const naming = t.peer(you, [{ raw: join(room, 'pat') }, { wait_for: 'over to you pat', timeout: 10 }])
+  await sleep(1800)
+  await t.rpc('sendMessage', { bufferId: b.id, body: 'over to you pat, thanks' })
+  const named = await naming
+  t.check('a message that names somebody says so by reference (XEP-0372), at the right place in the words', /<reference[^>]*type=['"]mention['"]/.test(named.received) && /begin=['"]12['"]/.test(named.received) && /end=['"]15['"]/.test(named.received) && /uri=['"]xmpp:[^'"]*(pat|@)/.test(named.received), named.received.slice(-500))
 
   console.log('the subject')
   t.events.length = 0
