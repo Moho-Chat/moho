@@ -25,18 +25,20 @@ stream's chat going past at forty lines a minute you're able to be part of the c
 
 ## Supported protocols
 
-| Protocol | State | What you get |
-| --- | --- | --- |
-| **IRC** | Supported | Channels and queries on any number of networks, with SASL, TLS, DCC file transfers and the IRCv3 capabilities servers offer |
-| **Matrix** | Supported | Rooms, spaces and direct messages, end-to-end encryption with device verification and key backup, Element Call, and signing in by QR code |
-| **Discord** | Supported | Servers, direct messages, forums and threads, voice, video, screen sharing and Go Live with end-to-end encryption, stages and the soundboard |
-| **Kick** | Supported | A streamer's chat beside the stream, with polls, predictions and its events drawn as cards |
-| **Twitch** | Supported, fully ported | A streamer's chat beside the stream, which plays in the window with a resolution menu and its ad breaks said; emotes (animated, and the channel's whole set with the ones you cannot use greyed out), badges, cheers, replies and threads, its events drawn as cards, channel points with a rewards panel and watch time that earns them, polls, predictions and raids you can answer, and moderation and whispers, all from one sign-in |
-| **Sneedchat** | Supported | The forum's chat rooms, over clearnet or Tor |
-| **Steam** | Supported, fully ported | Friends and direct messages, group chats with rooms, roles and invitations, voice rooms and calls, emoticons, stickers, reactions, pictures and files, friend folders, and signing in by password or by QR code |
-| **Telegram** | Supported | Private chats, bots, groups with their forum topics, and channels, with replies and forwards, formatting, pictures, video, files and voice messages, reactions, polls, pinned messages, search, comments on channel posts, the GIF picker and stickers, bots' buttons and command menus, your chat folders kept in step with moho's categories both ways, links to chats and posts that open in moho, and signing in by phone number and code or by QR code |
-| **Stoat** | Supported | The official instance or any you host: servers with their categories and channels, direct messages and groups, replies, reactions and custom emoji, files with spoilers, embeds and link cards, members with roles and presence, friends and blocks, invites drawn as cards, moderation, search and pins, voice and video calls with screen sharing, and, for those who look after a server, its channels, roles, webhooks and audit log; signing in by password (and its second factor) or a pasted session token |
-| **XMPP** | Supported | An account on any server, found by DNS or named, over TLS (through Tor, a SOCKS5 proxy or a WebSocket if you like) with SASL2, SCRAM and client certificates; contacts and presence, chats and group chats with the archive, carbons, receipts, corrections, reactions and replies, files over HTTP Upload or straight to a contact, voice messages, OMEMO and OMEMO 2 encryption with QR-code verification, voice, video and group calls (not over Tor), making accounts and invitations, and an account's own data on its server; it meets every client level of the XMPP Compliance Suites 2023 |
+| Feature | IRC | Matrix | Discord | Kick | Twitch | Sneedchat | Steam | Telegram | Stoat | XMPP |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Chat in channels and rooms | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Direct messages | ✅ | ✅ | ✅ | - | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Pictures and files | ✅ | ✅ | ✅ | - | - | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Reactions | ❌ | ✅ | ✅ | - | - | - | ✅ | ✅ | ✅ | ✅ |
+| Voice calls | - | ✅ | ✅ | - | - | - | ✅ | ❌ | ✅ | ✅ |
+| Video calls and screen sharing | - | ✅ | ✅ | - | - | - | - | ❌ | ✅ | ✅ |
+| End-to-end encryption | - | ✅ | - | - | - | - | - | ❌ | - | ✅ |
+| Tor or SOCKS5 per account | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+✅ supported in moho  ·  ❌ the service has it and moho does not yet  ·  `-` the service has nothing of the kind
+
+Telegram's ❌ are its calls and its secret chats. Discord's chat is not end-to-end encrypted, but its calls are. XMPP calls are refused on an account routed through Tor, since their media would go around it.
 
 Every protocol gets the same window, mentions inbox, search and per-account Tor or SOCKS5 routing.
 How much of each service's own feature set a protocol has is as far as its service lets a
