@@ -8,7 +8,8 @@ written by somebody else, and what that library sends is what moho has to unders
 name is one of the accounts in the accounts file (alice, bob, carol). Steps, in order:
 
     {"raw": "<message .../>"}              send this XML as it is; {{from_of:<text>}} in it is the sender (as the server stamped it)
-                                           of the last message or iq received that holds <text>
+                                           of the last message or iq received that holds <text>, and {{re:<regex>}} the first
+                                           group of the regex's last match in everything received
     {"sleep": 1.5}                         wait
     {"wait_for": "text", "timeout": 10}    wait until the raw text received so far holds this
     {"presence": "available"|"away"|"dnd"|"unavailable", "status": "..."}
@@ -66,6 +67,13 @@ def from_of(peer, text):
     return re.search(r"from=['\"]([^'\"]+)['\"]", tag).group(1)
 
 
+def last_match(peer, pattern):
+    found = re.findall(pattern, "".join(peer.received))
+    if not found:
+        raise ValueError("nothing received matches " + pattern)
+    return found[-1]
+
+
 async def main():
     name, steps = sys.argv[1], json.loads(sys.argv[2])
     accounts = dict(l.split() for l in open(ACCOUNTS).read().splitlines() if l.strip())
@@ -78,7 +86,9 @@ async def main():
     for step in steps:
         try:
             if "raw" in step:
-                peer.send_raw(re.sub(r"\{\{from_of:(.*?)\}\}", lambda m: from_of(peer, m.group(1)), step["raw"]))
+                text = re.sub(r"\{\{from_of:(.*?)\}\}", lambda m: from_of(peer, m.group(1)), step["raw"])
+                text = re.sub(r"\{\{re:(.*?)\}\}", lambda m: last_match(peer, m.group(1)), text)
+                peer.send_raw(text)
             elif "sleep" in step:
                 await asyncio.sleep(step["sleep"])
             elif "wait_for" in step:

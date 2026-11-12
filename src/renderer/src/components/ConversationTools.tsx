@@ -616,7 +616,8 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   const filterMenu = suggestions(query)
   const isMatrix = buffer.accountId.startsWith('matrix:')
   // XMPP calls are between two people and use the window's Matrix call engine, which is the window's call vocabulary.
-  const isXmppDm = buffer.accountId.startsWith('xmpp:') && buffer.kind === 'dm'
+  // XMPP calls: two people, or a group call joined from a room (XEP-0272, held as a mesh the way Matrix's are).
+  const isXmppCalls = buffer.accountId.startsWith('xmpp:') && (buffer.kind === 'dm' || buffer.kind === 'channel')
   const isTelegram = buffer.accountId.startsWith('telegram:')
   const isStoat = buffer.accountId.startsWith('stoat:')
   const isSteam = buffer.accountId.startsWith('steam:')
@@ -921,7 +922,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           two buttons because a video call is a different thing to start, and
           on a service where either is normal the choice belongs on the
           header rather than inside the call. */}
-      {(isMatrix || isXmppDm) && buffer.kind !== 'server' && !matrixCall && (
+      {(isMatrix || isXmppCalls) && buffer.kind !== 'server' && !matrixCall && (
         <>
           {/* A room's call is between everybody in it and a direct message's
               is between two people, which are different things to start: one
@@ -947,7 +948,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           />
         </>
       )}
-      {(isMatrix || isXmppDm) && matrixCall?.bufferId === buffer.id && (
+      {(isMatrix || isXmppCalls) && matrixCall?.bufferId === buffer.id && (
         <IconButton
           name="call_end"
           title="Hang up"

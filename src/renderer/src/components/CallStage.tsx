@@ -324,7 +324,7 @@ export function RoomCallBar({ bufferId }: { bufferId: string }): JSX.Element | n
   // user it signs in as, and this end being in the call from another device
   // is still this end being in it.
   const accountId = buffers.find((b) => b.id === bufferId)?.accountId ?? ''
-  const ownUserId = accountId.startsWith('matrix:') ? accountId.slice('matrix:'.length) : accountId
+  const ownUserId = accountId.replace(/^(matrix|xmpp):/, '')
   const others = members.filter((m) => m.user_id !== ownUserId)
   if (others.length === 0) return null
 

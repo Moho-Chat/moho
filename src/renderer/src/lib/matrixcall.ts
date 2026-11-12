@@ -42,6 +42,12 @@ export interface CallMember {
    * participant list.
    */
   transports?: string[]
+  /**
+   * Whether this end starts the connection with them, where the protocol says
+   * (XMPP's group calls: whoever arrives calls everybody already there).
+   * Absent, the pair decides by its keys - see `shouldOffer`.
+   */
+  offer?: boolean
 }
 
 /** The key that names one participant: a person on one device. */
@@ -541,7 +547,7 @@ export class MatrixCalls {
       present.add(key)
       if (group.peers.has(key)) continue
       // Only one end of each pair offers; the other waits for the invite.
-      if (!shouldOffer(group.ownKey, key)) continue
+      if (!(member.offer ?? shouldOffer(group.ownKey, key))) continue
       await this.callPeer(key, member.user_id)
     }
     // And anybody the room no longer lists has left the call, whether they
