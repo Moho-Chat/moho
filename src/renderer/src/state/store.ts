@@ -545,6 +545,8 @@ export interface ChatState {
   /** Set in a popped-out window, naming the one conversation it may show. */
   pinnedBufferId: string
   activePanel: ActivePanel
+  /** An `xmpp:…?register` invitation that was opened: the Accounts form makes the account with it (XEP-0401). */
+  xmppRegistration: { server: string; preauth: string; inviter?: string } | null
   /**
    * The room being looked at, if any. Shown in the conversation's own pane in
    * place of a conversation, and gone the moment one is selected.
@@ -824,6 +826,7 @@ const INITIAL: ChatState = {
   popouts: { open: [], watched: [] },
   pinnedBufferId: '',
   activePanel: '',
+  xmppRegistration: null,
   peek: null,
   joinPanelAccountId: '',
   messagesByBuffer: {},
@@ -1627,9 +1630,17 @@ export class ChatStore {
   /** What an `xmpp:` link asks for: a room joined, a contact asked, a conversation opened, or an account made. */
   private async openXmppLink(link: Extract<DeepLink, { service: 'xmpp' }>): Promise<void> {
     const account = this.state.accounts.find((a) => a.service === 'xmpp' && a.state === 'connected') ?? this.state.accounts.find((a) => a.service === 'xmpp')
-    if (link.action === 'register' || !account) {
+    // An invitation from somebody, opened with no XMPP account here: an account is made on their server with it (XEP-0401).
+    const invitedBy = !account && (link.action === 'roster' || link.action === 'subscribe') && link.params.preauth ? link.jid : ''
+    if (link.action === 'register' || invitedBy) {
+      this.set({ xmppRegistration: { server: link.jid.split('@').pop() ?? link.jid, preauth: link.params.preauth ?? '', inviter: invitedBy || undefined } })
       this.set({ activePanel: 'accounts' })
-      this.toast('info', link.action === 'register' ? `Make an account on ${link.jid} from Accounts: choose XMPP, then Make one` : 'Add an XMPP account first')
+      this.toast('info', `Make an account on ${link.jid.split('@').pop()}: choose XMPP in Accounts, then Make one`)
+      return
+    }
+    if (!account) {
+      this.set({ activePanel: 'accounts' })
+      this.toast('info', 'Add an XMPP account first')
       return
     }
     try {
@@ -1638,7 +1649,8 @@ export class ChatStore {
         await this.refreshBuffers()
         if (r.bufferId) await this.selectBuffer(r.bufferId)
       } else if (link.action === 'roster' || link.action === 'subscribe') {
-        await window.moho.rpc('xmppAddContact', { accountId: account.id, jid: link.jid, name: link.params.name ?? '' })
+        // An invitation's token goes with the request, so the inviter's server approves it (XEP-0379).
+        await window.moho.rpc('xmppAddContact', { accountId: account.id, jid: link.jid, name: link.params.name ?? '', preauth: link.params.preauth ?? '' })
         this.toast('info', `Asked ${link.jid} to share presence`)
       } else {
         const r = await window.moho.rpc<{ bufferId: string }>('xmppOpenChat', { accountId: account.id, jid: link.jid })
@@ -5787,6 +5799,11 @@ export class ChatStore {
   accountFor(bufferId: string): Account | undefined {
     const buffer = this.state.buffers.find((b) => b.id === bufferId)
     return buffer && this.state.accounts.find((a) => a.id === buffer.accountId)
+  }
+
+  /** The opened invitation to make an account has been used (or put aside). */
+  clearXmppRegistration(): void {
+    this.set({ xmppRegistration: null })
   }
 
   setActivePanel(panel: ActivePanel, joinPanelAccountId = ''): void {

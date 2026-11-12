@@ -2203,10 +2203,12 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
   const [anonymous, setAnonymous] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  const [making, setMaking] = useState(false)
-  const [server, setServer] = useState('')
+  // An invitation link that was opened (xmpp:server?register;preauth=…) starts the form on making that account.
+  const invitation = useChat((s) => s.xmppRegistration)
+  const [making, setMaking] = useState(!!invitation)
+  const [server, setServer] = useState(invitation?.server ?? '')
   const [asked, setAsked] = useState<{ form: XmppForm | null; instructions: string; web: string | null } | null>(null)
-  const advancedParams = (): Record<string, unknown> => ({ jid: server.trim(), host: host.trim(), port: port.trim() ? Number(port) : 0, security, caPem: caPem.trim(), useTor, preauth: '' })
+  const advancedParams = (): Record<string, unknown> => ({ jid: server.trim(), host: host.trim(), port: port.trim() ? Number(port) : 0, security, caPem: caPem.trim(), useTor, preauth: invitation && invitation.server === server.trim() ? invitation.preauth : '', inviter: invitation && invitation.server === server.trim() ? invitation.inviter ?? '' : '' })
   const ask = (): void => {
     setBusy(true)
     void window.moho
@@ -2220,6 +2222,7 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
     void window.moho
       .rpc('xmppRegister', { ...advancedParams(), answers })
       .then(() => {
+        store.clearXmppRegistration()
         void store.refreshAccounts()
         onDone()
       })
@@ -2302,6 +2305,7 @@ function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
             <span className="small muted">Server to make it on</span>
             <input className="text-field" autoComplete="off" spellCheck={false} placeholder="example.org" value={server} disabled={busy} onChange={(e) => setServer(e.target.value)} />
           </label>
+          {invitation && invitation.server === server.trim() && invitation.preauth && <p className="small muted">With the invitation you opened: the server may let you in where it would not otherwise.</p>}
           {!asked && (
             <button type="button" className="button primary" disabled={busy || !server.trim()} onClick={ask}>
               {busy ? 'Asking…' : 'See what it asks for'}

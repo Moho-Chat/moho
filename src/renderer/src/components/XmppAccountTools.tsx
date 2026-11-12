@@ -188,7 +188,9 @@ interface CommandStep {
  * the server's own commands. */
 function XmppConnectedTools({ account }: { account: Account }): JSX.Element {
   const store = useStore()
-  const [section, setSection] = useState<'' | 'profile' | 'picture' | 'password' | 'blocked' | 'archive' | 'server' | 'commands' | 'delete'>('')
+  const [section, setSection] = useState<'' | 'profile' | 'invite' | 'picture' | 'password' | 'blocked' | 'archive' | 'server' | 'commands' | 'delete'>('')
+  const [inviteKinds, setInviteKinds] = useState<string[] | null>(null)
+  const [invite, setInvite] = useState<{ uri: string; landingUrl: string; expires: string } | null>(null)
   const [me, setMe] = useState<{ fullName: string; nickname: string; email: string; url: string; note: string } | null>(null)
   const [password, setPassword] = useState('')
   const [blocked, setBlocked] = useState<string[]>([])
@@ -204,6 +206,7 @@ function XmppConnectedTools({ account }: { account: Account }): JSX.Element {
   const call = <T,>(method: string, params: Record<string, unknown> = {}): Promise<T> => window.moho.rpc<T>(method, { accountId: account.id, ...params })
 
   useEffect(() => {
+    if (section === 'invite') void call<{ kinds: string[] }>('xmppInviteKinds').then((r) => setInviteKinds(r.kinds)).catch(say)
     if (section === 'profile') void call<{ fullName: string; nickname: string; email: string; url: string; note: string }>('xmppGetProfile').then(setMe).catch(say)
     if (section === 'blocked') void call<{ blocked: string[] }>('xmppBlocklist').then((r) => setBlocked(r.blocked)).catch(say)
     if (section === 'archive') void call<{ default: string }>('xmppArchivePrefs').then((r) => setKeeps(r.default)).catch(say)
@@ -227,6 +230,7 @@ function XmppConnectedTools({ account }: { account: Account }): JSX.Element {
     <div className="account-tools">
       <div className="segmented">
         {tab('profile', 'Profile')}
+        {tab('invite', 'Invite')}
         {tab('picture', 'Picture')}
         {tab('password', 'Password')}
         {tab('blocked', 'Blocked')}
@@ -235,6 +239,36 @@ function XmppConnectedTools({ account }: { account: Account }): JSX.Element {
         {tab('commands', 'Commands')}
         {tab('delete', 'Delete')}
       </div>
+      {section === 'invite' && inviteKinds && (
+        <div className="add-form">
+          {inviteKinds.length === 0 && <p className="small muted">This server does not make invitations (XEP-0401).</p>}
+          <div className="field-row">
+            {inviteKinds.includes('contact') && (
+              <button type="button" className="button" onClick={() => void call<{ uri: string; landingUrl: string; expires: string }>('xmppCreateInvite', { kind: 'contact' }).then(setInvite).catch(say)}>
+                Invite somebody to be a contact
+              </button>
+            )}
+            {inviteKinds.includes('account') && (
+              <button type="button" className="button" onClick={() => void call<{ uri: string; landingUrl: string; expires: string }>('xmppCreateInvite', { kind: 'account' }).then(setInvite).catch(say)}>
+                Invite somebody to make an account here
+              </button>
+            )}
+          </div>
+          {invite && (
+            <div className="add-form">
+              <p className="small muted">Send them this. Opened in an XMPP client, it adds you as a contact without the request waiting for an answer{invite.expires ? `; it works until ${new Date(invite.expires).toLocaleString()}` : ''}.</p>
+              {[invite.landingUrl, invite.uri].filter(Boolean).map((link) => (
+                <div key={link} className="field-row">
+                  <input className="text-field mono" readOnly value={link} onFocus={(e) => e.target.select()} />
+                  <button type="button" className="button small" onClick={() => void navigator.clipboard.writeText(link).then(() => store.toast('info', 'Copied'))}>
+                    Copy
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {section === 'profile' && me && (
         <div className="add-form">
           <p className="small muted">What others see when they look at this account (its vCard and nickname). Anybody can read the vCard; the nickname is for contacts.</p>
