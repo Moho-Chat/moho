@@ -47,6 +47,10 @@ class Peer(slixmpp.ClientXMPP):
         super().data_received(data)
 
     async def started(self, _):
+        # What else this client says it can do (disco#info), e.g. Jingle calls without JMI: XMPP_PEER_FEATURES=a,b. Added once
+        # bound: slixmpp keeps what it says per address, and the full one is known only now.
+        for feature in filter(None, os.environ.get("XMPP_PEER_FEATURES", "").split(",")):
+            self["xep_0030"].add_feature(feature, jid=self.boundjid)
         self.send_presence()
         await self.get_roster()
         self.started_ok.set_result(True)

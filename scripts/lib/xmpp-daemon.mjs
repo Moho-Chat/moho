@@ -142,8 +142,9 @@ export async function start({ people = 2, resolver = null, home = {} } = {}) {
     fs.rmSync(sock, { force: true })
     await launch()
   }
-  probe.peer = async (who, steps) => {
-    const { stdout } = await run(python, [path.join(root, 'scripts/lib/xmpp-peer.py'), who.name, JSON.stringify(steps)], { env: { ...process.env, XMPP_TEST_ACCOUNTS: accountsFile, XMPP_TEST_PORT: String(PORT) }, maxBuffer: 1 << 24 })
+  /** Another client (slixmpp) doing `steps`; `env` adds to its environment (XMPP_PEER_FEATURES: what it says it can do). */
+  probe.peer = async (who, steps, env = {}) => {
+    const { stdout } = await run(python, [path.join(root, 'scripts/lib/xmpp-peer.py'), who.name, JSON.stringify(steps)], { env: { ...process.env, XMPP_TEST_ACCOUNTS: accountsFile, XMPP_TEST_PORT: String(PORT), ...env }, maxBuffer: 1 << 24 })
     return JSON.parse(stdout)
   }
   probe.check = (what, ok, detail = '') => {

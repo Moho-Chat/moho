@@ -143,6 +143,21 @@ try {
   t.check('using it one way only went out as a content-modify that says who sends', /name=['"]1['"]/.test(element('content-modify')) && /senders=['"]responder['"]/.test(element('content-modify')), element('content-modify'))
   t.check('and the window\'s answer to the other end\'s picture went out as a content-accept of the section, by whoever made it', /name=['"]2['"]/.test(element('content-accept')) && /creator=['"]responder['"]/.test(element('content-accept')) && /media=['"]video['"]/.test(element('content-accept')), element('content-accept'))
   t.check('and hanging up ends the session', /action=['"]session-terminate['"]/.test(out.received) && /<success/.test(out.received), out.received.slice(-500))
+  console.log('a call to a client that does not do JMI')
+  const sid6 = `direct-${t.stamp}`
+  t.events.length = 0
+  const older = t.peer(you, [
+    { wait_for: 'session-initiate', timeout: 30 },
+    { raw: `<iq xmlns='jabber:client' type='set' to='{{from_of:session-initiate}}' id='dac-${sid6}'><jingle xmlns='urn:xmpp:jingle:1' action='session-accept' sid='${sid6}' responder='${you.jid}/peer'><group xmlns='urn:xmpp:jingle:apps:grouping:0' semantics='BUNDLE'><content name='0'/></group><content creator='initiator' name='0' senders='both'><description xmlns='urn:xmpp:jingle:apps:rtp:1' media='audio'><payload-type id='111' name='opus' clockrate='48000' channels='2'/><rtcp-mux/></description><transport xmlns='urn:xmpp:jingle:transports:ice-udp:1' ufrag='OldU' pwd='OlderClientPasswordForIce1'><fingerprint xmlns='urn:xmpp:jingle:apps:dtls:0' hash='sha-256' setup='active'>22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11</fingerprint></transport></content></jingle></iq>` },
+    { wait_for: 'session-terminate', timeout: 30 }
+  ], { XMPP_PEER_FEATURES: 'urn:xmpp:jingle:1,urn:xmpp:jingle:apps:rtp:1,urn:xmpp:jingle:apps:rtp:audio,urn:xmpp:jingle:transports:ice-udp:1,urn:xmpp:jingle:apps:dtls:0' })
+  await sleep(3500)
+  await call(b.id, 'm.call.invite', { call_id: sid6, offer: { type: 'offer', sdp: sdp('actpass') }, lifetime: 60000 })
+  const directAnswer = await t.until(() => got('m.call.answer', sid6), 30000)
+  t.check('the session goes straight to its device and its answer reaches the window', /a=ice-ufrag:OldU/.test(directAnswer?.content.answer.sdp ?? ''), JSON.stringify(directAnswer))
+  await call(b.id, 'm.call.hangup', { call_id: sid6, reason: 'user_hangup' })
+  const old = await older
+  t.check('with no proposal first, which that client would not understand', /action=['"]session-initiate['"][^>]*sid=['"]direct-|sid=['"]direct-[^>]*action=['"]session-initiate/.test(old.received) && !/<propose[^>]*direct-/.test(old.received), old.received.slice(-1500))
 } catch (err) {
   t.failed(err)
 } finally {
