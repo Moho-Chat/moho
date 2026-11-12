@@ -19,6 +19,12 @@ Each section has two parts:
 
 ## [Unreleased]
 
+## [1.5.1]
+
+### Fixes, patches and changes
+
+- XMPP: a room's member list is grouped by standing - owners, admins, moderators, participants, muted - and the menu offers a role change only where the room would allow it ([moho `6aa3978`](https://github.com/Moho-Chat/moho/commit/6aa3978), [nobilis `91164e3`](https://github.com/Moho-Chat/nobilis/commit/91164e3))
+
 ## [1.5.0]
 
 ### Major features
