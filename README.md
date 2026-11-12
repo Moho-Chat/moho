@@ -25,16 +25,18 @@ stream's chat going past at forty lines a minute you're able to be part of the c
 
 ## Supported protocols
 
-| Feature | IRC | Matrix | Discord | Kick | Twitch | Sneedchat | Steam | Telegram | Stoat | XMPP |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| Chat in channels and rooms | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Direct messages | ✅ | ✅ | ✅ | - | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Pictures and files | ✅ | ✅ | ✅ | - | - | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Reactions | ❌ | ✅ | ✅ | - | - | - | ✅ | ✅ | ✅ | ✅ |
-| Voice calls | - | ✅ | ✅ | - | - | - | ✅ | ❌ | ✅ | ✅ |
-| Video calls and screen sharing | - | ✅ | ✅ | - | - | - | - | ❌ | ✅ | ✅ |
-| End-to-end encryption | - | ✅ | - | - | - | - | - | ❌ | - | ✅ |
-| Tor or SOCKS5 per account | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Protocol | Chat | Direct messages | Pictures and files | Reactions | Voice calls | Video and screen sharing | End-to-end encryption | Tor or SOCKS5 |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **IRC** | ✅ | ✅ | ✅ | ❌ | - | - | - | ✅ |
+| **Matrix** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Discord** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - | ✅ |
+| **Kick** | ✅ | - | - | - | - | - | - | ✅ |
+| **Twitch** | ✅ | ✅ | - | - | - | - | - | ✅ |
+| **Sneedchat** | ✅ | ✅ | ✅ | - | - | - | - | ✅ |
+| **Steam** | ✅ | ✅ | ✅ | ✅ | ✅ | - | - | ✅ |
+| **Telegram** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| **Stoat** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - | ✅ |
+| **XMPP** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ✅ supported in moho  ·  ❌ the service has it and moho does not yet  ·  `-` the service has nothing of the kind
 
