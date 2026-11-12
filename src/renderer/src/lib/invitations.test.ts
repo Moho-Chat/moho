@@ -12,6 +12,24 @@ const room = { roomId: '!room:x', name: 'Room', inviter: 'alice', avatarUrl: nul
 const dm = { roomId: '!dm:x', name: 'Bob', inviter: 'bob', avatarUrl: 'mxc://x/b', isDirect: true }
 const friend = { id: '76561197960287930', name: 'Some One', avatarUrl: 'https://example.test/a.jpg' }
 
+describe('an XMPP request and a file offered device to device', () => {
+  const xmpp = [account('xmpp:me@x', 'xmpp')]
+  const list = listInvitations(
+    sources({
+      friends: { 'xmpp:me@x': [{ id: 'pat@y', name: 'pat@y', detail: 'wants to see when you are online · their server says: registered 3 days ago' }] },
+      files: { 'xmpp:me@x': [{ sid: 's1', from: 'pat@y', name: 'notes.txt', size: 27340 }] }
+    }),
+    xmpp
+  )
+
+  it('say what their server says of a requester, and what a file is and how big', () => {
+    expect(list.map((i) => [i.kind, i.id, i.detail])).toEqual([
+      ['friend', 'pat@y', 'wants to see when you are online · their server says: registered 3 days ago'],
+      ['file', 's1', 'wants to send you notes.txt (27 KB), straight from their device']
+    ])
+  })
+})
+
 describe('the invitations from every service', () => {
   const list = listInvitations(sources({ rooms: { 'matrix:@me:x': [room, dm] }, friends: { 'steam:me': [friend] } }), accounts)
 
