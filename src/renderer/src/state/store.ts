@@ -1128,6 +1128,12 @@ const BACKLOG_PAGE = 200
 const HISTORY_END_MS = 10 * 60 * 1000
 const SEND_TIMEOUT_MS = 10000
 
+/** An XMPP subscription request as the Invitations tile shows it: who, their words, and what their server says of them (XEP-0489). */
+function xmppRequest(q: { jid: string; text: string; server?: string }): FriendRequest {
+  const parts = ['wants to see when you are online', q.text ? `\u201c${q.text}\u201d` : '', q.server ? `their server says: ${q.server}` : ''].filter(Boolean)
+  return { id: q.jid, name: q.jid, detail: parts.join(' · ') }
+}
+
 export class ChatStore {
   private state: ChatState = INITIAL
   private listeners = new Set<() => void>()
@@ -1607,8 +1613,8 @@ export class ChatStore {
     // XMPP's are the people who asked to see the account's presence and have not been answered.
     for (const account of this.state.accounts.filter((a) => a.service === 'xmpp' && a.state === 'connected')) {
       try {
-        const r = await window.moho.rpc<{ requests: { jid: string; text: string }[] }>('xmppRequests', { accountId: account.id })
-        next[account.id] = r.requests.map((q) => ({ id: q.jid, name: q.jid }))
+        const r = await window.moho.rpc<{ requests: { jid: string; text: string; server?: string }[] }>('xmppRequests', { accountId: account.id })
+        next[account.id] = r.requests.map(xmppRequest)
       } catch {
         // Not connected yet: the daemon's own push fills it in.
       }
@@ -4614,7 +4620,7 @@ export class ChatStore {
 
       // XMPP says who has asked to see an account's presence, whenever that changes.
       case 'xmppRequests': {
-        const requests = ((data.requests ?? []) as { jid: string; text: string }[]).map((q) => ({ id: q.jid, name: q.jid }))
+        const requests = ((data.requests ?? []) as { jid: string; text: string; server?: string }[]).map(xmppRequest)
         this.set({ friendRequests: { ...this.state.friendRequests, [data.accountId as string]: requests } })
         break
       }

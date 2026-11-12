@@ -64,8 +64,8 @@ export function listInvitations(sources: InvitationSources, accounts: Account[])
         direct: invite.isDirect
       })
     }
-    const people: { id: string; name: string; avatarUrl: string | null }[] = [
-      ...(sources.friends[account.id] ?? []).map((r) => ({ id: r.id, name: r.name || r.id, avatarUrl: r.avatarUrl ?? null })),
+    const people: { id: string; name: string; avatarUrl: string | null; detail?: string }[] = [
+      ...(sources.friends[account.id] ?? []).map((r) => ({ id: r.id, name: r.name || r.id, avatarUrl: r.avatarUrl ?? null, detail: r.detail })),
       ...(sources.discordFriends[account.id] ?? [])
         .filter((f) => f.kind === 'incoming')
         .map((f) => ({ id: f.userId, name: f.globalName || f.username, avatarUrl: f.avatarUrl ?? null }))
@@ -77,7 +77,7 @@ export function listInvitations(sources: InvitationSources, accounts: Account[])
         service: account.service,
         kind: 'friend',
         ...person,
-        detail: 'wants to be your friend',
+        detail: person.detail || 'wants to be your friend',
         direct: true
       })
     }

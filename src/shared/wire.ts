@@ -865,6 +865,8 @@ export interface FriendRequest {
   id: string
   name: string | null
   avatarUrl?: string | null
+  /** What the request says about itself, where the service says more than that it was made (XMPP: their words, their server's). */
+  detail?: string
 }
 
 export interface MatrixVerification {
