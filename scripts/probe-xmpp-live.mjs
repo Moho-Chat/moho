@@ -15,36 +15,131 @@ import net from 'node:net'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { execFileSync } from 'node:child_process'
 
-const [A, B] = process.argv.slice(2)
-if (!A || !B) throw new Error('usage: probe-xmpp-live.mjs xmpp:sender@server xmpp:receiver@server')
+const args = process.argv.slice(2)
+const [A, B] = args.filter((a) => a.startsWith('xmpp:'))
+const option = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : null)
+if (!A || !B) throw new Error('usage: probe-xmpp-live.mjs xmpp:sender@server xmpp:receiver@server [--a-cdp <port> --a-ssh <user@host>]')
 const jidA = A.slice(5)
 const jidB = B.slice(5)
-const sock = path.join(process.env.XDG_RUNTIME_DIR ?? '/run/user/1000', 'nobilis', 'nobilis.sock')
-const conn = net.connect(sock)
 const events = []
-const waiting = new Map()
-let nextId = 1
-let buf = ''
-conn.on('data', (d) => {
-  buf += d
-  const lines = buf.split('\n')
-  buf = lines.pop()
-  for (const line of lines) {
-    const m = JSON.parse(line)
-    if (m.id && waiting.has(m.id)) {
-      waiting.get(m.id)(m)
-      waiting.delete(m.id)
-    } else if (m.event) events.push(m)
-  }
-})
-await new Promise((r) => conn.once('connect', r))
-const rpc = (method, params = {}) =>
-  new Promise((resolve, reject) => {
-    const id = nextId++
-    waiting.set(id, (m) => (m.error ? reject(new Error(typeof m.error === 'string' ? m.error : JSON.stringify(m.error))) : resolve(m.result)))
-    conn.write(JSON.stringify({ id, method, params }) + '\n')
+
+/** The person's own daemon, through its socket. */
+async function socketEndpoint() {
+  const conn = net.connect(path.join(process.env.XDG_RUNTIME_DIR ?? '/run/user/1000', 'nobilis', 'nobilis.sock'))
+  const waiting = new Map()
+  let nextId = 1
+  let buf = ''
+  conn.on('data', (d) => {
+    buf += d
+    const lines = buf.split('\n')
+    buf = lines.pop()
+    for (const line of lines) {
+      const m = JSON.parse(line)
+      if (m.id && waiting.has(m.id)) {
+        waiting.get(m.id)(m)
+        waiting.delete(m.id)
+      } else if (m.event) events.push(m)
+    }
   })
+  await new Promise((r) => conn.once('connect', r))
+  return {
+    rpc: (method, params) =>
+      new Promise((resolve, reject) => {
+        const id = nextId++
+        waiting.set(id, (m) => (m.error ? reject(new Error(typeof m.error === 'string' ? m.error : JSON.stringify(m.error))) : resolve(m.result)))
+        conn.write(JSON.stringify({ id, method, params }) + '\n')
+      }),
+    close: () => conn.end()
+  }
+}
+
+/** A moho window somewhere else (another machine, through a tunnel), through its debugging port: its daemon is asked through the
+ *  window, and the daemon's events are collected in the page and fetched from there. */
+async function cdpEndpoint(port) {
+  const target = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()).find((t) => t.type === 'page' && !t.url.startsWith('devtools://'))
+  const ws = new WebSocket(target.webSocketDebuggerUrl)
+  await new Promise((r, j) => ((ws.onopen = r), (ws.onerror = j)))
+  const waiting = new Map()
+  let nextId = 1
+  ws.onmessage = (m) => {
+    const msg = JSON.parse(m.data)
+    if (msg.id && waiting.has(msg.id)) {
+      waiting.get(msg.id)(msg)
+      waiting.delete(msg.id)
+    }
+  }
+  const evaluate = (expression) =>
+    new Promise((resolve, reject) => {
+      const id = nextId++
+      waiting.set(id, (msg) => {
+        const r = msg.result
+        if (msg.error || r?.exceptionDetails) reject(new Error(r?.exceptionDetails?.exception?.description ?? JSON.stringify(msg.error ?? r.exceptionDetails)))
+        else resolve(r.result.value)
+      })
+      ws.send(JSON.stringify({ id, method: 'Runtime.evaluate', params: { expression, awaitPromise: true, returnByValue: true } }))
+    })
+  await evaluate(`(window.__probeEvents = window.__probeEvents ?? (() => { const q = []; window.moho.onEvent((f) => q.push(f)); return q })(), true)`)
+  let open = true
+  ;(async () => {
+    while (open) {
+      const got = await evaluate('window.__probeEvents.splice(0)').catch(() => [])
+      events.push(...(got ?? []))
+      await new Promise((r) => setTimeout(r, 300))
+    }
+  })()
+  return {
+    rpc: (method, params) => evaluate(`window.moho.rpc(${JSON.stringify(method)}, ${JSON.stringify(params)})`),
+    close: () => {
+      open = false
+      ws.close()
+    }
+  }
+}
+
+const local = await socketEndpoint()
+const remote = option('--a-cdp') ? await cdpEndpoint(Number(option('--a-cdp'))) : null
+const sshA = option('--a-ssh')
+const owner = (params) => params.accountId ?? params.bufferId?.split('|')[0] ?? null
+/** Each request goes to the daemon its account is in; one about no account goes to both, lists put together. */
+const rpc = async (method, params = {}) => {
+  if (!remote) return local.rpc(method, params)
+  const who = owner(params)
+  if (who === A) return remote.rpc(method, params)
+  if (who) return local.rpc(method, params)
+  const [x, y] = await Promise.all([remote.rpc(method, params), local.rpc(method, params)])
+  return Array.isArray(x) && Array.isArray(y) ? [...x, ...y] : x
+}
+/** Files the sending account uses, where its daemon is. */
+const remoteTemp = sshA ? execFileSync('ssh', ['-o', 'BatchMode=yes', sshA, 'echo %TEMP%'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() : null
+const putA = (name, content) => {
+  const here = path.join(os.tmpdir(), name)
+  fs.writeFileSync(here, content)
+  if (!sshA) return here
+  const there = `${remoteTemp}\\${name}`
+  execFileSync('scp', ['-q', '-o', 'BatchMode=yes', here, `${sshA}:${there.replaceAll('\\', '/')}`], { stdio: 'ignore' })
+  fs.rmSync(here, { force: true })
+  return there
+}
+const readA = (p) => {
+  if (!sshA) return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  const here = path.join(os.tmpdir(), `moho-back-${Date.now()}`)
+  try {
+    execFileSync('scp', ['-q', '-o', 'BatchMode=yes', `${sshA}:${p.replaceAll('\\', '/')}`, here], { stdio: 'ignore' })
+    return fs.readFileSync(here, 'utf8')
+  } catch {
+    return null
+  } finally {
+    fs.rmSync(here, { force: true })
+  }
+}
+const dropA = (p) => {
+  if (!sshA) return fs.rmSync(p, { force: true })
+  try {
+    execFileSync('ssh', ['-o', 'BatchMode=yes', sshA, `del "${p}"`], { stdio: 'ignore' })
+  } catch {}
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const until = async (fn, ms = 30000) => {
   const end = Date.now() + ms
@@ -132,26 +227,25 @@ try {
   check('reading is said back (a read marker)', read === true, read)
 
   console.log('a file')
-  const file = path.join(os.tmpdir(), `moho-test-${Date.now()}.txt`)
-  fs.writeFileSync(file, `moho test ${stamp}: a file uploaded over the route\n`)
+  const file = putA(`moho-test-${Date.now()}.txt`, `moho test ${stamp}: a file uploaded over the route\n`)
   await rpc('sendMessage', { bufferId: ab.id, body: '', attachmentPath: file })
   const shared = await until(() => seen('message', (d) => d.bufferId === ba.id && (d.attachments ?? []).some((x) => x.filename?.startsWith('moho-test-'))), 60000)
   check('a file is uploaded and arrives as an attachment', !!shared, JSON.stringify(events.filter((e) => e.event === 'message' && e.data.bufferId === ba.id).slice(-1)).slice(0, 400))
-  fs.rmSync(file, { force: true })
+  dropA(file)
 
   console.log('a file straight to the other device (Jingle)')
-  const direct = path.join(os.tmpdir(), `moho-direct-${Date.now()}.txt`)
-  fs.writeFileSync(direct, `moho test ${stamp}: sent device to device\n`.repeat(200))
+  const directText = `moho test ${stamp}: sent device to device\n`.repeat(200)
+  const direct = putA(`moho-direct-${Date.now()}.txt`, directText)
   const offered = await rpc('xmppSendDirect', { bufferId: ab.id, path: direct }).catch((e) => ({ error: e.message }))
-  const offer = await until(async () => (await rpc('xmppFileOffers', { accountId: B })).find((o) => o.name === path.basename(direct)), 30000)
+  const offer = await until(async () => (await rpc('xmppFileOffers', { accountId: B })).find((o) => o.name === path.win32.basename(direct)), 30000)
   check('it is offered to the other account', offered.started === true && !!offer, JSON.stringify(offered))
   if (offer) {
     await rpc('xmppAnswerFile', { accountId: B, sid: offer.sid, accept: true })
-    const landed = await until(async () => (await rpc('getBacklog', { bufferId: ba.id, limit: 40 })).find((m) => m.attachments?.[0]?.filename === path.basename(direct)), 120000)
+    const landed = await until(async () => (await rpc('getBacklog', { bufferId: ba.id, limit: 40 })).find((m) => m.attachments?.[0]?.filename === path.win32.basename(direct)), 120000)
     const kept = landed?.attachments?.[0]?.path?.replace('file://', '')
-    check('accepted, it arrives whole (between the Tor account and the direct one)', !!kept && fs.readFileSync(kept, 'utf8') === fs.readFileSync(direct, 'utf8'), kept)
+    check('accepted, it arrives whole (between the Tor account and the direct one)', !!kept && fs.readFileSync(kept, 'utf8') === directText, kept)
   }
-  fs.rmSync(direct, { force: true })
+  dropA(direct)
 
   console.log('what was missed while away')
   await rpc('setAccountConnected', { accountId: B, connected: false })
@@ -180,12 +274,11 @@ try {
   const theirDevice = devices.devices.find((d) => d.jid === jidB)
   check('in OMEMO 2, the other account\'s device known and trusted', theirDevice?.omemo2 === true && theirDevice?.known && theirDevice?.trust === 'trusted', JSON.stringify(devices.devices))
 
-  const secretFile = path.join(os.tmpdir(), `moho-secret-${Date.now()}.txt`)
-  fs.writeFileSync(secretFile, `moho test ${stamp}: an encrypted file\n`)
+  const secretFile = putA(`moho-secret-${Date.now()}.txt`, `moho test ${stamp}: an encrypted file\n`)
   await rpc('sendMessage', { bufferId: ab.id, body: '', attachmentPath: secretFile })
-  const sealed = await until(async () => (await rpc('getBacklog', { bufferId: ba.id, limit: 40 })).find((m) => m.attachments?.some((x) => x.filename === path.basename(secretFile))), 60000)
+  const sealed = await until(async () => (await rpc('getBacklog', { bufferId: ba.id, limit: 40 })).find((m) => m.attachments?.some((x) => x.filename === path.win32.basename(secretFile))), 60000)
   check('an encrypted file arrives and is read', !!sealed, JSON.stringify(sealed?.attachments))
-  fs.rmSync(secretFile, { force: true })
+  dropA(secretFile)
   const theirLinks = await rpc('xmppOmemoDevices', { accountId: A })
   const verified = await rpc('xmppOmemoVerifyUri', { accountId: B, uri: theirLinks.uri })
   const nowB = (await rpc('xmppOmemoDevices', { accountId: B, jid: jidA })).devices.find((d) => d.jid === jidA && d.device === theirLinks.deviceId)
@@ -233,12 +326,11 @@ try {
     check('the room\'s owner removes somebody else\'s message, for everyone (or is told why not)', moderated === true ? !!sawIt : typeof moderated === 'string', String(moderated))
     const level = await rpc('setNotifyLevel', { bufferId: rb.id, level: 'mentions' }).then(() => true, (e) => e.message)
     check('its notification level is kept', level === true, level)
-    const png = path.join(os.tmpdir(), `moho-room-${Date.now()}.png`)
-    fs.writeFileSync(png, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64'))
+    const png = putA(`moho-room-${Date.now()}.png`, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64'))
     const pictured = await rpc('xmppSetRoomAvatar', { bufferId: ra.id, path: png }).then(() => true, (e) => e.message)
     check('a room picture is set (or the server says it takes none)', pictured === true || typeof pictured === 'string', String(pictured))
     console.log(`   room picture: ${pictured === true ? 'set' : pictured}`)
-    fs.rmSync(png, { force: true })
+    dropA(png)
     await rpc('xmppDestroyRoom', { bufferId: ra.id, reason: 'moho test over' }).catch((e) => console.log('   (the room could not be destroyed: ' + e.message + ')'))
   }
 
@@ -249,14 +341,13 @@ try {
   const after = await rpc('xmppGetProfile', { accountId: A }).catch((e) => ({ error: e.message }))
   check('its profile is changed and read back', setProfile === true && JSON.stringify(after).includes(nick), `${setProfile} ${JSON.stringify(after).slice(0, 300)}`)
   await rpc('xmppSetProfile', { accountId: A, nickname: before?.nickname ?? '' }).catch(() => {})
-  const avatar = path.join(os.tmpdir(), `moho-avatar-${Date.now()}.png`)
-  fs.writeFileSync(avatar, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'))
+  const avatar = putA(`moho-avatar-${Date.now()}.png`, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'))
   const before64 = (await rpc('listBuffers')).find((b) => b.id === ba.id)?.avatarUrl ?? null
   const setAvatar = await rpc('xmppSetAvatar', { accountId: A, path: avatar }).then(() => true, (e) => e.message)
   const shown = await until(async () => { const u = (await rpc('listBuffers')).find((b) => b.id === ba.id)?.avatarUrl; return u && u !== before64 ? u : null }, 30000)
   check('its picture is set and the other account sees it', setAvatar === true && !!shown, `${setAvatar} ${shown}`)
   await rpc('xmppSetAvatar', { accountId: A, path: '' }).catch(() => {})
-  fs.rmSync(avatar, { force: true })
+  dropA(avatar)
   await rpc('xmppBlock', { accountId: A, jid: jidB, block: true })
   const blockedText = `moho test ${stamp}: sent while blocked`
   await rpc('sendMessage', { bufferId: ba.id, body: blockedText })
@@ -283,10 +374,10 @@ try {
   console.log(`   published nodes: ${nodes}`)
   const kinds = await rpc('xmppInviteKinds', { accountId: A }).then((k) => JSON.stringify(k).slice(0, 120), (e) => e.message)
   console.log(`   invitations the server makes: ${kinds}`)
-  const exportFile = path.join(os.tmpdir(), `moho-contacts-${Date.now()}.xml`)
-  const exported = await rpc('xmppExportContacts', { accountId: A, path: exportFile }).then(() => fs.existsSync(exportFile) && fs.readFileSync(exportFile, 'utf8').includes(jidB), (e) => e.message)
+  const exportFile = sshA ? `${remoteTemp}\\moho-contacts-${Date.now()}.xml` : path.join(os.tmpdir(), `moho-contacts-${Date.now()}.xml`)
+  const exported = await rpc('xmppExportContacts', { accountId: A, path: exportFile }).then(() => !!readA(exportFile)?.includes(jidB), (e) => e.message)
   check('its contacts are exported', exported === true, exported)
-  fs.rmSync(exportFile, { force: true })
+  dropA(exportFile)
   const commands = await rpc('xmppCommands', { accountId: A, jid: domain }).catch((e) => ({ error: e.message }))
   console.log(`   the server's commands: ${commands.error ?? (commands.commands ?? []).length}`)
 } catch (err) {
@@ -294,6 +385,7 @@ try {
   console.log('  FAIL', err.stack ?? err)
 } finally {
   console.log(results.every(Boolean) ? 'ALL OK' : 'FAILED')
-  conn.end()
+  local.close()
+  remote?.close()
   process.exit(0)
 }
