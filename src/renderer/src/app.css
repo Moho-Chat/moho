@@ -11758,3 +11758,20 @@ html[data-reduce-motion] *::after {
   margin-top: 2px;
   flex: none;
 }
+
+/* OMEMO: this device's verification code, and its link (selectable, so it can be copied). */
+.omemo-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.omemo-qr img {
+  background: #fff;
+  border-radius: 6px;
+  padding: 6px;
+}
+.omemo-qr .mono {
+  user-select: text;
+  word-break: break-all;
+}

@@ -9,12 +9,16 @@ envelope is opened here; what was read in OMEMO 2 is recorded twice, as the body
 Steps:
     {"send": "text", "to": "jid"}                  encrypt and send a chat message (the plugin's way: the older namespace)
     {"send2": "text", "to": "jid", "says_from": "jid"}   the same in OMEMO 2, the envelope saying it is from says_from (default: us)
+    {"send_trust": [{"jid": j, "trust": [hex], "distrust": [hex]}], "to": "jid"}   an ATM trust message (XEP-0450) in OMEMO 2
+    {"expect_start": "TRUST:", "timeout": 15}     wait until something received starts with this
+    {"whoami": true}                               records "WHOAMI:<device id>:<identity key, Curve25519, hex>"
+A trust message received is recorded as "TRUST:" + JSON [{"jid", "trust": [base64], "distrust": [base64]}].
     {"expect": "text", "timeout": 15}              wait until a decrypted message with this body arrives
     {"sleep": 1.5}
     {"send_to_devices": "text", "to": "jid"}      same as send (kept for clarity)
 Prints {"ok": bool, "received": [decrypted bodies], "raw": "<all XML received>", "failed": "..."}.
 """
-import asyncio, json, os, ssl, sys, urllib.request
+import asyncio, base64, json, os, ssl, sys, urllib.request
 import slixmpp
 from slixmpp.xmlstream.handler import CoroutineCallback
 from slixmpp.xmlstream.matcher import MatchXPath
@@ -178,6 +182,11 @@ class Peer(slixmpp.ClientXMPP):
             self.received.append("EMPTY2")
             return
         envelope = ET.fromstring(plaintext)
+        trust = envelope.find("{%s}content/{urn:xmpp:tm:1}trust-message" % SCE)
+        if trust is not None:
+            owners = [{"jid": o.get("jid"), "trust": [t.text for t in o.findall("{urn:xmpp:tm:1}trust")], "distrust": [t.text for t in o.findall("{urn:xmpp:tm:1}distrust")]} for o in trust.findall("{urn:xmpp:tm:1}key-owner")]
+            self.received.append("TRUST:" + json.dumps(owners))
+            return
         body = envelope.find("{%s}content/{jabber:client}body" % SCE)
         said = envelope.find("{%s}from" % SCE)
         if said is None or slixmpp.JID(said.get("jid")).bare != sender:
@@ -187,14 +196,32 @@ class Peer(slixmpp.ClientXMPP):
         self.received.append(text)
         self.received.append("OMEMO2:" + text)
 
-    async def send_v2(self, to, text, says_from=None, mtype="chat", recipients=None):
+    async def send_trust(self, to, owners):
+        tm = ET.Element("{urn:xmpp:tm:1}trust-message", {"usage": "urn:xmpp:atm:1", "encryption": twomemo.twomemo.NAMESPACE})
+        for o in owners:
+            owner = ET.SubElement(tm, "{urn:xmpp:tm:1}key-owner", {"jid": o["jid"]})
+            for kind in ("trust", "distrust"):
+                for h in o.get(kind, []):
+                    ET.SubElement(owner, "{urn:xmpp:tm:1}" + kind).text = base64.b64encode(bytes.fromhex(h)).decode()
+        await self.send_v2(to, None, content=[tm])
+
+    async def whoami(self):
+        import xeddsa
+        manager = await self["xep_0384"].get_session_manager()
+        own = (await manager.get_own_device_information())[0]
+        self.received.append("WHOAMI:%d:%s" % (own.device_id, xeddsa.ed25519_pub_to_curve25519_pub(own.identity_key).hex()))
+
+    async def send_v2(self, to, text, says_from=None, mtype="chat", recipients=None, content=None):
         recipients = [slixmpp.JID(r) for r in (recipients or [to])]
         plugin = self["xep_0384"]
         # Forced: subscribed to the person, the plugin would otherwise wait for the server to push their device list.
         await plugin.refresh_device_lists(set(recipients), force_download=True)
         envelope = ET.Element("{%s}envelope" % SCE)
-        content = ET.SubElement(envelope, "{%s}content" % SCE)
-        ET.SubElement(content, "{jabber:client}body").text = text
+        inner = ET.SubElement(envelope, "{%s}content" % SCE)
+        if text is not None:
+            ET.SubElement(inner, "{jabber:client}body").text = text
+        for e in content or []:
+            inner.append(e)
         ET.SubElement(envelope, "{%s}rpad" % SCE).text = secrets.token_hex(secrets.randbelow(16) + 1)
         ET.SubElement(envelope, "{%s}from" % SCE, {"jid": says_from or self.boundjid.bare})
         manager = await plugin.get_session_manager()
@@ -259,7 +286,11 @@ async def main():
     failed = None
     for step in steps:
         try:
-            if "send2" in step:
+            if "send_trust" in step:
+                await peer.send_trust(step["to"], step["send_trust"])
+            elif "whoami" in step:
+                await peer.whoami()
+            elif "send2" in step:
                 await peer.send_v2(step["to"], step["send2"], step.get("says_from"), step.get("type", "chat"), step.get("recipients"))
             elif "send" in step:
                 await peer.send_encrypted(step["to"], step["send"])
@@ -286,6 +317,12 @@ async def main():
                 peer.received.append("FILE-OK:" + step["expect_file"])
             elif "sleep" in step:
                 await asyncio.sleep(step["sleep"])
+            elif "expect_start" in step:
+                end = asyncio.get_event_loop().time() + step.get("timeout", 15)
+                while not any(r.startswith(step["expect_start"]) for r in peer.received):
+                    if asyncio.get_event_loop().time() > end:
+                        raise TimeoutError(step["expect_start"])
+                    await asyncio.sleep(0.1)
             elif "expect" in step:
                 end = asyncio.get_event_loop().time() + step.get("timeout", 15)
                 while step["expect"] not in peer.received:

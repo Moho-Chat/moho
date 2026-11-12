@@ -13,6 +13,17 @@ interface Device {
   omemo2?: boolean
 }
 
+interface Info {
+  deviceId: number
+  fingerprint: string
+  devices: Device[]
+  /** This device's verification link in the form most clients scan, and XEP-0434's trust-message link, each with a QR code. */
+  uri?: string
+  qr?: string
+  trustUri?: string
+  trustQr?: string
+}
+
 /**
  * OMEMO for one conversation: whether it is encrypted, this device's fingerprint, and each device the other person has (and this
  * account's other devices) with the fingerprint it showed and whether it is trusted. A fingerprint means something only if
@@ -21,11 +32,13 @@ interface Device {
  */
 export function XmppOmemoDialog({ bufferId, accountId, jid, name, encrypted, onClose }: { bufferId: string; accountId: string; jid: string; name: string; encrypted: boolean; onClose: () => void }): JSX.Element {
   const store = useStore()
-  const [info, setInfo] = useState<{ deviceId: number; fingerprint: string; devices: Device[] } | null>(null)
+  const [info, setInfo] = useState<Info | null>(null)
+  const [link, setLink] = useState('')
+  const [showTrustLink, setShowTrustLink] = useState(false)
   const [error, setError] = useState('')
   const load = (): void => {
     void window.moho
-      .rpc<{ deviceId: number; fingerprint: string; devices: Device[] }>('xmppOmemoDevices', { accountId, jid })
+      .rpc<Info>('xmppOmemoDevices', { accountId, jid })
       .then(setInfo)
       .catch((e: Error) => setError(e.message))
   }
@@ -41,6 +54,17 @@ export function XmppOmemoDialog({ bufferId, accountId, jid, name, encrypted, onC
       .rpc<{ devices: number }>('xmppOmemoReset', { accountId, jid })
       .then((r) => {
         store.toast('info', `New sessions with ${r.devices} device${r.devices === 1 ? '' : 's'} of ${jid}`)
+        load()
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+  }
+  const verifyLink = (): void => {
+    void window.moho
+      .rpc<{ jid: string; verified: number; distrusted: number; waiting: number }>('xmppOmemoVerifyUri', { accountId, uri: link.trim() })
+      .then((r) => {
+        const parts = [r.verified && `${r.verified} device${r.verified === 1 ? '' : 's'} verified`, r.distrusted && `${r.distrusted} distrusted`, r.waiting && `${r.waiting} key${r.waiting === 1 ? '' : 's'} not seen yet (decided when ${r.jid} uses them)`].filter(Boolean)
+        store.toast('info', `${r.jid}: ${parts.join(', ') || 'nothing changed'}`)
+        setLink('')
         load()
       })
       .catch((e: Error) => store.toast('error', e.message))
@@ -66,6 +90,31 @@ export function XmppOmemoDialog({ bufferId, accountId, jid, name, encrypted, onC
           <>
             <p className="small muted">This device ({info.deviceId}) — compare this with what the other person sees:</p>
             <p className="mono small">{info.fingerprint}</p>
+            {(showTrustLink ? info.trustQr : info.qr) && (
+              <div className="omemo-qr">
+                <img alt="This device's verification code" src={`data:image/svg+xml;utf8,${encodeURIComponent((showTrustLink ? info.trustQr : info.qr) ?? '')}`} width={180} height={180} />
+                <p className="small muted">
+                  Scan this from the other person&apos;s device to verify this one.{' '}
+                  <button type="button" className="link-button" onClick={() => setShowTrustLink(!showTrustLink)}>
+                    {showTrustLink ? 'Show the code most clients scan' : 'Show the XEP-0434 code (Kaidan)'}
+                  </button>
+                </p>
+                <p className="mono small">{showTrustLink ? info.trustUri : info.uri}</p>
+              </div>
+            )}
+            <div className="field-row">
+              <input
+                type="text"
+                placeholder="Paste a verification link (xmpp:…?omemo-sid-… or …?trust-message;…)"
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && link.trim() && verifyLink()}
+              />
+              <button type="button" className="button small" disabled={!link.trim()} onClick={verifyLink}>
+                Verify
+              </button>
+            </div>
+            <p className="small muted">Verifying a device tells your other verified devices, and it, so they need not be compared again (Automatic Trust Management).</p>
             <ul className="plain-list">
               {info.devices
                 .filter((d) => !d.own)
