@@ -176,6 +176,14 @@ interface ServerInfo {
   features: { var: string; xep?: string | null }[]
 }
 
+interface PrivacyRule {
+  type: string
+  value: string
+  action: string
+  order: number
+  what: string[]
+}
+
 interface CommandStep {
   status: string
   sessionId: string
@@ -188,7 +196,12 @@ interface CommandStep {
  * the server's own commands. */
 function XmppConnectedTools({ account }: { account: Account }): JSX.Element {
   const store = useStore()
-  const [section, setSection] = useState<'' | 'profile' | 'invite' | 'picture' | 'password' | 'blocked' | 'archive' | 'server' | 'commands' | 'delete'>('')
+  const [section, setSection] = useState<'' | 'profile' | 'invite' | 'published' | 'privacy' | 'picture' | 'password' | 'blocked' | 'archive' | 'server' | 'commands' | 'delete'>('')
+  const [nodes, setNodes] = useState<{ node: string; what: string; access: string; items: number; usedHere: boolean }[] | null>(null)
+  const [privacy, setPrivacy] = useState<{ names: string[]; default: string; active: string } | null>(null)
+  const [listName, setListName] = useState('')
+  const [rules, setRules] = useState<{ rule: PrivacyRule; words: string }[]>([])
+  const [newRule, setNewRule] = useState<PrivacyRule>({ type: 'jid', value: '', action: 'deny', order: 0, what: ['message'] })
   const [inviteKinds, setInviteKinds] = useState<string[] | null>(null)
   const [invite, setInvite] = useState<{ uri: string; landingUrl: string; expires: string } | null>(null)
   const [me, setMe] = useState<{ fullName: string; nickname: string; email: string; url: string; note: string } | null>(null)
@@ -206,6 +219,8 @@ function XmppConnectedTools({ account }: { account: Account }): JSX.Element {
   const call = <T,>(method: string, params: Record<string, unknown> = {}): Promise<T> => window.moho.rpc<T>(method, { accountId: account.id, ...params })
 
   useEffect(() => {
+    if (section === 'published') void call<{ nodes: { node: string; what: string; access: string; items: number; used_here: boolean }[] }>('xmppNodes').then((r) => setNodes(r.nodes.map((n) => ({ ...n, usedHere: n.used_here })))).catch(say)
+    if (section === 'privacy') void call<{ names: string[]; default: string; active: string }>('xmppPrivacyLists').then(setPrivacy).catch(say)
     if (section === 'invite') void call<{ kinds: string[] }>('xmppInviteKinds').then((r) => setInviteKinds(r.kinds)).catch(say)
     if (section === 'profile') void call<{ fullName: string; nickname: string; email: string; url: string; note: string }>('xmppGetProfile').then(setMe).catch(say)
     if (section === 'blocked') void call<{ blocked: string[] }>('xmppBlocklist').then((r) => setBlocked(r.blocked)).catch(say)
@@ -231,6 +246,8 @@ function XmppConnectedTools({ account }: { account: Account }): JSX.Element {
       <div className="segmented">
         {tab('profile', 'Profile')}
         {tab('invite', 'Invite')}
+        {tab('published', 'Published')}
+        {tab('privacy', 'Privacy lists')}
         {tab('picture', 'Picture')}
         {tab('password', 'Password')}
         {tab('blocked', 'Blocked')}
@@ -239,6 +256,123 @@ function XmppConnectedTools({ account }: { account: Account }): JSX.Element {
         {tab('commands', 'Commands')}
         {tab('delete', 'Delete')}
       </div>
+      {section === 'published' && nodes && (
+        <div className="add-form">
+          <p className="small muted">What this account publishes on its server (PEP), and who may read each.</p>
+          <ul className="plain-list">
+            {nodes.map((n) => (
+              <li key={n.node} className="field-row">
+                <span className="ellipsis" title={n.node}>
+                  {n.what || n.node} <span className="small muted">· {n.items} item{n.items === 1 ? '' : 's'}</span>
+                </span>
+                <select
+                  className="text-field"
+                  value={n.access}
+                  onChange={(e) => void call('xmppNodeAccess', { node: n.node, access: e.target.value }).then(() => setNodes(nodes.map((x) => (x.node === n.node ? { ...x, access: e.target.value } : x)))).catch(say)}
+                >
+                  {!['open', 'presence', 'roster', 'whitelist'].includes(n.access) && <option value={n.access}>{n.access || 'unknown'}</option>}
+                  <option value="open">Anybody</option>
+                  <option value="presence">Contacts who see your presence</option>
+                  <option value="roster">Some of your contacts</option>
+                  <option value="whitelist">Only you</option>
+                </select>
+                <button type="button" className="button subtle small" onClick={() => void call('xmppNodeRemove', { node: n.node, delete: false }).then(() => setNodes(nodes.map((x) => (x.node === n.node ? { ...x, items: 0 } : x)))).catch(say)}>
+                  Empty
+                </button>
+                <button
+                  type="button"
+                  className="button subtle small"
+                  title={n.usedHere ? 'moho keeps this one: deleting it takes away what it holds here too' : undefined}
+                  onClick={() => {
+                    if (n.usedHere && !window.confirm(`moho uses ${n.what || n.node}. Delete it anyway?`)) return
+                    void call('xmppNodeRemove', { node: n.node, delete: true }).then(() => setNodes(nodes.filter((x) => x.node !== n.node))).catch(say)
+                  }}
+                >
+                  Delete
+                </button>
+              </li>
+            ))}
+            {nodes.length === 0 && <li className="small muted">Nothing is published</li>}
+          </ul>
+        </div>
+      )}
+      {section === 'privacy' && privacy && (
+        <div className="add-form">
+          <p className="small muted">Privacy lists (XEP-0016): rules the server applies to what reaches this account. Blocking (the Blocked tab) is the newer way; lists made elsewhere still apply.</p>
+          <ul className="plain-list">
+            {privacy.names.map((n) => (
+              <li key={n} className="field-row">
+                <button type="button" className={listName === n ? 'button small' : 'button subtle small'} onClick={() => { setListName(n); void call<{ rules: { rule: PrivacyRule; words: string }[] }>('xmppPrivacyRules', { name: n }).then((r) => setRules(r.rules)).catch(say) }}>
+                  {n}
+                </button>
+                <span className="small muted">{[privacy.default === n && 'default', privacy.active === n && 'active here'].filter(Boolean).join(', ')}</span>
+                <button type="button" className="button subtle small" onClick={() => void call('xmppChoosePrivacyList', { which: 'default', name: privacy.default === n ? '' : n }).then(() => setPrivacy({ ...privacy, default: privacy.default === n ? '' : n })).catch(say)}>
+                  {privacy.default === n ? 'Not default' : 'Make default'}
+                </button>
+                <button type="button" className="button subtle small" onClick={() => void call('xmppChoosePrivacyList', { which: 'active', name: privacy.active === n ? '' : n }).then(() => setPrivacy({ ...privacy, active: privacy.active === n ? '' : n })).catch(say)}>
+                  {privacy.active === n ? 'Stop here' : 'Use here'}
+                </button>
+                <button type="button" className="button subtle small" onClick={() => void call('xmppSetPrivacyList', { name: n, rules: [] }).then(() => { setPrivacy({ ...privacy, names: privacy.names.filter((x) => x !== n) }); if (listName === n) setListName('') }).catch(say)}>
+                  Delete
+                </button>
+              </li>
+            ))}
+            {privacy.names.length === 0 && <li className="small muted">No lists</li>}
+          </ul>
+          <label className="field">
+            <span className="small muted">List</span>
+            <input className="text-field" value={listName} placeholder="A new list's name" onChange={(e) => { setListName(e.target.value); setRules([]) }} />
+          </label>
+          {listName && (
+            <>
+              <ul className="plain-list">
+                {rules.map((r, i) => (
+                  <li key={`${r.rule.order}-${i}`} className="field-row">
+                    <span className="small">{r.words}</span>
+                    <button type="button" className="button subtle small" onClick={() => { const next = rules.filter((_, j) => j !== i); void call('xmppSetPrivacyList', { name: listName, rules: next.map((x) => x.rule) }).then(() => setRules(next)).catch(say) }}>
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="field-row">
+                <select className="text-field" value={newRule.action} onChange={(e) => setNewRule({ ...newRule, action: e.target.value })}>
+                  <option value="deny">Deny</option>
+                  <option value="allow">Allow</option>
+                </select>
+                <select className="text-field" value={newRule.what[0] ?? ''} onChange={(e) => setNewRule({ ...newRule, what: e.target.value ? [e.target.value] : [] })}>
+                  <option value="">everything</option>
+                  <option value="message">messages</option>
+                  <option value="presence-in">their presence</option>
+                  <option value="presence-out">your presence to them</option>
+                  <option value="iq">requests</option>
+                </select>
+                <select className="text-field" value={newRule.type} onChange={(e) => setNewRule({ ...newRule, type: e.target.value })}>
+                  <option value="jid">address</option>
+                  <option value="group">group</option>
+                  <option value="subscription">subscription</option>
+                  <option value="">everybody</option>
+                </select>
+                {newRule.type && <input className="text-field" value={newRule.value} placeholder={newRule.type === 'subscription' ? 'none, to, from or both' : newRule.type === 'group' ? 'Friends' : 'someone@example.org'} onChange={(e) => setNewRule({ ...newRule, value: e.target.value })} />}
+                <button
+                  type="button"
+                  className="button small"
+                  onClick={() => {
+                    const order = rules.reduce((m, r) => Math.max(m, r.rule.order), 0) + 1
+                    const next = [...rules.map((r) => r.rule), { ...newRule, order }]
+                    void call('xmppSetPrivacyList', { name: listName, rules: next })
+                      .then(() => call<{ rules: { rule: PrivacyRule; words: string }[] }>('xmppPrivacyRules', { name: listName }))
+                      .then((r) => { setRules(r.rules); if (!privacy.names.includes(listName)) setPrivacy({ ...privacy, names: [...privacy.names, listName] }) })
+                      .catch(say)
+                  }}
+                >
+                  Add rule
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
       {section === 'invite' && inviteKinds && (
         <div className="add-form">
           {inviteKinds.length === 0 && <p className="small muted">This server does not make invitations (XEP-0401).</p>}
