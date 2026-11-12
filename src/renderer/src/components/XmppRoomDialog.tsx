@@ -67,6 +67,26 @@ export function XmppRoomDialog({ bufferId, name, onClose }: { bufferId: string; 
           </button>
         ))}
       </div>
+      {tab === 'settings' && (
+        <div className="field-row">
+          <span className="small muted">The room&apos;s picture (XEP-0486)</span>
+          <button
+            type="button"
+            className="button small"
+            disabled={busy}
+            onClick={() =>
+              void window.moho.pickFile().then((path) => {
+                if (path) void window.moho.rpc('xmppSetRoomAvatar', { bufferId, path }).then(() => store.toast('info', 'Room picture changed')).catch(say)
+              })
+            }
+          >
+            Choose a picture…
+          </button>
+          <button type="button" className="button subtle small" disabled={busy} onClick={() => void window.moho.rpc('xmppSetRoomAvatar', { bufferId, path: '' }).then(() => store.toast('info', 'Room picture taken off')).catch(say)}>
+            Take it off
+          </button>
+        </div>
+      )}
       {tab === 'settings' &&
         (form ? (
           <XmppDataForm
