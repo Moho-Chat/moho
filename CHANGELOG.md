@@ -17,6 +17,20 @@ Each section has two parts:
   that made it, including dependency updates
   (`node scripts/changelog-deps.mjs <previous tag>` lists those).
 
+## [Unreleased]
+
+## [1.5.0]
+
+### Major features
+
+- **XMPP** is a protocol: an account on any server, found by DNS (SRV, direct TLS first) or named, over TLS only, trusted by the system, a certificate authority you add, or one certificate you were shown and pinned - and refused, in words, when that certificate changes; through Tor or a SOCKS5 proxy if you like, or over a WebSocket. Signing in is as strong as the server allows: SASL2 with Bind2 and FAST tokens (a reconnection needs no password), SCRAM-SHA-512/256/1 bound to the TLS channel, the server's list of methods checked against tampering, never PLAIN once the account has done better; a client certificate (EXTERNAL) or no account at all (ANONYMOUS) where the server takes them. Staying connected: a dropped connection is resumed with nothing lost, a half-open one noticed in under a minute, a sleep and a wake checked at once. Contacts and presence with what they publish (nickname, mood, what they are doing or listening to, where), one-to-one chat with carbons, the archive, receipts and read markers synced across your devices, typing, corrections, retractions, reactions, replies, mentions, spoilers, /me and the senders' own link cards; group chats with bookmarks, their notification level kept where your other clients read it, room pictures, the room's archive, moderation and settings, invitations both ways; files over HTTP Upload, or straight to a contact's device; voice messages; avatars and your own profile; OMEMO encryption in chats, rooms and files, in OMEMO 2 to the devices that speak it and the older namespace to the rest, one fingerprint per device either way, verified by QR code or link and passed on by Automatic Trust Management, broken sessions replaced by hand; voice and video calls, to clients with or without call messages, and group calls (Multiparty Jingle, rung with call invites, as Dino holds them), none of them on an account routed through Tor (a call's media would go around Tor and show your address, so calls there are refused and declined, saying why); making an account in-band or with an invitation, making invitations, and the account's own data on its server (what it publishes, privacy lists, archive preferences, blocking with spam reports, ad-hoc commands). It meets every client level of the XMPP Compliance Suites 2023, and is written for any server, not one
+
+### Fixes, patches and changes
+
+- A conversation's right-click menu sets how much it may interrupt - default, all messages, mentions only, mute - on every service, kept on the account where the service has a setting for it ([moho `4686cea`](https://github.com/Moho-Chat/moho/commit/4686cea), [nobilis `431b97f`](https://github.com/Moho-Chat/nobilis/commit/431b97f))
+- Matrix verification: an accepted request no longer stays on the Invitations tile with its emoji hidden ([moho `a94ead6`](https://github.com/Moho-Chat/moho/commit/a94ead6))
+- Stoat: accepting a friend request opens the conversation with them, and the account's page lists friends, requests waiting and blocked people ([moho `73d14be`](https://github.com/Moho-Chat/moho/commit/73d14be), [nobilis `0551519`](https://github.com/Moho-Chat/nobilis/commit/0551519))
+
 ## [1.4.1]
 
 ### Fixes, patches and changes

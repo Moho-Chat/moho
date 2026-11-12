@@ -28,12 +28,13 @@ import type { SteamGroup, GroupCall } from '../lib/steamgroups'
 import type { TelegramFolder } from '../lib/telegramfolders'
 import { buildSmilieIndex, sneedSameText, steamSameText, stoatSameText, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
+import { heldOnAccount, type NotifyLevel } from '../lib/notifylevels'
 import { runExport } from '../lib/exporter'
 import type { ForumPost } from '../lib/forum'
 import { DM_GROUP_ID, INVITATIONS_GROUP_ID, isDirectMessage } from '../lib/groups'
-import { listInvitations, type Invitation } from '../lib/invitations'
+import { listInvitations, type Invitation, type FileOffer } from '../lib/invitations'
 import { ircNetworkFor } from '../lib/networks'
-import { parseDeepLink, type IrcLink } from '../../../shared/deeplink'
+import { parseDeepLink, type DeepLink, type IrcLink } from '../../../shared/deeplink'
 import { MatrixCalls, type CallMember, type MatrixCallEvent, type RingingCall } from '../lib/matrixcall'
 import { SfuCall, type SfuParticipant } from '../lib/livekit'
 import type { CallPhase } from '../lib/webrtc'
@@ -544,6 +545,10 @@ export interface ChatState {
   /** Set in a popped-out window, naming the one conversation it may show. */
   pinnedBufferId: string
   activePanel: ActivePanel
+  /** Files offered device to device (XMPP, XEP-0234), by account, waiting on the Invitations tile. */
+  fileOffers: Record<string, FileOffer[]>
+  /** An `xmpp:…?register` invitation that was opened: the Accounts form makes the account with it (XEP-0401). */
+  xmppRegistration: { server: string; preauth: string; inviter?: string } | null
   /**
    * The room being looked at, if any. Shown in the conversation's own pane in
    * place of a conversation, and gone the moment one is selected.
@@ -823,6 +828,8 @@ const INITIAL: ChatState = {
   popouts: { open: [], watched: [] },
   pinnedBufferId: '',
   activePanel: '',
+  xmppRegistration: null,
+  fileOffers: {},
   peek: null,
   joinPanelAccountId: '',
   messagesByBuffer: {},
@@ -1124,6 +1131,12 @@ const BACKLOG_PAGE = 200
 const HISTORY_END_MS = 10 * 60 * 1000
 const SEND_TIMEOUT_MS = 10000
 
+/** An XMPP subscription request as the Invitations tile shows it: who, their words, and what their server says of them (XEP-0489). */
+function xmppRequest(q: { jid: string; text: string; server?: string }): FriendRequest {
+  const parts = ['wants to see when you are online', q.text ? `\u201c${q.text}\u201d` : '', q.server ? `their server says: ${q.server}` : ''].filter(Boolean)
+  return { id: q.jid, name: q.jid, detail: parts.join(' · ') }
+}
+
 export class ChatStore {
   private state: ChatState = INITIAL
   private listeners = new Set<() => void>()
@@ -1394,6 +1407,13 @@ export class ChatStore {
     }
     window.addEventListener('focus', looked)
     document.addEventListener('visibilitychange', looked)
+    // Nobody looking is told to servers that can hold back what is not urgent (XMPP's client state indication).
+    const attention = (): void => {
+      void window.moho.rpc('xmppSetActive', { active: this.windowIsActive() }).catch(() => {})
+    }
+    window.addEventListener('focus', attention)
+    window.addEventListener('blur', attention)
+    document.addEventListener('visibilitychange', attention)
     void window.moho.popout.list().then((popouts) => this.set({ popouts }))
     window.moho.popout.onChange((popouts) => this.set({ popouts }))
 
@@ -1593,6 +1613,19 @@ export class ChatStore {
         // Not connected yet: the daemon's own push fills it in.
       }
     }
+    // XMPP's are the people who asked to see the account's presence and have not been answered.
+    for (const account of this.state.accounts.filter((a) => a.service === 'xmpp' && a.state === 'connected')) {
+      try {
+        const r = await window.moho.rpc<{ requests: { jid: string; text: string; server?: string }[] }>('xmppRequests', { accountId: account.id })
+        next[account.id] = r.requests.map(xmppRequest)
+        const rooms = await window.moho.rpc<MatrixInvite[]>('xmppInvites', { accountId: account.id })
+        this.set({ matrixInvites: { ...this.state.matrixInvites, [account.id]: rooms } })
+        const files = await window.moho.rpc<FileOffer[]>('xmppFileOffers', { accountId: account.id })
+        this.set({ fileOffers: { ...this.state.fileOffers, [account.id]: files } })
+      } catch {
+        // Not connected yet: the daemon's own push fills it in.
+      }
+    }
     this.set({ friendRequests: next })
     // Discord keeps its requests among its friends; the daemon pushes changes,
     // and this is the first reading, so one that arrived while moho was
@@ -1607,11 +1640,46 @@ export class ChatStore {
     }
   }
 
+  /** What an `xmpp:` link asks for: a room joined, a contact asked, a conversation opened, or an account made. */
+  private async openXmppLink(link: Extract<DeepLink, { service: 'xmpp' }>): Promise<void> {
+    const account = this.state.accounts.find((a) => a.service === 'xmpp' && a.state === 'connected') ?? this.state.accounts.find((a) => a.service === 'xmpp')
+    // An invitation from somebody, opened with no XMPP account here: an account is made on their server with it (XEP-0401).
+    const invitedBy = !account && (link.action === 'roster' || link.action === 'subscribe') && link.params.preauth ? link.jid : ''
+    if (link.action === 'register' || invitedBy) {
+      this.set({ xmppRegistration: { server: link.jid.split('@').pop() ?? link.jid, preauth: link.params.preauth ?? '', inviter: invitedBy || undefined } })
+      this.set({ activePanel: 'accounts' })
+      this.toast('info', `Make an account on ${link.jid.split('@').pop()}: choose XMPP in Accounts, then Make one`)
+      return
+    }
+    if (!account) {
+      this.set({ activePanel: 'accounts' })
+      this.toast('info', 'Add an XMPP account first')
+      return
+    }
+    try {
+      if (link.action === 'join') {
+        const r = await window.moho.rpc<{ bufferId?: string }>('xmppJoinRoom', { accountId: account.id, jid: link.jid, nick: link.params.nick ?? '', password: link.params.password ?? '' })
+        await this.refreshBuffers()
+        if (r.bufferId) await this.selectBuffer(r.bufferId)
+      } else if (link.action === 'roster' || link.action === 'subscribe') {
+        // An invitation's token goes with the request, so the inviter's server approves it (XEP-0379).
+        await window.moho.rpc('xmppAddContact', { accountId: account.id, jid: link.jid, name: link.params.name ?? '', preauth: link.params.preauth ?? '' })
+        this.toast('info', `Asked ${link.jid} to share presence`)
+      } else {
+        const r = await window.moho.rpc<{ bufferId: string }>('xmppOpenChat', { accountId: account.id, jid: link.jid })
+        await this.refreshBuffers()
+        await this.selectBuffer(r.bufferId)
+      }
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
+  }
+
   /** Everything waiting on a yes or a no, as the invitations tile lists it. */
   pendingInvitations(): Invitation[] {
     const s = this.state
     return listInvitations(
-      { rooms: s.matrixInvites, friends: s.friendRequests, discordFriends: s.discordFriends, verification: s.matrixVerification },
+      { rooms: s.matrixInvites, friends: s.friendRequests, discordFriends: s.discordFriends, verification: s.matrixVerification, files: s.fileOffers },
       s.accounts
     )
   }
@@ -1632,7 +1700,9 @@ export class ChatStore {
     const { accountId, id } = invitation
     let steamGroupJoined = ''
     try {
-      if (invitation.kind === 'verification') {
+      if (invitation.kind === 'file') {
+        await window.moho.rpc('xmppAnswerFile', { accountId, sid: id, accept })
+      } else if (invitation.kind === 'verification') {
         await window.moho.rpc(accept ? 'respondMatrixVerification' : 'cancelMatrixVerification', {
           accountId,
           verificationId: id,
@@ -1643,9 +1713,13 @@ export class ChatStore {
           await window.moho.rpc('answerDiscordFriendRequest', { accountId, userId: id, accept })
         } else if (invitation.service === 'stoat') {
           await window.moho.rpc('answerStoatFriendRequest', { accountId, userId: id, accept })
+        } else if (invitation.service === 'xmpp') {
+          await window.moho.rpc('xmppAnswerRequest', { accountId, jid: id, accept })
         } else {
           await window.moho.rpc('steamAnswerFriendRequest', { accountId, steamid: id, accept })
         }
+      } else if (invitation.service === 'xmpp') {
+        await window.moho.rpc('xmppAnswerInvite', { accountId, roomId: id, accept })
       } else if (invitation.service === 'steam') {
         const r = await window.moho.rpc<{ groupId?: string }>('steamChatGroupAction', { accountId, groupId: id, action: accept ? 'acceptInvite' : 'dismissInvite' })
         if (accept && r.groupId) steamGroupJoined = r.groupId
@@ -1674,6 +1748,10 @@ export class ChatStore {
     const { accountId, id } = invitation
     const v = this.state.matrixVerification
     return {
+      fileOffers: {
+        ...this.state.fileOffers,
+        [accountId]: (this.state.fileOffers[accountId] ?? []).filter((f) => !(invitation.kind === 'file' && f.sid === id))
+      },
       matrixInvites: {
         ...this.state.matrixInvites,
         [accountId]: (this.state.matrixInvites[accountId] ?? []).filter((i) => !(invitation.kind === 'room' && i.roomId === id))
@@ -1689,7 +1767,10 @@ export class ChatStore {
         )
       },
       // Accepted, the check carries on in its dialog; declined, it is over.
-      matrixVerification: invitation.kind === 'verification' && v?.verificationId === id ? (v.state === 'requested' ? { ...v, incoming: false } : v) : v
+      // Whatever state it has reached by now: the daemon's "ready" push can
+      // beat the reply to the accept call, and keying this on "requested"
+      // left the request waiting on the tile with its emoji hidden behind it.
+      matrixVerification: invitation.kind === 'verification' && v?.verificationId === id ? { ...v, incoming: false } : v
     }
   }
 
@@ -1713,9 +1794,13 @@ export class ChatStore {
     // Discord's friends are not conversations until one is opened: asking for
     // it is what makes the direct message exist, so it does not have to be
     // waited for.
-    if (invitation.service === 'discord' && invitation.kind === 'friend') {
+    // Stoat's are not either, and its conversations are named by channel, not by person.
+    if ((invitation.service === 'discord' || invitation.service === 'stoat') && invitation.kind === 'friend') {
       try {
-        const r = await window.moho.rpc<{ bufferId: string }>('openDiscordDm', { accountId: invitation.accountId, userId: invitation.id })
+        const r = await window.moho.rpc<{ bufferId: string }>(invitation.service === 'discord' ? 'openDiscordDm' : 'openDirectMessage', {
+          accountId: invitation.accountId,
+          userId: invitation.id
+        })
         await this.refreshBuffers()
         await this.selectBuffer(r.bufferId)
         return true
@@ -2299,6 +2384,12 @@ export class ChatStore {
       return
     }
 
+    // An xmpp: link does what its query says, on the account that is signed in (the first, if there are several).
+    if (link.service === 'xmpp') {
+      void this.openXmppLink(link)
+      return
+    }
+
     // A Telegram link goes to wherever it points: the chat, joined if the account is not in it, and the post.
     if (link.service === 'telegram') {
       void this.openTelegramLink(link.url)
@@ -2503,6 +2594,53 @@ export class ChatStore {
    * priority takes the low priority off rather than leaving a room that
    * claims both.
    */
+  /**
+   * Sets how much a conversation may interrupt.
+   *
+   * Not applied here first. Where the service keeps the setting on the account
+   * the daemon writes it there and reads it back, and what it says is what the
+   * row then shows - a change the server did not take is an error toast and a
+   * row that still says what it was, rather than a menu that claims one thing
+   * while the account holds another.
+   */
+  async setNotifyLevel(bufferId: string, level: NotifyLevel): Promise<void> {
+    try {
+      await window.moho.rpc('setNotifyLevel', { bufferId, level })
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
+  }
+
+  /**
+   * Takes the mutes this window used to keep for itself into the daemon, and
+   * says which of them to keep asking about.
+   *
+   * A mute was a list in this window's preferences, written beside the
+   * account's own where there was one - which is how a room unmuted on a phone
+   * stayed muted here. Now the daemon keeps it: for a service that holds the
+   * setting on the account the old entry was only ever a copy and is dropped,
+   * and for the rest it becomes the daemon's own mute. One whose conversation
+   * is not known yet is kept for the next time, rather than losing the mute of
+   * a channel that has simply not connected.
+   */
+  async migrateMutedBuffers(legacy: string[]): Promise<string[]> {
+    const keep: string[] = []
+    for (const id of legacy) {
+      const account = id.slice(0, Math.max(0, id.indexOf('|')))
+      if (heldOnAccount(account)) continue
+      if (!this.state.buffers.some((b) => b.id === id)) {
+        keep.push(id)
+        continue
+      }
+      try {
+        await window.moho.rpc('setNotifyLevel', { bufferId: id, level: 'mute' })
+      } catch {
+        keep.push(id)
+      }
+    }
+    return keep
+  }
+
   async setRoomTag(bufferId: string, tag: 'favourite' | 'lowPriority', on: boolean): Promise<void> {
     const other = tag === 'favourite' ? 'lowPriority' : 'favourite'
     const name = tag === 'favourite' ? 'm.favourite' : 'm.lowpriority'
@@ -4456,9 +4594,13 @@ export class ChatStore {
         )
         break
 
+      // Both of these only happen once the request has been accepted, so
+      // neither can still be waiting on the Invitations tile - and neither
+      // carries the flag itself, so without clearing it here a push that
+      // beat the accept call's reply left the check hidden for good.
       case 'matrixVerificationStatus':
         this.set({
-          matrixVerification: { ...(this.state.matrixVerification || {}), ...data }
+          matrixVerification: { ...(this.state.matrixVerification || {}), ...data, incoming: false }
         })
         break
       case 'matrixVerificationEmoji':
@@ -4466,6 +4608,7 @@ export class ChatStore {
           matrixVerification: {
             ...(this.state.matrixVerification || {}),
             ...data,
+            incoming: false,
             state: 'emoji'
           }
         })
@@ -4487,6 +4630,25 @@ export class ChatStore {
       // Stoat says who has asked an account to be their friend, whenever that changes.
       case 'stoatFriendRequests': {
         this.set({ friendRequests: { ...this.state.friendRequests, [data.accountId as string]: (data.incoming ?? []) as FriendRequest[] } })
+        break
+      }
+
+      // XMPP rooms somebody invited the account to (XEP-0249 and through the room), whenever that changes: on the same tile as
+      // a Matrix room's invitation, which has the same shape.
+      case 'xmppFileOffers': {
+        this.set({ fileOffers: { ...this.state.fileOffers, [data.accountId as string]: (data.offers ?? []) as FileOffer[] } })
+        break
+      }
+
+      case 'xmppInvites': {
+        this.set({ matrixInvites: { ...this.state.matrixInvites, [data.accountId as string]: (data.invites ?? []) as MatrixInvite[] } })
+        break
+      }
+
+      // XMPP says who has asked to see an account's presence, whenever that changes.
+      case 'xmppRequests': {
+        const requests = ((data.requests ?? []) as { jid: string; text: string; server?: string }[]).map(xmppRequest)
+        this.set({ friendRequests: { ...this.state.friendRequests, [data.accountId as string]: requests } })
         break
       }
 
@@ -4647,7 +4809,11 @@ export class ChatStore {
                 notice: data.notice,
                 syncing: data.syncing,
                 topic: data.topic,
-                serverMuted: data.serverMuted ?? false,
+                // As sent: the daemon leaves the default out, so absent has to
+                // mean "back to the default" - a room set to mentions only and
+                // then left alone elsewhere stayed ticked as mentions here.
+                notify: data.notify,
+                notifyApplied: data.notifyApplied,
                 favourite: data.favourite ?? false,
                 lowPriority: data.lowPriority ?? false,
                 readOnly: data.readOnly,
@@ -4736,6 +4902,8 @@ export class ChatStore {
       // showed nowhere on the left until its first conversation arrived.
       this.refreshGroupsSoon()
     }
+    // An account that stopped says why in its own fields (an XMPP account's stopReason): read again so the card can say it.
+    if (data.state === 'auth_failed') void this.refreshAccounts()
     if (data.error) this.toast('error', `${data.accountId}: ${data.error}`)
   }
 
@@ -5664,6 +5832,11 @@ export class ChatStore {
   accountFor(bufferId: string): Account | undefined {
     const buffer = this.state.buffers.find((b) => b.id === bufferId)
     return buffer && this.state.accounts.find((a) => a.id === buffer.accountId)
+  }
+
+  /** The opened invitation to make an account has been used (or put aside). */
+  clearXmppRegistration(): void {
+    this.set({ xmppRegistration: null })
   }
 
   setActivePanel(panel: ActivePanel, joinPanelAccountId = ''): void {

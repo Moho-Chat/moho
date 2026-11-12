@@ -9,8 +9,8 @@ const noop = (): void => {}
 
 function menu(extra: Partial<BufferMenuInput> = {}): string[] {
   const entries = bufferMenuEntries({
-    buffer, account, muted: false, pinned: false, filed: false, inCall: false, poppedOut: false, canCall: false,
-    live: false, watched: false, onTogglePin: noop, onToggleMute: noop, onHide: noop, onClose: noop, onCall: noop,
+    buffer, account, pinned: false, filed: false, inCall: false, poppedOut: false, canCall: false,
+    live: false, watched: false, onTogglePin: noop, notifyLevels: ['default', 'mute'], onSetNotify: noop, onHide: noop, onClose: noop, onCall: noop,
     onHangUp: noop, onFile: noop, onPopOut: noop, onDock: noop, ...extra
   })
   return entries.flatMap((e) => ('label' in e && e.label ? [e.label] : []))
@@ -22,8 +22,8 @@ describe('the menu of a conversation with a Steam friend', () => {
     const labels = menu({ onSteamFriend: (what) => asked.push(what) })
     expect(labels).toEqual(expect.arrayContaining(['Set nickname…', 'Remove friend', 'Block']))
     const entries = bufferMenuEntries({
-      buffer, account, muted: false, pinned: false, filed: false, inCall: false, poppedOut: false, canCall: false,
-      live: false, watched: false, onTogglePin: noop, onToggleMute: noop, onHide: noop, onClose: noop, onCall: noop,
+      buffer, account, pinned: false, filed: false, inCall: false, poppedOut: false, canCall: false,
+      live: false, watched: false, onTogglePin: noop, notifyLevels: ['default', 'mute'], onSetNotify: noop, onHide: noop, onClose: noop, onCall: noop,
       onHangUp: noop, onFile: noop, onPopOut: noop, onDock: noop, onSteamFriend: (what) => asked.push(what)
     })
     for (const label of ['Set nickname…', 'Remove friend', 'Block']) {
@@ -45,8 +45,8 @@ describe('the way to a Steam friend\'s profile', () => {
   it('is the first thing on the menu of a conversation with one', () => {
     let opened = 0
     const entries = bufferMenuEntries({
-      buffer, account, muted: false, pinned: false, filed: false, inCall: false, poppedOut: false, canCall: false,
-      live: false, watched: false, onTogglePin: noop, onToggleMute: noop, onHide: noop, onClose: noop, onCall: noop,
+      buffer, account, pinned: false, filed: false, inCall: false, poppedOut: false, canCall: false,
+      live: false, watched: false, onTogglePin: noop, notifyLevels: ['default', 'mute'], onSetNotify: noop, onHide: noop, onClose: noop, onCall: noop,
       onHangUp: noop, onFile: noop, onPopOut: noop, onDock: noop, onProfile: () => opened++
     })
     expect('label' in entries[0] && entries[0].label).toBe('Profile')

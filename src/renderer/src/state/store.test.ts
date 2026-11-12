@@ -15,12 +15,13 @@ function after(update: Record<string, unknown>, before: Record<string, unknown> 
 }
 
 describe('an update to a conversation the window already has', () => {
-  it('takes a mute off when the daemon leaves it out', () => {
-    // The daemon omits a flag that is off, so absent has to mean cleared: a
-    // room unmuted on the account stayed drawn as muted, with an Unmute that
-    // had nothing left to do.
-    expect(after({}, { serverMuted: true }).serverMuted).toBe(false)
-    expect(after({ serverMuted: true }, {}).serverMuted).toBe(true)
+  it('takes a level off when the daemon leaves it out', () => {
+    // The daemon leaves the default out, so absent has to mean cleared: a room
+    // set back to its default on the account stayed ticked as muted here, with
+    // a choice that had nothing left to do.
+    expect(after({}, { notify: 'mute' }).notify).toBeUndefined()
+    expect(after({ notify: 'mute' }, {}).notify).toBe('mute')
+    expect(after({}, { notifyApplied: 'mute' }).notifyApplied).toBeUndefined()
   })
 
   it('clears the other flags the same way, and keeps the unread count it holds', () => {
@@ -86,5 +87,38 @@ describe('a conversation whose service keeps its own unread count', () => {
     store.state = { ...store.state, activeBufferId: 'm|!r', buffers: [{ id: 'm|!r', accountId: 'm', kind: 'channel', name: '!r', lastActivityTs: 0, unread: 0, highlight: false, mentions: 0 }] }
     store.handleBufferListChange({ id: 'm|!r', accountId: 'm', kind: 'channel', name: '!r', lastActivityTs: 0, unreadSeed: 4 })
     expect(store.state.buffers[0].unread).toBe(0)
+  })
+})
+
+describe('a verification request that was accepted', () => {
+  type Held = { incoming?: boolean; state?: string; emoji?: unknown[] } | null
+  const accountId = 'matrix:@a:b'
+  const verificationId = 'flow1'
+  function asked(): { store: ChatStore; held: () => Held; push: (event: string, data: Record<string, unknown>) => void } {
+    const rpc = vi.fn().mockResolvedValue(undefined)
+    ;(globalThis as unknown as { window: unknown }).window = { moho: { rpc } }
+    const store = new ChatStore() as unknown as { state: { matrixVerification: Held }; handleEvent: (f: { event: string; data: unknown }) => void }
+    const push = (event: string, data: Record<string, unknown>): void => store.handleEvent({ event, data: { accountId, verificationId, ...data } })
+    push('matrixVerificationIncoming', { fromUser: '@a:b', fromDevice: 'D', isSelf: true })
+    return { store: store as unknown as ChatStore, held: () => store.state.matrixVerification, push }
+  }
+  const invitation = { kind: 'verification', accountId, id: verificationId, service: 'matrix' } as unknown as Parameters<ChatStore['answerInvitation']>[0]
+
+  it('stops waiting on the Invitations tile when the daemon moved on before the reply to the accept arrived', async () => {
+    // The daemon pushes "ready" as soon as it has sent the accept, and that
+    // can reach the window ahead of the reply to the call that caused it.
+    const { store, held, push } = asked()
+    const answering = store.answerInvitation(invitation, true)
+    push('matrixVerificationStatus', { state: 'ready' })
+    await answering
+    expect(held()?.incoming).toBe(false)
+  })
+
+  it('shows its emoji rather than keeping them behind the request', () => {
+    const { held, push } = asked()
+    push('matrixVerificationStatus', { state: 'ready' })
+    push('matrixVerificationEmoji', { emoji: [{ symbol: 'x', description: 'x' }] })
+    expect(held()?.incoming).toBe(false)
+    expect(held()?.emoji).toHaveLength(1)
   })
 })

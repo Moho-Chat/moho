@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton, ServiceMark } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
 import { StoatAccountTools } from './StoatAccountTools'
+import { XmppAccountTools, xmppStateWords } from './XmppAccountTools'
+import { XmppDataForm, type XmppForm } from './XmppDataForm'
 import { SteamAccountTools } from './SteamAccountTools'
 import { TwitchSignIn } from './TwitchSignIn'
 import { IgnoreList } from './IgnoreList'
@@ -26,7 +28,7 @@ import type { Account } from '../../../shared/wire'
  * that gains a backend appears here as soon as it gains a form, and one the
  * daemon stops offering disappears without this file being touched.
  */
-const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram', 'stoat'] as const
+const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram', 'stoat', 'xmpp'] as const
 type AddableService = (typeof FORMS)[number]
 
 /** What `listProtocols` answers with. */
@@ -141,6 +143,7 @@ export function AccountsPanel(): JSX.Element {
         {adding === 'twitch' && <TwitchForm onDone={() => setAdding(null)} />}
         {adding === 'telegram' && <TelegramForm onDone={() => setAdding(null)} />}
         {adding === 'stoat' && <StoatForm onDone={() => setAdding(null)} />}
+        {adding === 'xmpp' && <XmppForm onDone={() => setAdding(null)} />}
         {adding && (
           <button type="button" className="button subtle small" onClick={() => setAdding(null)}>
             Cancel
@@ -210,9 +213,10 @@ function HiddenAndMuted({ accountId }: { accountId: string }): JSX.Element | nul
   const [muted, setMuted] = usePref<string[]>('mutedBuffers', [])
   const [hidden, setHidden] = usePref<string[]>('hiddenBuffers', [])
 
-  const mine = buffers.filter(
-    (b) => b.accountId === accountId && (muted.includes(b.id) || hidden.includes(b.id))
-  )
+  const store = useStore()
+  // Muted by the old list in this window, or by the level the daemon keeps now.
+  const isMutedNow = (b: { id: string; notify?: string }): boolean => muted.includes(b.id) || b.notify === 'mute'
+  const mine = buffers.filter((b) => b.accountId === accountId && (isMutedNow(b) || hidden.includes(b.id)))
   if (!mine.length) return null
 
   const drop = (list: string[], id: string): string[] => list.filter((x) => x !== id)
@@ -224,7 +228,7 @@ function HiddenAndMuted({ accountId }: { accountId: string }): JSX.Element | nul
       </summary>
       {mine.map((b) => {
         const isHidden = hidden.includes(b.id)
-        const isMuted = muted.includes(b.id)
+        const isMuted = isMutedNow(b)
         return (
           <div key={b.id} className="recover-row">
             <span className="ellipsis recover-name" title={b.name}>
@@ -239,7 +243,14 @@ function HiddenAndMuted({ accountId }: { accountId: string }): JSX.Element | nul
               </button>
             )}
             {isMuted && (
-              <button type="button" className="button subtle" onClick={() => setMuted(drop(muted, b.id))}>
+              <button
+                type="button"
+                className="button subtle"
+                onClick={() => {
+                  if (muted.includes(b.id)) setMuted(drop(muted, b.id))
+                  if (b.notify === 'mute') void store.setNotifyLevel(b.id, 'default')
+                }}
+              >
                 Unmute
               </button>
             )}
@@ -354,7 +365,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
         <div className="account-card-title">
           <div className="ellipsis">{account.displayName || account.id}</div>
           <div className="small muted">
-            {serviceLabel(account.service)} · {account.state}
+            {serviceLabel(account.service)} · {account.service === 'xmpp' ? xmppStateWords(account) : account.state}
           </div>
           {detail && <div className={classes('small muted account-detail', held && 'held')} title={detail}>{detail}</div>}
           {/* Held for having logged in too often (see nobilis's identify_budget): said in full, with the way past it. */}
@@ -479,6 +490,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
 
           {account.service === 'steam' && <SteamAccountTools account={account} />}
           {account.service === 'stoat' && <StoatAccountTools account={account} />}
+          {account.service === 'xmpp' && <XmppAccountTools account={account} />}
           {account.service === 'twitch' && <TwitchAccountTools account={account} />}
 
           {account.service === 'sneedchat' && (
@@ -2166,6 +2178,202 @@ function RouteLevel({ account, onChange }: { account: Account; onChange: (level:
       </div>
       <p className="small muted route-level-desc">{describe[level]}</p>
       {level !== 'clearnet' && <TorWarning service={account.service} />}
+    </div>
+  )
+}
+
+/**
+ * Adding an XMPP account. XMPP has no operator: the account is an address on a server of its own choosing, so there is
+ * no sign-in page to open, only the address and the password. The server is found from the address by DNS; the
+ * advanced section is for a server that DNS does not describe, or one with a certificate of its own.
+ */
+function XmppForm({ onDone }: { onDone: () => void }): JSX.Element {
+  const store = useStore()
+  const [jid, setJid] = useState('')
+  const [password, setPassword] = useState('')
+  const [useTor, setUseTor] = useState(false)
+  const [advanced, setAdvanced] = useState(false)
+  const [host, setHost] = useState('')
+  const [port, setPort] = useState('')
+  const [security, setSecurity] = useState<'starttls' | 'direct' | 'websocket'>('starttls')
+  const [caPem, setCaPem] = useState('')
+  const [pin, setPin] = useState('')
+  const [resource, setResource] = useState('')
+  const [clientCert, setClientCert] = useState('')
+  const [anonymous, setAnonymous] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  // An invitation link that was opened (xmpp:server?register;preauth=…) starts the form on making that account.
+  const invitation = useChat((s) => s.xmppRegistration)
+  const [making, setMaking] = useState(!!invitation)
+  const [server, setServer] = useState(invitation?.server ?? '')
+  const [asked, setAsked] = useState<{ form: XmppForm | null; instructions: string; web: string | null } | null>(null)
+  const advancedParams = (): Record<string, unknown> => ({ jid: server.trim(), host: host.trim(), port: port.trim() ? Number(port) : 0, security, caPem: caPem.trim(), useTor, preauth: invitation && invitation.server === server.trim() ? invitation.preauth : '', inviter: invitation && invitation.server === server.trim() ? invitation.inviter ?? '' : '' })
+  const ask = (): void => {
+    setBusy(true)
+    void window.moho
+      .rpc<{ form: XmppForm | null; instructions: string; web: string | null }>('xmppRegistrationForm', advancedParams())
+      .then(setAsked)
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+  const make = (answers: Record<string, unknown>): void => {
+    setBusy(true)
+    void window.moho
+      .rpc('xmppRegister', { ...advancedParams(), answers })
+      .then(() => {
+        store.clearXmppRegistration()
+        void store.refreshAccounts()
+        onDone()
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+  // An account needs its address and a password - or a client certificate in place of the password; signing in with no account
+  // needs only the server's address.
+  const ready = anonymous ? /^[^@\s/]+\.[^@\s/]+$/.test(jid.trim()) : /^[^@\s/]+@[^@\s/]+$/.test(jid.trim()) && (password !== '' || clientCert.trim() !== '')
+  const add = (): void => {
+    setBusy(true)
+    void window.moho
+      .rpc('addXmppAccount', {
+        jid: jid.trim(),
+        password,
+        host: host.trim(),
+        port: port.trim() ? Number(port) : 0,
+        security,
+        caPem: caPem.trim(),
+        pinSha256: pin.trim(),
+        resource: resource.trim(),
+        clientCertPem: clientCert.trim(),
+        anonymous,
+        useTor
+      })
+      .then(() => {
+        setPassword('')
+        void store.refreshAccounts()
+        onDone()
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <div className="add-form">
+      <p className="small muted">
+        Sign in to an XMPP account on any server. The server is found from the address; moho connects only over TLS, checks the
+        server&apos;s certificate, and keeps the password only on this computer. Choose &ldquo;Make one&rdquo; to ask a server for an account.
+      </p>
+      <div className="field-row" hidden={making}>
+        <label className="field">
+          <span className="small muted">{anonymous ? 'Server' : 'Address'}</span>
+          <input
+            className="text-field"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={anonymous ? 'example.org' : 'you@example.org'}
+            value={jid}
+            disabled={busy}
+            onChange={(e) => setJid(e.target.value)}
+          />
+        </label>
+        <label className="field" hidden={anonymous}>
+          <span className="small muted">Password{clientCert.trim() ? ' (not needed with a certificate)' : ''}</span>
+          <input
+            className="text-field"
+            type="password"
+            autoComplete="off"
+            value={password}
+            disabled={busy}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && ready && !busy) add()
+            }}
+          />
+        </label>
+      </div>
+      <div className="segmented">
+        <button type="button" className={!making ? 'active' : undefined} onClick={() => setMaking(false)}>
+          I have an account
+        </button>
+        <button type="button" className={making ? 'active' : undefined} onClick={() => setMaking(true)}>
+          Make one
+        </button>
+      </div>
+      {making && (
+        <div className="add-form">
+          <label className="field">
+            <span className="small muted">Server to make it on</span>
+            <input className="text-field" autoComplete="off" spellCheck={false} placeholder="example.org" value={server} disabled={busy} onChange={(e) => setServer(e.target.value)} />
+          </label>
+          {invitation && invitation.server === server.trim() && invitation.preauth && <p className="small muted">With the invitation you opened: the server may let you in where it would not otherwise.</p>}
+          {!asked && (
+            <button type="button" className="button primary" disabled={busy || !server.trim()} onClick={ask}>
+              {busy ? 'Asking…' : 'See what it asks for'}
+            </button>
+          )}
+          {asked?.web && (
+            <p className="small muted">
+              This server wants its own page used: <a href={asked.web}>{asked.web}</a>
+            </p>
+          )}
+          {asked?.form && <XmppDataForm form={asked.form} submitLabel="Make the account" busy={busy} onSubmit={make} onCancel={() => setAsked(null)} />}
+          <p className="small muted">A captcha, an e-mail check or a page to visit is for the server&apos;s own page: moho does not answer captchas.</p>
+        </div>
+      )}
+      <TorSwitch service="xmpp" on={useTor} onChange={setUseTor} />
+      <button type="button" className="button subtle small" onClick={() => setAdvanced(!advanced)}>
+        {advanced ? 'Fewer settings' : 'More settings'}
+      </button>
+      {advanced && (
+        <div className="add-form-advanced">
+          <div className="field-row">
+            <label className="field">
+              <span className="small muted">{security === 'websocket' ? 'WebSocket address (wss://…, or empty to look it up)' : 'Server (leave empty to look it up)'}</span>
+              <input className="text-field" autoComplete="off" spellCheck={false} placeholder="xmpp.example.org" value={host} disabled={busy} onChange={(e) => setHost(e.target.value)} />
+            </label>
+            <label className="field">
+              <span className="small muted">Port</span>
+              <input className="text-field" inputMode="numeric" placeholder={security === 'direct' ? '5223' : '5222'} value={port} disabled={busy} onChange={(e) => setPort(e.target.value.replace(/\D/g, ''))} />
+            </label>
+          </div>
+          <div className="segmented">
+            <button type="button" className={security === 'starttls' ? 'active' : undefined} disabled={busy} onClick={() => setSecurity('starttls')}>
+              STARTTLS
+            </button>
+            <button type="button" className={security === 'direct' ? 'active' : undefined} disabled={busy} onClick={() => setSecurity('direct')}>
+              Direct TLS
+            </button>
+            <button type="button" className={security === 'websocket' ? 'active' : undefined} disabled={busy} onClick={() => setSecurity('websocket')} title="For a server that offers only the web: give its wss:// address as the server, or leave it empty to look it up">
+              WebSocket
+            </button>
+          </div>
+          <label className="field">
+            <span className="small muted">Certificate authority to trust, besides the system&apos;s (PEM) — for a server with a private one</span>
+            <textarea className="text-field" rows={4} spellCheck={false} placeholder="-----BEGIN CERTIFICATE-----" value={caPem} disabled={busy} onChange={(e) => setCaPem(e.target.value)} />
+          </label>
+          <label className="field">
+            <span className="small muted">Or one certificate to trust whatever signed it (its SHA-256 fingerprint) — a self-signed server whose fingerprint you were given</span>
+            <input className="text-field mono" autoComplete="off" spellCheck={false} placeholder="ab:cd:… (64 hex digits)" value={pin} disabled={busy} onChange={(e) => setPin(e.target.value)} />
+          </label>
+          <label className="field">
+            <span className="small muted">Resource (this device&apos;s name to the server; empty for one made up, and a server that offers Bind 2 chooses it)</span>
+            <input className="text-field mono" autoComplete="off" spellCheck={false} placeholder="moho.…" value={resource} disabled={busy} onChange={(e) => setResource(e.target.value)} />
+          </label>
+          <label className="field">
+            <span className="small muted">Client certificate and its key (PEM) — for a server that signs you in by certificate (SASL EXTERNAL)</span>
+            <textarea className="text-field" rows={3} spellCheck={false} placeholder="-----BEGIN CERTIFICATE----- … -----BEGIN PRIVATE KEY-----" value={clientCert} disabled={busy} onChange={(e) => setClientCert(e.target.value)} />
+          </label>
+          <label className="check-row">
+            <input type="checkbox" checked={anonymous} disabled={busy} onChange={(e) => setAnonymous(e.target.checked)} />
+            <span>No account: sign in anonymously, where the server lets anybody in — it gives a new address each time</span>
+          </label>
+        </div>
+      )}
+      <div className="field-row" hidden={making}>
+        <button type="button" className="button primary" disabled={busy || !ready} onClick={add}>
+          {busy ? 'Adding…' : 'Add account'}
+        </button>
+      </div>
     </div>
   )
 }

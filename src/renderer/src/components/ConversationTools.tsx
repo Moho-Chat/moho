@@ -615,6 +615,9 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   // to a name half written.
   const filterMenu = suggestions(query)
   const isMatrix = buffer.accountId.startsWith('matrix:')
+  // XMPP calls are between two people and use the window's Matrix call engine, which is the window's call vocabulary.
+  // XMPP calls: two people, or a group call joined from a room (XEP-0272, held as a mesh the way Matrix's are).
+  const isXmppCalls = buffer.accountId.startsWith('xmpp:') && (buffer.kind === 'dm' || buffer.kind === 'channel')
   const isTelegram = buffer.accountId.startsWith('telegram:')
   const isStoat = buffer.accountId.startsWith('stoat:')
   const isSteam = buffer.accountId.startsWith('steam:')
@@ -625,6 +628,10 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   const watching = useChat((s) => s.watching?.bufferId === buffer.id)
   const matrixCall = useChat((s) => s.activeCall)
   const isDm = buffer.kind === 'dm'
+  // An account that goes through Tor (or the proxy) takes no calls: a call's audio and video cannot go through Tor, so they would
+  // go around it and show the real address. The daemon refuses them as well; here the buttons say so before anybody presses them.
+  const routed = useChat((s) => s.accounts.find((a) => a.id === buffer.accountId)?.useTor ?? false)
+  const callsOff = routed ? 'Calls are off for this account because it goes through Tor: a call would go around Tor and show your real IP address' : null
   // This conversation's call, not merely a call on the same account: one
   // account can only be in one, but the button has to be right about which.
   const inCall = sessions.some((s) => s.bufferId === buffer.id)
@@ -919,7 +926,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           two buttons because a video call is a different thing to start, and
           on a service where either is normal the choice belongs on the
           header rather than inside the call. */}
-      {isMatrix && buffer.kind !== 'server' && !matrixCall && (
+      {(isMatrix || isXmppCalls) && buffer.kind !== 'server' && !matrixCall && (
         <>
           {/* A room's call is between everybody in it and a direct message's
               is between two people, which are different things to start: one
@@ -927,7 +934,8 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
               and the DM the second, because that is what each one is. */}
           <IconButton
             name="call"
-            title={buffer.kind === 'channel' ? 'Start a call in this room' : 'Voice call'}
+            title={callsOff ?? (buffer.kind === 'channel' ? 'Start a call in this room' : 'Voice call')}
+            disabled={!!callsOff}
             onClick={() =>
               buffer.kind === 'channel'
                 ? void store.joinMatrixGroupCall(buffer.id, false)
@@ -936,7 +944,8 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           />
           <IconButton
             name="videocam"
-            title={buffer.kind === 'channel' ? 'Start a video call in this room' : 'Video call'}
+            title={callsOff ?? (buffer.kind === 'channel' ? 'Start a video call in this room' : 'Video call')}
+            disabled={!!callsOff}
             onClick={() =>
               buffer.kind === 'channel'
                 ? void store.joinMatrixGroupCall(buffer.id, true)
@@ -945,7 +954,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           />
         </>
       )}
-      {isMatrix && matrixCall?.bufferId === buffer.id && (
+      {(isMatrix || isXmppCalls) && matrixCall?.bufferId === buffer.id && (
         <IconButton
           name="call_end"
           title="Hang up"
@@ -958,8 +967,8 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           voice room is joined, with the camera as a second choice. */}
       {buffer.accountId.startsWith('stoat:') && (buffer.kind === 'dm' || buffer.category === 'Groups' || buffer.nameIcon === 'volume_up') && matrixCall?.bufferId !== buffer.id && !matrixCall && (
         <>
-          <IconButton name="call" title="Join the call" onClick={() => void store.joinStoatCall(buffer.id, false)} />
-          <IconButton name="videocam" title="Join the call with video" onClick={() => void store.joinStoatCall(buffer.id, true)} />
+          <IconButton name="call" title={callsOff ?? 'Join the call'} disabled={!!callsOff} onClick={() => void store.joinStoatCall(buffer.id, false)} />
+          <IconButton name="videocam" title={callsOff ?? 'Join the call with video'} disabled={!!callsOff} onClick={() => void store.joinStoatCall(buffer.id, true)} />
         </>
       )}
       {buffer.accountId.startsWith('stoat:') && matrixCall?.bufferId === buffer.id && (
@@ -969,9 +978,9 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
       {(isDiscord || isSteam) && isDm && (
         <IconButton
           name={inCall ? 'call_end' : 'call'}
-          title={inCall ? 'Hang up' : `Call ${buffer.name}`}
+          title={inCall ? 'Hang up' : (callsOff ?? `Call ${buffer.name}`)}
           className={inCall ? 'calling' : undefined}
-          disabled={calling}
+          disabled={calling || (!inCall && !!callsOff)}
           onClick={call}
         />
       )}

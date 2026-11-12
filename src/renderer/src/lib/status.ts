@@ -21,7 +21,7 @@ export function supportsStatus(service: string, status: Choosable): boolean {
     case 'dnd':
       return true
     case 'idle':
-      return service === 'discord' || service === 'irc' || service === 'steam' || service === 'stoat'
+      return service === 'discord' || service === 'irc' || service === 'steam' || service === 'stoat' || service === 'xmpp'
     // Stoat's own: only mentions reach you.
     case 'focus':
       return service === 'stoat'

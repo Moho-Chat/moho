@@ -4,6 +4,7 @@ import { bufferLink } from '../lib/bufferlink'
 import { Icon, IconButton, ServiceMark } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { bufferMenuEntries } from '../lib/buffermenu'
+import { notifyLevelsFor, type NotifyLevel } from '../lib/notifylevels'
 import { UserFooter } from './UserFooter'
 import { VoiceChannels } from './VoiceChannels'
 import { StoatVoiceWho } from './StoatVoiceWho'
@@ -90,7 +91,7 @@ export function BufferList(): JSX.Element {
   const activeInvitationKey = useChat((s) => s.activeInvitationKey)
 
   const [pinned, togglePin, isPinned] = useIdSetPref('pinnedBuffers')
-  const [muted, toggleMute] = useIdSetPref('mutedBuffers')
+  const [muted] = useIdSetPref('mutedBuffers')
   const [hidden, , isHidden] = useIdSetPref('hiddenBuffers')
   const [mutedGroups] = usePref<string[]>('mutedGroups', [])
   // Headings a person made, per rail entry, and which channel goes under
@@ -338,14 +339,6 @@ export function BufferList(): JSX.Element {
     return list.filter((s) => s.custom || s.buffers.length > 0)
   }, [activeGroup, isPinnedPage, isDmPage, steamPage, telegramPage, groupBuffers, myCategories, viewAssignment, categoryOrder])
 
-  // The menu still toggles a buffer's *own* flag independently of a muted
-  // rail entry above it, the same way muting a channel inside an
-  // already-muted Slack workspace works.
-  /** The call that sets a mute on the account itself, for a service that keeps one. */
-  const accountMute = (accountId: string): string | null => {
-    const service = accounts.find((a) => a.id === accountId)?.service
-    return service === 'matrix' ? 'setMatrixRoomMuted' : service === 'discord' ? 'setDiscordChannelMuted' : service === 'steam' ? 'steamSetFriendMuted' : service === 'telegram' ? 'setTelegramChatMuted' : service === 'stoat' ? 'setStoatChannelMuted' : null
-  }
   const isEffectivelyMuted = (buffer: BufferEntry): boolean =>
     isMutedBuffer(buffer, muted, mutedGroups)
 
@@ -398,25 +391,12 @@ export function BufferList(): JSX.Element {
       // this window only - so the row is there to be seen rather than opened.
       onSelect={() => !isJoining(b) && void store.selectBuffer(b.id, false)}
       onTogglePin={() => togglePin(b.id)}
-      onToggleMute={() => {
-        toggleMute(b.id)
-        // On Matrix and Discord the account itself can hold the answer, so
-        // muting here mutes on a phone too. Everywhere else this stays what
-        // it always was: a preference belonging to this window.
-        const writeBack = accountMute(b.accountId)
-        if (writeBack)
-          void window.moho
-            .rpc(writeBack, { bufferId: b.id, muted: !isEffectivelyMuted(b) })
-            .catch((e: Error) => store.toast('error', e.message))
-      }}
-      onUnmuteAccount={
-        accountMute(b.accountId)
-          ? () =>
-              void window.moho
-                .rpc(accountMute(b.accountId)!, { bufferId: b.id, muted: false })
-                .catch((e: Error) => store.toast('error', e.message))
-          : undefined
-      }
+      // How much it may interrupt. Written where the service keeps it - the
+      // account for Matrix, Discord, Stoat, Steam and Telegram, the daemon for
+      // the rest - and read back from there, so a change made on a phone shows
+      // here and the row never claims what the account does not hold.
+      notifyLevels={notifyLevelsFor(accounts.find((a) => a.id === b.accountId)?.service, b)}
+      onSetNotify={(level) => void store.setNotifyLevel(b.id, level)}
       onToggleAutojoin={
         b.kind === 'channel' && accounts.find((a) => a.id === b.accountId)?.service === 'irc'
           ? () => store.toggleAutojoin(b.accountId, bufferDisplayName(b.name))
@@ -1009,9 +989,9 @@ interface BufferRowProps {
   showServiceIcon?: boolean
   onSelect: () => void
   onTogglePin: () => void
-  onToggleMute: () => void
-  /** Matrix rooms muted on the account: take that mute off. */
-  onUnmuteAccount?: () => void
+  /** Which notification levels it can be set to, and how to set one. */
+  notifyLevels: NotifyLevel[]
+  onSetNotify: (level: NotifyLevel) => void
   /** IRC channels only: rejoin this on every connect, or stop doing so. */
   onToggleAutojoin?: () => void
   /** Kick channels only: watch the stream where streams are watched. */
@@ -1060,8 +1040,8 @@ function BufferRow({
   showServiceIcon,
   onSelect,
   onTogglePin,
-  onToggleMute,
-  onUnmuteAccount,
+  notifyLevels,
+  onSetNotify,
   onToggleAutojoin,
   autojoins,
   onOpenInBrowser,
@@ -1162,7 +1142,6 @@ function BufferRow({
   const entries = bufferMenuEntries({
     buffer,
     account,
-    muted,
     pinned,
     filed,
     inCall,
@@ -1173,8 +1152,8 @@ function BufferRow({
     autojoins,
     spaces,
     onTogglePin,
-    onToggleMute,
-    onUnmuteAccount,
+    notifyLevels,
+    onSetNotify,
     onToggleAutojoin,
     onSpace,
     onWatch,
@@ -1261,6 +1240,9 @@ function BufferRow({
           ))}
         {poppedOut && <Icon name="open_in_new" size={13} className="buffer-muted-icon" />}
         {muted && <Icon name="notifications_off" size={13} className="buffer-muted-icon" />}
+        {/* Told only of what names you: not silent, so not drawn muted, but
+            not an ordinary row either. */}
+        {!muted && buffer.notify === 'mentions' && <Icon name="alternate_email" size={13} className="buffer-muted-icon" />}
         {/* One badge, and being on air wins it: a live channel says LIVE,
             an off-air one says how much was said while you were away. The
             two flickering against each other in the same slot as messages

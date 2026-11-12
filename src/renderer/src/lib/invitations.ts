@@ -25,7 +25,7 @@ export interface Invitation {
   direct: boolean
 }
 
-export type InvitationKind = 'room' | 'friend' | 'verification'
+export type InvitationKind = 'room' | 'friend' | 'verification' | 'file'
 
 export function invitationKey(accountId: string, kind: InvitationKind, id: string): string {
   return `${kind}|${accountId}|${id}`
@@ -41,6 +41,23 @@ export interface InvitationSources {
   discordFriends: Record<string, DiscordFriend[]>
   /** A Matrix verification, if somebody has asked and it is not answered. */
   verification: MatrixVerification | null
+  /** Files somebody offers to send straight from their device (XMPP's Jingle file transfer), by account. */
+  files?: Record<string, FileOffer[]>
+}
+
+/** A file offered device to device, waiting for a yes or a no. */
+export interface FileOffer {
+  sid: string
+  from: string
+  name: string
+  size: number
+  mediaType?: string
+}
+
+function bytes(n: number): string {
+  if (n < 1024) return `${n} bytes`
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
 
 /**
@@ -64,8 +81,8 @@ export function listInvitations(sources: InvitationSources, accounts: Account[])
         direct: invite.isDirect
       })
     }
-    const people: { id: string; name: string; avatarUrl: string | null }[] = [
-      ...(sources.friends[account.id] ?? []).map((r) => ({ id: r.id, name: r.name || r.id, avatarUrl: r.avatarUrl ?? null })),
+    const people: { id: string; name: string; avatarUrl: string | null; detail?: string }[] = [
+      ...(sources.friends[account.id] ?? []).map((r) => ({ id: r.id, name: r.name || r.id, avatarUrl: r.avatarUrl ?? null, detail: r.detail })),
       ...(sources.discordFriends[account.id] ?? [])
         .filter((f) => f.kind === 'incoming')
         .map((f) => ({ id: f.userId, name: f.globalName || f.username, avatarUrl: f.avatarUrl ?? null }))
@@ -77,7 +94,20 @@ export function listInvitations(sources: InvitationSources, accounts: Account[])
         service: account.service,
         kind: 'friend',
         ...person,
-        detail: 'wants to be your friend',
+        detail: person.detail || 'wants to be your friend',
+        direct: true
+      })
+    }
+    for (const f of sources.files?.[account.id] ?? []) {
+      out.push({
+        key: invitationKey(account.id, 'file', f.sid),
+        accountId: account.id,
+        service: account.service,
+        kind: 'file',
+        id: f.sid,
+        name: f.from,
+        avatarUrl: null,
+        detail: `wants to send you ${f.name} (${bytes(f.size)}), straight from their device`,
         direct: true
       })
     }

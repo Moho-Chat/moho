@@ -382,6 +382,7 @@ export class Call {
     this.setPhase('connecting')
     callLog(this.id, 'offer-received', { answeringWithVideo: video, ...describeSdp(offerSdp) })
     await this.pc.setRemoteDescription({ type: 'offer', sdp: offerSdp })
+    await this.takeEarly()
     await this.openLocal(video)
     const answer = await this.pc.createAnswer()
     await this.pc.setLocalDescription(answer)
@@ -399,11 +400,18 @@ export class Call {
     this.setPhase('connecting')
     callLog(this.id, 'answer-received', describeSdp(answerSdp))
     await this.pc.setRemoteDescription({ type: 'answer', sdp: answerSdp })
+    await this.takeEarly()
     this.flushCandidates()
   }
 
   /** Network paths from the other end. */
   async addCandidates(candidates: RTCIceCandidateInit[]): Promise<void> {
+    // Held until there is a description to attach them to: the other end's candidates can arrive in the same breath as its
+    // answer, before this end has finished taking it, and a candidate offered too early is refused and lost for good.
+    if (!this.pc.remoteDescription) {
+      this.early.push(...candidates)
+      return
+    }
     for (const candidate of candidates) {
       // A candidate for a call whose description has not arrived yet is not
       // an error worth showing anybody - it is a race the specification
@@ -414,6 +422,15 @@ export class Call {
         /* not usable yet, or already known */
       }
     }
+  }
+
+  /** The other end's candidates that arrived before its description did. */
+  private early: RTCIceCandidateInit[] = []
+
+  private async takeEarly(): Promise<void> {
+    const held = this.early
+    this.early = []
+    if (held.length > 0) await this.addCandidates(held)
   }
 
   private flushCandidates(): void {
