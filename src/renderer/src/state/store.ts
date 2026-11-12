@@ -32,7 +32,7 @@ import { heldOnAccount, type NotifyLevel } from '../lib/notifylevels'
 import { runExport } from '../lib/exporter'
 import type { ForumPost } from '../lib/forum'
 import { DM_GROUP_ID, INVITATIONS_GROUP_ID, isDirectMessage } from '../lib/groups'
-import { listInvitations, type Invitation } from '../lib/invitations'
+import { listInvitations, type Invitation, type FileOffer } from '../lib/invitations'
 import { ircNetworkFor } from '../lib/networks'
 import { parseDeepLink, type DeepLink, type IrcLink } from '../../../shared/deeplink'
 import { MatrixCalls, type CallMember, type MatrixCallEvent, type RingingCall } from '../lib/matrixcall'
@@ -545,6 +545,8 @@ export interface ChatState {
   /** Set in a popped-out window, naming the one conversation it may show. */
   pinnedBufferId: string
   activePanel: ActivePanel
+  /** Files offered device to device (XMPP, XEP-0234), by account, waiting on the Invitations tile. */
+  fileOffers: Record<string, FileOffer[]>
   /** An `xmpp:…?register` invitation that was opened: the Accounts form makes the account with it (XEP-0401). */
   xmppRegistration: { server: string; preauth: string; inviter?: string } | null
   /**
@@ -827,6 +829,7 @@ const INITIAL: ChatState = {
   pinnedBufferId: '',
   activePanel: '',
   xmppRegistration: null,
+  fileOffers: {},
   peek: null,
   joinPanelAccountId: '',
   messagesByBuffer: {},
@@ -1615,6 +1618,10 @@ export class ChatStore {
       try {
         const r = await window.moho.rpc<{ requests: { jid: string; text: string; server?: string }[] }>('xmppRequests', { accountId: account.id })
         next[account.id] = r.requests.map(xmppRequest)
+        const rooms = await window.moho.rpc<MatrixInvite[]>('xmppInvites', { accountId: account.id })
+        this.set({ matrixInvites: { ...this.state.matrixInvites, [account.id]: rooms } })
+        const files = await window.moho.rpc<FileOffer[]>('xmppFileOffers', { accountId: account.id })
+        this.set({ fileOffers: { ...this.state.fileOffers, [account.id]: files } })
       } catch {
         // Not connected yet: the daemon's own push fills it in.
       }
@@ -1672,7 +1679,7 @@ export class ChatStore {
   pendingInvitations(): Invitation[] {
     const s = this.state
     return listInvitations(
-      { rooms: s.matrixInvites, friends: s.friendRequests, discordFriends: s.discordFriends, verification: s.matrixVerification },
+      { rooms: s.matrixInvites, friends: s.friendRequests, discordFriends: s.discordFriends, verification: s.matrixVerification, files: s.fileOffers },
       s.accounts
     )
   }
@@ -1693,7 +1700,9 @@ export class ChatStore {
     const { accountId, id } = invitation
     let steamGroupJoined = ''
     try {
-      if (invitation.kind === 'verification') {
+      if (invitation.kind === 'file') {
+        await window.moho.rpc('xmppAnswerFile', { accountId, sid: id, accept })
+      } else if (invitation.kind === 'verification') {
         await window.moho.rpc(accept ? 'respondMatrixVerification' : 'cancelMatrixVerification', {
           accountId,
           verificationId: id,
@@ -1709,6 +1718,8 @@ export class ChatStore {
         } else {
           await window.moho.rpc('steamAnswerFriendRequest', { accountId, steamid: id, accept })
         }
+      } else if (invitation.service === 'xmpp') {
+        await window.moho.rpc('xmppAnswerInvite', { accountId, roomId: id, accept })
       } else if (invitation.service === 'steam') {
         const r = await window.moho.rpc<{ groupId?: string }>('steamChatGroupAction', { accountId, groupId: id, action: accept ? 'acceptInvite' : 'dismissInvite' })
         if (accept && r.groupId) steamGroupJoined = r.groupId
@@ -1737,6 +1748,10 @@ export class ChatStore {
     const { accountId, id } = invitation
     const v = this.state.matrixVerification
     return {
+      fileOffers: {
+        ...this.state.fileOffers,
+        [accountId]: (this.state.fileOffers[accountId] ?? []).filter((f) => !(invitation.kind === 'file' && f.sid === id))
+      },
       matrixInvites: {
         ...this.state.matrixInvites,
         [accountId]: (this.state.matrixInvites[accountId] ?? []).filter((i) => !(invitation.kind === 'room' && i.roomId === id))
@@ -4615,6 +4630,18 @@ export class ChatStore {
       // Stoat says who has asked an account to be their friend, whenever that changes.
       case 'stoatFriendRequests': {
         this.set({ friendRequests: { ...this.state.friendRequests, [data.accountId as string]: (data.incoming ?? []) as FriendRequest[] } })
+        break
+      }
+
+      // XMPP rooms somebody invited the account to (XEP-0249 and through the room), whenever that changes: on the same tile as
+      // a Matrix room's invitation, which has the same shape.
+      case 'xmppFileOffers': {
+        this.set({ fileOffers: { ...this.state.fileOffers, [data.accountId as string]: (data.offers ?? []) as FileOffer[] } })
+        break
+      }
+
+      case 'xmppInvites': {
+        this.set({ matrixInvites: { ...this.state.matrixInvites, [data.accountId as string]: (data.invites ?? []) as MatrixInvite[] } })
         break
       }
 
