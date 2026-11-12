@@ -36,6 +36,15 @@ export function XmppOmemoDialog({ bufferId, accountId, jid, name, encrypted, onC
       .then(load)
       .catch((e: Error) => store.toast('error', e.message))
   }
+  const reset = (): void => {
+    void window.moho
+      .rpc<{ devices: number }>('xmppOmemoReset', { accountId, jid })
+      .then((r) => {
+        store.toast('info', `New sessions with ${r.devices} device${r.devices === 1 ? '' : 's'} of ${jid}`)
+        load()
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+  }
   const toggle = (): void => {
     void window.moho
       .rpc('xmppSetEncryption', { bufferId, on: !encrypted })
@@ -81,6 +90,15 @@ export function XmppOmemoDialog({ bufferId, accountId, jid, name, encrypted, onC
                 ))}
               {info.devices.filter((d) => !d.own).length === 0 && <li className="small muted">No other devices are known.</li>}
             </ul>
+            <p className="small muted">
+              If messages from {jid} cannot be read, or yours cannot be read by them, the sessions may be broken: start new ones (their devices are
+              sent new keys; nothing is said).
+            </p>
+            <div className="field-row">
+              <button type="button" className="button small" onClick={reset}>
+                Start new sessions
+              </button>
+            </div>
           </>
         )}
       </div>

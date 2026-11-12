@@ -16,6 +16,8 @@ Prints {"ok": bool, "received": [decrypted bodies], "raw": "<all XML received>",
 """
 import asyncio, json, os, ssl, sys, urllib.request
 import slixmpp
+from slixmpp.xmlstream.handler import CoroutineCallback
+from slixmpp.xmlstream.matcher import MatchXPath
 from slixmpp.plugins import register_plugin
 from slixmpp_omemo import TrustLevel, XEP_0384
 from omemo.storage import Just, Maybe, Nothing, Storage
@@ -107,6 +109,12 @@ class Peer(slixmpp.ClientXMPP):
         self.register_plugin("xep_0384")
         self.add_event_handler("session_start", self.started)
         self.add_event_handler("message", self.on_message)
+        # slixmpp raises "message" only for a message with a body; an empty OMEMO message (key transport) has none.
+        self.register_handler(CoroutineCallback(
+            "OMEMO without a body",
+            MatchXPath("{jabber:client}message/{%s}encrypted" % twomemo.twomemo.NAMESPACE),
+            self.on_bodyless,
+        ))
 
     def data_received(self, data):
         self.raw.append(data.decode("utf-8", "replace") if isinstance(data, bytes) else str(data))
@@ -153,6 +161,10 @@ class Peer(slixmpp.ClientXMPP):
             self.received.append("UNREADABLE:" + repr(e))
 
     nick_in_room = "peer"
+
+    async def on_bodyless(self, msg):
+        if not msg["body"]:
+            await self.on_message(msg)
 
     async def read_v2(self, msg):
         """OMEMO 2, read the way the specification says: the session manager decrypts, the SCE envelope is opened here."""

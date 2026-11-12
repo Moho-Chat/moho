@@ -80,7 +80,18 @@ try {
   t.check('its first message (a key exchange) is read here', !!(await t.until(async () => t.seen('message', (d) => d.body === 'hello from a new device'), 25000)), JSON.stringify(t.events.filter((e) => e.event === 'message').map((e) => e.data.body)))
   await t.rpc('sendMessage', { bufferId: b.id, body: 'welcome, new device' })
   const welcomed = await fresh
-  t.check('and moho answers it on the session it started', welcomed.received.includes('OMEMO2:welcome, new device'), said(welcomed))
+  t.check('moho completes the session it accepted with an empty message', welcomed.received.includes('EMPTY2'), said(welcomed))
+  t.check('and answers it on that session', welcomed.received.includes('OMEMO2:welcome, new device'), said(welcomed))
+
+  console.log('starting new sessions by hand')
+  const listening = omemoPeer('a', [{ expect: 'EMPTY2', timeout: 30 }, { expect: 'after the new sessions', timeout: 30 }])
+  await sleep(5000)
+  const reset = await t.rpc('xmppOmemoReset', { accountId: myId, jid: you.jid })
+  t.check('the person\'s devices are sent new keys', reset.devices >= 2, JSON.stringify(reset))
+  await sleep(1500)
+  await t.rpc('sendMessage', { bufferId: b.id, body: 'after the new sessions' })
+  const renewed = await listening
+  t.check('the other implementation takes the new session and reads what follows on it', renewed.received.includes('OMEMO2:after the new sessions'), said(renewed))
 
   console.log('an envelope that lies about who it is from')
   t.events.length = 0
