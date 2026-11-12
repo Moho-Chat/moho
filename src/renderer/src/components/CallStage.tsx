@@ -314,6 +314,7 @@ export function CallAudio(): JSX.Element | null {
 export function RoomCallBar({ bufferId }: { bufferId: string }): JSX.Element | null {
   const store = useStore()
   const members = useChat((s) => s.callMembers[bufferId]) ?? []
+  const routed = useChat((s) => s.accounts.find((a) => a.id === s.buffers.find((b) => b.id === bufferId)?.accountId)?.useTor ?? false)
   const activeCall = useChat((s) => s.activeCall)
   const buffers = useChat((s) => s.buffers)
 
@@ -345,12 +346,18 @@ export function RoomCallBar({ bufferId }: { bufferId: string }): JSX.Element | n
         {who}
         {onServer ? ' · on a media server' : ''}
       </span>
-      <button type="button" className="button" onClick={() => void store.joinMatrixGroupCall(bufferId, false)}>
-        Join
-      </button>
-      <button type="button" className="button" onClick={() => void store.joinMatrixGroupCall(bufferId, true)}>
-        Join with video
-      </button>
+      {routed ? (
+        <span className="small muted">Calls are off for this account because it goes through Tor: a call would go around Tor and show your real IP address</span>
+      ) : (
+        <>
+          <button type="button" className="button" onClick={() => void store.joinMatrixGroupCall(bufferId, false)}>
+            Join
+          </button>
+          <button type="button" className="button" onClick={() => void store.joinMatrixGroupCall(bufferId, true)}>
+            Join with video
+          </button>
+        </>
+      )}
     </div>
   )
 }

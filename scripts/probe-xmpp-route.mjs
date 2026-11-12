@@ -73,6 +73,21 @@ try {
   t.check('signs in', !!(await t.until(async () => (await t.state(bare)) === 'connected', 20000)), await t.state(bare))
   t.check('the proxy was given the domain as a name: nothing was looked up here, SRV included', proxy.asked.some((a) => a.host === DOMAIN && a.byName && a.port === 5222), JSON.stringify(proxy.asked))
 
+  console.log('calls on an account that goes through the proxy')
+  await t.rpc('xmppAddContact', { accountId: t.accountId(named), jid: bare.jid, name: 'Bea' })
+  const conv = await t.until(async () => (await t.rpc('listBuffers')).find((b) => b.accountId === t.accountId(named) && b.remoteId === bare.jid) ?? null)
+  const placed = await t.rpc('sendMatrixCallEvent', { bufferId: conv.id, type: 'm.call.invite', content: { call_id: `routed-${t.stamp}`, offer: { type: 'offer', sdp: 'v=0' }, lifetime: 60000 } }).then(() => 'placed', (e) => e.message)
+  t.check('placing a call is refused, saying why (its media would go around Tor)', /Calls are off for this account because it goes through Tor/.test(placed), placed)
+  const sid = `in-routed-${t.stamp}`
+  const rung = await t.peer(bare, [
+    { raw: `<message xmlns='jabber:client' to='${named.jid}' type='chat' id='p-${sid}'><propose xmlns='urn:xmpp:jingle-message:0' id='${sid}'><description xmlns='urn:xmpp:jingle:apps:rtp:1' media='audio'/></propose></message>` },
+    { wait_for: '<reject', timeout: 10 }
+  ])
+  t.check('a call that comes in is declined to the caller', new RegExp(`<reject[^>]*${sid}`).test(rung.received), rung.failed)
+  t.check('nothing rings here', !t.events.some((e) => e.event === 'matrixCall' && e.data?.callId === sid))
+  const said = await t.until(async () => (await t.rpc('getBacklog', { bufferId: conv.id, limit: 20 })).find((m) => /called, and the call was declined/.test(m.body)) ?? null, 8000)
+  t.check('and the conversation says why', !!said && /goes through Tor/.test(said.body), JSON.stringify(said))
+
   console.log('the proxy goes away')
   const before = proxy.asked.length
   proxy.close()
