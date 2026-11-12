@@ -20,7 +20,7 @@ const myId = t.accountId(me)
 const state = path.join(t.scratch, 'omemo-peer.json')
 const omemoPeer = async (steps) => {
   const { stdout } = await run('/1tb/xmpp-test/venv/bin/python', [path.join(root, 'scripts/lib/xmpp-omemo-peer.py'), you.name, JSON.stringify(steps)], {
-    env: { ...process.env, XMPP_TEST_ACCOUNTS: path.join(t.scratch, 'accounts.txt'), XMPP_OMEMO_STATE: state, XMPP_TEST_PORT: String(PORT) },
+    env: { ...process.env, XMPP_TEST_ACCOUNTS: path.join(t.scratch, 'accounts.txt'), XMPP_OMEMO_STATE: state, XMPP_TEST_PORT: String(PORT), XMPP_OMEMO_VERSIONS: 'old' },
     maxBuffer: 1 << 24
   })
   return JSON.parse(stdout.split('\n').filter((l) => l.startsWith('{')).at(-1))

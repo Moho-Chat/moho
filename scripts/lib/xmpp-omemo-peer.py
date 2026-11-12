@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """A second OMEMO client for the probes: slixmpp with the OMEMO plugin (python-omemo, written by other people), signed in as
-one of the test accounts, with every new device blindly trusted. It talks the older namespace, which is the one moho speaks.
+one of the test accounts, with every new device blindly trusted. It publishes both namespaces, OMEMO 2 and the older one (with
+XMPP_OMEMO_VERSIONS=old, only the older). The plugin stops short of reading OMEMO 2 (it has no Stanza Content Encryption), so the
+envelope is opened here; what was read in OMEMO 2 is recorded twice, as the body and as "OMEMO2:<body>".
 
     xmpp-omemo-peer.py <name> '<json steps>'
 
 Steps:
-    {"send": "text", "to": "jid"}                  encrypt and send a chat message
+    {"send": "text", "to": "jid"}                  encrypt and send a chat message (the plugin's way: the older namespace)
+    {"send2": "text", "to": "jid", "says_from": "jid"}   the same in OMEMO 2, the envelope saying it is from says_from (default: us)
     {"expect": "text", "timeout": 15}              wait until a decrypted message with this body arrives
     {"sleep": 1.5}
     {"send_to_devices": "text", "to": "jid"}      same as send (kept for clarity)
@@ -17,6 +20,22 @@ from slixmpp.plugins import register_plugin
 from slixmpp_omemo import TrustLevel, XEP_0384
 from omemo.storage import Just, Maybe, Nothing, Storage
 from omemo.types import JSONType
+import xml.etree.ElementTree as ET
+import secrets
+import omemo
+import oldmemo
+import twomemo
+
+SCE = "urn:xmpp:sce:1"
+
+OLD_ONLY = os.environ.get("XMPP_OMEMO_VERSIONS") == "old"
+if OLD_ONLY:
+    _create = omemo.SessionManager.create.__func__
+
+    async def _old_only(cls, backends, *a, **kw):
+        return await _create(cls, [b for b in backends if b.namespace == oldmemo.oldmemo.NAMESPACE], *a, **kw)
+
+    omemo.SessionManager.create = classmethod(_old_only)
 
 ACCOUNTS = os.environ.get("XMPP_TEST_ACCOUNTS", "/1tb/xmpp-test/accounts.txt")
 CA = os.environ.get("XMPP_TEST_CA", "/1tb/xmpp-test/pki/ca.pem")
@@ -114,6 +133,19 @@ class Peer(slixmpp.ClientXMPP):
             if msg["body"]:
                 self.received.append("PLAIN:" + msg["body"])
             return
+        newer = msg.xml.find("{%s}encrypted" % twomemo.twomemo.NAMESPACE)
+        if newer is not None and OLD_ONLY:
+            # A client of the older namespace does not look at OMEMO 2 at all (the plugin would, and fail).
+            msg.xml.remove(newer)
+            if msg.xml.find("{%s}encrypted" % oldmemo.oldmemo.NAMESPACE) is None:
+                self.received.append("NOTHING-IN-THE-OLDER-NAMESPACE")
+                return
+        elif newer is not None:
+            try:
+                await self.read_v2(msg)
+            except Exception as e:  # noqa: BLE001
+                self.received.append("UNREADABLE:" + repr(e))
+            return
         try:
             decrypted, _ = await plugin.decrypt_message(msg)
             self.received.append(decrypted["body"])
@@ -121,6 +153,53 @@ class Peer(slixmpp.ClientXMPP):
             self.received.append("UNREADABLE:" + repr(e))
 
     nick_in_room = "peer"
+
+    async def read_v2(self, msg):
+        """OMEMO 2, read the way the specification says: the session manager decrypts, the SCE envelope is opened here."""
+        sender = msg["from"].bare
+        if msg["type"] == "groupchat":
+            sender = slixmpp.JID(self["xep_0045"].get_jid_property(msg["from"].bare, msg["from"].resource, "jid")).bare
+        message = twomemo.etree.parse_message(msg.xml.find("{%s}encrypted" % twomemo.twomemo.NAMESPACE), sender)
+        manager = await self["xep_0384"].get_session_manager()
+        plaintext = (await manager.decrypt(message))[0]
+        if plaintext is None:
+            self.received.append("EMPTY2")
+            return
+        envelope = ET.fromstring(plaintext)
+        body = envelope.find("{%s}content/{jabber:client}body" % SCE)
+        said = envelope.find("{%s}from" % SCE)
+        if said is None or slixmpp.JID(said.get("jid")).bare != sender:
+            self.received.append("WRONG-FROM:" + (said.get("jid") if said is not None else ""))
+            return
+        text = body.text if body is not None else ""
+        self.received.append(text)
+        self.received.append("OMEMO2:" + text)
+
+    async def send_v2(self, to, text, says_from=None, mtype="chat", recipients=None):
+        recipients = [slixmpp.JID(r) for r in (recipients or [to])]
+        plugin = self["xep_0384"]
+        # Forced: subscribed to the person, the plugin would otherwise wait for the server to push their device list.
+        await plugin.refresh_device_lists(set(recipients), force_download=True)
+        envelope = ET.Element("{%s}envelope" % SCE)
+        content = ET.SubElement(envelope, "{%s}content" % SCE)
+        ET.SubElement(content, "{jabber:client}body").text = text
+        ET.SubElement(envelope, "{%s}rpad" % SCE).text = secrets.token_hex(secrets.randbelow(16) + 1)
+        ET.SubElement(envelope, "{%s}from" % SCE, {"jid": says_from or self.boundjid.bare})
+        manager = await plugin.get_session_manager()
+        messages, errors = await manager.encrypt(
+            frozenset(r.bare for r in recipients),
+            {twomemo.twomemo.NAMESPACE: ET.tostring(envelope)},
+            backend_priority_order=[twomemo.twomemo.NAMESPACE],
+            identifier=None,
+        )
+        if not messages:
+            raise RuntimeError("could not encrypt: %r" % (errors,))
+        msg = self.make_message(mto=to, mtype=mtype)
+        msg["body"] = "This message is OMEMO encrypted."
+        msg.enable("store")
+        for m in messages:
+            msg.append(twomemo.etree.serialize_message(m))
+        msg.send()
 
     async def send_room(self, room, text, recipients):
         msg = self.make_message(mto=room, mtype="groupchat")
@@ -155,6 +234,9 @@ class Peer(slixmpp.ClientXMPP):
 
 
 async def main():
+    if os.environ.get("XMPP_PEER_DEBUG"):
+        import logging
+        logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
     name, steps = sys.argv[1], json.loads(sys.argv[2])
     accounts = dict(l.split() for l in open(ACCOUNTS).read().splitlines() if l.strip())
     jid = next(j for j in accounts if j.split("@")[0] == name)
@@ -165,7 +247,9 @@ async def main():
     failed = None
     for step in steps:
         try:
-            if "send" in step:
+            if "send2" in step:
+                await peer.send_v2(step["to"], step["send2"], step.get("says_from"), step.get("type", "chat"), step.get("recipients"))
+            elif "send" in step:
                 await peer.send_encrypted(step["to"], step["send"])
             elif "join" in step:
                 peer.nick_in_room = step.get("nick", "peer")

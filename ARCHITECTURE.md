@@ -270,9 +270,11 @@ called `subscribe` for that buffer.
   blocking; client state indication; group chats with bookmarks, occupant ids, hats, the room's archive, moderation (including
   moderated retraction), room settings as data forms, and invitations; files over HTTP Upload and shared files in all three forms;
   avatars from PEP and vCards; making an account in-band (a captcha refused in words), password and account removal, ad-hoc
-  commands, `xmpp:` links; OMEMO (the older namespace every client speaks) in conversations, rooms and files, whose Signal-protocol
-  session code is written in `omemo/` and tested against python-omemo; and calls (Jingle Message Initiation and Jingle RTP), which
-  the daemon translates to and from the window's existing call vocabulary in `calls/`. Not supported: OMEMO 2, BOSH, group calls.
+  commands, `xmpp:` links; OMEMO in conversations, rooms and files, in both namespaces under one identity - OMEMO 2 to the devices
+  that publish it, the older namespace every client speaks to the rest - whose session code (X3DH and the Double Ratchet, each
+  namespace's wire form, Stanza Content Encryption for OMEMO 2) is written in `omemo/` and tested against python-omemo; and calls
+  (Jingle Message Initiation and Jingle RTP), which the daemon translates to and from the window's existing call vocabulary in
+  `calls/`. Not supported: BOSH, group calls.
   The code is `nobilis/src/backend/xmpp/` (`transport`, `login`, `wire` and `connect` reach and keep the server; `dispatch` routes
   each stanza; `messages`, `incoming`, `roster`, `muc`, `mam`, `send`, `upload`, `avatars`, `calls/` and `omemo/` do the work;
   `dataform` and `adhoc` are the generic parts). The verification scripts run it against a local ejabberd 26.09 and Prosody 13 with

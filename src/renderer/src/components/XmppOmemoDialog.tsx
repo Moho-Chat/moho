@@ -9,6 +9,8 @@ interface Device {
   fingerprint: string
   known: boolean
   trust: 'undecided' | 'trusted' | 'verified' | 'untrusted'
+  /** The device speaks OMEMO 2 (urn:xmpp:omemo:2); the others are written to in the older namespace. */
+  omemo2?: boolean
 }
 
 /**
@@ -61,7 +63,7 @@ export function XmppOmemoDialog({ bufferId, accountId, jid, name, encrypted, onC
                 .map((d) => (
                   <li key={`${d.jid}/${d.device}`} className="add-form">
                     <span>
-                      {d.jid} · device {d.device} · <strong>{d.trust}</strong>
+                      {d.jid} · device {d.device} · {d.omemo2 ? 'OMEMO 2' : 'OMEMO (older)'} · <strong>{d.trust}</strong>
                     </span>
                     <span className="mono small">{d.known ? d.fingerprint : 'Not seen yet: its keys are fetched when a message is sent'}</span>
                     <div className="field-row">
