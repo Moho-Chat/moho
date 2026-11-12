@@ -76,6 +76,10 @@ try {
   console.log(`   ${info.software ?? 'the server'} ${info.version ?? ''} offers ${vars.size} features; archive ${vars.has('urn:xmpp:mam:2') ? 'yes' : 'no'}, push ${vars.has('urn:xmpp:push:0') ? 'yes' : 'no'} (uploads are a service of their own, tried below)`)
   check('the server answers what it offers', vars.size > 0, JSON.stringify(info).slice(0, 300))
 
+  // A window that is not being looked at tells the server so (client state indication), and the server then holds presence back:
+  // the run says it is looked at, so a status change is seen when it happens.
+  await rpc('xmppSetActive', { active: true })
+
   console.log('contacts')
   await rpc('xmppAddContact', { accountId: A, jid: jidB, name: 'test receiver' })
   const asked = await until(async () => ((await rpc('xmppRequests', { accountId: B })).requests ?? []).find((r) => r.jid === jidA) ?? null, 20000)
@@ -85,6 +89,8 @@ try {
   check('each has a conversation with the other', !!ab && !!ba, `${!!ab} ${!!ba} (asked: ${!!asked})`)
   await rpc('subscribe', { bufferId: ab.id })
   await rpc('subscribe', { bufferId: ba.id })
+  const mutual = await until(() => [ab, ba].every((b) => events.some((e) => e.event === 'presenceChange' && e.data.bufferId === b.id && JSON.stringify(e.data.members).includes('"relationship":"both"'))), 20000)
+  check('accepting made it mutual: each sees the other', !!mutual, JSON.stringify(events.filter((e) => e.event === 'presenceChange').slice(-2).map((e) => e.data.members?.[0]?.relationship)))
 
   console.log('messages')
   const hello = `moho test ${stamp}: hello over the route`
@@ -103,6 +109,28 @@ try {
   const reacted = await until(() => seen('reactionsChanged', (d) => d.bufferId === ab.id && JSON.stringify(d.reactions).includes('👍')), 20000)
   check('a reaction comes back', !!reacted, JSON.stringify(events.filter((e) => e.event === 'reactionsChanged').slice(-2)))
 
+  console.log('more of a conversation')
+  await rpc('setAccountStatus', { accountId: A, status: 'dnd' })
+  check('a status change is seen', !!(await until(() => seen('presenceChange', (d) => d.bufferId === ba.id && JSON.stringify(d.members).includes('dnd')), 20000)), JSON.stringify(events.filter((e) => e.event === 'presenceChange' && e.data.bufferId === ba.id).slice(-1)))
+  await rpc('setAccountStatus', { accountId: A, status: 'online' })
+  const replyText = `moho test ${stamp}: a reply`
+  await rpc('sendMessage', { bufferId: ab.id, body: replyText, replyToId: mine?.id })
+  const replied = await until(() => seen('message', (d) => d.bufferId === ba.id && d.body === replyText), 20000)
+  check('a reply arrives naming what it answers', !!replied && /hello over the route/.test(replied.replyTo?.body ?? ''), JSON.stringify(replied?.replyTo))
+  await rpc('sendMessage', { bufferId: ab.id, body: `/me waves (moho test ${stamp})` })
+  const action = await until(() => seen('message', (d) => d.bufferId === ba.id && /waves \(moho test/.test(d.body)), 20000)
+  check('/me arrives as an action', !!action && action.isAction === true, JSON.stringify(action))
+  await rpc('sendMessage', { bufferId: ab.id, body: `||moho test ${stamp}: a spoiler||` })
+  check('a spoiler arrives hidden', !!(await until(() => seen('message', (d) => d.bufferId === ba.id && d.body.includes('||moho test') && d.body.includes('a spoiler||')), 20000)))
+  const gone = `moho test ${stamp}: to be taken back`
+  await rpc('sendMessage', { bufferId: ab.id, body: gone })
+  await until(() => seen('message', (d) => d.bufferId === ba.id && d.body === gone), 20000)
+  const goneId = (await rpc('getBacklog', { bufferId: ab.id, limit: 30 })).filter((m) => m.body === gone && m.isOwn).at(-1)?.id
+  await rpc('deleteMessage', { bufferId: ab.id, messageId: goneId, forEveryone: true })
+  check('a message taken back goes for the other side too', !!(await until(() => seen('messageDeleted', (d) => d.bufferId === ba.id), 20000)), JSON.stringify(events.filter((e) => /Deleted|Moderated/.test(e.event)).slice(-2)))
+  const read = await rpc('markBufferRead', { bufferId: ba.id, public: true }).then(() => true, (e) => e.message)
+  check('reading is said back (a read marker)', read === true, read)
+
   console.log('a file')
   const file = path.join(os.tmpdir(), `moho-test-${Date.now()}.txt`)
   fs.writeFileSync(file, `moho test ${stamp}: a file uploaded over the route\n`)
@@ -110,6 +138,20 @@ try {
   const shared = await until(() => seen('message', (d) => d.bufferId === ba.id && (d.attachments ?? []).some((x) => x.filename?.startsWith('moho-test-'))), 60000)
   check('a file is uploaded and arrives as an attachment', !!shared, JSON.stringify(events.filter((e) => e.event === 'message' && e.data.bufferId === ba.id).slice(-1)).slice(0, 400))
   fs.rmSync(file, { force: true })
+
+  console.log('a file straight to the other device (Jingle)')
+  const direct = path.join(os.tmpdir(), `moho-direct-${Date.now()}.txt`)
+  fs.writeFileSync(direct, `moho test ${stamp}: sent device to device\n`.repeat(200))
+  const offered = await rpc('xmppSendDirect', { bufferId: ab.id, path: direct }).catch((e) => ({ error: e.message }))
+  const offer = await until(async () => (await rpc('xmppFileOffers', { accountId: B })).find((o) => o.name === path.basename(direct)), 30000)
+  check('it is offered to the other account', offered.started === true && !!offer, JSON.stringify(offered))
+  if (offer) {
+    await rpc('xmppAnswerFile', { accountId: B, sid: offer.sid, accept: true })
+    const landed = await until(async () => (await rpc('getBacklog', { bufferId: ba.id, limit: 40 })).find((m) => m.attachments?.[0]?.filename === path.basename(direct)), 120000)
+    const kept = landed?.attachments?.[0]?.path?.replace('file://', '')
+    check('accepted, it arrives whole (between the Tor account and the direct one)', !!kept && fs.readFileSync(kept, 'utf8') === fs.readFileSync(direct, 'utf8'), kept)
+  }
+  fs.rmSync(direct, { force: true })
 
   console.log('what was missed while away')
   await rpc('setAccountConnected', { accountId: B, connected: false })
@@ -137,6 +179,18 @@ try {
   const devices = await rpc('xmppOmemoDevices', { accountId: A, jid: jidB })
   const theirDevice = devices.devices.find((d) => d.jid === jidB)
   check('in OMEMO 2, the other account\'s device known and trusted', theirDevice?.omemo2 === true && theirDevice?.known && theirDevice?.trust === 'trusted', JSON.stringify(devices.devices))
+
+  const secretFile = path.join(os.tmpdir(), `moho-secret-${Date.now()}.txt`)
+  fs.writeFileSync(secretFile, `moho test ${stamp}: an encrypted file\n`)
+  await rpc('sendMessage', { bufferId: ab.id, body: '', attachmentPath: secretFile })
+  const sealed = await until(async () => (await rpc('getBacklog', { bufferId: ba.id, limit: 40 })).find((m) => m.attachments?.some((x) => x.filename === path.basename(secretFile))), 60000)
+  check('an encrypted file arrives and is read', !!sealed, JSON.stringify(sealed?.attachments))
+  fs.rmSync(secretFile, { force: true })
+  const theirLinks = await rpc('xmppOmemoDevices', { accountId: A })
+  const verified = await rpc('xmppOmemoVerifyUri', { accountId: B, uri: theirLinks.uri })
+  const nowB = (await rpc('xmppOmemoDevices', { accountId: B, jid: jidA })).devices.find((d) => d.jid === jidA && d.device === theirLinks.deviceId)
+  check('a verification link (as from a QR code) verifies the other account\'s device', verified.verified >= 1 && nowB?.trust === 'verified', JSON.stringify(verified) + JSON.stringify(nowB))
+  await rpc('xmppOmemoTrust', { accountId: B, jid: jidA, device: theirLinks.deviceId, trust: 'trusted' })
   if (!wasA) await rpc('xmppSetEncryption', { bufferId: ab.id, on: false })
   if (!wasB) await rpc('xmppSetEncryption', { bufferId: ba.id, on: false })
 
@@ -160,8 +214,60 @@ try {
     const said = `moho test ${stamp}: in the room`
     await rpc('sendMessage', { bufferId: ra.id, body: said })
     check('it joins, and what is said there reaches it', !!rb && !!(await until(() => seen('message', (d) => d.bufferId === rb?.id && d.body === said), 30000)))
+
+    const topic = `moho test ${stamp}: the topic`
+    await rpc('xmppSetSubject', { bufferId: ra.id, subject: topic })
+    check('its topic is set and seen', !!(await until(async () => (await rpc('listBuffers')).find((b) => b.id === rb?.id)?.topic === topic, 20000)))
+    await rpc('xmppSetNick', { bufferId: ra.id, nick: 'tester2' })
+    check('a new nickname is seen', !!(await until(() => seen('presenceChange', (d) => d.bufferId === rb?.id && JSON.stringify(d.members).includes('tester2')), 20000)))
+    const ping = `${(await rpc('listBuffers')).find((b) => b.id === rb?.id) ? 'salastil' : ''}: moho test ${stamp}, a mention`
+    await rpc('sendMessage', { bufferId: ra.id, body: ping })
+    const mentioned = await until(() => seen('message', (d) => d.bufferId === rb?.id && d.body === ping), 20000)
+    check('a mention arrives highlighted', !!mentioned && mentioned.isHighlight === true, JSON.stringify(mentioned))
+    const theirsInRoom = `moho test ${stamp}: from the other account, to be removed`
+    await rpc('sendMessage', { bufferId: rb.id, body: theirsInRoom })
+    await until(() => seen('message', (d) => d.bufferId === ra.id && d.body === theirsInRoom), 20000)
+    const modId = (await rpc('getBacklog', { bufferId: ra.id, limit: 30 })).filter((m) => m.body === theirsInRoom).at(-1)?.id
+    const moderated = await rpc('deleteMessage', { bufferId: ra.id, messageId: modId, forEveryone: true }).then(() => true, (e) => e.message)
+    const sawIt = await until(() => seen('messageModerated', (d) => d.bufferId === rb?.id) || seen('messageDeleted', (d) => d.bufferId === rb?.id), 20000)
+    check('the room\'s owner removes somebody else\'s message, for everyone (or is told why not)', moderated === true ? !!sawIt : typeof moderated === 'string', String(moderated))
+    const level = await rpc('setNotifyLevel', { bufferId: rb.id, level: 'mentions' }).then(() => true, (e) => e.message)
+    check('its notification level is kept', level === true, level)
+    const png = path.join(os.tmpdir(), `moho-room-${Date.now()}.png`)
+    fs.writeFileSync(png, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64'))
+    const pictured = await rpc('xmppSetRoomAvatar', { bufferId: ra.id, path: png }).then(() => true, (e) => e.message)
+    check('a room picture is set (or the server says it takes none)', pictured === true || typeof pictured === 'string', String(pictured))
+    console.log(`   room picture: ${pictured === true ? 'set' : pictured}`)
+    fs.rmSync(png, { force: true })
     await rpc('xmppDestroyRoom', { bufferId: ra.id, reason: 'moho test over' }).catch((e) => console.log('   (the room could not be destroyed: ' + e.message + ')'))
   }
+
+  console.log('the account itself')
+  const before = await rpc('xmppGetProfile', { accountId: A }).catch(() => ({}))
+  const nick = `moho tester ${stamp}`
+  const setProfile = await rpc('xmppSetProfile', { accountId: A, nickname: nick }).then(() => true, (e) => e.message)
+  const after = await rpc('xmppGetProfile', { accountId: A }).catch((e) => ({ error: e.message }))
+  check('its profile is changed and read back', setProfile === true && JSON.stringify(after).includes(nick), `${setProfile} ${JSON.stringify(after).slice(0, 300)}`)
+  await rpc('xmppSetProfile', { accountId: A, nickname: before?.nickname ?? '' }).catch(() => {})
+  const avatar = path.join(os.tmpdir(), `moho-avatar-${Date.now()}.png`)
+  fs.writeFileSync(avatar, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'))
+  const before64 = (await rpc('listBuffers')).find((b) => b.id === ba.id)?.avatarUrl ?? null
+  const setAvatar = await rpc('xmppSetAvatar', { accountId: A, path: avatar }).then(() => true, (e) => e.message)
+  const shown = await until(async () => { const u = (await rpc('listBuffers')).find((b) => b.id === ba.id)?.avatarUrl; return u && u !== before64 ? u : null }, 30000)
+  check('its picture is set and the other account sees it', setAvatar === true && !!shown, `${setAvatar} ${shown}`)
+  await rpc('xmppSetAvatar', { accountId: A, path: '' }).catch(() => {})
+  fs.rmSync(avatar, { force: true })
+  await rpc('xmppBlock', { accountId: A, jid: jidB, block: true })
+  const blockedText = `moho test ${stamp}: sent while blocked`
+  await rpc('sendMessage', { bufferId: ba.id, body: blockedText })
+  await sleep(6000)
+  const leaked = seen('message', (d) => d.bufferId === ab.id && d.body === blockedText)
+  await rpc('xmppBlock', { accountId: A, jid: jidB, block: false })
+  await sleep(1500)
+  const unblockedText = `moho test ${stamp}: sent after unblocking`
+  await rpc('sendMessage', { bufferId: ba.id, body: unblockedText })
+  const through = await until(() => seen('message', (d) => d.bufferId === ab.id && d.body === unblockedText), 20000)
+  check('blocking stops messages, and unblocking lets them through', !leaked && !!through, `leaked=${!!leaked} through=${!!through}`)
 
   console.log('reading the account')
   const profile = await rpc('xmppGetProfile', { accountId: A }).catch((e) => ({ error: e.message }))
@@ -170,6 +276,17 @@ try {
   check('its block list is read', !blocked.error, blocked.error)
   const prefs = await rpc('xmppArchivePrefs', { accountId: A }).catch((e) => ({ error: e.message }))
   check('its archive preferences are read', !prefs.error, prefs.error)
+
+  const lists = await rpc('xmppPrivacyLists', { accountId: A }).then(() => true, (e) => e.message)
+  console.log(`   privacy lists: ${lists === true ? 'read' : lists}`)
+  const nodes = await rpc('xmppNodes', { accountId: A }).then((n) => (Array.isArray(n) ? n.length : JSON.stringify(n).slice(0, 80)), (e) => e.message)
+  console.log(`   published nodes: ${nodes}`)
+  const kinds = await rpc('xmppInviteKinds', { accountId: A }).then((k) => JSON.stringify(k).slice(0, 120), (e) => e.message)
+  console.log(`   invitations the server makes: ${kinds}`)
+  const exportFile = path.join(os.tmpdir(), `moho-contacts-${Date.now()}.xml`)
+  const exported = await rpc('xmppExportContacts', { accountId: A, path: exportFile }).then(() => fs.existsSync(exportFile) && fs.readFileSync(exportFile, 'utf8').includes(jidB), (e) => e.message)
+  check('its contacts are exported', exported === true, exported)
+  fs.rmSync(exportFile, { force: true })
   const commands = await rpc('xmppCommands', { accountId: A, jid: domain }).catch((e) => ({ error: e.message }))
   console.log(`   the server's commands: ${commands.error ?? (commands.commands ?? []).length}`)
 } catch (err) {
