@@ -196,7 +196,8 @@ interface CommandStep {
  * the server's own commands. */
 function XmppConnectedTools({ account }: { account: Account }): JSX.Element {
   const store = useStore()
-  const [section, setSection] = useState<'' | 'profile' | 'invite' | 'published' | 'privacy' | 'picture' | 'password' | 'blocked' | 'archive' | 'server' | 'commands' | 'delete'>('')
+  const [askImported, setAskImported] = useState(true)
+  const [section, setSection] = useState<'' | 'profile' | 'invite' | 'contacts' | 'published' | 'privacy' | 'picture' | 'password' | 'blocked' | 'archive' | 'server' | 'commands' | 'delete'>('')
   const [nodes, setNodes] = useState<{ node: string; what: string; access: string; items: number; usedHere: boolean }[] | null>(null)
   const [privacy, setPrivacy] = useState<{ names: string[]; default: string; active: string } | null>(null)
   const [listName, setListName] = useState('')
@@ -246,6 +247,7 @@ function XmppConnectedTools({ account }: { account: Account }): JSX.Element {
       <div className="segmented">
         {tab('profile', 'Profile')}
         {tab('invite', 'Invite')}
+        {tab('contacts', 'Contacts')}
         {tab('published', 'Published')}
         {tab('privacy', 'Privacy lists')}
         {tab('picture', 'Picture')}
@@ -256,6 +258,42 @@ function XmppConnectedTools({ account }: { account: Account }): JSX.Element {
         {tab('commands', 'Commands')}
         {tab('delete', 'Delete')}
       </div>
+      {section === 'contacts' && (
+        <div className="add-form">
+          <p className="small muted">The contact list as a file: the roster as XMPP writes it, which other clients and servers read. A file of addresses, one a line, is read too.</p>
+          <div className="field-row">
+            <button
+              type="button"
+              className="button"
+              onClick={() =>
+                void window.moho.pickSavePath(`${account.displayName || 'contacts'}.roster.xml`).then((path) => {
+                  if (path) void call<{ exported: number }>('xmppExportContacts', { path }).then((r) => store.toast('info', `${r.exported} contacts saved`)).catch(say)
+                })
+              }
+            >
+              Save the contact list…
+            </button>
+            <button
+              type="button"
+              className="button"
+              onClick={() =>
+                void window.moho.pickFile().then((path) => {
+                  if (path)
+                    void call<{ added: number; kept: number; failed: string[] }>('xmppImportContacts', { path, ask: askImported })
+                      .then((r) => store.toast(r.failed.length ? 'error' : 'info', `${r.added} added, ${r.kept} already there${r.failed.length ? `; not added: ${r.failed.join('; ')}` : ''}`))
+                      .catch(say)
+                })
+              }
+            >
+              Add contacts from a file…
+            </button>
+          </div>
+          <label className="check-row">
+            <input type="checkbox" checked={askImported} onChange={(e) => setAskImported(e.target.checked)} />
+            <span>Ask each new contact to share their presence, as adding one by hand does</span>
+          </label>
+        </div>
+      )}
       {section === 'published' && nodes && (
         <div className="add-form">
           <p className="small muted">What this account publishes on its server (PEP), and who may read each.</p>
