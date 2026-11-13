@@ -11789,3 +11789,9 @@ html[data-reduce-motion] *::after {
   user-select: text;
   word-break: break-all;
 }
+
+/* The emoji beside a Signal profile's about line: one character wide, not a whole field. */
+.text-field.emoji-field {
+  flex: 0 0 3.2em;
+  text-align: center;
+}

@@ -25,6 +25,9 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
   const [devices, setDevices] = useState<Device[] | null>(null)
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
+  /** The account's own profile: what others see it called, and its about line. */
+  const [profile, setProfile] = useState<{ given: string; family: string; about: string; emoji: string; username?: string | null } | null>(null)
+  const [edited, setEdited] = useState<{ given: string; family: string; about: string; emoji: string } | null>(null)
 
   const load = (): void => {
     void window.moho
@@ -38,6 +41,30 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
   }
   // Asked again once the account is up, since the first open can be before it is.
   useEffect(load, [account.id, account.state])
+  useEffect(() => {
+    void window.moho
+      .rpc<{ given: string; family: string; about: string; emoji: string; username?: string | null }>('signalOwnProfile', { accountId: account.id })
+      .then((p) => {
+        setProfile(p)
+        setEdited({ given: p.given, family: p.family, about: p.about, emoji: p.emoji })
+      })
+      .catch(() => setProfile(null))
+  }, [account.id, account.state])
+
+  const saveProfile = (): void => {
+    if (!edited) return
+    setBusy(true)
+    void window.moho
+      .rpc('signalSetProfile', { accountId: account.id, ...edited })
+      .then(() => {
+        setProfile(profile ? { ...profile, ...edited } : null)
+        store.toast('info', 'Your profile was changed. Your phone picks it up too')
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+  const profileChanged =
+    !!profile && !!edited && (edited.given !== profile.given || edited.family !== profile.family || edited.about !== profile.about || edited.emoji !== profile.emoji)
 
   if (!devices) return null
   const mine = devices.find((d) => d.isThis)
@@ -55,6 +82,30 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
 
   return (
     <div className="account-tools">
+      {profile && edited && (
+        <>
+          <div className="setting-row">
+            <div className="setting-text">
+              <div>Your profile</div>
+              <div className="small muted">
+                What people you message see.{profile.username ? ` Your username is ${profile.username}.` : ''} A username is
+                chosen or changed on the phone.
+              </div>
+            </div>
+          </div>
+          <div className="field-row">
+            <input className="text-field" placeholder="First name" value={edited.given} disabled={busy} onChange={(e) => setEdited({ ...edited, given: e.target.value })} />
+            <input className="text-field" placeholder="Last name (optional)" value={edited.family} disabled={busy} onChange={(e) => setEdited({ ...edited, family: e.target.value })} />
+          </div>
+          <div className="field-row">
+            <input className="text-field emoji-field" placeholder="🙂" value={edited.emoji} disabled={busy} onChange={(e) => setEdited({ ...edited, emoji: e.target.value })} />
+            <input className="text-field" placeholder="About" value={edited.about} disabled={busy} onChange={(e) => setEdited({ ...edited, about: e.target.value })} />
+            <button type="button" className="button" disabled={busy || !profileChanged || !edited.given.trim()} onClick={saveProfile}>
+              Save
+            </button>
+          </div>
+        </>
+      )}
       <div className="setting-row">
         <div className="setting-text">
           <div>Linked devices</div>
