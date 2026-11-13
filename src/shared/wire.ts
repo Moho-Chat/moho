@@ -704,6 +704,9 @@ export interface Profile {
   nameHistory?: { name: string; when: string }[]
   /** Set while the service is still being asked; the card fills in. */
   pending?: boolean
+  /** Signal: whether this account marked their safety number verified, and whether it blocks them. */
+  signalVerified?: boolean
+  signalBlocked?: boolean
 }
 
 /** What somebody is doing, as a line under their name. */

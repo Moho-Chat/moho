@@ -3041,6 +3041,11 @@ export class ChatStore {
     this.set({ profile: null })
   }
 
+  /** Changes what the open card says, after something done from it (a block, a verification). */
+  patchProfile(change: Partial<Profile>): void {
+    if (this.state.profile) this.set({ profile: { ...this.state.profile, ...change } })
+  }
+
   /** Asks what groups a Steam account has, for when it has just connected. */
   loadSteamGroups(accountId: string): void {
     void window.moho

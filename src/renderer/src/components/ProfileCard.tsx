@@ -157,6 +157,46 @@ export function ProfileCard(): JSX.Element | null {
           </div>
         )}
 
+        {/* Signal: marking the safety number verified once it has been compared (in person, or in Signal on both
+            phones), and blocking. Both are told to the account's other devices. */}
+        {profile.service === 'signal' && profile.id && !profile.pending && profile.signalVerified !== undefined && (
+          <div className="button-row profile-actions">
+            <button
+              type="button"
+              className="button subtle"
+              onClick={() => {
+                const verified = !profile.signalVerified
+                void window.moho
+                  .rpc('signalVerify', { accountId: profile.accountId, userId: profile.id, verified })
+                  .then(() => {
+                    store.patchProfile({ signalVerified: verified })
+                    store.toast('info', verified ? `${profile.name} is marked verified` : `${profile.name} is no longer marked verified`)
+                  })
+                  .catch((e: Error) => store.toast('error', e.message))
+              }}
+            >
+              <Icon name={profile.signalVerified ? 'remove_moderator' : 'verified_user'} size={15} />{' '}
+              {profile.signalVerified ? 'Clear verification' : 'Mark as verified'}
+            </button>
+            <button
+              type="button"
+              className="button subtle"
+              onClick={() => {
+                const blocked = !profile.signalBlocked
+                void window.moho
+                  .rpc('signalBlock', { accountId: profile.accountId, id: `p:${profile.id}`, blocked })
+                  .then(() => {
+                    store.patchProfile({ signalBlocked: blocked })
+                    store.toast('info', blocked ? `${profile.name} is blocked: nothing from them is shown` : `${profile.name} is unblocked`)
+                  })
+                  .catch((e: Error) => store.toast('error', e.message))
+              }}
+            >
+              <Icon name={profile.signalBlocked ? 'lock_open' : 'block'} size={15} /> {profile.signalBlocked ? 'Unblock' : 'Block'}
+            </button>
+          </div>
+        )}
+
         {profile.pending && (
           <p className="small muted profile-waiting">
             <span className="spinner" /> Asking {profile.service}…
