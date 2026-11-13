@@ -49,6 +49,14 @@ describe('the media scheme boundary', () => {
     expect(isAllowed(path.join(cache, 'a.png'))).toBe(true)
   })
 
+  // Each service's own caches: one missing here is every picture of that service drawn as a broken box (XMPP's were).
+  it.each(['xmpp-media', 'xmpp-avatars', 'xmpp-files', 'stoat-media', 'telegram-avatars'])('serves a picture in %s', (dir) => {
+    const other = path.join(home, 'cache', 'nobilis', dir)
+    fs.mkdirSync(other, { recursive: true })
+    fs.writeFileSync(path.join(other, 'p.png'), PNG)
+    expect(isAllowed(path.join(other, 'p.png'))).toBe(true)
+  })
+
   it('refuses anything outside it, however it is spelled', () => {
     expect(isAllowed(outside)).toBe(false)
     expect(isAllowed(path.join(cache, '..', '..', '..', 'secret.png'))).toBe(false)

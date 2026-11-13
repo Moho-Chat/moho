@@ -128,6 +128,9 @@ const DAEMON_MEDIA_DIRS = [
   'stoat-avatars',
   'signal-media',
   'signal-avatars',
+  'xmpp-media',
+  'xmpp-avatars',
+  'xmpp-files',
   'transient'
 ]
 
