@@ -1480,6 +1480,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
           accountId={buffer.accountId}
           discord={service === 'discord'}
           telegram={service === 'telegram'}
+          signal={service === 'signal'}
           onClose={() => setGifPicker(false)}
         />
       )}
