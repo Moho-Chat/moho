@@ -42,6 +42,12 @@ export interface CallMember {
    * participant list.
    */
   transports?: string[]
+  /**
+   * Whether this end starts the connection with them, where the protocol says
+   * (XMPP's group calls: whoever arrives calls everybody already there).
+   * Absent, the pair decides by its keys - see `shouldOffer`.
+   */
+  offer?: boolean
 }
 
 /** The key that names one participant: a person on one device. */
@@ -73,6 +79,11 @@ export interface RingingCall {
   offerSdp: string
   /** When the offer stops being good, in epoch milliseconds. */
   expires: number
+  /**
+   * The ring came before the offer (XMPP's Jingle Message Initiation): `offerSdp` says only what kind of call this is, and
+   * answering is saying so and waiting for the real offer, which arrives as a second invitation under the same call id.
+   */
+  deferred?: boolean
 }
 
 export interface CallSurface {
@@ -208,12 +219,32 @@ export class MatrixCalls {
     }
   }
 
+  /** A ringing call that has been taken and whose offer has not arrived yet. */
+  private awaiting: { ringing: RingingCall; video: boolean; timer: ReturnType<typeof setTimeout> } | null = null
+
   /** Answers the call that is ringing. */
   async answer(video: boolean): Promise<void> {
     const ringing = this.ringing
     if (!ringing) return
     this.ringing = null
     this.surface.onRinging(null)
+    if (ringing.deferred) {
+      this.awaiting = {
+        ringing,
+        video,
+        timer: setTimeout(() => {
+          if (this.awaiting?.ringing.callId !== ringing.callId) return
+          this.awaiting = null
+          this.surface.onError('The call did not come through')
+        }, 20_000)
+      }
+      this.surface.send(ringing.bufferId, 'm.call.proceed', { call_id: ringing.callId, version: '1', party_id: 'moho' })
+      return
+    }
+    await this.take(ringing, video)
+  }
+
+  private async take(ringing: RingingCall, video: boolean): Promise<void> {
     const iceServers = await this.surface.iceServers(ringing.accountId)
     const call = this.build(ringing.accountId, ringing.bufferId, ringing.callId, iceServers, false, video)
     this.active = { accountId: ringing.accountId, bufferId: ringing.bufferId, call, remote: null, video }
@@ -516,7 +547,7 @@ export class MatrixCalls {
       present.add(key)
       if (group.peers.has(key)) continue
       // Only one end of each pair offers; the other waits for the invite.
-      if (!shouldOffer(group.ownKey, key)) continue
+      if (!(member.offer ?? shouldOffer(group.ownKey, key))) continue
       await this.callPeer(key, member.user_id)
     }
     // And anybody the room no longer lists has left the call, whether they
@@ -760,6 +791,14 @@ export class MatrixCalls {
     if (kind === 'm.call.invite') {
       const sdp = content.offer?.sdp as string | undefined
       if (!sdp) return
+      // The offer of a call that was taken before it had one.
+      const awaiting = this.awaiting
+      if (awaiting && awaiting.ringing.callId === callId && !content.moho_deferred) {
+        clearTimeout(awaiting.timer)
+        this.awaiting = null
+        void this.take({ ...awaiting.ringing, offerSdp: sdp, deferred: false }, awaiting.video)
+        return
+      }
       // Our own call, arriving at another of this client's accounts. Somebody
       // signed in twice here and calling themselves is a real thing to do -
       // it is how this was tested - and without this the same window would
@@ -784,7 +823,8 @@ export class MatrixCalls {
         from: event.from,
         video: offerHasVideo(sdp),
         offerSdp: sdp,
-        expires: Date.now() + lifetime
+        expires: Date.now() + lifetime,
+        deferred: !!content.moho_deferred
       }
       this.surface.onRinging(this.ringing)
       return
@@ -809,6 +849,10 @@ export class MatrixCalls {
     }
 
     if (kind === 'm.call.hangup' || kind === 'm.call.reject') {
+      if (this.awaiting?.ringing.callId === callId) {
+        clearTimeout(this.awaiting.timer)
+        this.awaiting = null
+      }
       if (this.ringing?.callId === callId) {
         this.ringing = null
         this.surface.onRinging(null)

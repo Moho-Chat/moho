@@ -58,3 +58,24 @@ describe('a Stoat invite', () => {
     expect(isDeepLink('https://stoat.chat/invite/gJhyqXTt')).toBe(true)
   })
 })
+
+import { parseXmppLink } from './deeplink'
+describe('xmpp: links', () => {
+  it('joins a room, with a password that is only the link\'s', () => {
+    expect(parseXmppLink('xmpp:room@conference.example.org?join')).toEqual({ service: 'xmpp', jid: 'room@conference.example.org', action: 'join', params: {} })
+    expect(parseXmppLink('xmpp:room@conference.example.org?join;password=s3cret')?.params).toEqual({ password: 's3cret' })
+  })
+  it('adds a contact with the name the link suggests', () => {
+    expect(parseXmppLink('xmpp:friend@example.org?roster;name=Best%20Friend')).toEqual({ service: 'xmpp', jid: 'friend@example.org', action: 'roster', params: { name: 'Best Friend' } })
+  })
+  it('opens a conversation when it says nothing else, and registers on a server with a token', () => {
+    expect(parseXmppLink('xmpp:friend@example.org')?.action).toBe('message')
+    expect(parseXmppLink('xmpp:example.org?register;preauth=abc')).toEqual({ service: 'xmpp', jid: 'example.org', action: 'register', params: { preauth: 'abc' } })
+  })
+  it('refuses what it does not act on', () => {
+    expect(parseXmppLink('xmpp:example.org?message')).toBeNull()
+    expect(parseXmppLink('xmpp:a@b.org?dance')).toBeNull()
+    expect(parseXmppLink('xmpp:')).toBeNull()
+    expect(parseXmppLink('https://example.org')).toBeNull()
+  })
+})

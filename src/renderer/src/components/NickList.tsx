@@ -24,7 +24,9 @@ import { steamRoomIds, type SteamChatGroup } from '../lib/steamchat'
  *   is the more useful thing to show - IRC, and Sneedchat's site owner.
  *
  * Chosen from the data rather than from the service name, so a protocol that
- * starts reporting presence needs no change here.
+ * starts reporting presence needs no change here. The one exception is an
+ * XMPP room, grouped by its own five standings (see XMPP_RANKS): everybody in
+ * it is present by being there, so presence would not divide it.
  */
 /**
  * What a member-list menu can ask for.
@@ -69,6 +71,34 @@ function shortBadge(prefix: string): string {
     vip: 'VIP'
   }
   return short[prefix] ?? prefix.slice(0, 3).toUpperCase()
+}
+
+/**
+ * An XMPP room's standings, highest first, as the daemon names them: the
+ * lasting affiliations owner and admin, then the moderator and visitor roles.
+ * A participant - the ordinary occupant with voice - has no word. A visitor
+ * is somebody the room will not let speak, which is "muted" here as it is
+ * everywhere else in moho. The group a member is in is the whole of how their
+ * standing is shown: no badge beside the name repeats it.
+ */
+const XMPP_RANKS: Record<string, { group: string; order: number }> = {
+  owner: { group: 'Owners', order: 0 },
+  admin: { group: 'Admins', order: 1 },
+  moderator: { group: 'Moderators', order: 2 },
+  '': { group: 'Participants', order: 3 },
+  visitor: { group: 'Muted', order: 4 }
+}
+
+/** An XMPP room's member list, one group per standing, alphabetical within each. */
+function xmppGroups(members: Member[]): { label: string; members: Member[] }[] {
+  const rankOf = (m: Member): (typeof XMPP_RANKS)[string] => XMPP_RANKS[m.prefix ?? ''] ?? XMPP_RANKS['']
+  return Object.values(XMPP_RANKS)
+    .sort((a, b) => a.order - b.order)
+    .map((rank) => ({
+      label: rank.group,
+      members: members.filter((m) => rankOf(m) === rank).sort((a, b) => a.nick.localeCompare(b.nick))
+    }))
+    .filter((g) => g.members.length > 0)
 }
 
 /**
@@ -174,9 +204,9 @@ export function NickList(): JSX.Element {
   const [discordPowers, setDiscordPowers] = useState<DiscordPowers | null>(null)
   useEffect(() => {
     setDiscordPowers(null)
-    if ((account?.service !== 'discord' && account?.service !== 'stoat') || !buffer) return
+    if ((account?.service !== 'discord' && account?.service !== 'stoat' && account?.service !== 'xmpp') || !buffer) return
     void window.moho
-      .rpc<DiscordPowers>(account.service === 'stoat' ? 'getStoatPowers' : 'getDiscordPowers', { bufferId: buffer.id })
+      .rpc<DiscordPowers>(account.service === 'stoat' ? 'getStoatPowers' : account.service === 'xmpp' ? 'getXmppPowers' : 'getDiscordPowers', { bufferId: buffer.id })
       .then(setDiscordPowers)
       .catch(() => {
         /* advisory only: no answer means no moderation entries */
@@ -208,7 +238,7 @@ export function NickList(): JSX.Element {
       ? ircPermissions(members, account.currentNick)
       : account?.service === 'kick'
         ? kickPermissions(members, account.currentNick)
-        : account?.service === 'discord' || account?.service === 'stoat'
+        : account?.service === 'discord' || account?.service === 'stoat' || account?.service === 'xmpp'
           ? discordPowers ?? {}
           : (buffer && permissions[buffer.id]) || {}
 
@@ -216,6 +246,11 @@ export function NickList(): JSX.Element {
     const filtered = query
       ? members.filter((m) => m.nick.toLowerCase().includes(query.toLowerCase()))
       : members
+
+    // Everybody in an XMPP room is present by being there, so online/offline
+    // would be one group of everybody. Standing is what tells them apart; the
+    // dot on each face still says who is away.
+    if (account?.service === 'xmpp' && buffer?.kind === 'channel') return xmppGroups(filtered)
 
     if (hasPresence) {
       const byPower = (a: Member, b: Member): number =>
@@ -244,7 +279,7 @@ export function NickList(): JSX.Element {
       { label: 'Moderators', members: filtered.filter((m) => rank(m) > 0 && rank(m) < 4).sort(byName) },
       { label: 'Members', members: filtered.filter((m) => rank(m) === -1 || rank(m) === 4).sort(byName) }
     ].filter((g) => g.members.length > 0)
-  }, [members, hasPresence, query])
+  }, [members, hasPresence, query, account?.service, buffer?.kind])
 
   return (
     <div className="nicklist">
@@ -416,6 +451,17 @@ export function NickList(): JSX.Element {
                         banned: true
                       })
                       .then(() => store.toast('info', `${action === 'ban' ? 'Banned' : action === 'mute' ? 'Muted' : 'Removed'} ${member.nick}`))
+                      .catch((e: Error) => store.toast('error', e.message))
+                    return
+                  }
+                  if (account.service === 'xmpp') {
+                    // A role is by nickname and standing by address, which the room only shows where it is not anonymous.
+                    const mapped: Record<string, string> = { kick: 'kick', ban: 'ban', mute: 'mute', voice: 'voice', op: 'moderator', deop: 'voice' }
+                    const act = mapped[action]
+                    if (!act) return
+                    void window.moho
+                      .rpc('xmppRoomAction', { bufferId: buffer.id, action: act, nick: member.nick, jid: member.userId && member.userId.includes('@') && !member.userId.includes('/') ? member.userId : undefined })
+                      .then(() => store.toast('info', `${act === 'ban' ? 'Banned' : act === 'kick' ? 'Removed' : 'Changed'} ${member.nick}`))
                       .catch((e: Error) => store.toast('error', e.message))
                     return
                   }
@@ -602,6 +648,11 @@ function MemberRow({
 
   // Moderation is only *offered* where the cached permissions say it would
   // work; the server is still the actual authority and re-checks regardless.
+  // IRC says rank in sigils; an XMPP room in words, where a participant - no
+  // word at all - is the one with voice and a visitor the one without.
+  const isOperator =
+    service === 'xmpp' ? ['owner', 'admin', 'moderator'].includes(member.prefix ?? '') : !!member.prefix?.includes('@')
+  const isVoiced = service === 'xmpp' ? member.prefix !== 'visitor' : !!member.prefix?.includes('+')
   const entries: MenuEntry[] = [
     // First, because it is what a right click on a person is usually for -
     // and because everything under it acts on somebody, which is a thing to
@@ -698,11 +749,13 @@ function MemberRow({
             }))
         ] as MenuEntry[])
       : []),
-    ...(perms.canOp
+    // An XMPP owner or admin is a moderator by standing, which no role change
+    // can take away, so the room would refuse either entry for them.
+    ...(perms.canOp && !(service === 'xmpp' && (member.prefix === 'owner' || member.prefix === 'admin'))
       ? ([
           { separator: true },
-          { label: member.prefix?.includes('@') ? 'Take operator' : 'Give operator', icon: 'shield', onClick: () => onModerate(member.prefix?.includes('@') ? 'deop' : 'op') },
-          { label: member.prefix?.includes('+') ? 'Take voice' : 'Give voice', icon: 'campaign', onClick: () => onModerate(member.prefix?.includes('+') ? 'mute' : 'voice') }
+          { label: isOperator ? 'Take operator' : 'Give operator', icon: 'shield', onClick: () => onModerate(isOperator ? 'deop' : 'op') },
+          { label: isVoiced ? 'Take voice' : 'Give voice', icon: 'campaign', onClick: () => onModerate(isVoiced ? 'mute' : 'voice') }
         ] as MenuEntry[])
       : []),
     // Last, and about the person rather than this room. Ignoring them is what
@@ -758,7 +811,8 @@ function MemberRow({
             {member.nick}
           </span>
         )}
-        {member.prefix && member.prefix.length > 1 && (
+        {/* An XMPP room's standing is said by the group it is listed under. */}
+        {member.prefix && member.prefix.length > 1 && service !== 'xmpp' && (
           <span className={`sender-badge small ${member.prefix}`} title={member.prefix}>
             {shortBadge(member.prefix)}
           </span>
@@ -766,6 +820,11 @@ function MemberRow({
         {/* The network's own word for it, not a guess from the name. Drawn
             after the nick like any other badge, and only where the network
             actually said so. */}
+        {member.hats?.map((hat) => (
+          <span key={hat} className="sender-badge small" title={`${hat} in this room`}>
+            {hat}
+          </span>
+        ))}
         {member.bot && (
           <span className="sender-badge small bot" title="The network says this one is a program">
             BOT

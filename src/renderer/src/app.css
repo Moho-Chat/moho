@@ -11731,3 +11731,47 @@ html[data-reduce-motion] *::after {
 .reward-picked {
   padding: 0 2px;
 }
+
+/* What a certificate says about itself (the XMPP trust prompt and connection settings): a label column and its value. */
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 6px 0;
+}
+.facts dt {
+  color: var(--text-muted);
+}
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A checkbox and the words beside it (XMPP's forms and tools): one row, the box aligned with the first line. */
+.check-row {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: flex-start;
+  font-size: var(--font-size-small);
+}
+.check-row input {
+  margin-top: 2px;
+  flex: none;
+}
+
+/* OMEMO: this device's verification code, and its link (selectable, so it can be copied). */
+.omemo-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.omemo-qr img {
+  background: #fff;
+  border-radius: 6px;
+  padding: 6px;
+}
+.omemo-qr .mono {
+  user-select: text;
+  word-break: break-all;
+}

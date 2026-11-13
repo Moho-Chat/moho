@@ -33,7 +33,10 @@ const CAPABILITIES: Record<string, FormatKind[]> = {
   // what it does read - emoticons - is not a format.
   steam: [],
   // Signal's own markers (*bold*, _italic_, ~strike~, `code`, ||spoiler||), which the daemon turns into body ranges (signal/compose.rs).
-  signal: ['bold', 'italic', 'strike', 'code', 'spoiler']
+  signal: ['bold', 'italic', 'strike', 'code', 'spoiler'],
+  // Message styling (XEP-0393): *bold*, _italic_, ~strike~ and `code`, which every XMPP client reads and a client that does
+  // not shows as the plain marks.
+  xmpp: ['bold', 'italic', 'strike', 'code']
 }
 
 export function formatsFor(service: string | undefined): FormatKind[] {
@@ -147,13 +150,13 @@ export function wrap(service: string | undefined, kind: FormatKind, inner: strin
       case 'color': return colour ? marked(`[color=${colour}]`, '[/color]') : inner
     }
   }
-  if (service === 'signal') {
+  if (service === 'signal' || service === 'xmpp') {
     switch (kind) {
       case 'bold': return marked('*')
       case 'italic': return marked('_')
       case 'strike': return marked('~')
       case 'code': return marked('`')
-      case 'spoiler': return marked('||')
+      case 'spoiler': return service === 'signal' ? marked('||') : inner
       default: return inner
     }
   }

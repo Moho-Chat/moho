@@ -41,7 +41,9 @@ export function InvitePanel(): JSX.Element | null {
         </button>
       </div>
       <p className="small muted invite-panel-note">
-        {invitation.kind === 'friend'
+        {invitation.kind === 'file'
+          ? 'Accepting takes the file straight from their device, through your server; it is kept with your other files and shown in your conversation with them. Declining tells them no.'
+          : invitation.kind === 'friend'
           ? 'Accepting makes you friends: the conversation with them opens here, and they can see when you are online. Declining removes the request.'
           : invitation.kind === 'verification'
             ? 'Accepting starts the check: you will be shown emoji to compare with the other side. Only accept one you started or expected. Declining cancels it.'

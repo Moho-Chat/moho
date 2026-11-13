@@ -1,3 +1,4 @@
+import { XmppJoin } from './XmppJoin'
 import { useMediaUrl } from '../lib/route'
 import { SwitchRow } from './Switch'
 import { useEffect, useRef, useState } from 'react'
@@ -80,6 +81,8 @@ export function JoinPanel(): JSX.Element {
         return <TelegramJoin account={account} />
       case 'stoat':
         return <StoatJoin account={account} />
+      case 'xmpp':
+        return <XmppJoin account={account} />
       case 'sneedchat':
         return <SneedchatRooms account={account} />
       case 'steam':
@@ -88,7 +91,7 @@ export function JoinPanel(): JSX.Element {
         return <div className="panel muted">Joining isn&apos;t supported for this service yet.</div>
     }
   })()
-  const joinable = all.filter((a) => ['irc', 'matrix', 'discord', 'kick', 'sneedchat', 'steam', 'twitch', 'telegram', 'stoat'].includes(a.service))
+  const joinable = all.filter((a) => ['irc', 'matrix', 'discord', 'kick', 'sneedchat', 'steam', 'twitch', 'telegram', 'stoat', 'xmpp'].includes(a.service))
 
   return (
     <div className="join-frame">

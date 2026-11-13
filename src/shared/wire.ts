@@ -3,7 +3,7 @@
 
 export interface Account {
   id: string
-  service: 'irc' | 'discord' | 'sneedchat' | 'matrix' | 'kick' | 'steam' | 'twitch' | 'telegram' | 'stoat' | 'signal' | 'jabber' | 'slack'
+  service: 'irc' | 'discord' | 'sneedchat' | 'matrix' | 'kick' | 'steam' | 'twitch' | 'telegram' | 'stoat' | 'xmpp' | 'signal' | 'jabber' | 'slack'
   displayName: string
   /**
    * How the user is presenting: "online" | "idle". Distinct from
@@ -94,6 +94,8 @@ export interface Account {
    * out, ban, change a room's modes) and to whisper. Off unless the person turned it on.
    */
   moderation?: boolean
+  /** XMPP only: why a stopped account stopped - `password`, `certificate`, `certificate-changed` or `setup`. */
+  stopReason?: string
 }
 
 export interface SneedChatRoom {
@@ -737,6 +739,8 @@ export interface Member {
   bot?: boolean
   /** The roles this person holds here, by name. Discord only. */
   roles?: string[]
+  /** What a room calls them (XMPP hats): titles the room gave this person, drawn as badges. */
+  hats?: string[]
   /** What they are to this account where the service keeps friends: "Friend", "Blocked", "None"... Stoat only. */
   relationship?: string
   powerLevel?: number
@@ -861,6 +865,8 @@ export interface FriendRequest {
   id: string
   name: string | null
   avatarUrl?: string | null
+  /** What the request says about itself, where the service says more than that it was made (XMPP: their words, their server's). */
+  detail?: string
 }
 
 export interface MatrixVerification {

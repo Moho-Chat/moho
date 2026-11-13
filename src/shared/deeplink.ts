@@ -43,7 +43,20 @@ export interface StoatInvite {
   url: string
 }
 
-export type DeepLink = IrcLink | KickLink | TelegramLink | StoatInvite
+/**
+ * An `xmpp:` URI (XEP-0147): `xmpp:room@conference.example.org?join`, `xmpp:friend@example.org?roster;name=Friend`,
+ * `xmpp:friend@example.org?message;body=hello`, `xmpp:example.org?register;preauth=TOKEN` (an invitation to make an account).
+ * What to do is the query's first word; the rest are its `;`-separated parameters.
+ */
+export interface XmppLink {
+  service: 'xmpp'
+  /** The address: a person, a room, or (for `register`) a server. */
+  jid: string
+  action: 'message' | 'join' | 'roster' | 'subscribe' | 'register'
+  params: Record<string, string>
+}
+
+export type DeepLink = IrcLink | KickLink | TelegramLink | StoatInvite | XmppLink
 
 /**
  * Schemes moho asks the desktop to send it.
@@ -52,7 +65,7 @@ export type DeepLink = IrcLink | KickLink | TelegramLink | StoatInvite
  * link is an ordinary web address, and registering for `https` would mean
  * volunteering to be the system browser.
  */
-export const DEEP_LINK_SCHEMES = ['irc', 'ircs', 'tg']
+export const DEEP_LINK_SCHEMES = ['irc', 'ircs', 'tg', 'xmpp']
 
 /** Whether a string is a link this client would act on. */
 export function isDeepLink(value: string): boolean {
@@ -83,7 +96,42 @@ export function stoatInviteCode(value: string): string | null {
 
 /** A `tg:` link is only one of ours if it is a kind that opens a chat; the others (login, proxy, themes) are not. */
 function isTelegramOrIrc(value: string): boolean {
-  return value.toLowerCase().startsWith('tg:') ? isTelegramLink(value) : true
+  const lower = value.toLowerCase()
+  if (lower.startsWith('tg:')) return isTelegramLink(value)
+  if (lower.startsWith('xmpp:')) return !!parseXmppLink(value)
+  return true
+}
+
+/** Takes an `xmpp:` URI apart, or returns null if it is not one this client acts on. */
+export function parseXmppLink(value: string): XmppLink | null {
+  const trimmed = value.trim()
+  if (!/^xmpp:/i.test(trimmed)) return null
+  const rest = trimmed.slice(5).replace(/^\/\/[^/]*\//, '')
+  const [pathPart, queryPart = ''] = rest.split('?', 2)
+  let jid: string
+  try {
+    jid = decodeURIComponent(pathPart).trim()
+  } catch {
+    return null
+  }
+  if (!jid || /\s/.test(jid) || jid.length > 1023) return null
+  const [action, ...pairs] = queryPart.split(';')
+  const known = ['message', 'join', 'roster', 'subscribe', 'register']
+  const what = (action || 'message').toLowerCase()
+  if (!known.includes(what)) return null
+  const params: Record<string, string> = {}
+  for (const pair of pairs) {
+    const at = pair.indexOf('=')
+    if (at < 1) continue
+    try {
+      params[pair.slice(0, at).toLowerCase()] = decodeURIComponent(pair.slice(at + 1))
+    } catch {
+      /* a parameter that does not decode is left out */
+    }
+  }
+  // A person or a room has a domain, a server has nothing else; a register link names a server.
+  if (what !== 'register' && !jid.includes('@')) return null
+  return { service: 'xmpp', jid, action: what as XmppLink['action'], params }
 }
 
 /** Pages on t.me that are about something other than a chat. */
@@ -170,6 +218,8 @@ export function kickHandle(value: string): string | null {
 export function parseDeepLink(value: string): DeepLink | null {
   const kick = kickHandle(value)
   if (kick) return { service: 'kick', handle: kick }
+  const xmpp = parseXmppLink(value)
+  if (xmpp) return xmpp
   if (isTelegramLink(value)) return { service: 'telegram', url: value.trim() }
   const invite = stoatInviteCode(value)
   if (invite) return { service: 'stoat', code: invite, url: value.trim() }
