@@ -2,6 +2,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import os from 'node:os'
+import { fileURLToPath } from 'node:url'
 import {
   app,
   BrowserWindow,
@@ -35,7 +36,7 @@ import { EDIT_ACTIONS, IPC, POPOUT_FLAG, UI_SHOTS_FLAG, type EditAction, type Ed
 import { clearnetLinks } from '../shared/clearnet'
 import { readCapped, pictureNamedIn } from './imagepage'
 import { DEEP_LINK_SCHEMES, isDeepLink } from '../shared/deeplink'
-import { allowPickedFile, allowRoot, installMediaHandler, registerMediaScheme } from './media-protocol'
+import { allowPickedFile, allowRoot, attachmentName, installMediaHandler, isCachedFile, registerMediaScheme } from './media-protocol'
 import { installScreenShare } from './screenshare'
 import { defaultDownloadDir, readMedia, saveMedia } from './downloads'
 import type { Buffer as ChatBuffer } from '../shared/wire'
@@ -957,6 +958,28 @@ function wireIpc(): void {
     if (!parent) return null
     const res = await dialog.showSaveDialog(parent, { defaultPath: suggested })
     return res.canceled || !res.filePath ? null : res.filePath
+  })
+
+  // A file someone sent - a document, an archive, anything that is not drawn - saved where the person chooses. Saved,
+  // never opened: the file is whatever its sender made it, and handing it to the system to open could run it. Only a
+  // file the daemon keeps in its caches (see isCachedFile); 'missing' tells the window to have the daemon fetch it
+  // first, as a file that was never downloaded or that the cache let go is not there yet.
+  ipcMain.handle(IPC.saveAttachment, async (e, raw: unknown, name: unknown) => {
+    if (typeof raw !== 'string') return 'refused'
+    let cached: string
+    try {
+      cached = raw.startsWith('file:') ? fileURLToPath(raw) : raw
+    } catch {
+      return 'refused'
+    }
+    if (!fs.existsSync(cached)) return 'missing'
+    if (!isCachedFile(cached)) return 'refused'
+    const parent = callerWindow(e) ?? mainWindow
+    if (!parent) return 'cancelled'
+    const res = await dialog.showSaveDialog(parent, { defaultPath: path.join(app.getPath('downloads'), attachmentName(name)) })
+    if (res.canceled || !res.filePath) return 'cancelled'
+    await fsp.copyFile(fs.realpathSync(cached), res.filePath)
+    return 'saved'
   })
 
   // Only for the check scripts, which cannot press a native dialog: files named in the environment are handed out in turn.
