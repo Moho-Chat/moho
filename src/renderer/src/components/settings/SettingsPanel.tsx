@@ -745,6 +745,17 @@ function NotificationSettings(): JSX.Element {
           description="Use the system's own notification sound. Off, they arrive silently."
           defaultValue={true}
         />
+        <DropdownSetting
+          settingKey="notifications.content"
+          label="What a notification shows"
+          description="Notifications can be seen by anybody looking at the screen, and some desktops keep them in a history."
+          defaultValue="all"
+          options={[
+            { value: 'all', label: 'Who it is from, and the message' },
+            { value: 'name', label: 'Who it is from, not the message' },
+            { value: 'none', label: 'Only that something arrived' }
+          ]}
+        />
       </SettingsSection>
 
       <SettingsSection title="When moho is not in front">
