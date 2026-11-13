@@ -1026,7 +1026,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           have polls and no predictions, IRC has neither, and an icon that
           opens an empty list on a service that could never fill it is an
           icon that says the feature is missing rather than absent. */}
-      {(isKick || isMatrix || isTwitch) && <CardHistory buffer={buffer} kind="poll" icon="help" label="Past polls" />}
+      {(isKick || isMatrix || isTwitch || buffer.accountId.startsWith('signal:')) && <CardHistory buffer={buffer} kind="poll" icon="help" label="Past polls" />}
       {(isKick || isTwitch) && <CardHistory buffer={buffer} kind="prediction" icon="casino" label="Past predictions" />}
 
       {/* An icon until it is being used. A box wide enough to type into is
