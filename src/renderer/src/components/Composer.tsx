@@ -248,7 +248,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const route = useChat((s) => s.route)
   const routed = tunnelAll || !!account?.useTor
   const media = useMediaUrl(account?.id)
-  const hasStickers = service === 'matrix' || service === 'discord' || service === 'steam' || service === 'telegram'
+  const hasStickers = service === 'matrix' || service === 'discord' || service === 'steam' || service === 'telegram' || service === 'signal'
   const formats = formatsFor(service)
   /**
    * The account's stickers, asked for when the picker opens - from either
@@ -265,7 +265,9 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
             ? 'listSteamStickers'
             : service === 'telegram'
               ? 'listTelegramStickers'
-              : 'listMatrixStickers',
+              : service === 'signal'
+                ? 'listSignalStickers'
+                : 'listMatrixStickers',
         { bufferId: buffer.id }
       )
       .then(setStickers)
@@ -1507,6 +1509,8 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
                       ? window.moho.rpc('sendSteamSticker', { bufferId: buffer.id, name: sticker.name })
                       : service === 'telegram'
                         ? window.moho.rpc('sendTelegramSticker', { bufferId: buffer.id, id: sticker.id })
+                        : service === 'signal'
+                        ? window.moho.rpc('sendSignalSticker', { bufferId: buffer.id, id: sticker.id })
                         : sticker.id
                         ? window.moho.rpc('sendDiscordSticker', { bufferId: buffer.id, stickerId: sticker.id })
                         : window.moho.rpc('sendMatrixSticker', { bufferId: buffer.id, mxc: sticker.mxc, body: sticker.body })
