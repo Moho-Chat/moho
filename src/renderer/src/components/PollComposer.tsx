@@ -7,6 +7,8 @@ import { useStore } from '../state/hooks'
 const MAX_ANSWERS = 20
 /** Telegram's: ten answers, and a count that can be held back until the poll closes. */
 const TELEGRAM_MAX_ANSWERS = 10
+/** Signal's: ten answers, and a choice of whether more than one may be picked (its tally is always shown). */
+const SIGNAL_MAX_ANSWERS = 10
 
 /**
  * Starting a poll.
@@ -20,7 +22,10 @@ const TELEGRAM_MAX_ANSWERS = 10
  */
 export function PollComposer({ bufferId, onClose }: { bufferId: string; onClose: () => void }): JSX.Element {
   const store = useStore()
-  const max = store.accountFor(bufferId)?.service === 'telegram' ? TELEGRAM_MAX_ANSWERS : MAX_ANSWERS
+  const service = store.accountFor(bufferId)?.service
+  const max = service === 'telegram' ? TELEGRAM_MAX_ANSWERS : service === 'signal' ? SIGNAL_MAX_ANSWERS : MAX_ANSWERS
+  const signal = service === 'signal'
+  const [multiple, setMultiple] = useState(false)
   const [question, setQuestion] = useState('')
   const [answers, setAnswers] = useState(['', ''])
   const [disclosed, setDisclosed] = useState(true)
@@ -32,7 +37,7 @@ export function PollComposer({ bufferId, onClose }: { bufferId: string; onClose:
   const send = (): void => {
     setSending(true)
     void window.moho
-      .rpc('startMatrixPoll', { bufferId, question: question.trim(), answers: filled, disclosed })
+      .rpc('startMatrixPoll', { bufferId, question: question.trim(), answers: filled, disclosed, multiple })
       .then(onClose)
       .catch((e: Error) => store.toast('error', e.message))
       .finally(() => setSending(false))
@@ -85,12 +90,19 @@ export function PollComposer({ bufferId, onClose }: { bufferId: string; onClose:
           >
             Add an answer
           </button>
-          <label className="small poll-disclosed">
-            <input type="checkbox" checked={disclosed} onChange={(e) => setDisclosed(e.target.checked)} />
-            {/* Said as what it does rather than as its name in the spec:
-                "undisclosed" is the kind of word that makes somebody guess. */}
-            Show the running count before it closes
-          </label>
+          {signal ? (
+            <label className="small poll-disclosed">
+              <input type="checkbox" checked={multiple} onChange={(e) => setMultiple(e.target.checked)} />
+              Allow more than one answer
+            </label>
+          ) : (
+            <label className="small poll-disclosed">
+              <input type="checkbox" checked={disclosed} onChange={(e) => setDisclosed(e.target.checked)} />
+              {/* Said as what it does rather than as its name in the spec:
+                  "undisclosed" is the kind of word that makes somebody guess. */}
+              Show the running count before it closes
+            </label>
+          )}
         </div>
 
         <div className="field-row">
