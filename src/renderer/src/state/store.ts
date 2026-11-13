@@ -1613,6 +1613,16 @@ export class ChatStore {
         // Not connected yet: the daemon's own push fills it in.
       }
     }
+    // Signal's are message requests: people, and groups, the account has not accepted and whose messages are held back.
+    for (const account of this.state.accounts.filter((a) => a.service === 'signal' && a.state === 'connected')) {
+      try {
+        const r = await window.moho.rpc<{ people: FriendRequest[]; groups: MatrixInvite[] }>('signalRequests', { accountId: account.id })
+        next[account.id] = r.people
+        this.set({ matrixInvites: { ...this.state.matrixInvites, [account.id]: r.groups } })
+      } catch {
+        // Not connected yet: the daemon's own push fills it in.
+      }
+    }
     // XMPP's are the people who asked to see the account's presence and have not been answered.
     for (const account of this.state.accounts.filter((a) => a.service === 'xmpp' && a.state === 'connected')) {
       try {
@@ -1715,11 +1725,15 @@ export class ChatStore {
           await window.moho.rpc('answerStoatFriendRequest', { accountId, userId: id, accept })
         } else if (invitation.service === 'xmpp') {
           await window.moho.rpc('xmppAnswerRequest', { accountId, jid: id, accept })
+        } else if (invitation.service === 'signal') {
+          await window.moho.rpc('signalAnswerRequest', { accountId, id, answer: accept ? 'accept' : 'delete' })
         } else {
           await window.moho.rpc('steamAnswerFriendRequest', { accountId, steamid: id, accept })
         }
       } else if (invitation.service === 'xmpp') {
         await window.moho.rpc('xmppAnswerInvite', { accountId, roomId: id, accept })
+      } else if (invitation.service === 'signal') {
+        await window.moho.rpc('signalAnswerRequest', { accountId, id, answer: accept ? 'accept' : 'delete' })
       } else if (invitation.service === 'steam') {
         const r = await window.moho.rpc<{ groupId?: string }>('steamChatGroupAction', { accountId, groupId: id, action: accept ? 'acceptInvite' : 'dismissInvite' })
         if (accept && r.groupId) steamGroupJoined = r.groupId
@@ -4630,6 +4644,16 @@ export class ChatStore {
       // Stoat says who has asked an account to be their friend, whenever that changes.
       case 'stoatFriendRequests': {
         this.set({ friendRequests: { ...this.state.friendRequests, [data.accountId as string]: (data.incoming ?? []) as FriendRequest[] } })
+        break
+      }
+
+      // Signal's message requests, whenever one arrives or is answered (here or on the phone).
+      case 'signalRequests': {
+        const accountId = data.accountId as string
+        this.set({
+          friendRequests: { ...this.state.friendRequests, [accountId]: (data.people ?? []) as FriendRequest[] },
+          matrixInvites: { ...this.state.matrixInvites, [accountId]: (data.groups ?? []) as MatrixInvite[] }
+        })
         break
       }
 

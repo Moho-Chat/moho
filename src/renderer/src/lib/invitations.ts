@@ -77,7 +77,10 @@ export function listInvitations(sources: InvitationSources, accounts: Account[])
         id: invite.roomId,
         name: invite.name,
         avatarUrl: invite.avatarUrl,
-        detail: `${invite.inviter ? `${invite.inviter} invited you` : 'You have been invited'}${invite.isDirect ? ' to a direct message' : account.service === 'steam' ? ' to a group chat' : ' to this room'}`,
+        detail:
+          account.service === 'signal'
+            ? `${invite.inviter ? `${invite.inviter} added you to this group` : 'You were added to this group'}. Nothing from it is shown until you accept`
+            : `${invite.inviter ? `${invite.inviter} invited you` : 'You have been invited'}${invite.isDirect ? ' to a direct message' : account.service === 'steam' ? ' to a group chat' : ' to this room'}`,
         direct: invite.isDirect
       })
     }
