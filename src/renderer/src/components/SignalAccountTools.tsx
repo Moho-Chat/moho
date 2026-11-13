@@ -63,6 +63,24 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
       .catch((e: Error) => store.toast('error', e.message))
       .finally(() => setBusy(false))
   }
+  /** The phone's privacy settings and the people it blocks: shown here, changed on the phone (unblocking aside). */
+  const [settings, setSettings] = useState<{
+    readReceipts: boolean | null
+    typingIndicators: boolean | null
+    linkPreviews: boolean | null
+    sealedSenderIndicators: boolean | null
+    defaultTimer: number | null
+    blocked: { id: string; name: string }[]
+  } | null>(null)
+  const loadSettings = (): void => {
+    void window.moho
+      .rpc<NonNullable<typeof settings>>('signalSettings', { accountId: account.id })
+      .then(setSettings)
+      .catch(() => setSettings(null))
+  }
+  useEffect(loadSettings, [account.id, account.state])
+  const word = (on: boolean | null): string => (on === null ? 'not known yet' : on ? 'on' : 'off')
+
   const profileChanged =
     !!profile && !!edited && (edited.given !== profile.given || edited.family !== profile.family || edited.about !== profile.about || edited.emoji !== profile.emoji)
 
@@ -104,6 +122,49 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
               Save
             </button>
           </div>
+        </>
+      )}
+      {settings && (
+        <>
+          <div className="setting-row">
+            <div className="setting-text">
+              <div>Privacy, as set on your phone</div>
+              <div className="small muted">
+                Read receipts {word(settings.readReceipts)} · typing indicators {word(settings.typingIndicators)} · link
+                previews {word(settings.linkPreviews)} · sealed sender indicators {word(settings.sealedSenderIndicators)}
+                {settings.defaultTimer ? ` · new chats disappear after ${settings.defaultTimer} seconds` : ''}. moho follows
+                them; change them in Signal on the phone.
+              </div>
+            </div>
+          </div>
+          {settings.blocked.length > 0 && (
+            <>
+              <div className="small muted">Blocked</div>
+              <ul className="plain-list">
+                {settings.blocked.map((b) => (
+                  <li key={b.id} className="small field-row">
+                    <span className="grow">{b.name}</span>
+                    <button
+                      type="button"
+                      className="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void window.moho
+                          .rpc('signalBlock', { accountId: account.id, id: b.id, blocked: false })
+                          .then(() => {
+                            store.toast('info', `${b.name} is unblocked`)
+                            loadSettings()
+                          })
+                          .catch((e: Error) => store.toast('error', e.message))
+                      }
+                    >
+                      Unblock
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </>
       )}
       <div className="setting-row">
