@@ -3,6 +3,7 @@ import { Icon, IconButton } from './Icon'
 import { AddToConversation } from './AddToConversation'
 import { DiscordInvite } from './DiscordInvite'
 import { RoomSettings } from './RoomSettings'
+import { SignalGroupSettings } from './SignalGroupSettings'
 import { HeaderPopover } from './HeaderPopover'
 import { useChat, useStore } from '../state/hooks'
 import { bufferDisplayName, classes, formatFullTime } from '../lib/util'
@@ -1013,6 +1014,8 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           Only on a room: a direct message has no history for anybody to
           join and read. */}
       {isMatrix && buffer.kind === 'channel' && <RoomSettings buffer={buffer} />}
+      {/* Signal's, for a group, and for a conversation with one person the timer its messages disappear by. */}
+      {buffer.accountId.startsWith('signal:') && (buffer.kind === 'channel' || buffer.kind === 'dm') && <SignalGroupSettings buffer={buffer} />}
 
       {/* What this channel has asked before now. Two buttons rather than one
           list, because a poll and a prediction are different questions -

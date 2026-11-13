@@ -733,6 +733,8 @@ export interface ChatState {
   matrixInvites: Record<string, MatrixInvite[]>
   /** Who has asked each account to be their friend, by account. */
   friendRequests: Record<string, FriendRequest[]>
+  /** A Signal group link that was opened, waiting in the Join panel to be looked at. */
+  signalGroupLink: string
   /** Which invitation the invitations page is showing. */
   activeInvitationKey: string
   /** A question asked about a Steam friend, waiting on an answer in a dialog. */
@@ -882,6 +884,7 @@ const INITIAL: ChatState = {
   matrixWidgets: {},
   matrixInvites: {},
   friendRequests: {},
+  signalGroupLink: '',
   activeInvitationKey: '',
   steamDialog: null,
   profile: null,
@@ -2347,6 +2350,11 @@ export class ChatStore {
    * keeps running, and cancelling stops it. Getting those two confused costs
    * somebody a download they were most of the way through.
    */
+  /** The Signal group link the Join panel has taken, so it is not offered again. */
+  takeSignalGroupLink(): void {
+    if (this.state.signalGroupLink) this.set({ signalGroupLink: '' })
+  }
+
   minimiseTransfer(id: string): void {
     if (this.state.minimisedTransfers.includes(id)) return
     this.set({ minimisedTransfers: [...this.state.minimisedTransfers, id] })
@@ -2395,6 +2403,19 @@ export class ChatStore {
       }
       this.set({ activePanel: '' })
       void this.joinAndOpen(account.id, link.url)
+      return
+    }
+
+    // A Signal group link opens the Join panel of a Signal account with the link in it, to be looked at before joining;
+    // with no Signal account it is a web page.
+    if (link.service === 'signal') {
+      const account = this.state.accounts.find((a) => a.service === 'signal' && a.state === 'connected') ?? this.state.accounts.find((a) => a.service === 'signal')
+      if (!account) {
+        void window.moho.openExternal(link.url)
+        return
+      }
+      this.set({ signalGroupLink: link.url })
+      this.setActivePanel('join', account.id)
       return
     }
 

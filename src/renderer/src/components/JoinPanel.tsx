@@ -558,6 +558,66 @@ function TelegramJoin({ account }: { account: Account }): JSX.Element {
  */
 function SignalJoin({ account }: { account: Account }): JSX.Element {
   const store = useStore()
+  const [groupName, setGroupName] = useState('')
+  const [members, setMembers] = useState('')
+  // A group link opened from a message arrives here to be looked at, and is taken so it is not offered twice.
+  const opened = useChat((s) => s.signalGroupLink)
+  const [link, setLink] = useState(opened)
+  useEffect(() => {
+    if (!opened) return
+    setLink(opened)
+    store.takeSignalGroupLink()
+  }, [opened, store])
+  const [preview, setPreview] = useState<{ title: string; memberCount: number; needsApproval: boolean } | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const create = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      // People are named by username here; the daemon finds who each is before the group is made.
+      const userIds = members.split(',').map((s) => s.trim()).filter(Boolean)
+      const r = await window.moho.rpc<{ bufferId: string }>('signalCreateGroup', { accountId: account.id, title: groupName.trim(), userIds })
+      setGroupName('')
+      setMembers('')
+      await store.refreshBuffers()
+      await store.selectBuffer(r.bufferId)
+    } catch (e) {
+      store.toast('error', `Couldn't make the group: ${(e as Error).message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const look = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      setPreview(await window.moho.rpc('signalGroupLinkInfo', { accountId: account.id, link: link.trim() }))
+    } catch (e) {
+      store.toast('error', (e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const join = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      const r = await window.moho.rpc<{ bufferId: string | null; waiting: boolean }>('signalJoinGroupLink', { accountId: account.id, link: link.trim() })
+      setLink('')
+      setPreview(null)
+      if (r.waiting) {
+        store.toast('info', 'Asked to join. An admin of the group has to let you in')
+      } else if (r.bufferId) {
+        await store.refreshBuffers()
+        await store.selectBuffer(r.bufferId)
+      }
+    } catch (e) {
+      store.toast('error', `Couldn't join: ${(e as Error).message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="panel join-panel">
       <SubmitField
@@ -569,6 +629,51 @@ function SignalJoin({ account }: { account: Account }): JSX.Element {
         Somebody who has not accepted you yet sees your first message as a request. A number nobody has given this
         account cannot be looked up from here: ask for their username, or start the chat from your phone.
       </p>
+
+      <div className="field">
+        <span className="small muted">Join a group by its link</span>
+        <div className="field-row">
+          <input
+            className="text-field"
+            placeholder="https://signal.group/#…"
+            spellCheck={false}
+            value={link}
+            disabled={busy}
+            onChange={(e) => {
+              setLink(e.target.value)
+              setPreview(null)
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && link.trim() && void look()}
+          />
+          <button type="button" className="button" disabled={busy || !link.trim()} onClick={() => void (preview ? join() : look())}>
+            {preview ? (preview.needsApproval ? 'Ask to join' : 'Join') : 'Look'}
+          </button>
+        </div>
+        {preview && (
+          <p className="small muted">
+            {preview.title} · {preview.memberCount} {preview.memberCount === 1 ? 'member' : 'members'}
+            {preview.needsApproval ? ' · an admin approves who joins' : ''}
+          </p>
+        )}
+      </div>
+
+      <div className="field">
+        <span className="small muted">Make a group</span>
+        <input className="text-field" placeholder="Its name" value={groupName} disabled={busy} onChange={(e) => setGroupName(e.target.value)} />
+        <div className="field-row">
+          <input
+            className="text-field"
+            placeholder="Who is in it: usernames, separated by commas"
+            value={members}
+            disabled={busy}
+            onChange={(e) => setMembers(e.target.value)}
+          />
+          <button type="button" className="button" disabled={busy || !groupName.trim()} onClick={() => void create()}>
+            Make
+          </button>
+        </div>
+        <p className="small muted">You are its admin. Anybody who cannot be added straight away is invited instead.</p>
+      </div>
     </div>
   )
 }

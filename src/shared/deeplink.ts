@@ -56,7 +56,23 @@ export interface XmppLink {
   params: Record<string, string>
 }
 
-export type DeepLink = IrcLink | KickLink | TelegramLink | StoatInvite | XmppLink
+/** A Signal group's link (`https://signal.group/#…`): its key and password are in the part after the `#`. */
+export interface SignalGroupLink {
+  service: 'signal'
+  url: string
+}
+
+/** Whether a string is a Signal group link. Only `https://signal.group/`; `sgnl:` belongs to Signal's own app. */
+export function isSignalGroupLink(value: string): boolean {
+  try {
+    const url = new URL(value.trim())
+    return url.protocol === 'https:' && url.hostname.toLowerCase() === 'signal.group' && url.hash.length > 8
+  } catch {
+    return false
+  }
+}
+
+export type DeepLink = IrcLink | KickLink | TelegramLink | StoatInvite | XmppLink | SignalGroupLink
 
 /**
  * Schemes moho asks the desktop to send it.
@@ -70,7 +86,7 @@ export const DEEP_LINK_SCHEMES = ['irc', 'ircs', 'tg', 'xmpp']
 /** Whether a string is a link this client would act on. */
 export function isDeepLink(value: string): boolean {
   const lower = value.toLowerCase()
-  return DEEP_LINK_SCHEMES.some((s) => lower.startsWith(`${s}:`)) ? isTelegramOrIrc(value) : !!kickHandle(value) || isTelegramLink(value) || !!stoatInviteCode(value)
+  return DEEP_LINK_SCHEMES.some((s) => lower.startsWith(`${s}:`)) ? isTelegramOrIrc(value) : !!kickHandle(value) || isTelegramLink(value) || !!stoatInviteCode(value) || isSignalGroupLink(value)
 }
 
 /**
@@ -223,6 +239,7 @@ export function parseDeepLink(value: string): DeepLink | null {
   if (isTelegramLink(value)) return { service: 'telegram', url: value.trim() }
   const invite = stoatInviteCode(value)
   if (invite) return { service: 'stoat', code: invite, url: value.trim() }
+  if (isSignalGroupLink(value)) return { service: 'signal', url: value.trim() }
 
   let url: URL
   try {

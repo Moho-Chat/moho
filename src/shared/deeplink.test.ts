@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isDeepLink, isTelegramLink, parseDeepLink, stoatInviteCode } from './deeplink'
+import { isDeepLink, isTelegramLink, parseDeepLink, stoatInviteCode, isSignalGroupLink } from './deeplink'
 
 describe('a Telegram link', () => {
   it('is what the View in Telegram button of a post opens, and what a message says', () => {
@@ -77,5 +77,21 @@ describe('xmpp: links', () => {
     expect(parseXmppLink('xmpp:a@b.org?dance')).toBeNull()
     expect(parseXmppLink('xmpp:')).toBeNull()
     expect(parseXmppLink('https://example.org')).toBeNull()
+  })
+})
+
+describe('a Signal group link', () => {
+  const link = 'https://signal.group/#CjQKIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEhAAAAAAAAAAAAAAAAAAAAAA'
+
+  it('is ours, and handed on whole', () => {
+    expect(isDeepLink(link)).toBe(true)
+    expect(parseDeepLink(link)).toEqual({ service: 'signal', url: link })
+  })
+
+  it('is only the https one on signal.group, with something after the #', () => {
+    expect(isSignalGroupLink('https://signal.group/')).toBe(false)
+    expect(isSignalGroupLink('http://signal.group/#CjQKIAAAAAAA')).toBe(false)
+    expect(isSignalGroupLink('sgnl://signal.group/#CjQKIAAAAAAA')).toBe(false)
+    expect(isSignalGroupLink('https://example.com/#CjQKIAAAAAAA')).toBe(false)
   })
 })

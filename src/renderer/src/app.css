@@ -6941,6 +6941,20 @@ video.lightbox-media {
   font-weight: var(--weight-semibold);
 }
 
+/* A button that ends something (leaving a group): said in the error colour so it is not pressed for another. */
+.button.danger {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+/* A row's name, taking the room its buttons leave (a member beside their admin buttons). */
+.field-row > .grow {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* --- rail folders ------------------------------------------------------ */
 
 /* A lifted icon leaves the space it occupied rather than collapsing the
