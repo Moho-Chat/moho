@@ -83,6 +83,8 @@ export function JoinPanel(): JSX.Element {
         return <StoatJoin account={account} />
       case 'xmpp':
         return <XmppJoin account={account} />
+      case 'signal':
+        return <SignalJoin account={account} />
       case 'sneedchat':
         return <SneedchatRooms account={account} />
       case 'steam':
@@ -91,7 +93,7 @@ export function JoinPanel(): JSX.Element {
         return <div className="panel muted">Joining isn&apos;t supported for this service yet.</div>
     }
   })()
-  const joinable = all.filter((a) => ['irc', 'matrix', 'discord', 'kick', 'sneedchat', 'steam', 'twitch', 'telegram', 'stoat', 'xmpp'].includes(a.service))
+  const joinable = all.filter((a) => ['irc', 'matrix', 'discord', 'kick', 'sneedchat', 'steam', 'twitch', 'telegram', 'stoat', 'xmpp', 'signal'].includes(a.service))
 
   return (
     <div className="join-frame">
@@ -544,6 +546,28 @@ function TelegramJoin({ account }: { account: Account }): JSX.Element {
         A public group or channel is joined by its @name or t.me link, a private one by the invite link
         somebody gave you, and a person's @name opens a conversation with them. Telegram may ask an
         administrator to accept a request to join. Closing a chat in the list leaves it.
+      </p>
+    </div>
+  )
+}
+
+/**
+ * Starting a Signal conversation. Signal finds people by username (a name, a dot and a number); a number works only
+ * when it is already in the phone's contacts, because looking up a number is Signal's contact discovery, which moho
+ * does not do.
+ */
+function SignalJoin({ account }: { account: Account }): JSX.Element {
+  const store = useStore()
+  return (
+    <div className="panel join-panel">
+      <SubmitField
+        label="Message somebody"
+        placeholder="Their username, like name.42, or a number in your contacts"
+        onSubmit={(who) => void store.openDirectMessage(account.id, who, who)}
+      />
+      <p className="small muted">
+        Somebody who has not accepted you yet sees your first message as a request. A number nobody has given this
+        account cannot be looked up from here: ask for their username, or start the chat from your phone.
       </p>
     </div>
   )
