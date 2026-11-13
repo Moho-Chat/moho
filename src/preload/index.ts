@@ -183,6 +183,9 @@ const api = {
   },
   pickSavePath: (suggested?: string): Promise<string | null> =>
     ipcRenderer.invoke(IPC.pickSavePath, suggested),
+  /** Saves an attachment the daemon keeps in its cache where the person chooses (see main's saveAttachment). */
+  saveAttachment: (cachedPath: string, name: string): Promise<'saved' | 'cancelled' | 'missing' | 'refused'> =>
+    ipcRenderer.invoke(IPC.saveAttachment, cachedPath, name),
   pickDirectory: (): Promise<string | null> => ipcRenderer.invoke(IPC.pickDirectory),
   importGroupIcon: (groupId: string): Promise<{ path?: string; error?: string }> =>
     ipcRenderer.invoke(IPC.importGroupIcon, groupId),

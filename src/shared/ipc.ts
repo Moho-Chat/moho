@@ -13,6 +13,7 @@ export const IPC = {
   resolveImagePage: 'moho:resolveImagePage',
   pickFile: 'moho:pickFile',
   pickSavePath: 'moho:pickSavePath',
+  saveAttachment: 'moho:saveAttachment',
   pickDirectory: 'moho:pickDirectory',
   downloadMedia: 'moho:downloadMedia',
   copyImage: 'moho:copyImage',

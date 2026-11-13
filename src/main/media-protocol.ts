@@ -249,6 +249,38 @@ export function isAllowed(target: string): boolean {
   return isMediaBytes(head, path.basename(path.dirname(real)) === STICKER_DIR)
 }
 
+/**
+ * Whether a path is a file the daemon keeps in one of its caches: the same place rules as isAllowed - directly inside
+ * a cache folder, a link judged by where it points - without asking what the bytes are. For saving an attachment
+ * where the person chooses (main's saveAttachment), which is what a document, an archive or anything else that is not
+ * drawn needs: the window still draws nothing but pictures, video and audio. Exported for tests.
+ */
+export function isCachedFile(target: string): boolean {
+  let real: string
+  try {
+    real = fs.realpathSync(path.resolve(target))
+    if (!fs.statSync(real).isFile()) return false
+  } catch {
+    return false
+  }
+  const roots = allowedRoots()
+  const inside = (p: string): boolean => roots.some((root) => underRoot(p + path.sep, root))
+  if (!inside(path.resolve(target)) || !inside(real)) return false
+  return roots.some((root) => comparable(path.dirname(real) + path.sep) === comparable(root))
+}
+
+/**
+ * A file name as offered in a save dialog for a name a message carried: its last part only, without what a file
+ * system would refuse or read as a place, never empty or hidden. Exported for tests.
+ */
+export function attachmentName(name: unknown): string {
+  const raw = typeof name === 'string' ? name : ''
+  const last = raw.split(/[\\/]/).pop() ?? ''
+  // eslint-disable-next-line no-control-regex
+  const clean = last.replace(/[\u0000-\u001f<>:"|?*]/g, '_').replace(/^[.\s]+/, '').trim().slice(0, 200)
+  return clean || 'attachment'
+}
+
 /** Must run before app.whenReady(). */
 export function registerMediaScheme(): void {
   protocol.registerSchemesAsPrivileged([
