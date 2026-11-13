@@ -482,7 +482,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
             </>
           )}
 
-          {account.service !== 'sneedchat' && account.service !== 'signal' && (
+          {account.service !== 'sneedchat' && (
             <RouteLevel account={account} onChange={(level) => call('setAccountRoute', { accountId: account.id, level })} />
           )}
 
@@ -1784,6 +1784,7 @@ function SignalForm({ onDone }: { onDone: () => void }): JSX.Element {
   const [detail, setDetail] = useState('')
   /** The code to scan, and when it was drawn (a new one replaces it every couple of minutes). */
   const [qr, setQr] = useState<{ path: string; at: number } | null>(null)
+  const [useTor, setUseTor] = useState(false)
 
   // Held in a ref as well: the first event can be handled before the render that follows the answer that started the
   // link. Nothing else is linking from this form, so an event with no id known yet is this one's.
@@ -1828,7 +1829,7 @@ function SignalForm({ onDone }: { onDone: () => void }): JSX.Element {
     setQr(null)
     current.current = ''
     void window.moho
-      .rpc<{ loginId: string }>('addSignalAccount', {})
+      .rpc<{ loginId: string }>('addSignalAccount', { useTor })
       .then((r) => {
         current.current = r.loginId
       })
@@ -1876,8 +1877,8 @@ function SignalForm({ onDone }: { onDone: () => void }): JSX.Element {
       <p className="small muted">
         Signal does not make third-party apps welcome: it may unlink one, and what a linked device can do is whatever
         Signal&apos;s libraries offer. A linked device that stays away for about a month is unlinked by Signal itself.
-        Signal cannot be reached through Tor from here yet.
       </p>
+      <TorSwitch service="signal" on={useTor} onChange={setUseTor} />
       <div className="field-row">
         <button type="button" className="button primary" disabled={busy} onClick={begin}>
           {busy ? 'Linking…' : 'Link with a QR code'}
