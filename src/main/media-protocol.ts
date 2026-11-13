@@ -126,6 +126,9 @@ const DAEMON_MEDIA_DIRS = [
   'telegram-avatars',
   'stoat-media',
   'stoat-avatars',
+  'xmpp-media',
+  'xmpp-avatars',
+  'xmpp-files',
   'transient'
 ]
 
