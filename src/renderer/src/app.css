@@ -11889,3 +11889,11 @@ html[data-reduce-motion] *::after {
   background: var(--primary);
   color: var(--primary-text, #fff);
 }
+
+/* Scanning the other side's safety-number code with the camera. */
+.safety-scan {
+  width: 100%;
+  max-height: 320px;
+  border-radius: var(--corner-radius);
+  background: #000;
+}

@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Modal } from './Modal'
+import { SafetyNumberCompare } from './SafetyNumberCompare'
 import { Avatar } from './Avatar'
 import { Icon, IconButton } from './Icon'
 import { useChat, useStore } from '../state/hooks'
@@ -25,6 +27,8 @@ export function ProfileCard(): JSX.Element | null {
   const presence = useChat((s) => s.presenceByBuffer)
   const buffers = useChat((s) => s.buffers)
   const store = useStore()
+  /** Comparing the safety number by QR code (Signal). */
+  const [comparing, setComparing] = useState(false)
 
   if (!profile) return null
 
@@ -215,6 +219,9 @@ export function ProfileCard(): JSX.Element | null {
             >
               <Icon name={profile.signalBlocked ? 'lock_open' : 'block'} size={15} /> {profile.signalBlocked ? 'Unblock' : 'Block'}
             </button>
+            <button type="button" className="button subtle" title="Show your code and scan theirs" onClick={() => setComparing(true)}>
+              <Icon name="qr_code_2" size={15} /> Compare by code
+            </button>
             <button
               type="button"
               className="button subtle"
@@ -230,6 +237,16 @@ export function ProfileCard(): JSX.Element | null {
               <Icon name="sync_lock" size={15} /> Fresh session
             </button>
           </div>
+        )}
+
+        {comparing && profile.service === 'signal' && profile.id && (
+          <SafetyNumberCompare
+            accountId={profile.accountId}
+            userId={profile.id}
+            name={profile.name}
+            onClose={() => setComparing(false)}
+            onVerified={() => store.patchProfile({ signalVerified: true, signalUnconfirmed: false })}
+          />
         )}
 
         {profile.pending && (
