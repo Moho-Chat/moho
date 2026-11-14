@@ -8,6 +8,7 @@ import { ContextMenu, type MenuEntry } from './ContextMenu'
 import torMark from '../assets/tor.svg'
 import { PollComposer } from './PollComposer'
 import { StoryComposer } from './StoryComposer'
+import { ContactCardComposer } from './ContactCardComposer'
 import { Avatar } from './Avatar'
 import { COMMON_EMOJI, emojiToken, EmojiPicker, type StickerEntry } from './EmojiPicker'
 import { GifPicker } from './GifPicker'
@@ -137,6 +138,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   /** Whether the poll dialog is up. */
   const [polling, setPolling] = useState(false)
   const [storying, setStorying] = useState(false)
+  const [sharingContact, setSharingContact] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   /** The account's sticker packs, fetched when the picker is first opened. */
   const [stickers, setStickers] = useState<StickerEntry[]>([])
@@ -530,6 +532,20 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
       : []),
     ...(service === 'signal' && !thread && buffer.remoteId?.startsWith('g:')
       ? ([{ label: "Post to the group's story", icon: 'auto_stories', onClick: () => setStorying(true) }] as MenuEntry[])
+      : []),
+    ...(service === 'signal' && !thread && buffer.remoteId !== 'stories'
+      ? ([
+          {
+            label: 'Send a location',
+            icon: 'location_on',
+            onClick: () => {
+              setPickerOpen(false)
+              setStickerPicker(false)
+              setPlaceOpen(true)
+            }
+          },
+          { label: 'Share a contact', icon: 'contact_page', onClick: () => setSharingContact(true) }
+        ] as MenuEntry[])
       : []),
     ...(service === 'signal' && !thread && buffer.remoteId === 'stories'
       ? ([{ label: 'Post a story', icon: 'auto_stories', onClick: () => setStorying(true) }] as MenuEntry[])
@@ -1498,7 +1514,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
           onSend={(place, label) => {
             setPlaceOpen(false)
             void window.moho
-              .rpc('sendMatrixLocation', { bufferId: buffer.id, place, label })
+              .rpc(service === 'signal' ? 'signalSendLocation' : 'sendMatrixLocation', { bufferId: buffer.id, place, label })
               .catch((e: Error) => store.toast('error', e.message))
           }}
         />
@@ -1506,6 +1522,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
 
       {polling && <PollComposer bufferId={buffer.id} onClose={() => setPolling(false)} />}
       {storying && <StoryComposer bufferId={buffer.id} onClose={() => setStorying(false)} />}
+      {sharingContact && <ContactCardComposer bufferId={buffer.id} onClose={() => setSharingContact(false)} />}
 
 
       {gifPicker && (
