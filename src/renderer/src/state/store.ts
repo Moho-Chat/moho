@@ -255,6 +255,12 @@ export interface LiveCard {
   resultDisplayDuration: number
   hasVoted: boolean
   votedOptionId: string | number | null
+  /** Signal's: a poll that takes several answers - a click adds or takes one away, and the vote is all of them. */
+  multiple?: boolean
+  /** Every answer this account has picked, where there can be more than one. */
+  votedOptionIds?: (string | number)[]
+  /** A vote can be changed after it is cast (Signal), so the answers stay clickable. */
+  changeable?: boolean
   /** What this account has riding on it, in points. */
   stake?: number | null
   /** Points left to bet with, where the service says. */
@@ -3190,6 +3196,13 @@ export class ChatStore {
    * this vote already in it - so the bars move on the click rather than when
    * Kick's broadcast catches up.
    */
+  /** A vote that is several answers at once (an empty list takes the vote back). */
+  votePollAnswers(bufferId: string, optionIds: (string | number)[]): void {
+    void window.moho
+      .rpc('votePoll', { bufferId, optionIds: optionIds.map(Number) })
+      .catch((e: Error) => this.toast('error', e.message))
+  }
+
   votePoll(bufferId: string, optionId: string | number): void {
     // Both spellings of the same answer: Kick numbers its options and Matrix
     // gives them ids of their own, and which one the daemon reads follows
