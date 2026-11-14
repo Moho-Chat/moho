@@ -812,6 +812,9 @@ function wireIpc(): void {
         case 'mute':
           signalCalls.mute(params.audio as boolean | undefined, params.video as boolean | undefined)
           return { ok: true, result: null }
+        case 'share':
+          signalCalls.share(!!params.on)
+          return { ok: true, result: null }
         default:
           return { ok: false, error: `no Signal call action "${action}"` }
       }

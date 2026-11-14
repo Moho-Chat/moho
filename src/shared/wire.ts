@@ -415,6 +415,7 @@ export interface SignalCallState {
   remoteVideo: boolean
   audioMuted: boolean
   videoMuted: boolean
+  sharing?: boolean
   ended?: string
 }
 

@@ -55,6 +55,8 @@ export interface SignalCallState {
   remoteVideo: boolean
   audioMuted: boolean
   videoMuted: boolean
+  /** This side's screen is what is being sent as the picture. */
+  sharing?: boolean
   /** Why it ended, in words, once it has. */
   ended?: string
 }
@@ -144,6 +146,8 @@ export class SignalCalls {
   private info: SignalCallState | null = null
   private frames: NodeJS.Timeout | null = null
   private frameBuffer = new Uint8Array(1280 * 720 * 4)
+  /** Whether the call that is on ever connected: what the call logs are told when it ends. */
+  private connected = false
 
   constructor(private readonly deps: SignalCallsDeps) {}
 
@@ -217,11 +221,20 @@ export class SignalCalls {
       const S = rtc.CallState
       const state = call.state
       if (state === S.Ended) {
+        const info = this.info
+        if (info) {
+          // The phone and the account's other devices put it in their call logs, and the conversation says it.
+          void this.deps
+            .request('signalCallEnded', { accountId: info.accountId, remote: info.remote, callId: call.callId.toString(), video: info.video, incoming: info.incoming, accepted: this.connected })
+            .catch((e: Error) => log.warn('[signal-calls] the call log was not shared:', e.message))
+        }
         this.update({ state: 'ended', ended: endedWords(rtc, call.endedReason) })
         this.stopFrames()
         this.call = null
+        this.connected = false
         return
       }
+      if (state === S.Accepted) this.connected = true
       this.update({ state: state === S.Ringing ? 'ringing' : state === S.Accepted ? 'connected' : state === S.Reconnecting ? 'reconnecting' : 'connecting' })
       if (state === S.Accepted) this.startFrames()
     }
@@ -331,11 +344,21 @@ export class SignalCalls {
     this.update({ ...(audio !== undefined ? { audioMuted: audio } : {}), ...(video !== undefined ? { videoMuted: video } : {}) })
   }
 
-  /** A frame of this side's camera, from the window. */
+  /** Sends this side's screen as the picture instead of the camera, or stops. */
+  share(on: boolean): void {
+    const call = this.call
+    if (!call || !this.info) return
+    call.setOutgoingVideoIsScreenShare(on)
+    // The picture is on while the screen is shared, whatever the camera was.
+    call.setOutgoingVideoMuted(!on && this.info.videoMuted)
+    this.update({ sharing: on })
+  }
+
+  /** A frame of this side's camera or screen, from the window. */
   sendFrame(width: number, height: number, rgba: Uint8Array): void {
     const rtc = this.rtc
     const call = this.call
-    if (!rtc || !call || this.info?.videoMuted) return
+    if (!rtc || !call || (this.info?.videoMuted && !this.info.sharing)) return
     call.sendVideoFrame(width, height, rtc.VideoPixelFormatEnum.Rgba, new Uint8Array(rgba))
   }
 }

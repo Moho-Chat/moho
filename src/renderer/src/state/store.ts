@@ -2366,6 +2366,11 @@ export class ChatStore {
     }
   }
 
+  /** Shares this screen in the Signal call (as the picture), or stops. */
+  shareSignalCallScreen(on: boolean): void {
+    void window.moho.signalCall('share', { on }).catch((e: Error) => this.toast('error', e.message))
+  }
+
   hangUpSignalCall(): void {
     void window.moho.signalCall('hangup').catch(() => {})
   }

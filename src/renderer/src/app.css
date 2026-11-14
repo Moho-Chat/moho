@@ -11858,6 +11858,10 @@ html[data-reduce-motion] *::after {
   border-radius: 6px;
   transform: scaleX(-1);
 }
+.signal-call-mine.sharing {
+  /* A screen is shown as it is, not as a mirror. */
+  transform: none;
+}
 .signal-call-bar {
   display: flex;
   align-items: center;

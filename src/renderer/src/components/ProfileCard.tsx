@@ -215,6 +215,20 @@ export function ProfileCard(): JSX.Element | null {
             >
               <Icon name={profile.signalBlocked ? 'lock_open' : 'block'} size={15} /> {profile.signalBlocked ? 'Unblock' : 'Block'}
             </button>
+            <button
+              type="button"
+              className="button subtle"
+              title="For a conversation whose messages stopped arriving or can't be read: forgets the session with them and starts a new one"
+              onClick={() => {
+                if (!window.confirm(`Start a fresh secure session with ${profile.name}? Use this when messages with them stopped working.`)) return
+                void window.moho
+                  .rpc('signalResetSession', { accountId: profile.accountId, userId: profile.id })
+                  .then(() => store.toast('info', `A fresh session with ${profile.name} was started`))
+                  .catch((e: Error) => store.toast('error', e.message))
+              }}
+            >
+              <Icon name="sync_lock" size={15} /> Fresh session
+            </button>
           </div>
         )}
 

@@ -7,6 +7,9 @@ import { bufferDisplayName } from '../lib/util'
 const SEND_WIDTH = 640
 const SEND_HEIGHT = 360
 const SEND_EVERY_MS = 66
+/** A shared screen is sent larger: its words have to be read. */
+const SHARE_WIDTH = 1280
+const SHARE_HEIGHT = 720
 
 /**
  * A Signal call that is on: who, how it is going, the other side's picture, and the buttons. The call is RingRTC's, in
@@ -54,17 +57,23 @@ export function SignalCallPanel(): JSX.Element | null {
     })
   }, [live])
 
-  // This side's camera while it is on: shown small, and read into frames for main.
-  const cameraOn = !!live && !live.videoMuted
+  // This side's picture while it is on - the screen when shared, else the camera: shown small, and read into frames for
+  // main.
+  const sharing = !!live?.sharing
+  const cameraOn = !!live && (!live.videoMuted || sharing)
   useEffect(() => {
     if (!cameraOn) return
     let stream: MediaStream | null = null
     let timer: ReturnType<typeof setInterval> | null = null
     let stopped = false
-    const canvas = new OffscreenCanvas(SEND_WIDTH, SEND_HEIGHT)
+    const width = sharing ? SHARE_WIDTH : SEND_WIDTH
+    const height = sharing ? SHARE_HEIGHT : SEND_HEIGHT
+    const canvas = new OffscreenCanvas(width, height)
     const context = canvas.getContext('2d', { willReadFrequently: true })
-    void navigator.mediaDevices
-      .getUserMedia({ video: { width: SEND_WIDTH, height: SEND_HEIGHT }, audio: false })
+    const source = sharing
+      ? navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+      : navigator.mediaDevices.getUserMedia({ video: { width: SEND_WIDTH, height: SEND_HEIGHT }, audio: false })
+    void source
       .then((got) => {
         if (stopped) {
           got.getTracks().forEach((t) => t.stop())
@@ -76,15 +85,21 @@ export function SignalCallPanel(): JSX.Element | null {
           video.srcObject = got
           void video.play().catch(() => {})
         }
+        // A share stopped from the desktop's own control ends the share here too.
+        got.getVideoTracks()[0]?.addEventListener('ended', () => sharing && store.shareSignalCallScreen(false))
         timer = setInterval(() => {
           const v = mine.current
           if (!v || !context || v.readyState < 2) return
-          context.drawImage(v, 0, 0, SEND_WIDTH, SEND_HEIGHT)
-          const pixels = context.getImageData(0, 0, SEND_WIDTH, SEND_HEIGHT)
-          window.moho.sendSignalCallFrame(SEND_WIDTH, SEND_HEIGHT, new Uint8Array(pixels.data.buffer))
+          context.drawImage(v, 0, 0, width, height)
+          const pixels = context.getImageData(0, 0, width, height)
+          window.moho.sendSignalCallFrame(width, height, new Uint8Array(pixels.data.buffer))
         }, SEND_EVERY_MS)
       })
       .catch((e: Error) => {
+        if (sharing) {
+          store.shareSignalCallScreen(false)
+          return
+        }
         store.toast('error', `The camera could not be used: ${e.message}`)
         store.muteSignalCall({ video: true })
       })
@@ -93,7 +108,7 @@ export function SignalCallPanel(): JSX.Element | null {
       if (timer) clearInterval(timer)
       stream?.getTracks().forEach((t) => t.stop())
     }
-  }, [cameraOn, store])
+  }, [cameraOn, sharing, store])
 
   if (!live) return null
   const buffer = buffers.find((b) => b.id === live.bufferId)
@@ -112,7 +127,7 @@ export function SignalCallPanel(): JSX.Element | null {
             <Icon name="person" size={48} />
           </div>
         )}
-        {cameraOn && <video ref={mine} className="signal-call-mine" muted playsInline />}
+        {cameraOn && <video ref={mine} className={sharing ? 'signal-call-mine sharing' : 'signal-call-mine'} muted playsInline />}
       </div>
       <div className="signal-call-bar">
         <div className="signal-call-who">
@@ -139,6 +154,15 @@ export function SignalCallPanel(): JSX.Element | null {
           onClick={() => store.muteSignalCall({ video: !live.videoMuted })}
         >
           <Icon name={live.videoMuted ? 'videocam_off' : 'videocam'} size={20} />
+        </button>
+        <button
+          type="button"
+          className={sharing ? 'call-toggle on' : 'call-toggle'}
+          title={sharing ? 'Stop sharing your screen' : 'Share your screen'}
+          aria-pressed={sharing}
+          onClick={() => store.shareSignalCallScreen(!sharing)}
+        >
+          <Icon name={sharing ? 'stop_screen_share' : 'screen_share'} size={20} />
         </button>
         <button type="button" className="call-decline" title="Hang up" onClick={() => store.hangUpSignalCall()}>
           <Icon name="call_end" size={20} />
