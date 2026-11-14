@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../state/hooks'
+import { resolveMediaUrl } from '../lib/util'
 import type { Account } from '../../../shared/wire'
 
 /** One of the account's devices, as the phone's list of linked devices shows it. */
@@ -26,7 +27,7 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   /** The account's own profile: what others see it called, and its about line. */
-  const [profile, setProfile] = useState<{ given: string; family: string; about: string; emoji: string; username?: string | null } | null>(null)
+  const [profile, setProfile] = useState<{ given: string; family: string; about: string; emoji: string; username?: string | null; avatar?: string | null } | null>(null)
   const [edited, setEdited] = useState<{ given: string; family: string; about: string; emoji: string } | null>(null)
 
   const load = (): void => {
@@ -41,15 +42,30 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
   }
   // Asked again once the account is up, since the first open can be before it is.
   useEffect(load, [account.id, account.state])
-  useEffect(() => {
+  const loadProfile = (): void => {
     void window.moho
-      .rpc<{ given: string; family: string; about: string; emoji: string; username?: string | null }>('signalOwnProfile', { accountId: account.id })
+      .rpc<{ given: string; family: string; about: string; emoji: string; username?: string | null; avatar?: string | null }>('signalOwnProfile', { accountId: account.id })
       .then((p) => {
         setProfile(p)
         setEdited({ given: p.given, family: p.family, about: p.about, emoji: p.emoji })
       })
       .catch(() => setProfile(null))
-  }, [account.id, account.state])
+  }
+  useEffect(loadProfile, [account.id, account.state])
+
+  /** A new picture (a file), or none (''): sent with the profile as it is now. */
+  const setPicture = (picturePath: string): void => {
+    if (!profile) return
+    setBusy(true)
+    void window.moho
+      .rpc('signalSetProfile', { accountId: account.id, given: profile.given, family: profile.family, about: profile.about, emoji: profile.emoji, picturePath })
+      .then(() => {
+        store.toast('info', picturePath ? 'Your picture was changed. Your phone picks it up too' : 'Your picture was taken away')
+        loadProfile()
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
 
   const saveProfile = (): void => {
     if (!edited) return
@@ -121,6 +137,26 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
             <button type="button" className="button" disabled={busy || !profileChanged || !edited.given.trim()} onClick={saveProfile}>
               Save
             </button>
+          </div>
+          <div className="field-row">
+            {profile.avatar && <img className="avatar-preview" src={resolveMediaUrl(profile.avatar)} alt="" width={40} height={40} style={{ borderRadius: '50%' }} />}
+            <button
+              type="button"
+              className="button"
+              disabled={busy || !profile.given.trim()}
+              onClick={() =>
+                void window.moho.pickFile(['jpg', 'jpeg', 'png', 'webp']).then((path) => {
+                  if (path) setPicture(path)
+                })
+              }
+            >
+              {profile.avatar ? 'Change picture…' : 'Choose a picture…'}
+            </button>
+            {profile.avatar && (
+              <button type="button" className="button" disabled={busy || !profile.given.trim()} onClick={() => setPicture('')}>
+                Remove picture
+              </button>
+            )}
           </div>
         </>
       )}
