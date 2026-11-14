@@ -552,9 +552,9 @@ function TelegramJoin({ account }: { account: Account }): JSX.Element {
 }
 
 /**
- * Starting a Signal conversation. Signal finds people by username (a name, a dot and a number); a number works only
- * when it is already in the phone's contacts, because looking up a number is Signal's contact discovery, which moho
- * does not do.
+ * Starting a Signal conversation, by username (a name, a dot and a number) or by phone number: one the phone knows, else
+ * looked up with Signal's contact discovery (an enclave sees the number; through the account's route when it has one).
+ * Somebody who chose not to be found by number is said to be so.
  */
 function SignalJoin({ account }: { account: Account }): JSX.Element {
   const store = useStore()
@@ -622,7 +622,7 @@ function SignalJoin({ account }: { account: Account }): JSX.Element {
     <div className="panel join-panel">
       <SubmitField
         label="Message somebody"
-        placeholder="Their username, like name.42, or a number in your contacts"
+        placeholder="Their username, like name.42, or their number with its country code"
         onSubmit={(who) => void store.openDirectMessage(account.id, who, who)}
       />
       <p className="small muted">
