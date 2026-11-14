@@ -706,6 +706,8 @@ export interface Profile {
   pending?: boolean
   /** Signal: whether this account marked their safety number verified, and whether it blocks them. */
   signalVerified?: boolean
+  /** Their safety number changed after it was verified: sends wait until it is looked at. */
+  signalUnconfirmed?: boolean
   signalBlocked?: boolean
 }
 

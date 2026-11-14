@@ -11795,3 +11795,13 @@ html[data-reduce-motion] *::after {
   flex: 0 0 3.2em;
   text-align: center;
 }
+
+/* A Signal person whose verified safety number changed: said above their actions, in the warning colour. */
+.profile-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0;
+  color: var(--warning);
+}

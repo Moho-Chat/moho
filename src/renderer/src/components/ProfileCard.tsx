@@ -159,6 +159,27 @@ export function ProfileCard(): JSX.Element | null {
 
         {/* Signal: marking the safety number verified once it has been compared (in person, or in Signal on both
             phones), and blocking. Both are told to the account's other devices. */}
+        {profile.service === 'signal' && profile.id && !profile.pending && profile.signalUnconfirmed && (
+          <div className="profile-warning small">
+            <Icon name="gpp_maybe" size={15} /> Their safety number changed after you verified it, so nothing is sent to them
+            until you compare it again (and mark them verified) or choose to send anyway.{' '}
+            <button
+              type="button"
+              className="button subtle small"
+              onClick={() => {
+                void window.moho
+                  .rpc('signalSendAnyway', { accountId: profile.accountId, userId: profile.id })
+                  .then(() => {
+                    store.patchProfile({ signalUnconfirmed: false })
+                    store.toast('info', `Messages to ${profile.name} go again`)
+                  })
+                  .catch((e: Error) => store.toast('error', e.message))
+              }}
+            >
+              Send anyway
+            </button>
+          </div>
+        )}
         {profile.service === 'signal' && profile.id && !profile.pending && profile.signalVerified !== undefined && (
           <div className="button-row profile-actions">
             <button
@@ -169,7 +190,7 @@ export function ProfileCard(): JSX.Element | null {
                 void window.moho
                   .rpc('signalVerify', { accountId: profile.accountId, userId: profile.id, verified })
                   .then(() => {
-                    store.patchProfile({ signalVerified: verified })
+                    store.patchProfile({ signalVerified: verified, signalUnconfirmed: false })
                     store.toast('info', verified ? `${profile.name} is marked verified` : `${profile.name} is no longer marked verified`)
                   })
                   .catch((e: Error) => store.toast('error', e.message))
