@@ -7,6 +7,7 @@ import { Icon, IconButton, MaskIcon } from './Icon'
 import { ContextMenu, type MenuEntry } from './ContextMenu'
 import torMark from '../assets/tor.svg'
 import { PollComposer } from './PollComposer'
+import { StoryComposer } from './StoryComposer'
 import { Avatar } from './Avatar'
 import { COMMON_EMOJI, emojiToken, EmojiPicker, type StickerEntry } from './EmojiPicker'
 import { GifPicker } from './GifPicker'
@@ -135,6 +136,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const [staged, setStaged] = useState<StagedAttachment[]>([])
   /** Whether the poll dialog is up. */
   const [polling, setPolling] = useState(false)
+  const [storying, setStorying] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   /** The account's sticker packs, fetched when the picker is first opened. */
   const [stickers, setStickers] = useState<StickerEntry[]>([])
@@ -525,6 +527,9 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
     },
     ...((service === 'telegram' || service === 'signal') && !thread
       ? ([{ label: 'Start a poll', icon: 'ballot', onClick: () => setPolling(true) }] as MenuEntry[])
+      : []),
+    ...(service === 'signal' && !thread && buffer.remoteId?.startsWith('g:')
+      ? ([{ label: "Post to the group's story", icon: 'auto_stories', onClick: () => setStorying(true) }] as MenuEntry[])
       : []),
     ...(service === 'matrix' && !thread
       ? ([
@@ -1497,6 +1502,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
       )}
 
       {polling && <PollComposer bufferId={buffer.id} onClose={() => setPolling(false)} />}
+      {storying && <StoryComposer bufferId={buffer.id} onClose={() => setStorying(false)} />}
 
 
       {gifPicker && (
