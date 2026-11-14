@@ -645,6 +645,8 @@ export interface Message {
   components?: MessageComponent[]
   /** Present once the service has removed the message. */
   moderated?: Moderated
+  /** How far one of the account's own messages got, where the service says (Signal). Only moves forward. */
+  delivery?: 'sent' | 'delivered' | 'read'
   /** Matrix only - the sender's full MXID, for targeting moderation actions. */
   senderId?: string
   /**

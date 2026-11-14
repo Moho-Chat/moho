@@ -11805,3 +11805,13 @@ html[data-reduce-motion] *::after {
   margin: 8px 0;
   color: var(--warning);
 }
+
+/* One of your own messages: sent, delivered, read (Signal). Quiet, like the edited tag; read takes the accent. */
+.delivery-tick {
+  opacity: 0.6;
+  vertical-align: -2px;
+}
+.delivery-tick.delivery-read {
+  opacity: 1;
+  color: var(--primary);
+}

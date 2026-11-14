@@ -4154,6 +4154,13 @@ export class ChatStore {
 
       // Buttons and menus, which arrive a moment after the message they are
       // on: the row has to exist before they can be written onto it.
+      case 'messageDelivery':
+        this.mapMessage(data.bufferId as string, data.messageId as string, (m) => ({
+          ...m,
+          delivery: data.delivery as ChatMessage['delivery']
+        }))
+        break
+
       case 'messageComponents':
         this.mapMessage(data.bufferId as string, data.messageId as string, (m) => ({
           ...m,

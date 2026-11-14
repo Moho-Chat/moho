@@ -916,6 +916,7 @@ function MessageRowBody({
             (edited)
           </span>
         )}
+        {message.isOwn && message.delivery && <DeliveryTick delivery={message.delivery} />}
       </span>
     )
 
@@ -2000,3 +2001,14 @@ function MessageControls({
  * either values or references held steady by whoever draws the list.
  */
 export const MessageRow = memo(MessageRowBody)
+
+/** How far one of your own messages got: one tick sent, two delivered, two filled in read. */
+function DeliveryTick({ delivery }: { delivery: 'sent' | 'delivered' | 'read' }): JSX.Element {
+  const words = { sent: 'Sent', delivered: 'Delivered', read: 'Read' }[delivery]
+  return (
+    <span className={classes('delivery-tick', `delivery-${delivery}`)} title={words} aria-label={words}>
+      {' '}
+      <Icon name={delivery === 'sent' ? 'check' : 'done_all'} size={13} fill={delivery === 'read'} />
+    </span>
+  )
+}
