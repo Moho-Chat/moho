@@ -3,6 +3,7 @@ import { Icon } from './Icon'
 import { useMediaUrl } from '../lib/route'
 import { useStore } from '../state/hooks'
 import type { Attachment } from '../../../shared/wire'
+import { reduceLevels } from '../lib/waveform'
 
 /**
  * Somebody speaking, drawn as the thing it is.
@@ -14,10 +15,12 @@ import type { Attachment } from '../../../shared/wire'
  * the sender's client already provided and this dropped: the length, and the
  * shape of the sound.
  *
- * The waveform is the sender's own, not one computed here. Discord ships up to
+ * The waveform is the sender's own where there is one. Discord ships up to
  * 256 bytes of amplitude with the message, so the picture can be drawn before a
  * single byte of audio is fetched - which is the point, since fetching it is
- * the thing being decided about.
+ * the thing being decided about. Signal sends none and its own apps fetch voice
+ * messages as they arrive, so for a file moho keeps it is worked out here from
+ * the sound itself.
  */
 export function VoiceMessage({ attachment }: { attachment: Attachment }): JSX.Element {
   const store = useStore()
@@ -77,7 +80,11 @@ export function VoiceMessage({ attachment }: { attachment: Attachment }): JSX.El
   // stretched across whatever it is. Four a second reads as speech; a
   // two-second message drawn with forty-four bars looks like a long one, and
   // the width of the control stops saying anything about the length.
-  const bars = useBars(attachment.waveform, Math.max(MIN_BARS, Math.min(BARS, Math.round(total * 4))))
+  const count = Math.max(MIN_BARS, Math.min(BARS, Math.round(total * 4)))
+  // A service that sends no waveform (Signal) has one worked out here from the file, when the file is one moho keeps.
+  const measured = useMeasuredBars(attachment.waveform ? undefined : attachment.path ? src : undefined, count)
+  const fromSender = useBars(attachment.waveform, count)
+  const bars = measured ?? fromSender
 
   useEffect(() => {
     const el = audio.current
@@ -290,6 +297,52 @@ const MIN_BARS = 14
 
 /** The speeds worth having, in the order the button walks through them. */
 const SPEEDS = [1, 1.5, 2]
+
+/** Loudness worked out from files, by address: a file is decoded once however many times it is drawn. */
+const measuredLevels = new Map<string, Promise<number[] | null>>()
+let decoder: AudioContext | null = null
+
+/** How loud each stretch of a recording is, from its file: SAMPLES levels, the loudest 1. */
+const SAMPLES = 120
+async function measure(src: string): Promise<number[] | null> {
+  try {
+    const bytes = await (await fetch(src)).arrayBuffer()
+    decoder ??= new AudioContext()
+    const sound = await decoder.decodeAudioData(bytes)
+    const channel = sound.getChannelData(0)
+    const step = Math.max(1, Math.floor(channel.length / SAMPLES))
+    const levels: number[] = []
+    for (let i = 0; i < SAMPLES && i * step < channel.length; i++) {
+      let sum = 0
+      const end = Math.min(channel.length, (i + 1) * step)
+      for (let j = i * step; j < end; j++) sum += channel[j] * channel[j]
+      levels.push(Math.sqrt(sum / (end - i * step)))
+    }
+    const loudest = Math.max(...levels, 1e-6)
+    return levels.map((l) => l / loudest)
+  } catch {
+    return null
+  }
+}
+
+/** The waveform of a file moho keeps (`src`), reduced to `count` bars; null until worked out, or without a file. */
+function useMeasuredBars(src: string | undefined, count: number): number[] | null {
+  const [levels, setLevels] = useState<number[] | null>(null)
+  useEffect(() => {
+    if (!src) return
+    let current = true
+    let pending = measuredLevels.get(src)
+    if (!pending) {
+      pending = measure(src)
+      measuredLevels.set(src, pending)
+    }
+    void pending.then((got) => current && setLevels(got))
+    return () => {
+      current = false
+    }
+  }, [src])
+  return useMemo(() => (levels ? reduceLevels(levels, count) : null), [levels, count])
+}
 
 /** The sender's waveform, decoded and reduced to the bars actually drawn. */
 function useBars(waveform: string | undefined, count: number): number[] {
