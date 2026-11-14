@@ -402,6 +402,22 @@ export interface VoiceChannel {
  * Deliberately no name or picture: which conversation it is, is the answer,
  * and the buffer already carries how to draw the person it is with.
  */
+/** A Signal call as RingRTC (in main) has it - see main/signal-calls.ts. */
+export interface SignalCallState {
+  accountId: string
+  bufferId: string | null
+  remote: string
+  callId: string
+  incoming: boolean
+  video: boolean
+  state: 'ringing' | 'connecting' | 'connected' | 'reconnecting' | 'ended'
+  remoteAudio: boolean
+  remoteVideo: boolean
+  audioMuted: boolean
+  videoMuted: boolean
+  ended?: string
+}
+
 export interface IncomingCall {
   accountId: string
   bufferId: string
@@ -411,6 +427,8 @@ export interface IncomingCall {
   video?: boolean
   /** Nothing in moho can take this call (Signal): it is answered on the phone, and can only be silenced here. */
   answerElsewhere?: boolean
+  /** Signal: the call's id, as RingRTC knows it. */
+  callId?: string
 }
 
 /** Where an account is currently connected in voice. */

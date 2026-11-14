@@ -11815,3 +11815,73 @@ html[data-reduce-motion] *::after {
   opacity: 1;
   color: var(--primary);
 }
+
+/* A Signal call that is on (RingRTC, in main): their picture, yours small in its corner, and the buttons under. */
+.signal-call {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  border-radius: var(--corner-radius);
+  overflow: hidden;
+  background: var(--surface-container-highest);
+  border: 1px solid var(--outline-medium);
+  box-shadow: var(--shadow-2);
+}
+.signal-call-stage {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+.signal-call-theirs {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.signal-call-theirs.hidden {
+  display: none;
+}
+.signal-call-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.5);
+}
+.signal-call-mine {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 30%;
+  border-radius: 6px;
+  transform: scaleX(-1);
+}
+.signal-call-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+}
+.signal-call-who {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.signal-call .call-toggle {
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background: rgba(127, 127, 127, 0.2);
+  color: inherit;
+}
+.signal-call .call-toggle.on {
+  background: var(--primary);
+  color: var(--primary-text, #fff);
+}

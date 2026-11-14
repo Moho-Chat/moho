@@ -49,6 +49,25 @@ const api = {
     return ipcRenderer.invoke(IPC.twitchSignIn, options)
   },
 
+  /** A Signal call action (RingRTC, in main): available, current, start, accept, decline, hangup, mute. */
+  async signalCall<T = unknown>(action: string, params: Record<string, unknown> = {}): Promise<T> {
+    const res = await ipcRenderer.invoke(IPC.signalCall, action, params)
+    if (!res.ok) throw new Error(res.error)
+    return res.result as T
+  },
+
+  /** The other side's picture in a Signal call, frame by frame (RGBA). */
+  onSignalCallFrame(cb: (width: number, height: number, rgba: Uint8Array) => void): () => void {
+    const handler = (_e: unknown, width: number, height: number, rgba: Uint8Array): void => cb(width, height, rgba)
+    ipcRenderer.on(IPC.signalCallFrame, handler)
+    return () => ipcRenderer.off(IPC.signalCallFrame, handler)
+  },
+
+  /** A frame of this side's camera for a Signal call (RGBA). */
+  sendSignalCallFrame(width: number, height: number, rgba: Uint8Array): void {
+    ipcRenderer.send(IPC.signalCallFrame, width, height, rgba)
+  },
+
   onEvent(cb: (frame: NobilisEvent) => void): () => void {
     const handler = (_e: unknown, frame: NobilisEvent): void => cb(frame)
     ipcRenderer.on(IPC.event, handler)

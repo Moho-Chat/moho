@@ -46,6 +46,7 @@ import { useEscapeLayer } from './lib/layers'
 import { installDialogFocus } from './lib/dialogs'
 import { QuickSwitcher } from './components/QuickSwitcher'
 import { ViewOnceViewer } from './components/ViewOnceViewer'
+import { SignalCallPanel } from './components/SignalCallPanel'
 
 export default function App(): JSX.Element {
   useShortcuts()
@@ -379,6 +380,7 @@ export default function App(): JSX.Element {
       <TransferPanel />
       <FileDrop />
       <ViewOnceViewer />
+      <SignalCallPanel />
       <Toasts />
       <QuickSwitcher />
       <EditMenu />

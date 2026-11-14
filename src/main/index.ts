@@ -41,6 +41,7 @@ import { installScreenShare } from './screenshare'
 import { defaultDownloadDir, readMedia, saveMedia } from './downloads'
 import type { Buffer as ChatBuffer } from '../shared/wire'
 import { log } from './log'
+import { SignalCalls } from './signal-calls'
 import { applyPolicy, applyTunnel } from './tunnel'
 import { installRoutedHandler, resetRoute } from './routed'
 
@@ -138,6 +139,7 @@ let tray: Tray | null = null
 let prefs: Prefs
 let nobilis: NobilisProcess
 let client: NobilisClient
+let signalCalls: SignalCalls
 let notifier: Notifier
 let idleWatcher: IdleWatcher
 let registeredHotkey: string | null = null
@@ -787,6 +789,37 @@ app.on('child-process-gone', (_e, details) => {
 })
 
 function wireIpc(): void {
+  // Signal calls (RingRTC, in this process). Answered as a value, like rpc, so the window sees the words.
+  ipcMain.handle(IPC.signalCall, async (_e, action: string, params: Record<string, unknown> = {}) => {
+    try {
+      switch (action) {
+        case 'available':
+          return { ok: true, result: signalCalls.available() }
+        case 'current':
+          return { ok: true, result: signalCalls.current() }
+        case 'start':
+          await signalCalls.start(String(params.accountId), String(params.bufferId), String(params.remote), !!params.video)
+          return { ok: true, result: null }
+        case 'accept':
+          signalCalls.accept(!!params.video)
+          return { ok: true, result: null }
+        case 'decline':
+          signalCalls.decline()
+          return { ok: true, result: null }
+        case 'hangup':
+          signalCalls.hangup()
+          return { ok: true, result: null }
+        case 'mute':
+          signalCalls.mute(params.audio as boolean | undefined, params.video as boolean | undefined)
+          return { ok: true, result: null }
+        default:
+          return { ok: false, error: `no Signal call action "${action}"` }
+      }
+    } catch (err) {
+      return { ok: false, error: (err as Error).message }
+    }
+  })
+  ipcMain.on(IPC.signalCallFrame, (_e, width: number, height: number, rgba: Uint8Array) => signalCalls.sendFrame(width, height, rgba))
   ipcMain.handle(IPC.rpc, async (_e, method: string, params: Record<string, unknown>) => {
     try {
       return { ok: true, result: await client.request(method, params) }
@@ -1381,6 +1414,12 @@ app.whenReady().then(() => {
     (accountId) => accountStatus[accountId] === 'dnd'
   )
 
+  signalCalls = new SignalCalls({
+    request: (method, params) => client.request(method, params),
+    emit: (event, data) => send(IPC.event, { event, data }),
+    frame: (width, height, rgba) => send(IPC.signalCallFrame, width, height, rgba)
+  })
+
   client.on('link', (up) => {
     send(IPC.link, up)
     if (!up) return
@@ -1416,6 +1455,10 @@ app.whenReady().then(() => {
     } else if (frame.event === 'netSettings') {
       void applyTunnel((method, params) => client.request(method, params))
       resetRoute()
+    } else if (frame.event === 'signalCallMessage') {
+      // RingRTC's, here; the windows hear what becomes of the call as signalCall events.
+      signalCalls.arrived(frame.data as Parameters<SignalCalls['arrived']>[0])
+      return
     } else if (frame.event.startsWith('twitchLogin')) {
       feedTwitchSignIn(frame as { event: string; data?: Record<string, unknown> })
     } else if (frame.event === 'twitchIntegrityNeeded') {

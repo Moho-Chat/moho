@@ -1,4 +1,5 @@
 import type {
+  SignalCallState,
   Account,
   AudioDevice,
   Buffer as WireBuffer,
@@ -639,6 +640,9 @@ export interface ChatState {
    * the panel that shows it has to be able to find it again.
    */
   ringingCall: RingingCall | null
+  /** The Signal call RingRTC is on (in main), and whether RingRTC is there at all. */
+  signalCall: SignalCallState | null
+  signalCallsAvailable: boolean
   /** The call put away without being hung up. */
   callMinimized: boolean
   /** The call is drawn in a window of its own rather than over the conversation. */
@@ -868,6 +872,8 @@ const INITIAL: ChatState = {
   forumPages: {},
   discordFriends: {},
   ringingCall: null,
+  signalCall: null,
+  signalCallsAvailable: false,
   callMinimized: false,
   callPoppedOut: false,
   streamPoppedOut: false,
@@ -1572,6 +1578,11 @@ export class ChatStore {
   async refreshAccounts(): Promise<void> {
     try {
       this.set({ accounts: await window.moho.rpc<Account[]>('listAccounts') })
+      // RingRTC is loaded only once there is a Signal account to call from.
+      if (!this.signalCallsProbed && this.state.accounts.some((a) => a.service === 'signal')) {
+        this.signalCallsProbed = true
+        void this.probeSignalCalls()
+      }
       void this.refreshInvites()
       void this.refreshFriendRequests()
     } catch (e) {
@@ -2305,8 +2316,9 @@ export class ChatStore {
   async declineCall(bufferId: string): Promise<void> {
     const call = this.callFor(bufferId)
     this.setRinging({ ...call, ringing: false })
-    // A Signal call is only silenced here: it is answered or turned down on the phone.
+    // A Signal call: turned down with RingRTC where it has the call, else only silenced here (answered on the phone).
     if (call.answerElsewhere) {
+      if (this.state.signalCall?.callId === call.callId) void window.moho.signalCall('decline').catch(() => {})
       void window.moho.rpc('silenceSignalCall', { bufferId }).catch(() => {})
       return
     }
@@ -2315,6 +2327,51 @@ export class ChatStore {
     } catch (e) {
       this.toast('error', `Couldn't decline: ${(e as Error).message}`)
     }
+  }
+
+  private signalCallsProbed = false
+
+  /** Whether RingRTC is in this build: asked once, when there is a Signal account. */
+  async probeSignalCalls(): Promise<void> {
+    try {
+      const available = await window.moho.signalCall<boolean>('available')
+      const current = available ? await window.moho.signalCall<SignalCallState | null>('current') : null
+      this.set({ signalCallsAvailable: available, signalCall: current })
+    } catch {
+      this.set({ signalCallsAvailable: false })
+    }
+  }
+
+  /** Answers the Signal call RingRTC is ringing with, with the camera or without. */
+  async answerSignalCall(bufferId: string, video: boolean): Promise<void> {
+    this.setRinging({ ...this.callFor(bufferId), ringing: false })
+    void window.moho.rpc('silenceSignalCall', { bufferId }).catch(() => {})
+    try {
+      await window.moho.signalCall('accept', { video })
+      await this.selectBuffer(bufferId, true)
+    } catch (e) {
+      this.toast('error', `Couldn't answer: ${(e as Error).message}`)
+    }
+  }
+
+  /** Calls the person a Signal conversation is with. */
+  async startSignalCall(bufferId: string, video: boolean): Promise<void> {
+    const buffer = this.state.buffers.find((b) => b.id === bufferId)
+    const remote = buffer?.remoteId?.startsWith('p:') ? buffer.remoteId.slice(2) : null
+    if (!buffer || !remote) return
+    try {
+      await window.moho.signalCall('start', { accountId: buffer.accountId, bufferId, remote, video })
+    } catch (e) {
+      this.toast('error', `Couldn't call: ${(e as Error).message}`)
+    }
+  }
+
+  hangUpSignalCall(): void {
+    void window.moho.signalCall('hangup').catch(() => {})
+  }
+
+  muteSignalCall(change: { audio?: boolean; video?: boolean }): void {
+    void window.moho.signalCall('mute', change).catch((e: Error) => this.toast('error', e.message))
   }
 
   private callFor(bufferId: string): IncomingCall {
@@ -4425,6 +4482,19 @@ export class ChatStore {
       case 'incomingCall':
         this.setRinging(data as IncomingCall)
         break
+
+      // The Signal call RingRTC is on. Ended is said once, and the call let go.
+      case 'signalCall': {
+        const call = data as unknown as SignalCallState
+        if (call.state === 'ended') {
+          if (call.ended && call.ended !== 'You hung up') this.toast('info', `Signal call: ${call.ended}`)
+          this.set({ signalCall: null })
+          this.setRinging({ accountId: call.accountId, bufferId: call.bufferId ?? '', channelId: call.callId, ringing: false })
+        } else {
+          this.set({ signalCall: call })
+        }
+        break
+      }
 
       // One event carries every state a transfer passes through, so the list
       // is updated in place rather than re-fetched on each step of a progress

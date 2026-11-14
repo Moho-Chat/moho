@@ -43,6 +43,7 @@ export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {})
   const steamRings = useChat((s) => s.steamRings)
   const buffers = useChat((s) => s.buffers)
   const accounts = useChat((s) => s.accounts)
+  const signalCall = useChat((s) => s.signalCall)
   const ringtone = useRef<Ringtone>()
 
   const rings: Ring[] = [
@@ -61,6 +62,8 @@ export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {})
     }),
     ...calls.map((call): Ring => {
       const buffer = buffers.find((b) => b.id === call.bufferId)
+      // A Signal call RingRTC is ringing with here can be answered here.
+      const takenHere = !!call.answerElsewhere && signalCall?.state === 'ringing' && signalCall.callId === call.callId
       const account = accounts.find((a) => a.id === call.accountId)
       return {
         key: `d:${call.bufferId}`,
@@ -70,11 +73,16 @@ export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {})
         avatarUrl: buffer?.avatarUrl,
         accountId: buffer?.accountId,
         detail: call.answerElsewhere
-          ? `${call.video ? 'Video' : 'Voice'} call · answer it on your phone${account ? ` · ${account.displayName || account.id}` : ''}`
+          ? `${call.video ? 'Video' : 'Voice'} call${takenHere ? '' : ' · answer it on your phone'}${account ? ` · ${account.displayName || account.id}` : ''}`
           : `Incoming call${account ? ` · ${account.displayName || account.id}` : ''}`,
-        answer: call.answerElsewhere ? undefined : () => void store.acceptCall(call.bufferId),
+        answer: !call.answerElsewhere
+          ? () => void store.acceptCall(call.bufferId)
+          : takenHere
+            ? () => void store.answerSignalCall(call.bufferId, false)
+            : undefined,
+        answerWithVideo: takenHere && call.video ? () => void store.answerSignalCall(call.bufferId, true) : undefined,
         decline: () => void store.declineCall(call.bufferId),
-        silenceOnly: call.answerElsewhere
+        silenceOnly: call.answerElsewhere && !takenHere
       }
     }),
     ...(matrix

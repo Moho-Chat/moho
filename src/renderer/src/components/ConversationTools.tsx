@@ -628,6 +628,8 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   // picture, and the one in the main window keeps playing there.
   const watching = useChat((s) => s.watching?.bufferId === buffer.id)
   const matrixCall = useChat((s) => s.activeCall)
+  const signalCall = useChat((s) => s.signalCall)
+  const signalCallsAvailable = useChat((s) => s.signalCallsAvailable)
   const isDm = buffer.kind === 'dm'
   // An account that goes through Tor (or the proxy) takes no calls: a call's audio and video cannot go through Tor, so they would
   // go around it and show the real address. The daemon refuses them as well; here the buttons say so before anybody presses them.
@@ -962,6 +964,17 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           className="calling"
           onClick={() => store.hangUpMatrixCall()}
         />
+      )}
+
+      {/* Signal's calls, run by RingRTC in main: one person at a time, voice or video. */}
+      {buffer.accountId.startsWith('signal:') && buffer.remoteId?.startsWith('p:') && signalCallsAvailable && !signalCall && (
+        <>
+          <IconButton name="call" title={callsOff ?? 'Voice call'} disabled={!!callsOff} onClick={() => void store.startSignalCall(buffer.id, false)} />
+          <IconButton name="videocam" title={callsOff ?? 'Video call'} disabled={!!callsOff} onClick={() => void store.startSignalCall(buffer.id, true)} />
+        </>
+      )}
+      {signalCall && signalCall.bufferId === buffer.id && signalCall.state !== 'ringing' && (
+        <IconButton name="call_end" title="Hang up" className="calling" onClick={() => store.hangUpSignalCall()} />
       )}
 
       {/* Stoat's calls are held on a media server and drawn by the same stage as Matrix's: a direct message, a group or a
