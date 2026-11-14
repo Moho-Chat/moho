@@ -25,6 +25,8 @@ interface Info {
   members?: (Person & { admin: boolean; me: boolean })[]
   requesting?: Person[]
   pending?: (Person & { mine: boolean })[]
+  banned?: Person[]
+  announcementsOnly?: boolean
 }
 
 /** The lengths Signal's own clients offer, in seconds. */
@@ -244,6 +246,16 @@ export function SignalGroupSettings({ buffer }: { buffer: BufferEntry }): JSX.El
                   disabled={!admin || busy}
                   onChange={(who) => void change({ action: 'whoMayAdd', who })}
                 />
+                <ChoiceSetting
+                  label="Who can send messages"
+                  value={info.announcementsOnly ? 'admins' : 'all'}
+                  options={[
+                    { value: 'all', label: 'All members' },
+                    { value: 'admins', label: 'Only admins' }
+                  ]}
+                  disabled={!admin || busy}
+                  onChange={(who) => void change({ action: 'announcementsOnly', on: who === 'admins' })}
+                />
 
                 {mayAdd && (
                   <div className="field">
@@ -285,6 +297,9 @@ export function SignalGroupSettings({ buffer }: { buffer: BufferEntry }): JSX.El
                             <button type="button" className="button" disabled={busy} onClick={() => void change({ action: 'approve', userId: p.userId, accept: false })}>
                               Turn down
                             </button>
+                            <button type="button" className="button danger" disabled={busy} onClick={() => void change({ action: 'ban', userId: p.userId }, `${p.nick} was turned down and banned`)}>
+                              Ban
+                            </button>
                           </>
                         )}
                       </div>
@@ -324,11 +339,36 @@ export function SignalGroupSettings({ buffer }: { buffer: BufferEntry }): JSX.El
                           <button type="button" className="button" disabled={busy} onClick={() => void change({ action: 'remove', userId: m.userId }, `${m.nick} was removed`)}>
                             Remove
                           </button>
+                          <button
+                            type="button"
+                            className="button danger"
+                            title="Remove them and stop them joining again by the link"
+                            disabled={busy}
+                            onClick={() => void change({ action: 'ban', userId: m.userId }, `${m.nick} was removed and banned`)}
+                          >
+                            Ban
+                          </button>
                         </>
                       )}
                     </div>
                   ))}
                 </div>
+
+                {(info.banned ?? []).length > 0 && (
+                  <div className="field">
+                    <span className="small muted">Banned: they cannot join by the link or ask to</span>
+                    {(info.banned ?? []).map((p) => (
+                      <div key={p.userId} className="field-row">
+                        <span className="grow">{p.nick}</span>
+                        {admin && (
+                          <button type="button" className="button" disabled={busy} onClick={() => void change({ action: 'unban', userId: p.userId }, `${p.nick} is no longer banned`)}>
+                            Lift ban
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <div className="field-row">
                   {!confirmLeave ? (
