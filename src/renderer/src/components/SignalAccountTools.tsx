@@ -97,6 +97,24 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
   useEffect(loadSettings, [account.id, account.state])
   const word = (on: boolean | null): string => (on === null ? 'not known yet' : on ? 'on' : 'off')
 
+  /** Sealing this device into a file, for putting it back after a reinstall. */
+  const [exporting, setExporting] = useState<{ passphrase: string; again: string } | null>(null)
+  const exportAccount = (): void => {
+    if (!exporting) return
+    void window.moho.pickSavePath('signal-account.mohosignal').then((path) => {
+      if (!path) return
+      setBusy(true)
+      void window.moho
+        .rpc('exportSignalAccount', { accountId: account.id, path, passphrase: exporting.passphrase })
+        .then(() => {
+          setExporting(null)
+          store.toast('info', `Saved to ${path}. Keep it and its passphrase safe: it is this device's keys`)
+        })
+        .catch((e: Error) => store.toast('error', e.message))
+        .finally(() => setBusy(false))
+    })
+  }
+
   const profileChanged =
     !!profile && !!edited && (edited.given !== profile.given || edited.family !== profile.family || edited.about !== profile.about || edited.emoji !== profile.emoji)
 
@@ -116,6 +134,53 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
 
   return (
     <div className="account-tools">
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Export this device</div>
+          <div className="small muted">
+            A file sealed with a passphrase, holding this linked device&apos;s keys and conversations, to bring it back after
+            moho is put on again (Add account, Signal). Only bring it back where this copy is gone: two copies of one device
+            break each other. Messages that come after the export are not in it.
+          </div>
+        </div>
+        {!exporting && (
+          <button type="button" className="button" disabled={busy} onClick={() => setExporting({ passphrase: '', again: '' })}>
+            Export…
+          </button>
+        )}
+      </div>
+      {exporting && (
+        <div className="field-row">
+          <input
+            className="text-field"
+            type="password"
+            placeholder="Passphrase (8 or more characters)"
+            value={exporting.passphrase}
+            autoFocus
+            disabled={busy}
+            onChange={(e) => setExporting({ ...exporting, passphrase: e.target.value })}
+          />
+          <input
+            className="text-field"
+            type="password"
+            placeholder="Again"
+            value={exporting.again}
+            disabled={busy}
+            onChange={(e) => setExporting({ ...exporting, again: e.target.value })}
+          />
+          <button
+            type="button"
+            className="button"
+            disabled={busy || exporting.passphrase.length < 8 || exporting.passphrase !== exporting.again}
+            onClick={exportAccount}
+          >
+            Save…
+          </button>
+          <button type="button" className="button" disabled={busy} onClick={() => setExporting(null)}>
+            Cancel
+          </button>
+        </div>
+      )}
       {profile && edited && (
         <>
           <div className="setting-row">

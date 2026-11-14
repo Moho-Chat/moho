@@ -1785,6 +1785,22 @@ function SignalForm({ onDone }: { onDone: () => void }): JSX.Element {
   /** The code to scan, and when it was drawn (a new one replaces it every couple of minutes). */
   const [qr, setQr] = useState<{ path: string; at: number } | null>(null)
   const [useTor, setUseTor] = useState(false)
+  /** Bringing back an account exported from moho before: the file and its passphrase. */
+  const [restoring, setRestoring] = useState<{ path: string; passphrase: string } | null>(null)
+
+  const restore = (): void => {
+    if (!restoring) return
+    setBusy(true)
+    void window.moho
+      .rpc('importSignalAccount', { path: restoring.path, passphrase: restoring.passphrase })
+      .then(() => {
+        void store.refreshAccounts()
+        store.toast('info', 'The account is back, as the same linked device')
+        onDone()
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
 
   // Held in a ref as well: the first event can be handled before the render that follows the answer that started the
   // link. Nothing else is linking from this form, so an event with no id known yet is this one's.
@@ -1890,6 +1906,46 @@ function SignalForm({ onDone }: { onDone: () => void }): JSX.Element {
         )}
       </div>
       {busy && detail && <p className="small muted">{detail}</p>}
+      {!busy && !restoring && (
+        <div className="field-row">
+          <button
+            type="button"
+            className="button subtle small"
+            onClick={() =>
+              void window.moho.pickFile(['mohosignal']).then((path) => {
+                if (path) setRestoring({ path, passphrase: '' })
+              })
+            }
+          >
+            Bring back an account exported from moho…
+          </button>
+        </div>
+      )}
+      {restoring && (
+        <>
+          <p className="small muted">
+            This puts back the same linked device the file was made from. Only do it where that copy of moho is gone: two
+            copies of one device break each other.
+          </p>
+          <div className="field-row">
+            <input
+              className="text-field"
+              type="password"
+              placeholder="The passphrase it was exported with"
+              value={restoring.passphrase}
+              autoFocus
+              disabled={busy}
+              onChange={(e) => setRestoring({ ...restoring, passphrase: e.target.value })}
+            />
+            <button type="button" className="button primary" disabled={busy || !restoring.passphrase} onClick={restore}>
+              {busy ? 'Bringing back…' : 'Bring back'}
+            </button>
+            <button type="button" className="button" disabled={busy} onClick={() => setRestoring(null)}>
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }
