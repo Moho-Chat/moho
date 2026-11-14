@@ -169,6 +169,33 @@ export function SignalGroupSettings({ buffer }: { buffer: BufferEntry }): JSX.El
                     </button>
                   </div>
                 </div>
+                <div className="field">
+                  <span className="small muted">Picture</span>
+                  <div className="field-row">
+                    <button
+                      type="button"
+                      className="button"
+                      disabled={!mayEdit || busy}
+                      onClick={() =>
+                        void window.moho.pickFile(['jpg', 'jpeg', 'png', 'webp', 'gif']).then((path) => {
+                          if (path) void change({ action: 'picture', path }, 'The group has a new picture')
+                        })
+                      }
+                    >
+                      Choose…
+                    </button>
+                    {buffer.avatarUrl && (
+                      <button
+                        type="button"
+                        className="button"
+                        disabled={!mayEdit || busy}
+                        onClick={() => void change({ action: 'picture', path: '' }, 'The picture was taken away')}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
 
                 <ChoiceSetting
                   label="Group link"
