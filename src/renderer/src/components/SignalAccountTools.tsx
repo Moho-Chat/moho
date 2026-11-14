@@ -95,7 +95,6 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
       .catch(() => setSettings(null))
   }
   useEffect(loadSettings, [account.id, account.state])
-  const word = (on: boolean | null): string => (on === null ? 'not known yet' : on ? 'on' : 'off')
 
   /** Sealing this device into a file, for putting it back after a reinstall. */
   const [exporting, setExporting] = useState<{ passphrase: string; again: string } | null>(null)
@@ -229,15 +228,42 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
         <>
           <div className="setting-row">
             <div className="setting-text">
-              <div>Privacy, as set on your phone</div>
+              <div>Privacy, on all your devices</div>
               <div className="small muted">
-                Read receipts {word(settings.readReceipts)} · typing indicators {word(settings.typingIndicators)} · link
-                previews {word(settings.linkPreviews)} · sealed sender indicators {word(settings.sealedSenderIndicators)}
-                {settings.defaultTimer ? ` · new chats disappear after ${settings.defaultTimer} seconds` : ''}. moho follows
-                them; change them in Signal on the phone.
+                Kept by Signal for the whole account: a change here reaches the phone too.
+                {settings.defaultTimer ? ` New chats disappear after ${settings.defaultTimer} seconds.` : ''}
               </div>
             </div>
           </div>
+          {(
+            [
+              ['readReceipts', 'Read receipts', settings.readReceipts],
+              ['typingIndicators', 'Typing indicators', settings.typingIndicators],
+              ['linkPreviews', 'Link previews', settings.linkPreviews],
+              ['sealedSenderIndicators', 'Sealed sender indicators', settings.sealedSenderIndicators]
+            ] as const
+          ).map(([key, label, on]) => (
+            <label key={key} className="small poll-disclosed" title={on === null ? 'Not known yet' : undefined}>
+              <input
+                type="checkbox"
+                checked={!!on}
+                disabled={busy || on === null}
+                onChange={(e) => {
+                  setBusy(true)
+                  void window.moho
+                    .rpc('signalSharedChange', { accountId: account.id, setting: key, on: e.target.checked })
+                    .then(() => {
+                      store.toast('info', `${label} ${e.target.checked ? 'on' : 'off'}, on all your devices`)
+                      loadSettings()
+                    })
+                    .catch((err: Error) => store.toast('error', err.message))
+                    .finally(() => setBusy(false))
+                }}
+              />
+              {label}
+            </label>
+          ))}
+          <StoryLists accountId={account.id} />
           {settings.blocked.length > 0 && (
             <>
               <div className="small muted">Blocked</div>
@@ -294,5 +320,97 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
         </div>
       )}
     </div>
+  )
+}
+
+interface StoryListRow {
+  id: string
+  name: string
+  myStory: boolean
+  count: number
+  replies: boolean
+  excluding: boolean
+  people: { userId: string; nick: string }[]
+}
+
+/**
+ * The account's story lists, as the phone keeps them for every device: who each reaches, whether they can reply, and
+ * people added or taken off. For My Story set to "all connections except", the people listed are the ones left out.
+ */
+function StoryLists({ accountId }: { accountId: string }): JSX.Element | null {
+  const store = useStore()
+  const [lists, setLists] = useState<StoryListRow[] | null>(null)
+  const [connections, setConnections] = useState<{ userId: string; nick: string }[]>([])
+  const [busy, setBusy] = useState(false)
+  const load = (): void => {
+    void window.moho.rpc<StoryListRow[]>('signalStoryLists', { accountId }).then(setLists).catch(() => setLists(null))
+    void window.moho.rpc<{ userId: string; nick: string }[]>('signalConnections', { accountId }).then(setConnections).catch(() => {})
+  }
+  useEffect(load, [accountId])
+  if (!lists || lists.length === 0) return null
+
+  const change = (listId: string, params: Record<string, unknown>, done: string): void => {
+    setBusy(true)
+    void window.moho
+      .rpc('signalSharedChange', { accountId, listId, ...params })
+      .then(() => {
+        store.toast('info', done)
+        load()
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <>
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Story lists</div>
+          <div className="small muted">Who your stories reach, kept for all your devices.</div>
+        </div>
+      </div>
+      {lists.map((l) => {
+        const listed = new Set(l.people.map((p) => p.userId))
+        const addable = connections.filter((c) => !listed.has(c.userId))
+        return (
+          <div key={l.id} className="field">
+            <span className="small">
+              {l.name} · reaches {l.count === 1 ? '1 person' : `${l.count} people`}
+              {l.myStory && (l.excluding ? ' (all your connections but those below)' : ' (only those below)')}
+            </span>
+            <label className="small poll-disclosed">
+              <input type="checkbox" checked={l.replies} disabled={busy} onChange={(e) => change(l.id, { replies: e.target.checked }, e.target.checked ? 'Replies allowed' : 'Replies turned off')} />
+              Let people reply
+            </label>
+            {l.people.map((p) => (
+              <div key={p.userId} className="field-row small">
+                <span className="grow">{p.nick}</span>
+                <button type="button" className="button subtle small" disabled={busy} onClick={() => change(l.id, { person: p.userId, add: false }, `${p.nick} taken off ${l.name}`)}>
+                  Take off
+                </button>
+              </div>
+            ))}
+            {addable.length > 0 && (
+              <select
+                className="text-field"
+                value=""
+                disabled={busy}
+                onChange={(e) => {
+                  const who = addable.find((c) => c.userId === e.target.value)
+                  if (who) change(l.id, { person: who.userId, add: true }, `${who.nick} added to ${l.name}`)
+                }}
+              >
+                <option value="">{l.myStory && l.excluding ? 'Leave somebody out…' : 'Add somebody…'}</option>
+                {addable.map((c) => (
+                  <option key={c.userId} value={c.userId}>
+                    {c.nick}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        )
+      })}
+    </>
   )
 }

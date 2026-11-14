@@ -27,7 +27,19 @@ interface Info {
   pending?: (Person & { mine: boolean })[]
   banned?: Person[]
   announcementsOnly?: boolean
+  /** How the conversation stands on every device (the account's shared settings). */
+  shared?: { known: boolean; mutedUntil: number; archived: boolean; unread: boolean; pinned: boolean; noteToSelf: boolean }
 }
+
+/** The lengths Signal's apps mute for, in milliseconds (-1 is always). */
+const MUTES: { value: number; label: string }[] = [
+  { value: 0, label: 'Not muted' },
+  { value: 3_600_000, label: '1 hour' },
+  { value: 28_800_000, label: '8 hours' },
+  { value: 86_400_000, label: '1 day' },
+  { value: 604_800_000, label: '1 week' },
+  { value: -1, label: 'Always' }
+]
 
 /** The lengths Signal's own clients offer, in seconds. */
 const TIMERS: { value: number; label: string }[] = [
@@ -114,6 +126,22 @@ export function SignalGroupSettings({ buffer }: { buffer: BufferEntry }): JSX.El
     }
   }
 
+  /** A change every device of the account keeps (mute, archive, pin, unread). */
+  const shared = async (params: Record<string, unknown>, done: string): Promise<void> => {
+    setBusy(true)
+    try {
+      await window.moho.rpc('signalSharedChange', { accountId: buffer.accountId, bufferId: buffer.id, ...params })
+      store.toast('info', done)
+      await load()
+    } catch (e) {
+      store.toast('error', `Couldn't change that: ${(e as Error).message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const sharedNow = info?.shared
+  const muteChoice = !sharedNow ? '0' : sharedNow.mutedUntil === -1 ? '-1' : sharedNow.mutedUntil > Date.now() ? 'until' : '0'
+
   const admin = !!info?.isAdmin
   const mayEdit = admin || info?.whoMayEdit === 'all'
   const mayAdd = admin || info?.whoMayAdd === 'all'
@@ -140,6 +168,39 @@ export function SignalGroupSettings({ buffer }: { buffer: BufferEntry }): JSX.El
                 disabled={busy || (!info.dm && !mayEdit)}
                 onChange={(v) => void setTimer(Number(v))}
               />
+            )}
+            {info && sharedNow?.known && (
+              <div className="field">
+                <span className="small muted">On all your devices</span>
+                {!sharedNow.noteToSelf && (
+                  <ChoiceSetting
+                    label="Mute"
+                    value={muteChoice}
+                    options={[
+                      ...MUTES.map((m) => ({ value: String(m.value), label: m.label })),
+                      ...(muteChoice === 'until' ? [{ value: 'until', label: `Until ${new Date(sharedNow.mutedUntil).toLocaleString()}` }] : [])
+                    ]}
+                    disabled={busy}
+                    onChange={(v) => {
+                      const ms = Number(v)
+                      if (Number.isNaN(ms)) return
+                      void shared({ mute: ms <= 0 ? ms : Date.now() + ms }, ms === 0 ? 'Unmuted everywhere' : 'Muted everywhere')
+                    }}
+                  />
+                )}
+                <label className="small poll-disclosed">
+                  <input type="checkbox" checked={sharedNow.pinned} disabled={busy} onChange={(e) => void shared({ pinned: e.target.checked }, e.target.checked ? 'Pinned everywhere' : 'Unpinned everywhere')} />
+                  Pinned
+                </label>
+                <label className="small poll-disclosed">
+                  <input type="checkbox" checked={sharedNow.archived} disabled={busy} onChange={(e) => void shared({ archived: e.target.checked }, e.target.checked ? 'Archived everywhere' : 'Taken out of the archive everywhere')} />
+                  Archived
+                </label>
+                <label className="small poll-disclosed">
+                  <input type="checkbox" checked={sharedNow.unread} disabled={busy} onChange={(e) => void shared({ unread: e.target.checked }, e.target.checked ? 'Marked unread everywhere' : 'Unread mark taken off everywhere')} />
+                  Marked unread
+                </label>
+              </div>
             )}
             {info && !info.dm && (
               <>
