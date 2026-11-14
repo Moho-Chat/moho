@@ -610,6 +610,8 @@ export interface ChatState {
   /** Cards the reader has folded away, by card id. */
   /** An old poll or prediction being read back, over the conversation. */
   reviewCard: LiveCard | null
+  /** A Signal view-once picture or video being looked at: shown over everything, and gone when closed. */
+  viewOnce: { path: string; kind: 'image' | 'video'; from: string; width?: number; height?: number } | null
   /** Which messages each Matrix room has pinned, newest last. */
   /** Which messages a conversation has pinned, where the service says so. */
   pinnedMessages: Record<string, string[]>
@@ -859,6 +861,7 @@ const INITIAL: ChatState = {
   livePolls: {},
   pinnedByBuffer: {},
   reviewCard: null,
+  viewOnce: null,
   pinnedMessages: {},
   threadCounts: {},
   pinnedRows: {},
@@ -3347,6 +3350,15 @@ export class ChatStore {
    * and guessing at it would mean showing an answer that never came.
    */
   useComponent(bufferId: string, messageId: string, customId: string, select: boolean, values: string[]): void {
+    // A Signal view-once picture: opened here once, and gone from the message as soon as it is.
+    if (this.accountFor(bufferId)?.service === 'signal' && customId === 'signal:viewonce') {
+      const from = this.state.messagesByBuffer[bufferId]?.find((m) => m.id === messageId)?.from ?? ''
+      void window.moho
+        .rpc<{ path: string; kind: 'image' | 'video'; width?: number; height?: number }>('openSignalViewOnce', { bufferId, messageId })
+        .then((shown) => this.set({ viewOnce: { ...shown, from } }))
+        .catch((e: Error) => this.toast('error', e.message))
+      return
+    }
     // A Telegram bot answers a press with a notice, or an address to open, and no more: whatever else it does arrives
     // as an edit to the message or a new one.
     if (this.accountFor(bufferId)?.service === 'telegram') {
@@ -3362,6 +3374,14 @@ export class ChatStore {
     void window.moho
       .rpc('useDiscordComponent', { bufferId, messageId, customId, select, values })
       .catch((e: Error) => this.toast('error', e.message))
+  }
+
+  /** Closes a view-once picture, and has its file taken away. */
+  closeViewOnce(): void {
+    const shown = this.state.viewOnce
+    if (!shown) return
+    this.set({ viewOnce: null })
+    void window.moho.rpc('closeSignalViewOnce', { path: shown.path }).catch(() => {})
   }
 
   /**

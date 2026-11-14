@@ -45,6 +45,7 @@ import { useShortcuts } from './lib/shortcuts'
 import { useEscapeLayer } from './lib/layers'
 import { installDialogFocus } from './lib/dialogs'
 import { QuickSwitcher } from './components/QuickSwitcher'
+import { ViewOnceViewer } from './components/ViewOnceViewer'
 
 export default function App(): JSX.Element {
   useShortcuts()
@@ -377,6 +378,7 @@ export default function App(): JSX.Element {
           reading something else, and often in a conversation you are not. */}
       <TransferPanel />
       <FileDrop />
+      <ViewOnceViewer />
       <Toasts />
       <QuickSwitcher />
       <EditMenu />

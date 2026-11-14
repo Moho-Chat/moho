@@ -19,6 +19,8 @@ export interface LightboxSource {
   /** Shown in the header, matching the message the media came from. */
   from?: string
   loop?: boolean
+  /** Shown once and not kept (a Signal view-once picture): nothing offers to save, copy or open it elsewhere. */
+  once?: boolean
 }
 
 interface Props {
@@ -220,17 +222,21 @@ export function Lightbox({ source: opened, anchor = null, onClose }: Props): JSX
                 {Math.round(view.scale * 100)}%
               </button>
               <IconButton name="zoom_in" size={20} title="Zoom in (+, or the wheel)" onClick={() => zoomBy(1.5)} />
-              <IconButton name="content_copy" size={20} title="Copy the picture" onClick={copyImage} />
+              {!source.once && <IconButton name="content_copy" size={20} title="Copy the picture" onClick={copyImage} />}
             </>
           )}
-          <IconButton
-            name={saving ? 'hourglass_empty' : 'download'}
-            size={20}
-            title={note || 'Save to your downloads folder'}
-            disabled={saving}
-            onClick={download}
-          />
-          <IconButton name="open_in_new" size={20} title="Open outside moho" onClick={openExternal} />
+          {!source.once && (
+            <>
+              <IconButton
+                name={saving ? 'hourglass_empty' : 'download'}
+                size={20}
+                title={note || 'Save to your downloads folder'}
+                disabled={saving}
+                onClick={download}
+              />
+              <IconButton name="open_in_new" size={20} title="Open outside moho" onClick={openExternal} />
+            </>
+          )}
           <IconButton name="close" size={20} title="Close (Esc)" onClick={onClose} />
         </span>
       </div>

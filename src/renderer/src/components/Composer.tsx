@@ -39,7 +39,7 @@ interface StagedAttachment {
   preview?: string
   /** In bytes, once it has been asked. */
   size?: number | null
-  /** Sent hidden behind a spoiler: Discord, Steam, Telegram and Stoat. */
+  /** Sent hidden behind a spoiler: Discord, Steam, Telegram and Stoat. On Signal, sent to view once. */
   spoiler: boolean
 }
 
@@ -608,6 +608,19 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
             batch.filter((att) => att.spoiler).map((att) => att.path)
           )
         }
+      } else if (service === 'signal') {
+        // Signal carries up to 32 files in one message, as a gallery with the words under it. A file marked view-once
+        // goes alone and without words, as Signal's clients send one.
+        const together = staged.filter((att) => !att.spoiler)
+        const once = staged.filter((att) => att.spoiler)
+        if (together.length === 0 && body.trim()) void post(body)
+        for (let i = 0; i < together.length; i += 32) {
+          void post(
+            i === 0 ? body : '',
+            together.slice(i, i + 32).map((att) => att.path)
+          )
+        }
+        once.forEach((att) => void post('', att.path, [att.path]))
       } else {
         staged.forEach((att, i) => {
           void post(i === 0 ? body : '', att.path, att.spoiler ? [att.path] : undefined)
@@ -1107,7 +1120,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
                 ) : (
                   <Icon name="description" size={32} />
                 )}
-                {att.spoiler && <span className="staged-spoiler-pill">SPOILER</span>}
+                {att.spoiler && <span className="staged-spoiler-pill">{service === 'signal' ? 'VIEW ONCE' : 'SPOILER'}</span>}
               </div>
               <div className="staged-meta">
                 <span className="staged-name ellipsis" title={att.name}>
@@ -1118,6 +1131,17 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
               {/* On the card's corner, and there only while it is pointed at
                   or focused - they would be a dozen buttons otherwise. */}
               <div className="staged-actions">
+                {service === 'signal' && /\.(jpe?g|png|gif|webp|heic|mp4|m4v|mov|webm)$/i.test(att.name) && (
+                  <button
+                    type="button"
+                    className={classes('staged-action', att.spoiler && 'on')}
+                    title={att.spoiler ? 'Send normally' : 'View once: each person can open it one time'}
+                    aria-pressed={att.spoiler}
+                    onClick={() => setStaged((s) => s.map((x) => (x.id === att.id ? { ...x, spoiler: !x.spoiler } : x)))}
+                  >
+                    <Icon name={att.spoiler ? 'timer' : 'timer_off'} size={16} />
+                  </button>
+                )}
                 {(service === 'discord' || service === 'steam' || service === 'telegram' || service === 'stoat') && (
                   <button
                     type="button"
