@@ -531,6 +531,9 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
     ...(service === 'signal' && !thread && buffer.remoteId?.startsWith('g:')
       ? ([{ label: "Post to the group's story", icon: 'auto_stories', onClick: () => setStorying(true) }] as MenuEntry[])
       : []),
+    ...(service === 'signal' && !thread && buffer.remoteId === 'stories'
+      ? ([{ label: 'Post a story', icon: 'auto_stories', onClick: () => setStorying(true) }] as MenuEntry[])
+      : []),
     ...(service === 'matrix' && !thread
       ? ([
           {
