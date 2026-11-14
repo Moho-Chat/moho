@@ -630,6 +630,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   const matrixCall = useChat((s) => s.activeCall)
   const signalCall = useChat((s) => s.signalCall)
   const signalCallsAvailable = useChat((s) => s.signalCallsAvailable)
+  const signalGroupCall = useChat((s) => s.signalGroupCall)
   const isDm = buffer.kind === 'dm'
   // An account that goes through Tor (or the proxy) takes no calls: a call's audio and video cannot go through Tor, so they would
   // go around it and show the real address. The daemon refuses them as well; here the buttons say so before anybody presses them.
@@ -972,6 +973,15 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           <IconButton name="call" title={callsOff ?? 'Voice call'} disabled={!!callsOff} onClick={() => void store.startSignalCall(buffer.id, false)} />
           <IconButton name="videocam" title={callsOff ?? 'Video call'} disabled={!!callsOff} onClick={() => void store.startSignalCall(buffer.id, true)} />
         </>
+      )}
+      {buffer.accountId.startsWith('signal:') && buffer.remoteId?.startsWith('g:') && signalCallsAvailable && !signalCall && !signalGroupCall && (
+        <>
+          <IconButton name="call" title={callsOff ?? 'Start or join the group call'} disabled={!!callsOff} onClick={() => void store.joinSignalGroupCall(buffer.id, false, true)} />
+          <IconButton name="videocam" title={callsOff ?? 'Start or join the group call with video'} disabled={!!callsOff} onClick={() => void store.joinSignalGroupCall(buffer.id, true, true)} />
+        </>
+      )}
+      {signalGroupCall && signalGroupCall.bufferId === buffer.id && (
+        <IconButton name="call_end" title="Leave the call" className="calling" onClick={() => store.leaveSignalGroupCall()} />
       )}
       {signalCall && signalCall.bufferId === buffer.id && signalCall.state !== 'ringing' && (
         <IconButton name="call_end" title="Hang up" className="calling" onClick={() => store.hangUpSignalCall()} />

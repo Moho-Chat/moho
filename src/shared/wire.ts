@@ -419,6 +419,28 @@ export interface SignalCallState {
   ended?: string
 }
 
+/** A Signal group call as RingRTC (in main) has it. */
+export interface SignalGroupCallState {
+  accountId: string
+  bufferId: string
+  joinState: 'idle' | 'joining' | 'pending' | 'joined' | 'ended'
+  connected: boolean
+  participants: { demuxId: number; userId: string; audioMuted: boolean; videoMuted: boolean }[]
+  audioMuted: boolean
+  videoMuted: boolean
+  sharing: boolean
+  ended?: string
+}
+
+/** Somebody ringing a Signal group's call. */
+export interface SignalGroupRing {
+  accountId: string
+  groupId: string
+  ringId: string
+  sender: string
+  bufferId: string | null
+}
+
 export interface IncomingCall {
   accountId: string
   bufferId: string

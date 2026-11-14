@@ -57,8 +57,8 @@ const api = {
   },
 
   /** The other side's picture in a Signal call, frame by frame (RGBA). */
-  onSignalCallFrame(cb: (width: number, height: number, rgba: Uint8Array) => void): () => void {
-    const handler = (_e: unknown, width: number, height: number, rgba: Uint8Array): void => cb(width, height, rgba)
+  onSignalCallFrame(cb: (width: number, height: number, rgba: Uint8Array, demuxId?: number) => void): () => void {
+    const handler = (_e: unknown, width: number, height: number, rgba: Uint8Array, demuxId?: number): void => cb(width, height, rgba, demuxId)
     ipcRenderer.on(IPC.signalCallFrame, handler)
     return () => ipcRenderer.off(IPC.signalCallFrame, handler)
   },

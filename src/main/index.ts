@@ -815,6 +815,23 @@ function wireIpc(): void {
         case 'share':
           signalCalls.share(!!params.on)
           return { ok: true, result: null }
+        case 'currentGroup':
+          return { ok: true, result: signalCalls.currentGroup() }
+        case 'joinGroup':
+          await signalCalls.joinGroup(String(params.bufferId), !!params.video, !!params.ring)
+          return { ok: true, result: null }
+        case 'leaveGroup':
+          signalCalls.leaveGroup()
+          return { ok: true, result: null }
+        case 'muteGroup':
+          signalCalls.muteGroup(params.audio as boolean | undefined, params.video as boolean | undefined)
+          return { ok: true, result: null }
+        case 'shareGroup':
+          signalCalls.shareGroup(!!params.on)
+          return { ok: true, result: null }
+        case 'declineGroupRing':
+          signalCalls.declineGroupRing(String(params.groupId), String(params.ringId))
+          return { ok: true, result: null }
         default:
           return { ok: false, error: `no Signal call action "${action}"` }
       }
@@ -1420,7 +1437,7 @@ app.whenReady().then(() => {
   signalCalls = new SignalCalls({
     request: (method, params) => client.request(method, params),
     emit: (event, data) => send(IPC.event, { event, data }),
-    frame: (width, height, rgba) => send(IPC.signalCallFrame, width, height, rgba)
+    frame: (width, height, rgba, demuxId) => send(IPC.signalCallFrame, width, height, rgba, demuxId)
   })
 
   client.on('link', (up) => {

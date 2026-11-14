@@ -1,5 +1,7 @@
 import type {
   SignalCallState,
+  SignalGroupCallState,
+  SignalGroupRing,
   Account,
   AudioDevice,
   Buffer as WireBuffer,
@@ -643,6 +645,8 @@ export interface ChatState {
   /** The Signal call RingRTC is on (in main), and whether RingRTC is there at all. */
   signalCall: SignalCallState | null
   signalCallsAvailable: boolean
+  signalGroupCall: SignalGroupCallState | null
+  signalGroupRings: SignalGroupRing[]
   /** The call put away without being hung up. */
   callMinimized: boolean
   /** The call is drawn in a window of its own rather than over the conversation. */
@@ -874,6 +878,8 @@ const INITIAL: ChatState = {
   ringingCall: null,
   signalCall: null,
   signalCallsAvailable: false,
+  signalGroupCall: null,
+  signalGroupRings: [],
   callMinimized: false,
   callPoppedOut: false,
   streamPoppedOut: false,
@@ -2336,7 +2342,8 @@ export class ChatStore {
     try {
       const available = await window.moho.signalCall<boolean>('available')
       const current = available ? await window.moho.signalCall<SignalCallState | null>('current') : null
-      this.set({ signalCallsAvailable: available, signalCall: current })
+      const group = available ? await window.moho.signalCall<SignalGroupCallState | null>('currentGroup') : null
+      this.set({ signalCallsAvailable: available, signalCall: current, signalGroupCall: group })
     } catch {
       this.set({ signalCallsAvailable: false })
     }
@@ -2369,6 +2376,39 @@ export class ChatStore {
   /** Shares this screen in the Signal call (as the picture), or stops. */
   shareSignalCallScreen(on: boolean): void {
     void window.moho.signalCall('share', { on }).catch((e: Error) => this.toast('error', e.message))
+  }
+
+  /** Joins a Signal group's call, ringing its members when `ring` (as starting one does). */
+  async joinSignalGroupCall(bufferId: string, video: boolean, ring: boolean): Promise<void> {
+    try {
+      await window.moho.signalCall('joinGroup', { bufferId, video, ring })
+      await this.selectBuffer(bufferId, true)
+    } catch (e) {
+      this.toast('error', `Couldn't join the call: ${(e as Error).message}`)
+    }
+  }
+
+  leaveSignalGroupCall(): void {
+    void window.moho.signalCall('leaveGroup').catch(() => {})
+  }
+
+  muteSignalGroupCall(change: { audio?: boolean; video?: boolean }): void {
+    void window.moho.signalCall('muteGroup', change).catch((e: Error) => this.toast('error', e.message))
+  }
+
+  shareSignalGroupCallScreen(on: boolean): void {
+    void window.moho.signalCall('shareGroup', { on }).catch((e: Error) => this.toast('error', e.message))
+  }
+
+  /** Answers a group ring by joining the call. */
+  answerSignalGroupRing(ring: SignalGroupRing, video: boolean): void {
+    this.set({ signalGroupRings: this.state.signalGroupRings.filter((r) => r.ringId !== ring.ringId) })
+    if (ring.bufferId) void this.joinSignalGroupCall(ring.bufferId, video, false)
+  }
+
+  declineSignalGroupRing(ring: SignalGroupRing): void {
+    this.set({ signalGroupRings: this.state.signalGroupRings.filter((r) => r.ringId !== ring.ringId) })
+    void window.moho.signalCall('declineGroupRing', { groupId: ring.groupId, ringId: ring.ringId }).catch(() => {})
   }
 
   hangUpSignalCall(): void {
@@ -4487,6 +4527,32 @@ export class ChatStore {
       case 'incomingCall':
         this.setRinging(data as IncomingCall)
         break
+
+      case 'signalGroupCall': {
+        const call = data as unknown as SignalGroupCallState
+        if (call.joinState === 'ended') {
+          if (call.ended && call.ended !== 'You left the call') this.toast('info', `Group call: ${call.ended}`)
+          this.set({ signalGroupCall: null })
+        } else {
+          this.set({ signalGroupCall: call })
+        }
+        break
+      }
+
+      // Somebody rang a group (update 0), or the ring ended: given up, taken or turned down on another device.
+      case 'signalGroupRing': {
+        const ring = data as unknown as SignalGroupRing & { update: number }
+        const others = this.state.signalGroupRings.filter((r) => r.ringId !== ring.ringId)
+        if (ring.update !== 0) {
+          this.set({ signalGroupRings: others })
+          break
+        }
+        void window.moho
+          .rpc<{ bufferId: string | null }>('signalGroupCallBuffer', { accountId: ring.accountId, groupId: ring.groupId })
+          .then((r) => this.set({ signalGroupRings: [...this.state.signalGroupRings.filter((x) => x.ringId !== ring.ringId), { ...ring, bufferId: r.bufferId }] }))
+          .catch(() => {})
+        break
+      }
 
       // The Signal call RingRTC is on. Ended is said once, and the call let go.
       case 'signalCall': {

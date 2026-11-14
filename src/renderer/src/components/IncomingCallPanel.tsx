@@ -44,6 +44,7 @@ export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {})
   const buffers = useChat((s) => s.buffers)
   const accounts = useChat((s) => s.accounts)
   const signalCall = useChat((s) => s.signalCall)
+  const groupRings = useChat((s) => s.signalGroupRings)
   const ringtone = useRef<Ringtone>()
 
   const rings: Ring[] = [
@@ -83,6 +84,21 @@ export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {})
         answerWithVideo: takenHere && call.video ? () => void store.answerSignalCall(call.bufferId, true) : undefined,
         decline: () => void store.declineCall(call.bufferId),
         silenceOnly: call.answerElsewhere && !takenHere
+      }
+    }),
+    ...groupRings.map((ring): Ring => {
+      const buffer = buffers.find((b) => b.id === ring.bufferId)
+      const caller = buffers.find((b) => b.accountId === ring.accountId && b.remoteId === `p:${ring.sender}`)
+      const account = accounts.find((a) => a.id === ring.accountId)
+      return {
+        key: `sg:${ring.ringId}`,
+        name: buffer ? bufferDisplayName(buffer.name) : 'A Signal group',
+        avatarUrl: buffer?.avatarUrl,
+        accountId: ring.accountId,
+        detail: `${caller ? bufferDisplayName(caller.name) : 'Somebody'} is calling the group${account ? ` · ${account.displayName || account.id}` : ''}`,
+        answer: ring.bufferId ? () => store.answerSignalGroupRing(ring, false) : undefined,
+        answerWithVideo: ring.bufferId ? () => store.answerSignalGroupRing(ring, true) : undefined,
+        decline: () => store.declineSignalGroupRing(ring)
       }
     }),
     ...(matrix

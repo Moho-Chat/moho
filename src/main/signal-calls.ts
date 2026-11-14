@@ -14,6 +14,7 @@ import { log } from './log'
 
 type RingrtcModule = typeof import('@signalapp/ringrtc')
 type Call = import('@signalapp/ringrtc').Call
+type GroupCall = import('@signalapp/ringrtc').GroupCall
 type CallingMessage = import('@signalapp/ringrtc').CallingMessage
 
 /** What the daemon says about a call message (see nobilis `signal::calls::hand_to_app`). */
@@ -61,12 +62,43 @@ export interface SignalCallState {
   ended?: string
 }
 
+/** A group call, as the windows are told it. */
+export interface SignalGroupCallState {
+  accountId: string
+  bufferId: string
+  /** not joined, joining, waiting to be let in, joined */
+  joinState: 'idle' | 'joining' | 'pending' | 'joined' | 'ended'
+  connected: boolean
+  participants: { demuxId: number; userId: string; audioMuted: boolean; videoMuted: boolean }[]
+  audioMuted: boolean
+  videoMuted: boolean
+  sharing: boolean
+  ended?: string
+}
+
+/** What the daemon gives for joining a group's call (nobilis `signal::calls::group_info`). */
+interface GroupInfo {
+  accountId: string
+  bufferId: string
+  groupId: string
+  proof: string
+  members: { userId: string; cipher: string }[]
+  sfuUrl: string
+  ownAci: string
+}
+
+/** Sixteen bytes as a UUID's text. */
+export function uuidText(bytes: Uint8Array): string {
+  const hex = Buffer.from(bytes).toString('hex')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`
+}
+
 export interface SignalCallsDeps {
   request: (method: string, params: Record<string, unknown>) => Promise<unknown>
   /** To every window, as a daemon event would be. */
   emit: (event: string, data: unknown) => void
-  /** The other side's picture, to every window. */
-  frame: (width: number, height: number, rgba: Uint8Array) => void
+  /** The other side's picture (a group call's: one participant's, by demux id), to every window. */
+  frame: (width: number, height: number, rgba: Uint8Array, demuxId?: number) => void
   /** Loads RingRTC; replaced in tests. */
   load?: () => RingrtcModule
 }
@@ -148,6 +180,10 @@ export class SignalCalls {
   private frameBuffer = new Uint8Array(1280 * 720 * 4)
   /** Whether the call that is on ever connected: what the call logs are told when it ends. */
   private connected = false
+  /** The account last heard from or called on: who sends a group call's messages when nothing else says. */
+  private account: string | null = null
+  private group: { info: GroupInfo; call: GroupCall; state: SignalGroupCallState } | null = null
+  private groupFrames: NodeJS.Timeout | null = null
 
   constructor(private readonly deps: SignalCallsDeps) {}
 
@@ -207,6 +243,37 @@ export class SignalCalls {
     // An offer RingRTC turned away (too old, or while busy): no call is coming from it.
     R.handleRejectedIncomingCallRequest = (callId) => {
       if (this.info && !this.call && this.info.callId === callId.toString()) this.info = null
+    }
+    // Group calls: their rings go to the group's members, and the call server is reached over HTTP done here.
+    R.handleSendCallMessageToGroup = (groupId, message, urgency, overrideRecipients) => {
+      const accountId = this.group?.info.accountId ?? this.account
+      if (!accountId) return
+      void this.deps
+        .request('signalSendGroupCallMessage', {
+          accountId,
+          groupId: Buffer.from(groupId).toString('base64'),
+          message: { opaque: { data: Buffer.from(message).toString('base64'), urgency } },
+          recipients: overrideRecipients.map(uuidText)
+        })
+        .catch((e: Error) => log.warn('[signal-calls] a group call message was not sent:', e.message))
+    }
+    R.handleSendCallMessage = (recipientUuid, message, urgency) => {
+      const accountId = this.group?.info.accountId ?? this.info?.accountId ?? this.account
+      if (!accountId) return
+      void this.deps
+        .request('signalSendCallMessage', { accountId, to: uuidText(recipientUuid), message: { opaque: { data: Buffer.from(message).toString('base64'), urgency } } })
+        .catch((e: Error) => log.warn('[signal-calls] a call message was not sent:', e.message))
+    }
+    R.handleSendHttpRequest = (requestId, url, method, headers, body) => {
+      const verb = ['GET', 'PUT', 'POST', 'DELETE'][method] ?? 'GET'
+      void fetch(url, { method: verb, headers, body: body ? Buffer.from(body) : undefined })
+        .then(async (res) => R.receivedHttpResponse(requestId, res.status, new Uint8Array(await res.arrayBuffer())))
+        .catch((e: Error) => R.httpRequestFailed(requestId, e.message))
+    }
+    R.handleGroupCallRingUpdate = (groupId, ringId, sender, update) => {
+      const accountId = this.account
+      if (!accountId) return
+      this.deps.emit('signalGroupRing', { accountId, groupId: Buffer.from(groupId).toString('base64'), ringId: ringId.toString(), sender: uuidText(sender), update })
     }
     R.handleLogMessage = (level, fileName, line, message) => {
       if (level <= rtc.CallLogLevel.Warn) log.warn(`[ringrtc] ${fileName}:${line} ${message}`)
@@ -292,6 +359,7 @@ export class SignalCalls {
         if (this.info && !this.call && this.info.callId === id) this.info = null
       }, 10_000).unref?.()
     }
+    this.account = a.accountId
     rtc.RingRTC.setSelfUuid(uuidBytes(a.ownAci))
     rtc.RingRTC.handleCallingMessage(toRingrtc(rtc, a.message), {
       remoteUserId: a.sender,
@@ -354,9 +422,139 @@ export class SignalCalls {
     this.update({ sharing: on })
   }
 
+  // -- group calls --------------------------------------------------------------------------------------------------
+
+  currentGroup(): SignalGroupCallState | null {
+    return this.group?.state ?? null
+  }
+
+  private updateGroup(change: Partial<SignalGroupCallState>): void {
+    if (!this.group) return
+    this.group.state = { ...this.group.state, ...change }
+    this.deps.emit('signalGroupCall', this.group.state)
+  }
+
+  /** Joins (or starts) a group's call; `ring` rings its members, as starting one from the phone does. */
+  async joinGroup(bufferId: string, video: boolean, ring: boolean): Promise<void> {
+    const rtc = this.ringrtc()
+    if (!rtc) throw new Error('Signal calls are not available in this build')
+    if (this.group || this.info) throw new Error('There is a call already')
+    const info = (await this.deps.request('signalGroupCallInfo', { bufferId })) as GroupInfo
+    this.account = info.accountId
+    rtc.RingRTC.setSelfUuid(uuidBytes(info.ownAci))
+    const members = info.members.map((m) => new rtc.GroupMemberInfo(bytes(m.userId), bytes(m.cipher)))
+    const call = rtc.RingRTC.getGroupCall(bytes(info.groupId), info.sfuUrl, new Uint8Array(0), 200, undefined, undefined, {
+      requestMembershipProof: (g) => g.setMembershipProof(bytes(info.proof)),
+      requestGroupMembers: (g) => g.setGroupMembers(members),
+      onLocalDeviceStateChanged: (g) => {
+        const local = g.getLocalDeviceState()
+        const J = rtc.JoinState
+        this.updateGroup({
+          joinState: local.joinState === J.Joined ? 'joined' : local.joinState === J.Pending ? 'pending' : local.joinState === J.Joining ? 'joining' : 'idle',
+          connected: local.connectionState === rtc.ConnectionState.Connected,
+          audioMuted: local.audioMuted,
+          videoMuted: local.videoMuted
+        })
+      },
+      onRemoteDeviceStatesChanged: (g) => {
+        const remote = g.getRemoteDeviceStates() ?? []
+        this.updateGroup({
+          participants: remote.map((d) => ({ demuxId: d.demuxId, userId: uuidText(d.userId), audioMuted: !!d.audioMuted, videoMuted: d.videoMuted !== false }))
+        })
+        g.requestVideo(remote.map((d) => new rtc.VideoRequest(d.demuxId, 640, 360, 30)), 0)
+      },
+      onAudioLevels: () => {},
+      onLowBandwidthForVideo: () => {},
+      onReactions: () => {},
+      onRaisedHands: () => {},
+      onPeekChanged: () => {},
+      onEnded: (_g, reason) => this.groupEnded(endedWords(rtc, reason)),
+      onSpeechEvent: () => {},
+      onRemoteMute: (g) => {
+        g.setOutgoingAudioMuted(true)
+        this.updateGroup({ audioMuted: true })
+      },
+      onObservedRemoteMute: () => {}
+    })
+    if (!call) throw new Error('The group call could not be started')
+    this.group = {
+      info,
+      call,
+      state: { accountId: info.accountId, bufferId, joinState: 'joining', connected: false, participants: [], audioMuted: false, videoMuted: !video, sharing: false }
+    }
+    this.updateGroup({})
+    call.connect()
+    call.setOutgoingAudioMuted(false)
+    call.setOutgoingVideoMuted(!video)
+    call.join()
+    if (ring) call.ringAll()
+    this.startGroupFrames()
+  }
+
+  private groupEnded(words: string): void {
+    if (!this.group) return
+    if (this.groupFrames) clearInterval(this.groupFrames)
+    this.groupFrames = null
+    this.updateGroup({ joinState: 'ended', ended: words })
+    this.group = null
+  }
+
+  leaveGroup(): void {
+    const g = this.group
+    if (!g) return
+    g.call.leave()
+    g.call.disconnect()
+    this.groupEnded('You left the call')
+  }
+
+  muteGroup(audio: boolean | undefined, video: boolean | undefined): void {
+    const g = this.group
+    if (!g) return
+    if (audio !== undefined) g.call.setOutgoingAudioMuted(audio)
+    if (video !== undefined) g.call.setOutgoingVideoMuted(video)
+    this.updateGroup({ ...(audio !== undefined ? { audioMuted: audio } : {}), ...(video !== undefined ? { videoMuted: video } : {}) })
+  }
+
+  shareGroup(on: boolean): void {
+    const g = this.group
+    if (!g) return
+    g.call.setOutgoingVideoIsScreenShare(on)
+    g.call.setPresenting(on)
+    g.call.setOutgoingVideoMuted(!on && g.state.videoMuted)
+    this.updateGroup({ sharing: on })
+  }
+
+  /** Turns down a group's ring here (and on the account's other devices, which RingRTC tells). */
+  declineGroupRing(groupId: string, ringId: string): void {
+    const rtc = this.ringrtc()
+    if (!rtc) return
+    rtc.RingRTC.cancelGroupRing(bytes(groupId), BigInt(ringId), rtc.RingCancelReason.DeclinedByUser)
+  }
+
+  /** Each participant's picture, polled as RingRTC hands frames to whoever asks. */
+  private startGroupFrames(): void {
+    if (this.groupFrames) return
+    this.groupFrames = setInterval(() => {
+      const g = this.group
+      if (!g) return
+      for (const p of g.state.participants) {
+        if (p.videoMuted) continue
+        const size = g.call.getVideoSource(p.demuxId).receiveVideoFrame(this.frameBuffer, 640, 360)
+        if (!size) continue
+        const [width, height] = size
+        this.deps.frame(width, height, this.frameBuffer.slice(0, width * height * 4), p.demuxId)
+      }
+    }, 100)
+  }
+
   /** A frame of this side's camera or screen, from the window. */
   sendFrame(width: number, height: number, rgba: Uint8Array): void {
     const rtc = this.rtc
+    const g = this.group
+    if (rtc && g) {
+      if (!g.state.videoMuted || g.state.sharing) g.call.sendVideoFrame(width, height, rtc.VideoPixelFormatEnum.Rgba, new Uint8Array(rgba))
+      return
+    }
     const call = this.call
     if (!rtc || !call || (this.info?.videoMuted && !this.info.sharing)) return
     call.sendVideoFrame(width, height, rtc.VideoPixelFormatEnum.Rgba, new Uint8Array(rgba))

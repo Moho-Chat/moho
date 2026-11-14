@@ -11897,3 +11897,35 @@ html[data-reduce-motion] *::after {
   border-radius: var(--corner-radius);
   background: #000;
 }
+
+/* A Signal group call: a tile for each person, in a grid, with a name in its corner. */
+.signal-group-call {
+  width: 480px;
+}
+.signal-group-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 4px;
+  padding: 4px;
+  background: #000;
+}
+.signal-group-tile {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #111;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.signal-group-tile .mirrored {
+  transform: scaleX(-1);
+}
+.signal-group-name {
+  position: absolute;
+  left: 6px;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
