@@ -407,6 +407,10 @@ export interface IncomingCall {
   bufferId: string
   channelId: string
   ringing: boolean
+  /** The offer carries a camera (Signal says so). */
+  video?: boolean
+  /** Nothing in moho can take this call (Signal): it is answered on the phone, and can only be silenced here. */
+  answerElsewhere?: boolean
 }
 
 /** Where an account is currently connected in voice. */

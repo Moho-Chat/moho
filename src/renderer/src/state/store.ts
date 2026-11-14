@@ -2303,7 +2303,13 @@ export class ChatStore {
   }
 
   async declineCall(bufferId: string): Promise<void> {
-    this.setRinging({ ...this.callFor(bufferId), ringing: false })
+    const call = this.callFor(bufferId)
+    this.setRinging({ ...call, ringing: false })
+    // A Signal call is only silenced here: it is answered or turned down on the phone.
+    if (call.answerElsewhere) {
+      void window.moho.rpc('silenceSignalCall', { bufferId }).catch(() => {})
+      return
+    }
     try {
       await window.moho.rpc(this.state.buffers.find((b) => b.id === bufferId)?.accountId.startsWith('stoat:') ? 'declineStoatCall' : 'declineCall', { bufferId })
     } catch (e) {

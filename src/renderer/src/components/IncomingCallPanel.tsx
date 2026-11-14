@@ -28,10 +28,13 @@ interface Ring {
   accountId?: string
   /** Who is ringing and on which account, said under the name. */
   detail: string
-  answer: () => void
+  /** Absent where moho cannot take the call (Signal's are answered on the phone). */
+  answer?: () => void
   /** Only where the offer carries a camera: answering with it is its own choice. */
   answerWithVideo?: () => void
   decline: () => void
+  /** The decline button only silences the ring here: nothing is sent. */
+  silenceOnly?: boolean
 }
 export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {}): JSX.Element | null {
   const store = useStore()
@@ -66,9 +69,12 @@ export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {})
         name: buffer ? bufferDisplayName(buffer.name) : 'Someone',
         avatarUrl: buffer?.avatarUrl,
         accountId: buffer?.accountId,
-        detail: `Incoming call${account ? ` · ${account.displayName || account.id}` : ''}`,
-        answer: () => void store.acceptCall(call.bufferId),
-        decline: () => void store.declineCall(call.bufferId)
+        detail: call.answerElsewhere
+          ? `${call.video ? 'Video' : 'Voice'} call · answer it on your phone${account ? ` · ${account.displayName || account.id}` : ''}`
+          : `Incoming call${account ? ` · ${account.displayName || account.id}` : ''}`,
+        answer: call.answerElsewhere ? undefined : () => void store.acceptCall(call.bufferId),
+        decline: () => void store.declineCall(call.bufferId),
+        silenceOnly: call.answerElsewhere
       }
     }),
     ...(matrix
@@ -116,9 +122,11 @@ export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {})
             <span className="ellipsis incoming-call-name">{ring.name}</span>
             <span className="small muted ellipsis">{ring.detail}</span>
           </div>
-          <button type="button" className="call-answer" title={`Answer ${ring.name}`} onClick={ring.answer}>
-            <Icon name="call" size={20} />
-          </button>
+          {ring.answer && (
+            <button type="button" className="call-answer" title={`Answer ${ring.name}`} onClick={ring.answer}>
+              <Icon name="call" size={20} />
+            </button>
+          )}
           {ring.answerWithVideo && (
             <button
               type="button"
@@ -129,8 +137,13 @@ export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {})
               <Icon name="videocam" size={20} />
             </button>
           )}
-          <button type="button" className="call-decline" title={`Decline ${ring.name}`} onClick={ring.decline}>
-            <Icon name="call_end" size={20} />
+          <button
+            type="button"
+            className="call-decline"
+            title={ring.silenceOnly ? `Silence ${ring.name}'s call here (it still rings on your phone)` : `Decline ${ring.name}`}
+            onClick={ring.decline}
+          >
+            <Icon name={ring.silenceOnly ? 'notifications_off' : 'call_end'} size={20} />
           </button>
         </div>
       ))}
