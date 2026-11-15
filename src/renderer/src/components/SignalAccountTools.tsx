@@ -399,6 +399,9 @@ function StoryLists({ accountId }: { accountId: string }): JSX.Element | null {
   const [lists, setLists] = useState<StoryListRow[] | null>(null)
   const [connections, setConnections] = useState<{ userId: string; nick: string }[]>([])
   const [busy, setBusy] = useState(false)
+  const [newName, setNewName] = useState('')
+  /** Names being typed for lists, by id. */
+  const [renaming, setRenaming] = useState<Record<string, string>>({})
   const load = (): void => {
     void window.moho.rpc<StoryListRow[]>('signalStoryLists', { accountId }).then(setLists).catch(() => setLists(null))
     void window.moho.rpc<{ userId: string; nick: string }[]>('signalConnections', { accountId }).then(setConnections).catch(() => {})
@@ -426,6 +429,29 @@ function StoryLists({ accountId }: { accountId: string }): JSX.Element | null {
           <div className="small muted">Who your stories reach, kept for all your devices.</div>
         </div>
       </div>
+      <div className="field-row">
+        <input className="text-field" placeholder="A new story list's name" value={newName} disabled={busy} onChange={(e) => setNewName(e.target.value)} />
+        <button
+          type="button"
+          className="button subtle small"
+          disabled={busy || !newName.trim()}
+          onClick={() => {
+            const name = newName.trim()
+            setBusy(true)
+            void window.moho
+              .rpc('signalCreateStoryList', { accountId, name, people: [] })
+              .then(() => {
+                store.toast('info', `${name} was made: add people to it below`)
+                setNewName('')
+                load()
+              })
+              .catch((e: Error) => store.toast('error', e.message))
+              .finally(() => setBusy(false))
+          }}
+        >
+          Make
+        </button>
+      </div>
       {lists.map((l) => {
         const listed = new Set(l.people.map((p) => p.userId))
         const addable = connections.filter((c) => !listed.has(c.userId))
@@ -435,6 +461,44 @@ function StoryLists({ accountId }: { accountId: string }): JSX.Element | null {
               {l.name} · reaches {l.count === 1 ? '1 person' : `${l.count} people`}
               {l.myStory && (l.excluding ? ' (all your connections but those below)' : ' (only those below)')}
             </span>
+            {l.myStory ? (
+              <select
+                className="text-field"
+                value={l.excluding ? 'except' : 'only'}
+                disabled={busy}
+                onChange={(e) => change(l.id, { excluding: e.target.value === 'except' }, e.target.value === 'except' ? 'My Story goes to all your connections' : 'My Story goes only to the people you choose')}
+              >
+                <option value="except">All your connections, except…</option>
+                <option value="only">Only the people chosen</option>
+              </select>
+            ) : (
+              <div className="field-row">
+                <input
+                  className="text-field"
+                  value={renaming[l.id] ?? l.name}
+                  disabled={busy}
+                  onChange={(e) => setRenaming({ ...renaming, [l.id]: e.target.value })}
+                />
+                <button
+                  type="button"
+                  className="button subtle small"
+                  disabled={busy || !(renaming[l.id] ?? '').trim() || renaming[l.id]?.trim() === l.name}
+                  onClick={() => change(l.id, { rename: (renaming[l.id] ?? '').trim() }, `Renamed to ${(renaming[l.id] ?? '').trim()}`)}
+                >
+                  Rename
+                </button>
+                <button
+                  type="button"
+                  className="button subtle small danger"
+                  disabled={busy}
+                  onClick={() => {
+                    if (window.confirm(`Delete the story list ${l.name}? Stories already posted to it stay up for their day.`)) change(l.id, { delete: true }, `${l.name} was deleted`)
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            )}
             <label className="small poll-disclosed">
               <input type="checkbox" checked={l.replies} disabled={busy} onChange={(e) => change(l.id, { replies: e.target.checked }, e.target.checked ? 'Replies allowed' : 'Replies turned off')} />
               Let people reply
