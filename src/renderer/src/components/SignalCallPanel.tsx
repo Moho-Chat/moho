@@ -234,7 +234,7 @@ export function SignalGroupCallPanel(): JSX.Element | null {
 
   if (!call) return null
   const buffer = buffers.find((b) => b.id === call.bufferId)
-  const name = buffer ? bufferDisplayName(buffer.name) : 'Group call'
+  const name = call.callLink ? call.callLink.name : buffer ? bufferDisplayName(buffer.name) : 'Group call'
   const status =
     call.joinState === 'pending'
       ? 'Waiting to be let in…'

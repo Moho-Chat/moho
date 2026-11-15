@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useChat, useStore } from '../state/hooks'
 import { resolveMediaUrl } from '../lib/util'
 import { ChoiceSetting } from './settings/controls'
-import type { Account } from '../../../shared/wire'
+import type { Account, SignalCallLink } from '../../../shared/wire'
 
 /** One of the account's devices, as the phone's list of linked devices shows it. */
 interface Device {
@@ -322,6 +322,7 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
           />
           <StoryLists accountId={account.id} />
           <StickerPacks accountId={account.id} />
+          <CallLinks accountId={account.id} />
           <NotificationProfiles accountId={account.id} />
           {settings.blocked.length > 0 && (
             <>
@@ -535,6 +536,171 @@ function StoryLists({ accountId }: { accountId: string }): JSX.Element | null {
         )
       })}
     </>
+  )
+}
+
+/**
+ * The account's call links (the phone lists the same ones): making one, joining one by its address, and for those
+ * this account made, renaming, choosing whether people ask to join, and taking it down.
+ */
+function CallLinks({ accountId }: { accountId: string }): JSX.Element | null {
+  const store = useStore()
+  const available = useChat((s) => s.signalCallsAvailable)
+  const [links, setLinks] = useState<SignalCallLink[]>([])
+  const [missing, setMissing] = useState(0)
+  const [name, setName] = useState('')
+  const [approval, setApproval] = useState(false)
+  const [address, setAddress] = useState('')
+  const [busy, setBusy] = useState(false)
+  const load = (): void => {
+    void window.moho
+      .rpc<{ rootKey: string; admin: boolean }[]>('signalCallLinks', { accountId })
+      .then(async (kept) => {
+        const read = await Promise.all(kept.map((k) => window.moho.signalCall<SignalCallLink>('readCallLink', { accountId, link: k.rootKey }).catch(() => null)))
+        setLinks(read.filter((l): l is SignalCallLink => !!l && !l.revoked))
+        setMissing(read.filter((l) => !l).length)
+      })
+      .catch(() => setLinks([]))
+  }
+  useEffect(() => {
+    if (available) load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId, available])
+  if (!available) return null
+  const act = (work: () => Promise<unknown>, done?: string): void => {
+    setBusy(true)
+    void work()
+      .then(() => {
+        if (done) store.toast('info', done)
+        load()
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+  const call = <T,>(action: string, params: Record<string, unknown>): Promise<T> => window.moho.signalCall<T>(action, { accountId, ...params })
+  return (
+    <>
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Call links</div>
+          <div className="small muted">
+            A call anyone with the address can join, with no group. Links made here are on your phone too.
+            {missing > 0 && ` ${missing} could not be read just now.`}
+          </div>
+        </div>
+      </div>
+      {links.map((l) => (
+        <div key={l.rootKey} className="field-row small">
+          <span className="grow ellipsis" title={l.link}>
+            {l.name || 'Untitled call'}
+            {l.approval && ' · asks to join'}
+          </span>
+          <button type="button" className="button subtle small" disabled={busy} onClick={() => void store.joinSignalCallLink(accountId, l.link, false)}>
+            Join
+          </button>
+          <button
+            type="button"
+            className="button subtle small"
+            title={l.link}
+            onClick={() => {
+              void navigator.clipboard.writeText(l.link).then(() => store.toast('info', 'The call link was copied'))
+            }}
+          >
+            Copy link
+          </button>
+          {l.admin && (
+            <>
+              <button
+                type="button"
+                className="button subtle small"
+                disabled={busy}
+                title={l.approval ? 'Let anyone with the link straight in' : 'Have people ask, and let them in yourself'}
+                onClick={() => act(() => call('updateCallLink', { link: l.link, approval: !l.approval }))}
+              >
+                {l.approval ? 'Let anyone in' : 'Ask to join'}
+              </button>
+              <RenameLink link={l} busy={busy} onRename={(newName) => act(() => call('updateCallLink', { link: l.link, name: newName }), 'The call link was renamed')} />
+            </>
+          )}
+          <button
+            type="button"
+            className="button subtle small"
+            disabled={busy}
+            onClick={() => {
+              if (l.admin && !window.confirm(`Take down ${l.name || 'this call link'}? Its address stops working for everybody.`)) return
+              act(() => call('deleteCallLink', { link: l.link }), l.admin ? 'The call link was taken down' : 'The call link was taken off your list')
+            }}
+          >
+            {l.admin ? 'Take down' : 'Remove'}
+          </button>
+        </div>
+      ))}
+      <div className="field-row">
+        <input className="text-field" placeholder="Name for a new call link" value={name} disabled={busy} onChange={(e) => setName(e.target.value)} />
+        <label className="small">
+          <input type="checkbox" checked={approval} disabled={busy} onChange={(e) => setApproval(e.target.checked)} /> Ask to join
+        </label>
+        <button
+          type="button"
+          className="button subtle small"
+          disabled={busy}
+          onClick={() =>
+            act(async () => {
+              const made = await call<SignalCallLink>('createCallLink', { name, approval })
+              setName('')
+              await navigator.clipboard.writeText(made.link).catch(() => {})
+              store.toast('info', 'The call link was made, and its address copied')
+            })
+          }
+        >
+          New call link
+        </button>
+      </div>
+      <div className="field-row">
+        <input className="text-field" placeholder="https://signal.link/call/#key=…" value={address} disabled={busy} onChange={(e) => setAddress(e.target.value)} />
+        <button
+          type="button"
+          className="button subtle small"
+          disabled={busy || !address.trim()}
+          onClick={() => {
+            const link = address.trim()
+            setAddress('')
+            void store.openSignalCallLink(accountId, link)
+          }}
+        >
+          Join
+        </button>
+      </div>
+    </>
+  )
+}
+
+/** A rename field that opens beside the button that asked for it. */
+function RenameLink({ link, busy, onRename }: { link: SignalCallLink; busy: boolean; onRename: (name: string) => void }): JSX.Element {
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState(link.name)
+  if (!editing)
+    return (
+      <button type="button" className="button subtle small" disabled={busy} onClick={() => setEditing(true)}>
+        Rename
+      </button>
+    )
+  const save = (): void => {
+    setEditing(false)
+    if (text.trim() !== link.name) onRename(text.trim())
+  }
+  return (
+    <input
+      className="text-field"
+      autoFocus
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={save}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') save()
+        if (e.key === 'Escape') setEditing(false)
+      }}
+    />
   )
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isDeepLink, isTelegramLink, parseDeepLink, stoatInviteCode, isSignalGroupLink } from './deeplink'
+import { isDeepLink, isTelegramLink, parseDeepLink, stoatInviteCode, isSignalGroupLink, isSignalCallLink } from './deeplink'
 
 describe('a Telegram link', () => {
   it('is what the View in Telegram button of a post opens, and what a message says', () => {
@@ -77,6 +77,22 @@ describe('xmpp: links', () => {
     expect(parseXmppLink('xmpp:a@b.org?dance')).toBeNull()
     expect(parseXmppLink('xmpp:')).toBeNull()
     expect(parseXmppLink('https://example.org')).toBeNull()
+  })
+})
+
+describe('a Signal call link', () => {
+  const link = 'https://signal.link/call/#key=bcdf-ghkm-npqr-stxz-bcdf-ghkm-npqr-stxz'
+
+  it('is ours, and handed on whole as a call', () => {
+    expect(isDeepLink(link)).toBe(true)
+    expect(parseDeepLink(link)).toEqual({ service: 'signal', url: link, call: true })
+  })
+
+  it('is only the https one on signal.link/call with a key', () => {
+    expect(isSignalCallLink('https://signal.link/call/')).toBe(false)
+    expect(isSignalCallLink('http://signal.link/call/#key=bcdf-ghkm-npqr-stxz-bcdf')).toBe(false)
+    expect(isSignalCallLink('https://signal.link/other/#key=bcdf-ghkm-npqr-stxz-bcdf')).toBe(false)
+    expect(isSignalCallLink('https://example.com/call/#key=bcdf-ghkm-npqr-stxz-bcdf')).toBe(false)
   })
 })
 

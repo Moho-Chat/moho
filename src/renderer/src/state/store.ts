@@ -2407,6 +2407,31 @@ export class ChatStore {
     }
   }
 
+  /** A call link someone sent: what it is called, then joining it if the person says so. */
+  async openSignalCallLink(accountId: string, link: string): Promise<void> {
+    try {
+      const found = await window.moho.signalCall<{ name: string; revoked: boolean; approval: boolean }>('readCallLink', { accountId, link })
+      if (found.revoked) {
+        this.toast('error', 'That call link was taken down')
+        return
+      }
+      const name = found.name || 'a Signal call'
+      if (!window.confirm(`Join ${name}?${found.approval ? ' Whoever made it lets people in.' : ''}`)) return
+      await this.joinSignalCallLink(accountId, link, false)
+    } catch (e) {
+      this.toast('error', `Couldn't open the call link: ${(e as Error).message}`)
+    }
+  }
+
+  /** Joins a call link's call. */
+  async joinSignalCallLink(accountId: string, link: string, video: boolean): Promise<void> {
+    try {
+      await window.moho.signalCall('joinCallLink', { accountId, link, video })
+    } catch (e) {
+      this.toast('error', `Couldn't join the call: ${(e as Error).message}`)
+    }
+  }
+
   leaveSignalGroupCall(): void {
     void window.moho.signalCall('leaveGroup').catch(() => {})
   }
@@ -2560,6 +2585,10 @@ export class ChatStore {
       const account = this.state.accounts.find((a) => a.service === 'signal' && a.state === 'connected') ?? this.state.accounts.find((a) => a.service === 'signal')
       if (!account) {
         void window.moho.openExternal(link.url)
+        return
+      }
+      if (link.call) {
+        void this.openSignalCallLink(account.id, link.url)
         return
       }
       this.set({ signalGroupLink: link.url })

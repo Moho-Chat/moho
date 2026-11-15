@@ -433,6 +433,22 @@ export interface SignalGroupCallState {
   ownDemuxId?: number
   pending: string[]
   ended?: string
+  /** A call link's call (no group): its name and address. */
+  callLink?: { name: string; link: string }
+}
+
+/** A Signal call link, as RingRTC reads it from the calling server. */
+export interface SignalCallLink {
+  link: string
+  /** Its root key, base64: how the account's list names it. */
+  rootKey: string
+  name: string
+  /** Whether people ask to be let in. */
+  approval: boolean
+  revoked: boolean
+  expires: number
+  /** Whether this account made it (and can change it or take it down). */
+  admin: boolean
 }
 
 /** Somebody ringing a Signal group's call. */

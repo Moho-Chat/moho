@@ -10,11 +10,13 @@
  *
  * One call at a time, as RingRTC has it.
  */
+import https from 'node:https'
 import { log } from './log'
 
 type RingrtcModule = typeof import('@signalapp/ringrtc')
 type Call = import('@signalapp/ringrtc').Call
 type GroupCall = import('@signalapp/ringrtc').GroupCall
+type GroupCallObserver = import('@signalapp/ringrtc').GroupCallObserver
 type CallingMessage = import('@signalapp/ringrtc').CallingMessage
 
 /** What the daemon says about a call message (see nobilis `signal::calls::hand_to_app`). */
@@ -80,6 +82,62 @@ export interface SignalGroupCallState {
   /** People asking to be let in (a call that asks), by ACI. */
   pending: string[]
   ended?: string
+  /** A call link's call (no group): its name and address. */
+  callLink?: { name: string; link: string }
+}
+
+/** A call link as RingRTC reads it from the calling server. */
+export interface SignalCallLink {
+  link: string
+  rootKey: string
+  name: string
+  /** Whether people ask to be let in (an admin approves them). */
+  approval: boolean
+  revoked: boolean
+  expires: number
+  /** Whether this account made it (and may rename it, change who gets in, or take it down). */
+  admin: boolean
+}
+
+/** What the daemon gives for a call link (nobilis `signal::call_links::join_info`). */
+interface CallLinkInfo {
+  accountId: string
+  presentation: string
+  endorsementPublicKey: string
+  adminPasskey?: string | null
+  sfuUrl: string
+  sfuCa?: string
+  ownAci: string
+}
+
+const LINK_PREFIX = 'https://signal.link/call/#key='
+
+/**
+ * An HTTPS request for RingRTC (the calling server's), trusting only `ca` when one is given. Node's fetch cannot be
+ * given a certificate authority, so this is https.request.
+ */
+export function httpsRequest(url: string, method: string, headers: Record<string, string>, body: Uint8Array | undefined, ca: string | undefined): Promise<{ status: number; body: Uint8Array<ArrayBuffer> }> {
+  return new Promise((resolve, reject) => {
+    // The calling server turns away a request with no User-Agent (400), and reads a DELETE's body only when its length
+    // is given (node would send it chunked).
+    const sized = { 'User-Agent': 'moho', ...headers, ...(body ? { 'Content-Length': String(body.length) } : {}) }
+    const req = https.request(url, { method, headers: sized, ...(ca ? { ca } : {}), timeout: 30_000 }, (res) => {
+      const chunks: Buffer[] = []
+      res.on('data', (c: Buffer) => chunks.push(c))
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, body: new Uint8Array(Buffer.concat(chunks)) as Uint8Array<ArrayBuffer> }))
+      res.on('error', reject)
+    })
+    req.on('timeout', () => req.destroy(new Error('the calling server did not answer in time')))
+    req.on('error', reject)
+    if (body) req.write(Buffer.from(body))
+    req.end()
+  })
+}
+
+/** The key text of a call link address, or undefined when it is not one. */
+export function callLinkKey(link: string): string | undefined {
+  const m = /^(?:https?:\/\/)?signal\.link\/call\/?#key=([a-z-]+)/i.exec(link.trim())
+  return m ? m[1].toLowerCase() : undefined
 }
 
 /** What the daemon gives for joining a group's call (nobilis `signal::calls::group_info`). */
@@ -90,6 +148,7 @@ interface GroupInfo {
   proof: string
   members: { userId: string; cipher: string }[]
   sfuUrl: string
+  sfuCa?: string
   ownAci: string
 }
 
@@ -190,6 +249,8 @@ export class SignalCalls {
   private account: string | null = null
   private group: { info: GroupInfo; call: GroupCall; state: SignalGroupCallState } | null = null
   private groupFrames: NodeJS.Timeout | null = null
+  /** Signal's certificate authority, which the calling server's certificate chains to (from the daemon). */
+  private sfuCa: string | undefined
 
   constructor(private readonly deps: SignalCallsDeps) {}
 
@@ -200,6 +261,9 @@ export class SignalCalls {
       const rtc = this.deps.load ? this.deps.load() : (require('@signalapp/ringrtc') as RingrtcModule)
       this.wire(rtc)
       this.rtc = rtc
+      // RingRTC queues what it has to say (HTTP answers, call events) until asked: nothing reaches its handlers or
+      // promises without this.
+      if (!this.deps.load) setInterval(() => (rtc.RingRTC as unknown as { callManager: { processEvents: () => void } }).callManager.processEvents(), 20).unref()
       log.info('[signal-calls] RingRTC loaded')
     } catch (e) {
       log.warn('[signal-calls] RingRTC is not available, Signal calls are answered on the phone:', (e as Error).message)
@@ -270,10 +334,12 @@ export class SignalCalls {
         .request('signalSendCallMessage', { accountId, to: uuidText(recipientUuid), message: { opaque: { data: Buffer.from(message).toString('base64'), urgency } } })
         .catch((e: Error) => log.warn('[signal-calls] a call message was not sent:', e.message))
     }
+    // The calling server's certificate is from Signal's own authority, which the daemon gives with the call's
+    // details: its requests trust that alone.
     R.handleSendHttpRequest = (requestId, url, method, headers, body) => {
       const verb = ['GET', 'PUT', 'POST', 'DELETE'][method] ?? 'GET'
-      void fetch(url, { method: verb, headers, body: body ? Buffer.from(body) : undefined })
-        .then(async (res) => R.receivedHttpResponse(requestId, res.status, new Uint8Array(await res.arrayBuffer())))
+      void httpsRequest(url, verb, headers, body, this.sfuCa)
+        .then((res) => R.receivedHttpResponse(requestId, res.status, res.body))
         .catch((e: Error) => R.httpRequestFailed(requestId, e.message))
     }
     R.handleGroupCallRingUpdate = (groupId, ringId, sender, update) => {
@@ -446,12 +512,33 @@ export class SignalCalls {
     if (!rtc) throw new Error('Signal calls are not available in this build')
     if (this.group || this.info) throw new Error('There is a call already')
     const info = (await this.deps.request('signalGroupCallInfo', { bufferId })) as GroupInfo
+    this.sfuCa = info.sfuCa ?? this.sfuCa
     this.account = info.accountId
     rtc.RingRTC.setSelfUuid(uuidBytes(info.ownAci))
     const members = info.members.map((m) => new rtc.GroupMemberInfo(bytes(m.userId), bytes(m.cipher)))
-    const call = rtc.RingRTC.getGroupCall(bytes(info.groupId), info.sfuUrl, new Uint8Array(0), 200, undefined, undefined, {
+    const call = rtc.RingRTC.getGroupCall(bytes(info.groupId), info.sfuUrl, new Uint8Array(0), 200, undefined, undefined, this.observer(rtc, {
       requestMembershipProof: (g) => g.setMembershipProof(bytes(info.proof)),
-      requestGroupMembers: (g) => g.setGroupMembers(members),
+      requestGroupMembers: (g) => g.setGroupMembers(members)
+    }))
+    if (!call) throw new Error('The group call could not be started')
+    this.group = {
+      info,
+      call,
+      state: { accountId: info.accountId, bufferId, joinState: 'joining', connected: false, participants: [], audioMuted: false, videoMuted: !video, sharing: false, raisedHands: [], pending: [] }
+    }
+    this.updateGroup({})
+    call.connect()
+    call.setOutgoingAudioMuted(false)
+    call.setOutgoingVideoMuted(!video)
+    call.join()
+    if (ring) call.ringAll()
+    this.startGroupFrames()
+  }
+
+  /** What RingRTC tells of a group or call link call, said to the windows. */
+  private observer(rtc: RingrtcModule, membership: Pick<GroupCallObserver, 'requestMembershipProof' | 'requestGroupMembers'>): GroupCallObserver {
+    return {
+      ...membership,
       onLocalDeviceStateChanged: (g) => {
         const local = g.getLocalDeviceState()
         const J = rtc.JoinState
@@ -483,19 +570,126 @@ export class SignalCalls {
         this.updateGroup({ audioMuted: true })
       },
       onObservedRemoteMute: () => {}
-    })
-    if (!call) throw new Error('The group call could not be started')
+    }
+  }
+
+  // -- call links -------------------------------------------------------------------------------------------------
+
+  /** RingRTC and a link's root key, from its address or its key's base64 (as the account's list gives it). */
+  private linkKey(link: string): { rtc: RingrtcModule; key: InstanceType<RingrtcModule['CallLinkRootKey']> } {
+    const rtc = this.ringrtc()
+    if (!rtc) throw new Error('Signal calls are not available in this build')
+    const text = callLinkKey(link)
+    const key = text ? rtc.CallLinkRootKey.parse(text) : rtc.CallLinkRootKey.fromBytes(bytes(link))
+    return { rtc, key }
+  }
+
+  private async linkInfo(accountId: string, key: InstanceType<RingrtcModule['CallLinkRootKey']>): Promise<CallLinkInfo> {
+    const info = (await this.deps.request('signalCallLinkJoinInfo', { accountId, rootKey: b64(key.bytes) })) as CallLinkInfo
+    this.sfuCa = info.sfuCa ?? this.sfuCa
+    return info
+  }
+
+  private describe(rtc: RingrtcModule, key: InstanceType<RingrtcModule['CallLinkRootKey']>, state: import('@signalapp/ringrtc').CallLinkState, admin: boolean): SignalCallLink {
+    return {
+      link: LINK_PREFIX + key.toString(),
+      rootKey: b64(key.bytes) ?? '',
+      name: state.name,
+      approval: state.restrictions === rtc.CallLinkRestrictions.AdminApproval,
+      revoked: state.revoked,
+      expires: state.expiration.getTime(),
+      admin
+    }
+  }
+
+  private static failed(what: string, status: number): Error {
+    if (status === 404) return new Error('That call link does not exist any more')
+    return new Error(`The calling server did not ${what} (${status})`)
+  }
+
+  /** Reads a call link: its name, whether people ask to join, and whether it still works. */
+  async readCallLink(accountId: string, link: string): Promise<SignalCallLink> {
+    const { rtc, key } = this.linkKey(link)
+    const info = await this.linkInfo(accountId, key)
+    const result = await rtc.RingRTC.readCallLink(info.sfuUrl, bytes(info.presentation), key)
+    if (!result.success) throw SignalCalls.failed('find the call link', result.errorStatusCode)
+    return this.describe(rtc, key, result.value, !!info.adminPasskey)
+  }
+
+  /** Makes a new call link (named, if a name is given), kept in the account's shared records for its other devices. */
+  async createCallLink(accountId: string, name: string, approval: boolean): Promise<SignalCallLink> {
+    const rtc = this.ringrtc()
+    if (!rtc) throw new Error('Signal calls are not available in this build')
+    const key = rtc.CallLinkRootKey.generate()
+    const admin = rtc.CallLinkRootKey.generateAdminPassKey()
+    const join = await this.linkInfo(accountId, key)
+    const made = (await this.deps.request('signalCallLinkCreateInfo', { accountId, rootKey: b64(key.bytes), roomId: b64(key.deriveRoomId()) })) as { presentation: string; publicParams: string }
+    const restrictions = approval ? rtc.CallLinkRestrictions.AdminApproval : rtc.CallLinkRestrictions.None
+    const created = await rtc.RingRTC.createCallLink(join.sfuUrl, bytes(made.presentation), key, admin, bytes(made.publicParams), restrictions)
+    if (!created.success) throw SignalCalls.failed('make the call link', created.errorStatusCode)
+    let state = created.value
+    // The key as the server settled it (with its epoch, where it gave one): the one the link and the records carry.
+    const madeKey = state.rootKey
+    // Kept before it is named: a link made and lost to a failed rename would be one nobody can take down.
+    await this.deps.request('signalCallLinkSave', { accountId, rootKey: b64(madeKey.bytes), adminPasskey: b64(admin) })
+    if (name.trim()) {
+      const named = await rtc.RingRTC.updateCallLinkName(join.sfuUrl, bytes(join.presentation), madeKey, admin, name.trim())
+      if (named.success) state = named.value
+    }
+    return this.describe(rtc, madeKey, state, true)
+  }
+
+  /** Renames a call link this account made, or changes whether people ask to join. */
+  async updateCallLink(accountId: string, link: string, change: { name?: string; approval?: boolean }): Promise<SignalCallLink> {
+    const { rtc, key } = this.linkKey(link)
+    const info = await this.linkInfo(accountId, key)
+    if (!info.adminPasskey) throw new Error('Only whoever made a call link can change it')
+    const admin = bytes(info.adminPasskey)
+    const result =
+      change.name !== undefined
+        ? await rtc.RingRTC.updateCallLinkName(info.sfuUrl, bytes(info.presentation), key, admin, change.name.trim())
+        : await rtc.RingRTC.updateCallLinkRestrictions(info.sfuUrl, bytes(info.presentation), key, admin, change.approval ? rtc.CallLinkRestrictions.AdminApproval : rtc.CallLinkRestrictions.None)
+    if (!result.success) throw SignalCalls.failed('change the call link', result.errorStatusCode)
+    return this.describe(rtc, key, result.value, true)
+  }
+
+  /** Takes a call link off the account's list; one this account made is taken down for everybody first. */
+  async deleteCallLink(accountId: string, link: string): Promise<void> {
+    const { rtc, key } = this.linkKey(link)
+    const info = await this.linkInfo(accountId, key)
+    if (info.adminPasskey) {
+      const result = await rtc.RingRTC.deleteCallLink(info.sfuUrl, bytes(info.presentation), key, bytes(info.adminPasskey))
+      // Already gone (404) is what was wanted.
+      if (!result.success && result.errorStatusCode !== 404) throw SignalCalls.failed('take the call link down', result.errorStatusCode)
+    }
+    await this.deps.request('signalCallLinkForget', { accountId, rootKey: b64(key.bytes) })
+  }
+
+  /** Joins a call link's call (asking to be let in, where it asks). */
+  async joinCallLink(accountId: string, link: string, video: boolean): Promise<void> {
+    const { rtc, key } = this.linkKey(link)
+    if (this.group || this.info) throw new Error('There is a call already')
+    const info = await this.linkInfo(accountId, key)
+    const read = await rtc.RingRTC.readCallLink(info.sfuUrl, bytes(info.presentation), key)
+    if (!read.success) throw SignalCalls.failed('find the call link', read.errorStatusCode)
+    if (read.value.revoked) throw new Error('That call link was taken down')
+    this.account = accountId
+    rtc.RingRTC.setSelfUuid(uuidBytes(info.ownAci))
+    const admin = info.adminPasskey ? bytes(info.adminPasskey) : undefined
+    const none = { requestMembershipProof: () => {}, requestGroupMembers: () => {} }
+    const call = rtc.RingRTC.getCallLinkCall(info.sfuUrl, bytes(info.endorsementPublicKey), bytes(info.presentation), key, admin, new Uint8Array(0), 200, undefined, undefined, this.observer(rtc, none))
+    if (!call) throw new Error('The call could not be started')
+    const name = read.value.name || 'Signal call'
     this.group = {
-      info,
+      info: { accountId, bufferId: '', groupId: '', proof: '', members: [], sfuUrl: info.sfuUrl, ownAci: info.ownAci },
       call,
-      state: { accountId: info.accountId, bufferId, joinState: 'joining', connected: false, participants: [], audioMuted: false, videoMuted: !video, sharing: false, raisedHands: [], pending: [] }
+      state: { accountId, bufferId: '', joinState: 'joining', connected: false, participants: [], audioMuted: false, videoMuted: !video, sharing: false, raisedHands: [], pending: [], callLink: { name, link: LINK_PREFIX + key.toString() } }
     }
     this.updateGroup({})
     call.connect()
     call.setOutgoingAudioMuted(false)
     call.setOutgoingVideoMuted(!video)
     call.join()
-    if (ring) call.ringAll()
     this.startGroupFrames()
   }
 

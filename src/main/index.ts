@@ -817,6 +817,24 @@ function wireIpc(): void {
           return { ok: true, result: null }
         case 'currentGroup':
           return { ok: true, result: signalCalls.currentGroup() }
+        case 'readCallLink':
+          return { ok: true, result: await signalCalls.readCallLink(String(params.accountId), String(params.link)) }
+        case 'createCallLink':
+          return { ok: true, result: await signalCalls.createCallLink(String(params.accountId), String(params.name ?? ''), !!params.approval) }
+        case 'updateCallLink':
+          return {
+            ok: true,
+            result: await signalCalls.updateCallLink(String(params.accountId), String(params.link), {
+              name: params.name === undefined ? undefined : String(params.name),
+              approval: params.approval === undefined ? undefined : !!params.approval
+            })
+          }
+        case 'deleteCallLink':
+          await signalCalls.deleteCallLink(String(params.accountId), String(params.link))
+          return { ok: true }
+        case 'joinCallLink':
+          await signalCalls.joinCallLink(String(params.accountId), String(params.link), !!params.video)
+          return { ok: true }
         case 'joinGroup':
           await signalCalls.joinGroup(String(params.bufferId), !!params.video, !!params.ring)
           return { ok: true, result: null }
