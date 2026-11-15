@@ -335,6 +335,117 @@ const setMode = async (page, mode) => {
   await sleep(600)
 }
 
+// --- the rework's own scenes (#339) -------------------------------------------
+
+/**
+ * A dozen accounts across every service, some of them in trouble: what the
+ * accounts page and the "+" pane have to stand up to. Put straight into the
+ * store - the daemon knows none of them, so whatever a card asks it about
+ * them comes back an error, and the toasts are cleared before the picture.
+ */
+const MANY = `(() => {
+  const shots = window.__mohoShots
+  const s = shots.state()
+  const base = { autojoin: '', hasNickservPassword: false, saslEnabled: false, saslUsername: '', allowPlaintextSasl: false,
+    reconnectForSasl: false, saslMechanism: '', hasSaslCertificate: false, currentNick: '', ssl: true, hasPassword: true,
+    useTor: false, hasKeyBackup: false, status: 'online', state: 'connected' }
+  const acc = (id, service, displayName, extra = {}) => ({ ...base, id, service, displayName, currentNick: displayName, ...extra })
+  const made = [
+    acc('salastil@irc.libera.chat', 'irc', 'salastil', { autojoin: '#moho,#rust', saslEnabled: true, saslUsername: 'salastil' }),
+    acc('sal@irc.rizon.net', 'irc', 'sal', { state: 'connecting' }),
+    acc('salastil@irc.oftc.net', 'irc', 'salastil', { state: 'disconnected' }),
+    acc('discord:shots', 'discord', 'Salastil'),
+    acc('discord:alt', 'discord', 'An Person', { state: 'auth_failed' }),
+    acc('@salastil:poa.st', 'matrix', 'salastil', { hasKeyBackup: true, routeLevel: 'service', useTor: true }),
+    acc('@work:matrix.org', 'matrix', 'J. Farrow', { status: 'idle' }),
+    acc('sneedchat:1', 'sneedchat', 'Salastil'),
+    acc('kick:salastil', 'kick', 'salastil'),
+    acc('steam:76561198000000001', 'steam', 'Salastil'),
+    acc('twitch:salastil', 'twitch', 'salastil', { moderation: true }),
+    acc('telegram:1', 'telegram', 'Salastil'),
+    acc('stoat:01J', 'stoat', 'salastil', { state: 'error' }),
+    acc('salastil@chatterboxtown.us', 'xmpp', 'salastil', { routeLevel: 'strict', useTor: true }),
+    acc('signal:+15550100', 'signal', 'Salastil')
+  ]
+  const local = s.accounts.filter((a) => a.id.includes('localhost') || a.id.includes('127.0.0.1'))
+  const groups = [...s.groups.filter((g) => local.some((a) => a.id === g.accountId))]
+  let pos = 10
+  for (const a of made) groups.push({ id: a.id + '|home', accountId: a.id, service: a.service, kind: a.service === 'discord' ? 'guild' : 'network', name: a.service === 'discord' ? 'Button Eye Crochet' : a.displayName, position: pos++ })
+  shots.patch({ accounts: [...local, ...made], groups })
+  return true
+})()`
+
+const many = async (page) => {
+  await page.evaluate(MANY)
+  await sleep(500)
+}
+const clearToasts = async (page) => {
+  await sleep(700)
+  await page.evaluate(`window.__mohoShots.patch({ toasts: [] }), true`)
+  await sleep(150)
+}
+/** Opens the Join pane for one of the staged accounts. */
+const joinOn = (accountId) => async (page) => {
+  await many(page)
+  await page.evaluate(`window.__mohoShots.store.setActivePanel('join', ${JSON.stringify(accountId)})`)
+  await clearToasts(page)
+}
+/** The accounts page with one staged account opened, by whatever this build calls opening one. */
+const accountOpen = (accountId, nth) => async (page) => {
+  await many(page)
+  await page.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`)
+  await sleep(400)
+  await page.evaluate(`(() => {
+    const id = ${JSON.stringify(accountId)}
+    // The reworked page: a row per account, chosen by its id.
+    const row = document.querySelector('[data-account-id="' + CSS.escape(id) + '"]')
+    if (row) { row.click(); return 'row' }
+    // The page as it was: fold every service open, then the card's own chevron.
+    return 'old'
+  })()`)
+  // The page as it was: every service folded open, one at a time, then the card's own chevron.
+  for (let i = 0; i < 12; i++) {
+    const more = await page.evaluate(`(() => { const head = document.querySelector('.account-group-head[aria-expanded="false"]'); head?.click(); return !!head })()`)
+    if (!more) break
+    await sleep(120)
+  }
+  await sleep(300)
+  // As it was, the cards are in the page's own order: the nth of them.
+  await page.evaluate(`(() => {
+    const card = document.querySelectorAll('.account-card')[${nth}]
+    card?.querySelector('.icon-button[title="Settings"]')?.click()
+    setTimeout(() => card?.scrollIntoView({ block: 'start' }), 150)
+  })()`)
+  await clearToasts(page)
+}
+
+const REWORK = [
+  { name: 'rework-accounts', setup: async (p) => { await many(p); await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`); await clearToasts(p) } },
+  { name: 'rework-account-irc', setup: accountOpen('salastil@irc.libera.chat', 1) },
+  { name: 'rework-account-matrix', setup: accountOpen('@salastil:poa.st', 4) },
+  { name: 'rework-account-discord-failed', setup: accountOpen('discord:alt', 7) },
+  {
+    name: 'rework-account-add',
+    setup: async (p) => {
+      await many(p)
+      await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`)
+      await sleep(400)
+      await p.evaluate(`(document.querySelector('[data-add-account]') || [...document.querySelectorAll('.service-chip')].find((c) => c.innerText.includes('Matrix')))?.click()`)
+      await sleep(300)
+      await p.evaluate(`[...document.querySelectorAll('[data-add-service], .service-chip')].find((c) => c.innerText.includes('Matrix'))?.click()`)
+      await clearToasts(p)
+    }
+  },
+  { name: 'rework-join-irc', setup: joinOn('salastil@irc.libera.chat') },
+  { name: 'rework-join-discord', setup: joinOn('discord:shots') },
+  { name: 'rework-join-matrix', setup: joinOn('@salastil:poa.st') },
+  { name: 'rework-join-steam', setup: joinOn('steam:76561198000000001') },
+  { name: 'rework-join-signal', setup: joinOn('signal:+15550100') },
+  { name: 'rework-join-xmpp', setup: joinOn('salastil@chatterboxtown.us') },
+  { name: 'rework-settings-general', setup: async (p) => { await many(p); await p.evaluate(`window.__mohoShots.store.setActivePanel('settings')`); await clearToasts(p) } },
+  { name: 'rework-chat', setup: async (p) => { await setMode(p, 'comfy'); await openChannel(p, '#general') } }
+]
+
 /**
  * Each scene puts the window into a state and is photographed there.
  * `video` scenes are recorded instead, while `act` runs.
@@ -1516,7 +1627,7 @@ async function main() {
   const out = path.join(DIR, flag('--out') ?? 'shots')
   const only = flag('--only')
   fs.mkdirSync(out, { recursive: true })
-  const scenes = SCENES.filter((s) => !only || s.name.includes(only))
+  const scenes = [...SCENES, ...REWORK].filter((s) => !only || s.name.includes(only))
 
   const irc = await fakeIrc({ people: PEOPLE, caps: ['server-time'], onJoin })
   const { page, stop } = await launchApp({ env: { MOHO_UI_SHOTS: '1' } })
