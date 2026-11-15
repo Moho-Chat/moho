@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../state/hooks'
 import { resolveMediaUrl } from '../lib/util'
+import { ChoiceSetting } from './settings/controls'
 import type { Account } from '../../../shared/wire'
 
 /** One of the account's devices, as the phone's list of linked devices shows it. */
@@ -86,8 +87,25 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
     linkPreviews: boolean | null
     sealedSenderIndicators: boolean | null
     defaultTimer: number | null
+    phoneNumberSharing: number | null
+    findableByNumber: boolean | null
+    storiesDisabled: boolean | null
+    storyViewReceipts: boolean | null
+    keepMutedChatsArchived: boolean | null
     blocked: { id: string; name: string }[]
   } | null>(null)
+  /** An account setting every device keeps, changed, then read back. */
+  const setShared = (params: Record<string, unknown>, done: string): void => {
+    setBusy(true)
+    void window.moho
+      .rpc('signalSharedChange', { accountId: account.id, ...params })
+      .then(() => {
+        store.toast('info', done)
+        loadSettings()
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
   const loadSettings = (): void => {
     void window.moho
       .rpc<NonNullable<typeof settings>>('signalSettings', { accountId: account.id })
@@ -263,6 +281,45 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
               {label}
             </label>
           ))}
+          {(
+            [
+              ['findableByNumber', 'People can find you by your number', settings.findableByNumber],
+              ['storyViewReceipts', 'Tell people you viewed their stories', settings.storyViewReceipts],
+              ['storiesDisabled', 'Turn stories off', settings.storiesDisabled],
+              ['keepMutedChatsArchived', 'Keep muted chats archived', settings.keepMutedChatsArchived]
+            ] as const
+          ).map(([key, label, on]) => (
+            <label key={key} className="small poll-disclosed" title={on === null ? 'Not known yet' : undefined}>
+              <input type="checkbox" checked={!!on} disabled={busy || on === null} onChange={(e) => setShared({ setting: key, on: e.target.checked }, `${label}: ${e.target.checked ? 'on' : 'off'}`)} />
+              {label}
+            </label>
+          ))}
+          <ChoiceSetting
+            label="Who can see your number"
+            value={String(settings.phoneNumberSharing ?? 0)}
+            options={[
+              ...(settings.phoneNumberSharing ? [] : [{ value: '0', label: 'Not known yet' }]),
+              { value: '1', label: 'Everybody' },
+              { value: '2', label: 'Nobody' }
+            ]}
+            disabled={busy || settings.phoneNumberSharing === null}
+            onChange={(v) => setShared({ setting: 'phoneNumberSharing', value: Number(v) }, v === '1' ? 'Everybody can see your number' : 'Nobody can see your number')}
+          />
+          <ChoiceSetting
+            label="Disappearing messages for new chats"
+            value={String(settings.defaultTimer ?? 0)}
+            options={[
+              { value: '0', label: 'Off' },
+              { value: '3600', label: '1 hour' },
+              { value: '28800', label: '8 hours' },
+              { value: '86400', label: '1 day' },
+              { value: '604800', label: '1 week' },
+              { value: '2419200', label: '4 weeks' },
+              ...([0, 3600, 28800, 86400, 604800, 2419200].includes(settings.defaultTimer ?? 0) ? [] : [{ value: String(settings.defaultTimer), label: `${settings.defaultTimer} seconds` }])
+            ]}
+            disabled={busy || settings.defaultTimer === null}
+            onChange={(v) => setShared({ setting: 'defaultTimer', value: Number(v) }, 'The timer for new chats was changed')}
+          />
           <StoryLists accountId={account.id} />
           {settings.blocked.length > 0 && (
             <>
