@@ -58,7 +58,10 @@ const addDisabled = () => ev(`[...document.querySelectorAll('.add-form button.pr
 const openForm = async () => {
   await ev(`window.__mohoShots.store.setActivePanel('accounts')`)
   await sleep(600)
-  await ev(`[...document.querySelectorAll('.service-chip')].find((x) => x.textContent.includes('XMPP')).click()`)
+  // The page opens on an account now (#339); the services are behind "Add an account".
+  await ev(`document.querySelector('[data-add-account]')?.click()`)
+  await sleep(300)
+  await ev(`[...document.querySelectorAll('.service-tile')].find((x) => x.textContent.includes('XMPP')).click()`)
   await sleep(400)
 }
 try {
@@ -66,7 +69,10 @@ try {
   await page.call('Emulation.setDeviceMetricsOverride', { width: 1100, height: 800, deviceScaleFactor: 1, mobile: false })
   await ev(`window.__mohoShots.store.setActivePanel('accounts')`)
   await sleep(1200)
-  const chip = await ev(`(() => { const c = [...document.querySelectorAll('.service-chip')].find((x) => x.textContent.includes('XMPP')); return c ? c.textContent.trim() : null })()`)
+  // The page opens on an account now (#339); the services are behind "Add an account".
+  await ev(`document.querySelector('[data-add-account]')?.click()`)
+  await sleep(300)
+  const chip = await ev(`(() => { const c = [...document.querySelectorAll('.service-tile')].find((x) => x.textContent.includes('XMPP')); return c ? c.textContent.trim() : null })()`)
   check('the picker offers XMPP', !!chip, chip)
   await openForm()
   const form = await ev(`document.querySelector('.add-form')?.innerText ?? ''`)
@@ -107,18 +113,16 @@ try {
   check('a server whose certificate nobody vouched for stops the account', !!stopped)
   await ev(`window.__mohoShots.store.setActivePanel('accounts')`)
   await sleep(800)
-  // The tools are in the card's expander.
-  await ev(`(() => {
-    const card = [...document.querySelectorAll('.panel li, .panel > div, .panel div')].filter((d) => d.textContent.includes('bob@localhost') && d.querySelector('button')).pop()
-    const toggle = [...card.querySelectorAll('button')].filter((b) => !/Connect|Disconnect/.test(b.textContent)).pop()
-    toggle.click()
-  })()`)
+  // The account's own page (#339): its row in the list, and - turned away as it is - its XMPP tab.
+  await ev(`document.querySelector('[data-account-id="xmpp:${people.bob.jid}"]')?.click()`)
+  await sleep(300)
+  await ev(`document.querySelector('.account-page [data-tab=service]')?.click()`)
   await sleep(500)
   const trust = await until(`[...document.querySelectorAll('.account-tools button')].find((b) => /Trust this certificate/.test(b.textContent)) ? document.querySelector('.account-tools').innerText : null`, 8000)
   check('its card shows the fingerprint and offers to trust it', !!trust && /([0-9a-f]{2}:){31}[0-9a-f]{2}/.test(trust), trust?.replace(/\s+/g, ' ').slice(0, 140))
   check('and what the certificate says: whom it is for, who signed it, until when', /Issued to/.test(trust ?? '') && /localhost/.test(trust ?? '') && /Signed by/.test(trust ?? '') && /Valid/.test(trust ?? ''), trust?.replace(/\s+/g, ' ').slice(0, 300))
-  const words = await ev(`[...document.querySelectorAll('.account-card')].find((c) => c.textContent.includes('${people.bob.jid}'))?.querySelector('.account-card-title')?.innerText ?? ''`)
-  check('the card says why in words', /certificate not trusted/.test(words), words)
+  const words = await ev(`document.querySelector('.account-page .page-head')?.innerText ?? ''`)
+  check('the page says why in words', /certificate not trusted/i.test(words), words)
   await shot('xmpp-certificate.png')
   await ev(`[...document.querySelectorAll('.account-tools button')].find((b) => /Trust this certificate/.test(b.textContent)).click()`)
   const trusted = await until(`window.__mohoShots.store.state.accounts.some((a) => a.id === 'xmpp:${people.bob.jid}' && a.state === 'connected')`)
@@ -126,7 +130,7 @@ try {
   await sleep(800)
 
   // The card's connection settings.
-  const bobCard = `[...document.querySelectorAll('.account-card')].find((c) => c.textContent.includes('${people.bob.jid}'))`
+  const bobCard = `document.querySelector('.account-page')`
   await ev(`[...${bobCard}.querySelectorAll('button')].find((b) => /Connection settings/.test(b.textContent)).click()`)
   const settings = await until(`(() => { const t = ${bobCard}.innerText; return /Last signed in/.test(t) ? t : null })()`, 8000)
   check('the connection settings say how it last signed in', /SCRAM-SHA-(512|256|1)/.test(settings ?? ''), settings?.replace(/\s+/g, ' ').slice(0, 300))
@@ -150,7 +154,7 @@ try {
   await ev(`[...${bobCard}.querySelectorAll('.segmented button')].find((b) => /Direct TLS/.test(b.textContent)).click()`)
   await sleep(200)
   await ev(`[...${bobCard}.querySelectorAll('button')].find((b) => /Save and reconnect/.test(b.textContent)).click()`)
-  const changed = await until(`(() => { const c = ${bobCard}; const t = c?.innerText ?? ''; return /certificate changed/.test(t) && /different certificate/.test(t) ? t : null })()`, 15000)
+  const changed = await until(`(() => { const c = ${bobCard}; const t = c?.innerText ?? ''; return /certificate changed/i.test(t) && /different certificate/.test(t) ? t : null })()`, 15000)
   check('edited in place, it connects with the new settings', !!changed || !!(await ev(`/certificate/.test(${bobCard}.innerText)`)))
   check('and a certificate other than the trusted one is said to have changed, with what is different', /impostor/.test(changed ?? '') && /signed by/i.test(changed ?? ''), changed?.replace(/\s+/g, ' ').slice(0, 400))
   await shot('xmpp-certificate-changed.png')

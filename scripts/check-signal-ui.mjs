@@ -54,9 +54,12 @@ async function withWindow(options, body) {
 await withWindow({}, async (ev, shot) => {
   await ev(`window.__mohoShots.store.setActivePanel('accounts')`)
   await sleep(1200)
-  const chip = await ev(`!![...document.querySelectorAll('.service-chip')].find((x) => x.textContent.includes('Signal'))`)
+  // The page opens on an account now (#339); the services are behind "Add an account".
+  await ev(`document.querySelector('[data-add-account]')?.click()`)
+  await sleep(300)
+  const chip = await ev(`!![...document.querySelectorAll('.service-tile')].find((x) => x.textContent.includes('Signal'))`)
   check('the picker offers Signal', chip)
-  await ev(`[...document.querySelectorAll('.service-chip')].find((x) => x.textContent.includes('Signal')).click()`)
+  await ev(`[...document.querySelectorAll('.service-tile')].find((x) => x.textContent.includes('Signal')).click()`)
   await sleep(500)
   const form = await ev(`document.querySelector('.add-form')?.innerText ?? ''`)
   check('the form says moho links as a second device and makes no account', /second device/.test(form) && /never makes an account/.test(form), form.slice(0, 120))

@@ -2689,58 +2689,11 @@ img.custom-emoji.steam-sticker {
   padding: var(--spacing-m);
 }
 
-.panel-section {
-  margin-bottom: var(--spacing-xl);
-  max-width: 720px;
-}
-
-.panel-heading {
-  margin: 0 0 var(--spacing-s);
-  font-size: var(--font-size-medium);
-  font-weight: var(--weight-semibold);
-  color: var(--surface-variant-text);
-}
-
-.account-card {
-  border: 1px solid var(--outline-medium);
-  border-radius: var(--corner-radius);
-  margin-bottom: var(--spacing-s);
-  background: var(--surface-container-low);
-}
-
-.account-card-head {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-s);
-  padding: var(--spacing-s) var(--spacing-m);
-}
-
-.account-card-title {
-  flex: 1;
-  min-width: 0;
-}
-
 .account-avatar {
   width: 28px;
   height: 28px;
   border-radius: 50%;
   object-fit: cover;
-}
-
-.account-card-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-s);
-  padding: 0 var(--spacing-m) var(--spacing-m);
-  border-top: 1px solid var(--outline-medium);
-  padding-top: var(--spacing-m);
-}
-
-.service-picker {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-xs);
-  margin-bottom: var(--spacing-m);
 }
 
 .service-chip {
@@ -2819,17 +2772,6 @@ img.custom-emoji.steam-sticker {
   display: flex;
   align-items: center;
   gap: var(--spacing-s);
-}
-
-/* The bar that appears while picking people for a group message. */
-.group-dm-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-s);
-  padding: var(--spacing-xs) var(--spacing-s);
-  background: var(--surface-container-high);
-  border-radius: var(--corner-radius-small);
 }
 
 .friend-row.picked {
@@ -4415,13 +4357,6 @@ img.smilie {
 
 /* --- join panels ------------------------------------------------------- */
 
-.join-panel {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-m);
-  max-width: 560px;
-}
-
 /* Pending Matrix invitations, above the join field.
    A row is "what it is" against "what you can do about it", with the name
    allowed to shrink: a room id is long, and the two buttons must stay
@@ -4589,44 +4524,11 @@ img.smilie {
   flex: none;
 }
 
-/* The actions that have to happen on Discord's own page, each with the
-   reason beside it: a button that leaves the app should say why it does. */
-.join-elsewhere-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-s);
-}
-
-.join-elsewhere-item {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xxs);
-  min-width: 0;
-}
-
 .join-elsewhere {
   display: flex;
   align-items: center;
   gap: var(--spacing-xxs);
   align-self: flex-start;
-}
-
-.join-elsewhere-why {
-  margin: 0;
-  max-width: 60ch;
-}
-
-.join-friends-header {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-s);
-  margin-top: var(--spacing-s);
-  padding-bottom: var(--spacing-xxs);
-  border-bottom: 1px solid var(--outline-medium);
-}
-
-.join-friends-header .setting-text {
-  font-weight: var(--weight-semibold);
 }
 
 .tab {
@@ -4827,13 +4729,6 @@ img.smilie {
   font-family: var(--font-mono);
   font-size: var(--font-size-small);
   word-break: break-all;
-}
-
-/* .field grows to fill its row in the account forms; inside the column-flex
-   join panel that same rule stretches every field to an equal share of the
-   panel's full height instead. */
-.join-panel .field {
-  flex: none;
 }
 
 /* An attachment knows its intrinsic size, so its box can be reserved before
@@ -8374,37 +8269,6 @@ video.lightbox-media {
   padding: 2px;
 }
 
-/* --- accounts, by service ------------------------------------------------
-   A dozen accounts across five services was one long column, so each service
-   folds. Open by default: somebody with one account of a kind should not have
-   to open anything to see it. */
-.account-group {
-  display: flex;
-  flex-direction: column;
-}
-
-.account-group-head {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-s);
-  padding: var(--spacing-xs) var(--spacing-xs);
-  background: none;
-  border: none;
-  border-radius: var(--corner-radius-small);
-  color: var(--surface-variant-text);
-  text-align: left;
-}
-
-.account-group-head:hover {
-  background: var(--surface-container-high);
-  color: var(--surface-text);
-}
-
-.account-group-name {
-  flex: 1;
-  font-weight: var(--weight-semibold);
-}
-
 /* --- tagging someone -----------------------------------------------------
    Above the box, which is the only place it can go without covering what is
    being typed - and where every other client puts it. */
@@ -10916,21 +10780,6 @@ html[data-reduce-motion] *::after {
   text-transform: uppercase;
 }
 
-.join-frame {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
-
-.join-picker {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-m) var(--spacing-m) 0;
-}
-
 
 /* --- the mentions page: filters, days, two lines, put away ------------------- */
 .mentions-filters {
@@ -13122,4 +12971,27 @@ span.tone-bad {
   .page-banner {
     animation: none;
   }
+}
+
+/* The page keeps its width whether or not it is long enough to scroll, so
+   going from one tab to another does not move the head. */
+.master-detail-body,
+.settings-content {
+  scrollbar-gutter: stable;
+}
+
+/* A switch in a wrapper of its own brings its own room. */
+.settings-card > :has(> .switch-row):first-child,
+.settings-card > :has(> .switch-row):last-child {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+/* Nothing to list: no list, and nothing to go back to. */
+.master-detail.solo .master-detail-back {
+  display: none;
+}
+
+.master-detail.solo .master-detail-body {
+  padding-left: max(var(--spacing-xl), calc((100% - 720px) / 2));
 }

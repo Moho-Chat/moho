@@ -203,7 +203,7 @@ export function AccountList({
             </button>
           )
         })}
-        {shown.length === 0 && <p className="account-list-none small muted">No account matches “{filter.trim()}”.</p>}
+        {shown.length === 0 && q && <p className="account-list-none small muted">No account matches “{filter.trim()}”.</p>}
       </div>
       <div className="account-list-foot">
         {children}
@@ -232,8 +232,11 @@ export function MasterDetail({
   onBack,
   backLabel,
   pageKey,
+  solo,
   children
 }: {
+  /** Nothing to list yet: the page has the pane to itself. */
+  solo?: boolean
   list: React.ReactNode
   /** Whether somebody picked what is on the right, rather than it being the default. */
   chosen: boolean
@@ -244,8 +247,8 @@ export function MasterDetail({
   children: React.ReactNode
 }): JSX.Element {
   return (
-    <div className={classes('master-detail', chosen && 'chosen')}>
-      <div className="master-detail-list">{list}</div>
+    <div className={classes('master-detail', chosen && 'chosen', solo && 'solo')}>
+      {!solo && <div className="master-detail-list">{list}</div>}
       <div className="master-detail-page">
         <button type="button" className="master-detail-back" onClick={onBack}>
           <Icon name="arrow_back" size={18} />

@@ -156,6 +156,7 @@ export function AccountsPanel(): JSX.Element {
   return (
     <MasterDetail
       chosen={view !== null || accounts.length === 0}
+      solo={accounts.length === 0}
       onBack={() => setView(null)}
       backLabel="Accounts"
       pageKey={shown.kind === 'account' ? shown.id : `add:${shown.service ?? ''}`}

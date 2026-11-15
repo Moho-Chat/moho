@@ -436,6 +436,28 @@ const REWORK = [
       await clearToasts(p)
     }
   },
+  // What only the reworked page has: an account's other tabs, the services to choose from, a narrow window.
+  { name: 'rework-tab-connection', setup: async (p) => { await accountOpen('salastil@irc.libera.chat', 1)(p); await p.evaluate(`document.querySelector('[data-tab=connection]')?.click()`); await sleep(400) } },
+  { name: 'rework-tab-service', setup: async (p) => { await accountOpen('@salastil:poa.st', 4)(p); await p.evaluate(`document.querySelector('[data-tab=service]')?.click()`); await clearToasts(p) } },
+  { name: 'rework-tab-servers', setup: async (p) => { await accountOpen('discord:shots', 6)(p); await p.evaluate(`document.querySelector('[data-tab=servers]')?.click()`); await sleep(400) } },
+  { name: 'rework-add-grid', setup: async (p) => { await many(p); await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`); await sleep(400); await p.evaluate(`document.querySelector('[data-add-account]')?.click()`); await clearToasts(p) } },
+  {
+    name: 'rework-narrow-list',
+    setup: async (p) => { await p.call('Emulation.setDeviceMetricsOverride', { width: 860, height: 800, deviceScaleFactor: 1, mobile: false }); await many(p); await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`); await clearToasts(p) },
+    after: async (p) => p.call('Emulation.setDeviceMetricsOverride', { ...SIZE, deviceScaleFactor: 1, mobile: false })
+  },
+  {
+    name: 'rework-narrow-page',
+    setup: async (p) => { await p.call('Emulation.setDeviceMetricsOverride', { width: 860, height: 800, deviceScaleFactor: 1, mobile: false }); await joinOn('@salastil:poa.st')(p) },
+    after: async (p) => p.call('Emulation.setDeviceMetricsOverride', { ...SIZE, deviceScaleFactor: 1, mobile: false })
+  },
+  // Nothing signed in yet: the page a new person meets first.
+  {
+    name: 'rework-first-run',
+    setup: async (p) => { await p.evaluate(`window.__mohoShots.patch({ accounts: [], groups: [], buffers: [], activeBufferId: '', activeGroupId: '' }), true`); await clearToasts(p) },
+    after: async (p) => { await p.call('Page.reload'); await until(p, 'window.__mohoShots && document.querySelector(".buffer-row")', 'the window after a reload'); await p.call('Emulation.setDeviceMetricsOverride', { ...SIZE, deviceScaleFactor: 1, mobile: false }) }
+  },
+  { name: 'rework-downloads', setup: async (p) => { await p.evaluate(`window.__mohoShots.store.setActivePanel('downloads')`); await sleep(400) } },
   { name: 'rework-join-irc', setup: joinOn('salastil@irc.libera.chat') },
   { name: 'rework-join-discord', setup: joinOn('discord:shots') },
   { name: 'rework-join-matrix', setup: joinOn('@salastil:poa.st') },
@@ -831,10 +853,9 @@ const SCENES = [
       await openChannel(p, '#general')
       await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`)
       await sleep(500)
-      await p.evaluate(`document.querySelector('.account-card .icon-button[title="Settings"]')?.click()`)
+      // An account's page is always open now (#339); Remove is at the foot of its General tab.
+      await p.evaluate(`document.querySelector('.account-row')?.click()`)
       await sleep(500)
-      await p.evaluate(`(document.querySelector('.settings .panel') || document.querySelector('.panel')).scrollTop = 1e6`)
-      await sleep(300)
     }
   },
   { name: 'settings-accounts', setup: async (p) => { await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`); await sleep(400) } },
@@ -1653,6 +1674,7 @@ async function main() {
           await photograph(page, path.join(out, `${scene.name}.png`), scene.clip)
           console.log(`  shot  ${scene.name}`)
         }
+        await scene.after?.(page)
       } catch (e) {
         failed.push(`${scene.name}: ${e.message}`)
         console.log(`  FAIL  ${scene.name}: ${e.message}`)

@@ -30,7 +30,10 @@ try {
   await page.call('Emulation.setDeviceMetricsOverride', { width: 1100, height: 800, deviceScaleFactor: 1, mobile: false })
   await ev(`window.__mohoShots.store.setActivePanel('accounts')`)
   await sleep(600)
-  say('twitch chip', await clickText('.service-chip', 'Twitch'))
+  // The page opens on an account now (#339); the services are behind "Add an account".
+  await ev(`document.querySelector('[data-add-account]')?.click()`)
+  await sleep(300)
+  say('twitch chip', await clickText('.service-tile', 'Twitch'))
   await sleep(500)
   await shot('twitch-signin-form.png')
   say('sign in', await clickText('button', 'Sign in with Twitch'))
