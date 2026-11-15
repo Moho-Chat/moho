@@ -166,6 +166,13 @@ export function sameIrcNetwork(a: string, b: string): boolean {
   return !!na && !!nb && na.id === nb.id
 }
 
+/** A Signal notification profile that is on. */
+export interface SignalProfileOn {
+  id: string
+  name: string
+  emoji?: string | null
+}
+
 /** A thread, as it is being read: what was fetched, and whether it still is. */
 export interface OpenThread {
   bufferId: string
@@ -646,6 +653,8 @@ export interface ChatState {
   signalCall: SignalCallState | null
   signalCallsAvailable: boolean
   signalGroupCall: SignalGroupCallState | null
+  /** The notification profile on for each Signal account, if one is. */
+  signalProfiles: Record<string, SignalProfileOn | null>
   signalGroupRings: SignalGroupRing[]
   /** The call put away without being hung up. */
   callMinimized: boolean
@@ -879,6 +888,7 @@ const INITIAL: ChatState = {
   signalCall: null,
   signalCallsAvailable: false,
   signalGroupCall: null,
+  signalProfiles: {},
   signalGroupRings: [],
   callMinimized: false,
   callPoppedOut: false,
@@ -1585,6 +1595,12 @@ export class ChatStore {
     try {
       this.set({ accounts: await window.moho.rpc<Account[]>('listAccounts') })
       // RingRTC is loaded only once there is a Signal account to call from.
+      for (const a of this.state.accounts.filter((x) => x.service === 'signal')) {
+        void window.moho
+          .rpc<TelegramFolder[]>('signalFolders', { accountId: a.id })
+          .then((folders) => this.set({ telegramFolders: { ...this.state.telegramFolders, [a.id]: folders } }))
+          .catch(() => {})
+      }
       if (!this.signalCallsProbed && this.state.accounts.some((a) => a.service === 'signal')) {
         this.signalCallsProbed = true
         void this.probeSignalCalls()
@@ -4627,6 +4643,15 @@ export class ChatStore {
       }
 
       // Telegram says what folders an account has, or that they changed.
+      // A Signal account's chat folders, drawn as Telegram's are.
+      case 'signalFolders': {
+        this.set({ telegramFolders: { ...this.state.telegramFolders, [data.accountId as string]: (data.folders ?? []) as TelegramFolder[] } })
+        break
+      }
+      case 'signalProfile': {
+        this.set({ signalProfiles: { ...this.state.signalProfiles, [data.accountId as string]: (data.profile ?? null) as SignalProfileOn | null } })
+        break
+      }
       case 'telegramFolders': {
         this.set({ telegramFolders: { ...this.state.telegramFolders, [data.accountId as string]: (data.folders ?? []) as TelegramFolder[] } })
         break

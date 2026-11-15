@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useStore } from '../state/hooks'
+import { useChat, useStore } from '../state/hooks'
 import { resolveMediaUrl } from '../lib/util'
 import { ChoiceSetting } from './settings/controls'
 import type { Account } from '../../../shared/wire'
@@ -322,6 +322,7 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
           />
           <StoryLists accountId={account.id} />
           <StickerPacks accountId={account.id} />
+          <NotificationProfiles accountId={account.id} />
           {settings.blocked.length > 0 && (
             <>
               <div className="small muted">Blocked</div>
@@ -583,6 +584,45 @@ function StickerPacks({ accountId }: { accountId: string }): JSX.Element {
           Add
         </button>
       </div>
+    </>
+  )
+}
+
+/** The phone's notification profiles: while one is on, moho announces only what it allows, as the phone does. */
+function NotificationProfiles({ accountId }: { accountId: string }): JSX.Element | null {
+  const on = useChat((s) => s.signalProfiles[accountId] ?? null)
+  const [profiles, setProfiles] = useState<{ id: string; name: string; emoji?: string | null; scheduled: boolean; start: number; end: number; days: number[]; allowMentions: boolean; allowed: number }[]>([])
+  useEffect(() => {
+    void window.moho
+      .rpc<{ profiles: typeof profiles }>('signalProfiles', { accountId })
+      .then((r) => setProfiles(r.profiles))
+      .catch(() => setProfiles([]))
+  }, [accountId, on?.id])
+  if (profiles.length === 0) return null
+  const clock = (hhmm: number): string => `${Math.floor(hhmm / 100)}:${String(hhmm % 100).padStart(2, '0')}`
+  const dayNames = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  return (
+    <>
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Notification profiles</div>
+          <div className="small muted">
+            {on ? `${on.emoji ?? ''} ${on.name} is on: moho notifies only for what it allows.` : 'None is on. They are made and switched on the phone; moho follows them.'}
+          </div>
+        </div>
+      </div>
+      {profiles.map((p) => (
+        <div key={p.id} className="small field-row">
+          <span className="grow">
+            {p.emoji ? `${p.emoji} ` : ''}
+            {p.name}
+            {p.id === on?.id && ' · on'}
+          </span>
+          <span className="muted">
+            {p.scheduled ? `${p.days.map((d) => dayNames[d] ?? '').join(' ')} ${clock(p.start)}–${clock(p.end)}` : 'by hand'} · {p.allowed} allowed{p.allowMentions ? ' · mentions' : ''}
+          </span>
+        </div>
+      ))}
     </>
   )
 }

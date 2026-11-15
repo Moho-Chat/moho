@@ -183,6 +183,9 @@ export function BufferList(): JSX.Element {
   // A Telegram account's own page: its conversations sit under the chat folders the account keeps, which are kept in step
   // with the categories both ways.
   const telegramPage = activeGroup?.kind === 'account' && accounts.find((a) => a.id === activeGroup.accountId)?.service === 'telegram'
+  /** A Signal account's page: its chat folders are drawn as Telegram's are, and changed only on the phone. */
+  const signalPage = activeGroup?.kind === 'account' && accounts.find((a) => a.id === activeGroup.accountId)?.service === 'signal'
+  const folderPage = telegramPage || signalPage
   /**
    * Whose identity the plaque shows.
    *
@@ -280,12 +283,12 @@ export function BufferList(): JSX.Element {
   const telegramFolders = useChat((s) => s.telegramFolders)
   /** Categories made on this page that are not Telegram folders yet: Telegram keeps no empty one. */
   const [pendingFolders, setPendingFolders] = useState<CustomCategory[]>([])
-  const tgFolders = useMemo(() => (telegramPage && activeGroup ? (telegramFolders[activeGroup.accountId] ?? []) : []), [telegramPage, activeGroup, telegramFolders])
+  const tgFolders = useMemo(() => (folderPage && activeGroup ? (telegramFolders[activeGroup.accountId] ?? []) : []), [folderPage, activeGroup, telegramFolders])
   const myCategories = useMemo(
     () =>
       steamPage
         ? steamFolders
-        : telegramPage && activeGroup
+        : folderPage && activeGroup
           ? [...folderCategories(activeGroup.accountId, tgFolders), ...pendingFolders.filter((p) => p.id.startsWith(`tfnew:${activeGroup.accountId}:`))]
           : activeGroup
             ? (customCats[activeGroup.id] ?? [])
@@ -293,7 +296,7 @@ export function BufferList(): JSX.Element {
     [steamPage, steamFolders, telegramPage, activeGroup, tgFolders, pendingFolders, customCats]
   )
   const viewAssignment = useMemo(() => {
-    if (telegramPage && activeGroup) return folderAssignment(activeGroup.accountId, tgFolders, groupBuffers)
+    if (folderPage && activeGroup) return folderAssignment(activeGroup.accountId, tgFolders, groupBuffers)
     if (!steamPage || !activeGroup) return assignment
     const folders = [...(steamGroups[activeGroup.accountId] ?? [])].sort((a, b) => a.id - b.id)
     const next = { ...assignment }
@@ -307,6 +310,10 @@ export function BufferList(): JSX.Element {
   }, [steamPage, telegramPage, tgFolders, activeGroup, steamGroups, assignment, groupBuffers])
   /** Files a conversation under a heading: on Steam for a Steam page, on Telegram for a Telegram one, in the preferences for the rest. */
   const fileBuffer = (bufferId: string, categoryId: string): void => {
+    if (signalPage) {
+      store.toast('info', "Signal's chat folders are made and changed on the phone")
+      return
+    }
     if (steamPage) {
       store.moveSteamFriend(bufferId, parseSteamCategory(categoryId)?.groupId ?? null)
     } else if (telegramPage) {
@@ -327,7 +334,7 @@ export function BufferList(): JSX.Element {
   const grouped = useMemo(() => {
     if (!activeGroup) return null
     // Telegram's own order stands on its page: a heading dragged here is moved there, and comes back in that order.
-    const list = sections(groupBuffers, myCategories, viewAssignment, telegramPage ? [] : (categoryOrder[activeGroup.id] ?? []))
+    const list = sections(groupBuffers, myCategories, viewAssignment, folderPage ? [] : (categoryOrder[activeGroup.id] ?? []))
     if (!isPinnedPage && !isDmPage) {
       for (const s of list) {
         s.buffers.sort((a, b) => (a.position || 0) - (b.position || 0))
@@ -437,7 +444,7 @@ export function BufferList(): JSX.Element {
       lifted={dragging?.kind === 'buffer' && dragging.id === b.id}
       onDragStart={() => beginDrag('buffer', b.id)}
       onDragEnd={endDrag}
-      filed={telegramPage ? !!viewAssignment[b.id] : !!assignment[b.id] && myCategories.some((c) => c.id === assignment[b.id])}
+      filed={folderPage ? !!viewAssignment[b.id] : !!assignment[b.id] && myCategories.some((c) => c.id === assignment[b.id])}
     />
     {/* Who is in a Stoat voice channel, under it. */}
     {b.accountId.startsWith('stoat:') && b.nameIcon === 'volume_up' && <StoatVoiceWho bufferId={b.id} accountId={b.accountId} />}
@@ -487,6 +494,10 @@ export function BufferList(): JSX.Element {
     if (!held || !grouped || !activeGroup) return
     if (held.kind === 'category') {
       if (held.id === section.key) return
+      if (signalPage) {
+        store.toast('info', "Signal's chat folders are made and changed on the phone")
+        return
+      }
       const order = reorderCategories(grouped, held.id, section.key)
       if (telegramPage) store.reorderTelegramFolders(activeGroup.accountId, folderOrder(order))
       else setCategoryOrder(activeGroup.id, order)
@@ -642,7 +653,9 @@ export function BufferList(): JSX.Element {
                           onChange={(name) => setNaming({ id: naming.id, name })}
                           onCommit={() => {
                             const name = naming.name.trim()
-                            if (name && steamPage && activeGroup) {
+                            if (name && signalPage) {
+                              store.toast('info', "Signal's chat folders are made and changed on the phone")
+                            } else if (name && steamPage && activeGroup) {
                               const group = parseSteamCategory(naming.id)?.groupId
                               if (group !== undefined) store.renameSteamFolder(activeGroup.accountId, group, name)
                             } else if (name && telegramPage && activeGroup) {
@@ -779,6 +792,10 @@ export function BufferList(): JSX.Element {
               label: 'New category',
               icon: 'create_new_folder',
               onClick: () => {
+                if (signalPage) {
+                  store.toast('info', "Signal's chat folders are made and changed on the phone")
+                  return
+                }
                 // On Steam it is made on Steam, once it has a name.
                 if (steamPage) {
                   setMakingFolder(true)
@@ -840,6 +857,10 @@ export function BufferList(): JSX.Element {
                     // The channels stay; only the heading goes, and they fall back
                     // to wherever the service filed them.
                     onClick: () => {
+                      if (signalPage) {
+                        store.toast('info', "Signal's chat folders are made and changed on the phone")
+                        return
+                      }
                       const group = parseSteamCategory(catMenu.section.key)
                       const folder = parseTelegramCategory(catMenu.section.key)
                       if (steamPage && activeGroup && group) store.deleteSteamFolder(activeGroup.accountId, group.groupId)
