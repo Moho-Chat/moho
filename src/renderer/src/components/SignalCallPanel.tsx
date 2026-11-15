@@ -197,6 +197,8 @@ export function SignalGroupCallPanel(): JSX.Element | null {
   const mine = useRef<HTMLVideoElement>(null)
   const tiles = useRef(new Map<number, HTMLCanvasElement>())
   const [names, setNames] = useState<Record<string, string>>({})
+  const reactions = useChat((s) => s.signalCallReactions)
+  const [reacting, setReacting] = useState(false)
 
   useEffect(() => {
     if (!call) return
@@ -260,9 +262,15 @@ export function SignalGroupCallPanel(): JSX.Element | null {
               </div>
             )}
             <span className="signal-group-name small">
+              {call.raisedHands.includes(p.demuxId) && <Icon name="back_hand" size={12} />}
               {names[p.userId] ?? 'Someone'}
               {p.audioMuted && <Icon name="mic_off" size={12} />}
             </span>
+            {reactions.filter((r) => r.demuxId === p.demuxId).slice(-1).map((r) => (
+              <span key={r.at} className="signal-group-reaction">
+                {r.value}
+              </span>
+            ))}
           </div>
         ))}
         {pictureOn && (
@@ -272,11 +280,53 @@ export function SignalGroupCallPanel(): JSX.Element | null {
           </div>
         )}
       </div>
+      {call.pending.length > 0 && (
+        <div className="signal-group-pending small">
+          {call.pending.map((userId) => (
+            <div key={userId} className="field-row">
+              <span className="grow">{names[userId] ?? 'Somebody'} is asking to join</span>
+              <button type="button" className="button subtle small" onClick={() => store.answerSignalJoinRequest(userId, true)}>
+                Let in
+              </button>
+              <button type="button" className="button subtle small" onClick={() => store.answerSignalJoinRequest(userId, false)}>
+                Turn away
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {reacting && (
+        <div className="signal-group-reacts">
+          {['👍', '❤️', '😂', '😮', '😢', '🎉'].map((e) => (
+            <button
+              key={e}
+              type="button"
+              onClick={() => {
+                store.reactInSignalGroupCall(e)
+                setReacting(false)
+              }}
+            >
+              {e}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="signal-call-bar">
         <div className="signal-call-who">
           <span className="ellipsis">{name}</span>
           <span className="small muted">{status}</span>
         </div>
+        <button
+          type="button"
+          className={call.ownDemuxId !== undefined && call.raisedHands.includes(call.ownDemuxId) ? 'call-toggle on' : 'call-toggle'}
+          title="Raise your hand"
+          onClick={() => store.raiseSignalHand(!(call.ownDemuxId !== undefined && call.raisedHands.includes(call.ownDemuxId)))}
+        >
+          <Icon name="back_hand" size={20} />
+        </button>
+        <button type="button" className={reacting ? 'call-toggle on' : 'call-toggle'} title="React" onClick={() => setReacting((r) => !r)}>
+          <Icon name="add_reaction" size={20} />
+        </button>
         <button
           type="button"
           className={call.audioMuted ? 'call-toggle on' : 'call-toggle'}

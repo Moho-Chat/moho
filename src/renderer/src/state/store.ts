@@ -655,6 +655,8 @@ export interface ChatState {
   signalGroupCall: SignalGroupCallState | null
   /** The notification profile on for each Signal account, if one is. */
   signalProfiles: Record<string, SignalProfileOn | null>
+  /** Reactions in the group call, shown for a moment over whoever sent them (by demux id). */
+  signalCallReactions: { demuxId: number; value: string; at: number }[]
   signalGroupRings: SignalGroupRing[]
   /** The call put away without being hung up. */
   callMinimized: boolean
@@ -889,6 +891,7 @@ const INITIAL: ChatState = {
   signalCallsAvailable: false,
   signalGroupCall: null,
   signalProfiles: {},
+  signalCallReactions: [],
   signalGroupRings: [],
   callMinimized: false,
   callPoppedOut: false,
@@ -2414,6 +2417,18 @@ export class ChatStore {
 
   shareSignalGroupCallScreen(on: boolean): void {
     void window.moho.signalCall('shareGroup', { on }).catch((e: Error) => this.toast('error', e.message))
+  }
+
+  reactInSignalGroupCall(value: string): void {
+    void window.moho.signalCall('reactInGroup', { value }).catch(() => {})
+  }
+
+  raiseSignalHand(up: boolean): void {
+    void window.moho.signalCall('raiseHand', { up }).catch(() => {})
+  }
+
+  answerSignalJoinRequest(userId: string, letIn: boolean): void {
+    void window.moho.signalCall('answerJoinRequest', { userId, letIn }).catch((e: Error) => this.toast('error', e.message))
   }
 
   /** Answers a group ring by joining the call. */
@@ -4552,6 +4567,14 @@ export class ChatStore {
         this.setRinging(data as IncomingCall)
         break
 
+      case 'signalGroupCallReactions': {
+        const now = Date.now()
+        const fresh = ((data.reactions ?? []) as { demuxId: number; value: string }[]).map((r) => ({ ...r, at: now }))
+        // Kept a few seconds: a reaction is a moment, not a record.
+        this.set({ signalCallReactions: [...this.state.signalCallReactions.filter((r) => now - r.at < 4000), ...fresh] })
+        setTimeout(() => this.set({ signalCallReactions: this.state.signalCallReactions.filter((r) => Date.now() - r.at < 4000) }), 4100)
+        break
+      }
       case 'signalGroupCall': {
         const call = data as unknown as SignalGroupCallState
         if (call.joinState === 'ended') {

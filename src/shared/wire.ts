@@ -429,6 +429,9 @@ export interface SignalGroupCallState {
   audioMuted: boolean
   videoMuted: boolean
   sharing: boolean
+  raisedHands: number[]
+  ownDemuxId?: number
+  pending: string[]
   ended?: string
 }
 

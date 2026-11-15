@@ -73,6 +73,12 @@ export interface SignalGroupCallState {
   audioMuted: boolean
   videoMuted: boolean
   sharing: boolean
+  /** Who has a hand up (demux ids, this side's own among them), in the order raised. */
+  raisedHands: number[]
+  /** This side's demux id once joined, to tell its own hand. */
+  ownDemuxId?: number
+  /** People asking to be let in (a call that asks), by ACI. */
+  pending: string[]
   ended?: string
 }
 
@@ -450,6 +456,7 @@ export class SignalCalls {
         const local = g.getLocalDeviceState()
         const J = rtc.JoinState
         this.updateGroup({
+          ownDemuxId: local.demuxId,
           joinState: local.joinState === J.Joined ? 'joined' : local.joinState === J.Pending ? 'pending' : local.joinState === J.Joining ? 'joining' : 'idle',
           connected: local.connectionState === rtc.ConnectionState.Connected,
           audioMuted: local.audioMuted,
@@ -465,9 +472,10 @@ export class SignalCalls {
       },
       onAudioLevels: () => {},
       onLowBandwidthForVideo: () => {},
-      onReactions: () => {},
-      onRaisedHands: () => {},
-      onPeekChanged: () => {},
+      // Reactions pass by: said to the windows as they come, not kept.
+      onReactions: (_g, reactions) => this.deps.emit('signalGroupCallReactions', { reactions }),
+      onRaisedHands: (_g, raised) => this.updateGroup({ raisedHands: [...raised] }),
+      onPeekChanged: (g) => this.updateGroup({ pending: (g.getPeekInfo()?.pendingUsers ?? []).map(uuidText) }),
       onEnded: (_g, reason) => this.groupEnded(endedWords(rtc, reason)),
       onSpeechEvent: () => {},
       onRemoteMute: (g) => {
@@ -480,7 +488,7 @@ export class SignalCalls {
     this.group = {
       info,
       call,
-      state: { accountId: info.accountId, bufferId, joinState: 'joining', connected: false, participants: [], audioMuted: false, videoMuted: !video, sharing: false }
+      state: { accountId: info.accountId, bufferId, joinState: 'joining', connected: false, participants: [], audioMuted: false, videoMuted: !video, sharing: false, raisedHands: [], pending: [] }
     }
     this.updateGroup({})
     call.connect()
@@ -522,6 +530,23 @@ export class SignalCalls {
     g.call.setPresenting(on)
     g.call.setOutgoingVideoMuted(!on && g.state.videoMuted)
     this.updateGroup({ sharing: on })
+  }
+
+  /** An emoji to everybody in the call. */
+  reactInGroup(value: string): void {
+    this.group?.call.react(value)
+  }
+
+  raiseHand(up: boolean): void {
+    this.group?.call.raiseHand(up)
+  }
+
+  /** Lets in (or turns away) somebody asking to join, by ACI. */
+  answerJoinRequest(userId: string, letIn: boolean): void {
+    const g = this.group
+    if (!g) return
+    if (letIn) g.call.approveUser(uuidBytes(userId))
+    else g.call.denyUser(uuidBytes(userId))
   }
 
   /** Turns down a group's ring here (and on the account's other devices, which RingRTC tells). */

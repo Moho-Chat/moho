@@ -829,6 +829,15 @@ function wireIpc(): void {
         case 'shareGroup':
           signalCalls.shareGroup(!!params.on)
           return { ok: true, result: null }
+        case 'reactInGroup':
+          signalCalls.reactInGroup(String(params.value))
+          return { ok: true, result: null }
+        case 'raiseHand':
+          signalCalls.raiseHand(!!params.up)
+          return { ok: true, result: null }
+        case 'answerJoinRequest':
+          signalCalls.answerJoinRequest(String(params.userId), !!params.letIn)
+          return { ok: true, result: null }
         case 'declineGroupRing':
           signalCalls.declineGroupRing(String(params.groupId), String(params.ringId))
           return { ok: true, result: null }

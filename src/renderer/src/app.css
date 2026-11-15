@@ -11947,3 +11947,26 @@ html[data-reduce-motion] *::after {
   color: #fff;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
+
+.signal-group-reaction {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 28px;
+}
+.signal-group-pending {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--outline-medium);
+}
+.signal-group-reacts {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px;
+}
+.signal-group-reacts button {
+  border: none;
+  background: none;
+  font-size: 22px;
+  cursor: pointer;
+}
