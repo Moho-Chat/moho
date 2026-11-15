@@ -3459,6 +3459,14 @@ export class ChatStore {
    */
   useComponent(bufferId: string, messageId: string, customId: string, select: boolean, values: string[]): void {
     // A Signal view-once picture: opened here once, and gone from the message as soon as it is.
+    // A sticker from a pack the account does not have: the pack added, on every device.
+    if (this.accountFor(bufferId)?.service === 'signal' && customId === 'signal:stickerpack') {
+      void window.moho
+        .rpc('signalStickerPackFromMessage', { bufferId, messageId })
+        .then(() => this.toast('info', 'The sticker pack was added, here and on your phone'))
+        .catch((e: Error) => this.toast('error', e.message))
+      return
+    }
     if (this.accountFor(bufferId)?.service === 'signal' && customId === 'signal:viewonce') {
       const from = this.state.messagesByBuffer[bufferId]?.find((m) => m.id === messageId)?.from ?? ''
       void window.moho

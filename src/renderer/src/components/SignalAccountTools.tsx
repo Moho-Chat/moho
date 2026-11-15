@@ -321,6 +321,7 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
             onChange={(v) => setShared({ setting: 'defaultTimer', value: Number(v) }, 'The timer for new chats was changed')}
           />
           <StoryLists accountId={account.id} />
+          <StickerPacks accountId={account.id} />
           {settings.blocked.length > 0 && (
             <>
               <div className="small muted">Blocked</div>
@@ -532,6 +533,56 @@ function StoryLists({ accountId }: { accountId: string }): JSX.Element | null {
           </div>
         )
       })}
+    </>
+  )
+}
+
+/** The sticker packs the account has (on every device), with adding one from a signal.art link and taking one off. */
+function StickerPacks({ accountId }: { accountId: string }): JSX.Element {
+  const store = useStore()
+  const [packs, setPacks] = useState<{ packId: string; title: string; count: number }[]>([])
+  const [link, setLink] = useState('')
+  const [busy, setBusy] = useState(false)
+  const load = (): void => {
+    void window.moho.rpc<typeof packs>('signalStickerPacks', { accountId }).then(setPacks).catch(() => setPacks([]))
+  }
+  useEffect(load, [accountId])
+  const act = (method: string, params: Record<string, unknown>, done: string, after?: () => void): void => {
+    setBusy(true)
+    void window.moho
+      .rpc(method, { accountId, ...params })
+      .then(() => {
+        store.toast('info', done)
+        after?.()
+        load()
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+  return (
+    <>
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Sticker packs</div>
+          <div className="small muted">Added or taken off here, they are on your phone too.</div>
+        </div>
+      </div>
+      {packs.map((p) => (
+        <div key={p.packId} className="field-row small">
+          <span className="grow">
+            {p.title || 'Untitled pack'} · {p.count} stickers
+          </span>
+          <button type="button" className="button subtle small" disabled={busy} onClick={() => act('signalRemoveStickerPack', { packId: p.packId }, `${p.title || 'The pack'} was taken off`)}>
+            Remove
+          </button>
+        </div>
+      ))}
+      <div className="field-row">
+        <input className="text-field" placeholder="https://signal.art/addstickers/#pack_id=…" value={link} disabled={busy} onChange={(e) => setLink(e.target.value)} />
+        <button type="button" className="button subtle small" disabled={busy || !link.trim()} onClick={() => act('signalStickerPackLink', { link: link.trim() }, 'The sticker pack was added', () => setLink(''))}>
+          Add
+        </button>
+      </div>
     </>
   )
 }
