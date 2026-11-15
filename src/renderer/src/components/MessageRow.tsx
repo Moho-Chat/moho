@@ -2,6 +2,7 @@ import { steamRoomIds } from '../lib/steamchat'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
+import { Modal } from './Modal'
 import { Avatar } from './Avatar'
 import { ReasonPrompt } from './ReasonPrompt'
 import { EventSource } from './EventSource'
@@ -907,15 +908,7 @@ function MessageRowBody({
           onOpenChannel={(id) => void store.selectBuffer(id, true)}
           onOpenLink={(url) => store.followDeepLink(url)}
         />
-        {message.edited && (
-          <span
-            className="edited-tag small muted"
-            title={message.editedTs ? `Edited ${formatFullTime(message.editedTs)}` : 'Edited'}
-          >
-            {' '}
-            (edited)
-          </span>
-        )}
+        {message.edited && <EditedTag bufferId={message.bufferId} messageId={message.id} body={message.body} editedTs={message.editedTs} />}
         {message.isOwn && message.delivery && <DeliveryTick delivery={message.delivery} />}
       </span>
     )
@@ -2010,5 +2003,57 @@ function DeliveryTick({ delivery }: { delivery: 'sent' | 'delivered' | 'read' })
       {' '}
       <Icon name={delivery === 'sent' ? 'check' : 'done_all'} size={13} fill={delivery === 'read'} />
     </span>
+  )
+}
+
+/**
+ * "(edited)", which opens what the message said before each edit, where moho saw them happen (an edit made before
+ * moho had the message has no earlier version here).
+ */
+function EditedTag({ bufferId, messageId, body, editedTs }: { bufferId: string; messageId: string; body: string; editedTs?: number }): JSX.Element {
+  const [versions, setVersions] = useState<{ body: string; replacedAt: number }[] | null>(null)
+  const open = (): void => {
+    void window.moho
+      .rpc<{ body: string; replacedAt: number }[]>('getEditHistory', { bufferId, messageId })
+      .then(setVersions)
+      .catch(() => setVersions([]))
+  }
+  return (
+    <>
+      <button
+        type="button"
+        className="edited-tag small muted"
+        title={editedTs ? `Edited ${formatFullTime(editedTs)}. Show earlier versions` : 'Edited. Show earlier versions'}
+        onClick={(e) => {
+          e.stopPropagation()
+          open()
+        }}
+      >
+        {' '}
+        (edited)
+      </button>
+      {versions &&
+        createPortal(
+          <Modal title="Edit history" icon="history" className="modal" onClose={() => setVersions(null)}>
+            {versions.length === 0 ? (
+              <p className="small muted">It was edited before moho had it, so its earlier words are not here.</p>
+            ) : (
+              <ol className="edit-history">
+                {versions.map((v, i) => (
+                  <li key={i}>
+                    <div className="selectable">{v.body}</div>
+                    <div className="small muted">Replaced {formatFullTime(v.replacedAt)}</div>
+                  </li>
+                ))}
+                <li className="edit-history-now">
+                  <div className="selectable">{body}</div>
+                  <div className="small muted">Now</div>
+                </li>
+              </ol>
+            )}
+          </Modal>,
+          document.body
+        )}
+    </>
   )
 }
