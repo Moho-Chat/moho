@@ -1,17 +1,18 @@
-import { useMediaUrl } from '../lib/route'
 import { SwitchRow } from './Switch'
 import { useEffect, useRef, useState } from 'react'
-import { Icon, IconButton, ServiceMark } from './Icon'
+import { Icon, ServiceMark } from './Icon'
+import { AccountFace, AccountList, MasterDetail, StatePill, Tabs, accountState, accountWhere, takeAccountsAsk } from './AccountList'
+import { SavedMark, useSavedFlash } from './settings/controls'
 import { MatrixAccountTools } from './MatrixAccountTools'
 import { StoatAccountTools } from './StoatAccountTools'
 import { SignalAccountTools } from './SignalAccountTools'
-import { XmppAccountTools, xmppStateWords } from './XmppAccountTools'
+import { XmppAccountTools } from './XmppAccountTools'
 import { XmppDataForm, type XmppForm } from './XmppDataForm'
 import { SteamAccountTools } from './SteamAccountTools'
 import { TwitchSignIn } from './TwitchSignIn'
 import { IgnoreList } from './IgnoreList'
 import { TunnelAllSwitch } from './settings/Tunnel'
-import { useChat, useConnectionDetail, useMapPref, usePref, useStore } from '../state/hooks'
+import { useChat, useConnectionDetail, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, classes, resolveMediaUrl, serviceIcon, serviceLabel } from '../lib/util'
 import { IRC_NETWORKS, ircNetworkFor } from '../lib/networks'
 import type { Account } from '../../../shared/wire'
@@ -39,46 +40,51 @@ interface Protocol {
   available: boolean
 }
 
-/**
- * Account states that make a service's group open itself.
- *
- * "connecting" is in here as well as the outright failures: an account that
- * is still trying is the other thing somebody opens this page to look at, and
- * it settles into "connected" on its own a moment later - at which point the
- * group folds away again without anybody doing anything.
- */
-const TROUBLE_STATES = ['connecting', 'auth_failed', 'error']
+/** What signing in to each service takes, in a line: what somebody choosing one wants to know first. */
+const SERVICE_BLURB: Record<AddableService, string> = {
+  irc: 'Any network, by its server and a nick',
+  discord: 'A QR code from your phone, or a token',
+  sneedchat: 'Kiwi Farms chat, signed in on the site',
+  matrix: 'Any homeserver: password, code or SSO',
+  kick: 'Stream chat, signed in or just reading',
+  steam: 'Friends and group chats',
+  twitch: 'Stream chat and whispers',
+  telegram: 'A phone number, or a QR code',
+  stoat: 'Any instance, by email or token',
+  xmpp: 'An address on any server',
+  signal: 'Linked to the Signal on your phone'
+}
 
+/** What the right-hand side is showing: an account's page, or the way to add one. */
+type View = { kind: 'account'; id: string } | { kind: 'add'; service: AddableService | null }
+
+/**
+ * Settings → Accounts: every account down the left, the chosen one's page on
+ * the right (#339).
+ *
+ * It used to be a card per account that folded open in place, inside a group
+ * per service that folded too. One open card was two screens long, pushed
+ * every other account off the page, and scrolled its own Connect button away;
+ * and what was in it came in a different order on every service. The list now
+ * stays where it is, and an account's settings are tabs of one page - the same
+ * tabs on every service, with the service's own things in one of their own.
+ */
 export function AccountsPanel(): JSX.Element {
   const accounts = useChat((s) => s.accounts)
   const pendingLink = useChat((s) => s.pendingLink)
   // A link that could not be followed because there is no account on that
   // network yet opens this page with its form already showing. Nothing else
   // on the page would explain why you are here.
-  const [adding, setAdding] = useState<AddableService | null>(
-    pendingLink ? 'irc' : accounts.length === 0 ? 'irc' : null
-  )
+  const [view, setView] = useState<View | null>(() => {
+    const asked = takeAccountsAsk()
+    if (pendingLink) return { kind: 'add', service: 'irc' }
+    if (asked && 'add' in asked) return { kind: 'add', service: null }
+    if (asked && 'accountId' in asked) return { kind: 'account', id: asked.accountId }
+    return null
+  })
   useEffect(() => {
-    if (pendingLink) setAdding('irc')
+    if (pendingLink) setView({ kind: 'add', service: 'irc' })
   }, [pendingLink])
-
-  /**
-   * Whether each service's accounts are shown, where somebody has said.
-   *
-   * A preference rather than component state: folding four IRC accounts away
-   * is a decision about how this page should look, and having to make it
-   * again on every visit is worse than not being able to make it at all.
-   *
-   * Absent means "decide for me", and the answer is closed - the pane is for
-   * the things you do rarely, and a dozen accounts across five services made
-   * it one long column - except for a service with an account in trouble.
-   * Those open themselves, because an account that cannot connect is the one
-   * reason to be on this page that nobody navigated here for.
-   *
-   * An explicit choice outranks that, in both directions: closing a group
-   * that opened itself keeps it closed, which is somebody saying they know.
-   */
-  const [openGroups, setOpenGroups] = useMapPref<boolean>('accountGroupOpen')
 
   // Which protocols the daemon offers, asked once. The two are deployed
   // separately and either can be older than the other, which is the whole
@@ -102,100 +108,199 @@ export function AccountsPanel(): JSX.Element {
   const nameFor = (service: string): string =>
     protocols?.find((p) => p.id === service)?.name ?? serviceLabel(service)
 
-  // Grouped by service, in the order the picker offers them, so the two
-  // halves of this page agree about what order services come in.
-  const byService = addable
-    .map((service) => ({ service, accounts: accounts.filter((a) => a.service === service) }))
-    .filter((group) => group.accounts.length > 0)
+  // By service, in the order the picker offers them, so the two halves of
+  // this page agree about what order services come in. An account on a
+  // service this window cannot add is still listed, after the rest.
+  const order = (a: Account): number => {
+    const at = (addable as string[]).indexOf(a.service)
+    return at < 0 ? addable.length : at
+  }
+  const listed = [...accounts].sort((a, b) => order(a) - order(b))
+
+  /**
+   * The account that was just added, chosen once it appears.
+   *
+   * A form says it is done before the list has the new account in it, and the
+   * new account's id is the daemon's to make up. So what is remembered is who
+   * was here before, and the first one who was not is the one.
+   */
+  const before = useRef<Set<string> | null>(null)
+  useEffect(() => {
+    if (!before.current) return
+    const fresh = accounts.find((a) => !before.current!.has(a.id))
+    if (!fresh) return
+    before.current = null
+    setView({ kind: 'account', id: fresh.id })
+  }, [accounts])
+  const added = (): void => {
+    before.current = new Set(accounts.map((a) => a.id))
+    setView(null)
+    // If nothing new turns up, nothing is waited for.
+    setTimeout(() => (before.current = null), 15_000)
+  }
+
+  // What is on the right when nobody has chosen: the account that most needs
+  // looking at, else the first - or, with no accounts at all, the way to add one.
+  const fallback =
+    listed.find((a) => a.state === 'auth_failed' || a.state === 'error') ?? listed.find((a) => a.state === 'connecting') ?? listed[0]
+  const shown: View =
+    view?.kind === 'add'
+      ? view
+      : view && accounts.some((a) => a.id === view.id)
+        ? view
+        : fallback
+          ? { kind: 'account', id: fallback.id }
+          : { kind: 'add', service: null }
+  const account = shown.kind === 'account' ? accounts.find((a) => a.id === shown.id) : undefined
 
   return (
-    <div className="panel">
-      {/* Adding comes first now. It is the thing somebody opens this page to
-          do that has no other route - an existing account can be reached by
-          its own rail tile, and reading down a list of them to find the add
-          section was the page's shape rather than anybody's intent. */}
-      <div className="panel-section">
-        <h3 className="panel-heading">Add an account</h3>
-        <div className="service-picker">
-          {addable.map((service) => {
-            const icon = serviceIcon(service)
-            return (
-              <button
-                key={service}
-                type="button"
-                className={`service-chip${adding === service ? ' active' : ''}`}
-                // Choosing the one already open leaves it open: the chip is a
-                // choice among services, and the way out is the Cancel below.
-                onClick={() => setAdding(service)}
-              >
-                <ServiceMark icon={icon} size={16} />
-                {nameFor(service)}
-              </button>
-            )
-          })}
-        </div>
+    <MasterDetail
+      chosen={view !== null || accounts.length === 0}
+      onBack={() => setView(null)}
+      backLabel="Accounts"
+      pageKey={shown.kind === 'account' ? shown.id : `add:${shown.service ?? ''}`}
+      list={
+        <AccountList
+          accounts={listed}
+          selected={shown.kind === 'account' ? shown.id : null}
+          onSelect={(id) => setView({ kind: 'account', id })}
+          nameFor={nameFor}
+          label="Accounts"
+        >
+          <button
+            type="button"
+            data-add-account
+            className={classes('account-list-add', shown.kind === 'add' && 'active')}
+            onClick={() => setView({ kind: 'add', service: null })}
+          >
+            <span className="account-list-add-mark">
+              <Icon name="add" size={18} />
+            </span>
+            Add an account
+          </button>
+        </AccountList>
+      }
+    >
+      {account ? (
+        <AccountPage account={account} serviceName={nameFor(account.service)} />
+      ) : (
+        <AddAccount
+          service={shown.kind === 'add' ? shown.service : null}
+          addable={addable}
+          nameFor={nameFor}
+          first={accounts.length === 0}
+          onPick={(service) => setView({ kind: 'add', service })}
+          onDone={added}
+          onCancel={accounts.length ? () => setView(null) : undefined}
+        />
+      )}
+    </MasterDetail>
+  )
+}
 
-        {adding === 'irc' && <IrcForm onDone={() => setAdding(null)} />}
-        {adding === 'discord' && <DiscordForm />}
-        {adding === 'sneedchat' && <SneedChatForm />}
-        {adding === 'matrix' && <MatrixForm />}
-        {adding === 'kick' && <KickForm onDone={() => setAdding(null)} />}
-        {adding === 'steam' && <SteamForm onDone={() => setAdding(null)} />}
-        {adding === 'twitch' && <TwitchForm onDone={() => setAdding(null)} />}
-        {adding === 'telegram' && <TelegramForm onDone={() => setAdding(null)} />}
-        {adding === 'stoat' && <StoatForm onDone={() => setAdding(null)} />}
-        {adding === 'signal' && <SignalForm onDone={() => setAdding(null)} />}
-        {adding === 'xmpp' && <XmppForm onDone={() => setAdding(null)} />}
-        {adding && (
-          <button type="button" className="button subtle small" onClick={() => setAdding(null)}>
+/**
+ * Adding an account: which service, then that service's own form.
+ *
+ * Two steps rather than a row of chips with a form opening under it. The
+ * services need a line each to say what signing in takes - a token, a phone,
+ * an address - and the form deserves the page to itself rather than the gap
+ * between the chips and the list.
+ */
+function AddAccount({
+  service,
+  addable,
+  nameFor,
+  first,
+  onPick,
+  onDone,
+  onCancel
+}: {
+  service: AddableService | null
+  addable: AddableService[]
+  nameFor: (service: string) => string
+  /** Whether this would be the first account, which is when the page has to explain itself. */
+  first: boolean
+  onPick: (service: AddableService | null) => void
+  onDone: () => void
+  onCancel?: () => void
+}): JSX.Element {
+  if (!service) {
+    return (
+      <div className="page">
+        <header className="page-head">
+          <div className="page-head-text">
+            <h2 className="page-title">Add an account</h2>
+            <p className="page-sub">
+              {first
+                ? 'Pick a service to connect. moho stays connected in the background, even with this window closed.'
+                : 'Pick a service. You can have as many accounts on each as you like.'}
+            </p>
+          </div>
+        </header>
+        <div className="service-grid">
+          {addable.map((id) => (
+            <button key={id} type="button" data-add-service={id} className="service-tile" onClick={() => onPick(id)}>
+              <span className="service-tile-mark">
+                <ServiceMark icon={serviceIcon(id)} size={22} />
+              </span>
+              <span className="service-tile-text">
+                <span className="service-tile-name">{nameFor(id)}</span>
+                <span className="service-tile-blurb">{SERVICE_BLURB[id]}</span>
+              </span>
+              <Icon name="chevron_right" size={18} className="service-tile-go" />
+            </button>
+          ))}
+        </div>
+        {/* Before the first account rather than after: adding one is the
+            first thing that fetches anything, and somebody who needs all
+            of it through Tor needs that from the start. Settings → Tor
+            has the same switch for the rest of the time. */}
+        {first && (
+          <section className="page-section">
+            <h4 className="section-label">Before you connect</h4>
+            <div className="card">
+              <TunnelAllSwitch />
+            </div>
+          </section>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="page">
+      <header className="page-head">
+        <span className="page-head-mark">
+          <ServiceMark icon={serviceIcon(service)} size={26} />
+        </span>
+        <div className="page-head-text">
+          <h2 className="page-title">Add {/^[aeiou]/i.test(nameFor(service)) || ['IRC', 'XMPP'].includes(nameFor(service)) ? 'an' : 'a'} {nameFor(service)} account</h2>
+          <p className="page-sub">{SERVICE_BLURB[service]}</p>
+        </div>
+        <button type="button" className="button quiet" onClick={() => onPick(null)}>
+          <Icon name="apps" size={16} /> All services
+        </button>
+      </header>
+      <div className="add-account-form">
+        {service === 'irc' && <IrcForm onDone={onDone} />}
+        {service === 'discord' && <DiscordForm />}
+        {service === 'sneedchat' && <SneedChatForm />}
+        {service === 'matrix' && <MatrixForm />}
+        {service === 'kick' && <KickForm onDone={onDone} />}
+        {service === 'steam' && <SteamForm onDone={onDone} />}
+        {service === 'twitch' && <TwitchForm onDone={onDone} />}
+        {service === 'telegram' && <TelegramForm onDone={onDone} />}
+        {service === 'stoat' && <StoatForm onDone={onDone} />}
+        {service === 'signal' && <SignalForm onDone={onDone} />}
+        {service === 'xmpp' && <XmppForm onDone={onDone} />}
+      </div>
+      {onCancel && (
+        <div className="page-foot">
+          <button type="button" className="button quiet" onClick={onCancel}>
             Cancel
           </button>
-        )}
-      </div>
-
-      <div className="panel-section">
-        {accounts.length === 0 && (
-          <>
-            <p className="muted">
-              No accounts yet. Pick a service above to connect one — moho stays connected in the
-              background, even with this window closed.
-            </p>
-            {/* Before the first account rather than after: adding one is the
-                first thing that fetches anything, and somebody who needs all
-                of it through Tor needs that from the start. Settings → Tor
-                has the same switch for the rest of the time. */}
-            <TunnelAllSwitch />
-          </>
-        )}
-
-        {byService.map(({ service, accounts: mine }) => {
-          const icon = serviceIcon(service)
-          // A service worth looking at even unasked: something in it is not
-          // working, or is on its way to working.
-          const troubled = mine.some((a) => TROUBLE_STATES.includes(a.state))
-          // Open when there are few enough to see at once: a page that opens
-          // on a closed list makes the common case - one or two accounts -
-          // take clicks to reach what is there.
-          const shut = !(openGroups[service] ?? (troubled || accounts.length <= 4))
-          return (
-            <div key={service} className="account-group">
-              <button
-                type="button"
-                className="account-group-head"
-                aria-expanded={!shut}
-                onClick={() => setOpenGroups(service, shut)}
-              >
-                <Icon name={shut ? 'chevron_right' : 'expand_more'} size={18} />
-                <ServiceMark icon={icon} size={16} />
-                <span className="account-group-name">{serviceLabel(service)}</span>
-                {/* The count is what makes a folded heading worth reading. */}
-                <span className="small muted">{mine.length}</span>
-              </button>
-              {!shut && mine.map((account) => <AccountRow key={account.id} account={account} />)}
-            </div>
-          )
-        })}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -327,12 +432,35 @@ function GroupIcons({ accountId }: { accountId: string }): JSX.Element | null {
   )
 }
 
-function AccountRow({ account }: { account: Account }): JSX.Element {
-  const media = useMediaUrl(account.id)
+/** The parts of an account's page. The same on every service; each is shown only when it has something in it. */
+type AccountTab = 'general' | 'connection' | 'servers' | 'ignored' | 'service'
+
+/** The services with things of their own to manage, and what their tab holds. */
+const SERVICE_TAB: Partial<Record<Account['service'], string>> = {
+  matrix: 'Sessions, keys and your profile on the homeserver',
+  steam: 'What Steam says about the account, and where it is signed in',
+  stoat: 'Your profile and sessions on this instance',
+  signal: 'Linked devices, your username, stories and call links',
+  xmpp: 'The server, your profile, and what it publishes for you',
+  twitch: 'Video, moderation and whispers',
+  kick: 'The channels you follow'
+}
+
+/**
+ * One account's page: a head that stays put, and tabs under it.
+ *
+ * The head carries what the account is and the one thing done to it most -
+ * connecting and disconnecting - so neither scrolls away. What the daemon
+ * says about a connection that is not working is a banner under it, with the
+ * way past it, rather than a grey line among the settings.
+ */
+function AccountPage({ account, serviceName }: { account: Account; serviceName: string }): JSX.Element {
   const store = useStore()
-  const [expanded, setExpanded] = useState(false)
-  const [confirmingRemove, setConfirmingRemove] = useState(false)
-  const icon = serviceIcon(account.service)
+  const groups = useChat((s) => s.groups)
+  const buffers = useChat((s) => s.buffers)
+  const [hidden] = usePref<string[]>('hiddenBuffers', [])
+  const [muted] = usePref<string[]>('mutedBuffers', [])
+  const reauthing = useChat((s) => s.discordReauthAccountId) === account.id
   const connected = account.state === 'connected'
   /**
    * A connection attempt in progress is a third state, not a variety of
@@ -344,8 +472,9 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
    * button. What is wanted there is a way to stop.
    */
   const connecting = account.state === 'connecting'
+  const state = accountState(account)
   // What the daemon last said about why. Only meaningful while something is
-  // wrong, which is exactly when the state line alone explains nothing.
+  // wrong, which is exactly when the state alone explains nothing.
   const detail = useConnectionDetail(account.id)
   const held = account.service === 'discord' && !!detail?.startsWith('Holding the Discord connection')
 
@@ -356,51 +485,44 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
       .catch((e: Error) => store.toast('error', e.message))
   }
 
+  const hasServers =
+    groups.some((g) => g.accountId === account.id) ||
+    buffers.some((b) => b.accountId === account.id && (hidden.includes(b.id) || muted.includes(b.id) || b.notify === 'mute'))
+  const serviceTab = SERVICE_TAB[account.service]
+  // An XMPP account that was turned away is put right in its own tab: the
+  // certificate to look at, the password to replace.
+  const stoppedXmpp = account.service === 'xmpp' && account.state === 'auth_failed'
+  const tabs: { id: AccountTab; label: string; icon: string; badge?: boolean }[] = [
+    { id: 'general', label: 'General', icon: 'person' },
+    { id: 'connection', label: 'Connection', icon: 'lan', badge: account.service === 'discord' && account.state === 'auth_failed' },
+    ...(hasServers ? [{ id: 'servers' as const, label: 'Servers', icon: 'dns' }] : []),
+    { id: 'ignored', label: 'Ignored', icon: 'block' },
+    ...(serviceTab ? [{ id: 'service' as const, label: serviceName, icon: 'tune', badge: stoppedXmpp }] : [])
+  ]
+  const [wanted, setTab] = useState<AccountTab>(stoppedXmpp ? 'service' : 'general')
+  // Signing in to Discord again happens on Connection, wherever it was asked for.
+  useEffect(() => {
+    if (reauthing) setTab('connection')
+  }, [reauthing])
+  const tab = tabs.some((t) => t.id === wanted) ? wanted : 'general'
+
+  const route = <RouteLevel account={account} onChange={(level) => call('setAccountRoute', { accountId: account.id, level })} />
+
   return (
-    <div className="account-card">
-      <div className="account-card-head">
-        {account.avatarUrl ? (
-          <img className="account-avatar" src={media(account.avatarUrl)} alt="" />
-        ) : (
-          <ServiceMark icon={icon} size={20} />
-        )}
-        <div className="account-card-title">
-          <div className="ellipsis">{account.displayName || account.id}</div>
-          <div className="small muted">
-            {serviceLabel(account.service)} · {account.service === 'xmpp' ? xmppStateWords(account) : account.state}
-          </div>
-          {detail && <div className={classes('small muted account-detail', held && 'held')} title={detail}>{detail}</div>}
-          {/* Held for having logged in too often (see nobilis's identify_budget): said in full, with the way past it. */}
-          {held && (
-            <div>
-              <button
-                type="button"
-                className="button subtle"
-                title="Many fresh logins can get an account flagged as spam by Discord. This one is counted."
-                onClick={() => call('connectDiscordAnyway', { accountId: account.id })}
-              >
-                Connect anyway
-              </button>
-            </div>
-          )}
+    <div className="page account-page">
+      <header className="page-head">
+        <AccountFace account={account} size={48} />
+        <div className="page-head-text">
+          <h2 className="page-title ellipsis">{account.displayName || account.id}</h2>
+          <p className="page-sub">
+            <StatePill account={account} />
+            <span className="ellipsis">{accountWhere(account, serviceName)}</span>
+          </p>
         </div>
-        <button
-          type="button"
-          className="button subtle"
-          onClick={() =>
-            call('setAccountConnected', {
-              accountId: account.id,
-              // Stopping covers both being connected and trying to be.
-              connected: !connected && !connecting
-            })
-          }
-        >
-          {connected ? 'Disconnect' : connecting ? 'Cancel' : 'Connect'}
-        </button>
         {connecting && (
           <button
             type="button"
-            className="button subtle"
+            className="button quiet"
             // Starting over, for an attempt that is retrying without getting
             // anywhere: the daemon tears the old one down before starting.
             title="Stop this attempt and start again"
@@ -409,149 +531,241 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
               setTimeout(() => call('setAccountConnected', { accountId: account.id, connected: true }), 400)
             }}
           >
-            Retry
+            <Icon name="refresh" size={16} /> Retry
           </button>
         )}
-        <IconButton
-          name={expanded ? 'expand_less' : 'expand_more'}
-          title="Settings"
-          onClick={() => setExpanded(!expanded)}
-        />
-      </div>
+        <button
+          type="button"
+          className={connected || connecting ? 'button quiet' : 'button primary'}
+          onClick={() =>
+            call('setAccountConnected', {
+              accountId: account.id,
+              // Stopping covers both being connected and trying to be.
+              connected: !connected && !connecting
+            })
+          }
+        >
+          <Icon name={connected || connecting ? 'power_settings_new' : 'bolt'} size={16} />
+          {connected ? 'Disconnect' : connecting ? 'Cancel' : 'Connect'}
+        </button>
+      </header>
 
-      {expanded && (
-        <div className="account-card-body">
-          {/* Local, and it says so: the service is never told, and being
-              addressed is still decided against the name the service knows
-              you by - so calling yourself "You" cannot stop anyone reaching
-              you. It changes what moho calls you, mentions of you included. */}
-          <LabeledInput
-            label="Display name"
-            defaultValue={account.displayName}
-            placeholder="What moho calls you here"
-            onCommit={(name) => call('setAccountDisplayName', { accountId: account.id, name })}
-          />
-          <div className="small muted">
-            Only here. Mentions of you are shown with this name; who can ping
-            you does not change.
+      {/* Whatever is in the way, and the way past it. */}
+      {(state.tone === 'bad' || (detail && state.tone !== 'ok')) && (
+        <div className={classes('page-banner', `tone-${state.tone}`, held && 'held')} role="status">
+          <Icon name={state.tone === 'busy' ? 'hourglass_top' : state.tone === 'off' ? 'info' : 'error'} size={20} />
+          <div className="page-banner-text">
+            <div className="page-banner-title">{state.words}</div>
+            {detail && <div className="page-banner-detail account-detail selectable">{detail}</div>}
+            {!detail && account.service === 'discord' && account.state === 'auth_failed' && (
+              <div className="page-banner-detail">Discord revoked this login. Sign in again to reconnect; nothing else about the account is lost.</div>
+            )}
           </div>
-
-          {/* The other half of being addressed: your name is simply the one
-              word everybody has. Per account rather than everywhere, because
-              a word that means you on one network is somebody's ordinary
-              vocabulary on another - the words that apply everywhere are in
-              Settings. */}
-          <LabeledInput
-            label="Highlight keywords"
-            defaultValue={(account.highlightKeywords ?? []).join(', ')}
-            placeholder="a project, a name you also answer to"
-            onCommit={(words) =>
-              call('setHighlightKeywords', {
-                accountId: account.id,
-                keywords: words.split(',')
-              })
-            }
-          />
-          <div className="small muted">
-            Separate them with commas. Whole words only, and case does not
-            matter. They apply to messages that arrive after you add them.
-          </div>
-
-          <GroupIcons accountId={account.id} />
-          <HiddenAndMuted accountId={account.id} />
-
-          {account.service === 'irc' && (
-            <>
-              <LabeledInput
-                label="Autojoin channels"
-                defaultValue={account.autojoin}
-                placeholder="#one,#two"
-                onCommit={(channels) =>
-                  call('setAccountAutojoin', { accountId: account.id, channels })
-                }
-              />
-              <IrcSasl account={account} call={call} />
-              <LabeledInput
-                label="NickServ password"
-                type="password"
-                placeholder={account.hasNickservPassword ? '(set)' : 'unset'}
-                onCommit={(password) =>
-                  call('setAccountNickservPassword', { accountId: account.id, password })
-                }
-              />
-            </>
-          )}
-
-          {account.service !== 'sneedchat' && (
-            <RouteLevel account={account} onChange={(level) => call('setAccountRoute', { accountId: account.id, level })} />
-          )}
-
-          {account.service === 'discord' && <DiscordReauth account={account} />}
-
-          {account.service === 'matrix' && <MatrixAccountTools account={account} />}
-
-          {account.service === 'steam' && <SteamAccountTools account={account} />}
-          {account.service === 'stoat' && <StoatAccountTools account={account} />}
-          {account.service === 'signal' && <SignalAccountTools account={account} />}
-          {account.service === 'xmpp' && <XmppAccountTools account={account} />}
-          {account.service === 'twitch' && <TwitchAccountTools account={account} />}
-
-          {account.service === 'sneedchat' && (
-            <>
-              <RouteLevel account={account} onChange={(level) => call('setAccountRoute', { accountId: account.id, level })} />
-              <SneedChatBrowserLogin accountId={account.id} useTor={account.useTor} />
-            </>
-          )}
-
-          {account.service === 'kick' && <KickFollowSync account={account} />}
-
-          {/* Every service, after the per-service tools. Ignoring is
-              cross-protocol and has been since #131; reading the list back
-              was Matrix-only, which made it a setting somebody could switch
-              on and never find again. */}
-          <IgnoreList account={account} />
-
-          {/* Asked first, in place. Removing takes the saved sign-in, the
-              history kept here and - for Matrix - this device's keys, and
-              none of it comes back; it used to happen on the first click. */}
-          <div className="danger-zone">
-          <div className="danger-zone-title small">Danger zone</div>
-          {confirmingRemove ? (
-            <div className="remove-confirm" role="alertdialog" aria-label="Remove this account?">
-              <span className="small">
-                Remove {account.displayName || account.id}? Its saved sign-in and the history kept
-                here are deleted
-                {account.service === 'matrix' ? ', and so are this device’s keys, so encrypted history stays unreadable if you add it again' : ''}
-                .
-              </span>
-              <div className="field-row">
-                <button
-                  type="button"
-                  className="button danger"
-                  onClick={() => {
-                    // Its conversations and its rail entry with it, once it
-                    // is gone. An account's own entry is listed for as long
-                    // as the account exists, and nothing announces it going,
-                    // so a removed account's tile stayed until a restart.
-                    void window.moho
-                      .rpc('removeAccount', { accountId: account.id })
-                      .then(() => Promise.all([store.refreshAccounts(), store.refreshBuffers(), store.refreshGroups()]))
-                      .catch((e: Error) => store.toast('error', e.message))
-                  }}
-                >
-                  <Icon name="delete" size={16} /> Remove
-                </button>
-                <button type="button" className="button subtle" autoFocus onClick={() => setConfirmingRemove(false)}>
-                  Keep it
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button type="button" className="button danger" onClick={() => setConfirmingRemove(true)}>
-              <Icon name="delete" size={16} /> Remove account
+          {/* Held for having logged in too often (see nobilis's identify_budget): said in full, with the way past it. */}
+          {held && (
+            <button
+              type="button"
+              className="button quiet"
+              title="Many fresh logins can get an account flagged as spam by Discord. This one is counted."
+              onClick={() => call('connectDiscordAnyway', { accountId: account.id })}
+            >
+              Connect anyway
             </button>
           )}
+          {account.service === 'discord' && account.state === 'auth_failed' && (
+            <button type="button" className="button primary" onClick={() => store.setDiscordReauth(account.id)}>
+              Sign in again
+            </button>
+          )}
+          {stoppedXmpp && tab !== 'service' && (
+            <button type="button" className="button primary" onClick={() => setTab('service')}>
+              Put it right
+            </button>
+          )}
+        </div>
+      )}
+
+      <Tabs tabs={tabs} value={tab} onChange={setTab} label="Account settings" />
+
+      <div key={tab} className="page-tab" role="tabpanel">
+        {tab === 'general' && (
+          <>
+            <section className="page-section">
+              <h4 className="section-label">How moho shows you</h4>
+              <div className="card card-fields">
+                {/* Local, and it says so: the service is never told, and being
+                    addressed is still decided against the name the service knows
+                    you by - so calling yourself "You" cannot stop anyone reaching
+                    you. It changes what moho calls you, mentions of you included. */}
+                <LabeledInput
+                  label="Display name"
+                  help="Only here. Mentions of you are shown with this name; who can ping you does not change."
+                  defaultValue={account.displayName}
+                  placeholder="What moho calls you here"
+                  onCommit={(name) => call('setAccountDisplayName', { accountId: account.id, name })}
+                />
+                {/* The other half of being addressed: your name is simply the one
+                    word everybody has. Per account rather than everywhere, because
+                    a word that means you on one network is somebody's ordinary
+                    vocabulary on another - the words that apply everywhere are in
+                    Settings. */}
+                <LabeledInput
+                  label="Highlight keywords"
+                  help="Separate them with commas. Whole words only, and case does not matter. They apply to messages that arrive after you add them."
+                  defaultValue={(account.highlightKeywords ?? []).join(', ')}
+                  placeholder="a project, a name you also answer to"
+                  onCommit={(words) =>
+                    call('setHighlightKeywords', {
+                      accountId: account.id,
+                      keywords: words.split(',')
+                    })
+                  }
+                />
+              </div>
+            </section>
+            <section className="page-section">
+              <h4 className="section-label danger">Remove</h4>
+              <RemoveAccount account={account} />
+            </section>
+          </>
+        )}
+
+        {tab === 'connection' && (
+          <>
+            {account.service === 'irc' && (
+              <section className="page-section">
+                <h4 className="section-label">Signing in</h4>
+                <div className="card card-fields">
+                  <LabeledInput
+                    label="Autojoin channels"
+                    help="Joined each time this account connects."
+                    defaultValue={account.autojoin}
+                    placeholder="#one,#two"
+                    onCommit={(channels) => call('setAccountAutojoin', { accountId: account.id, channels })}
+                  />
+                  <IrcSasl account={account} call={call} />
+                  <LabeledInput
+                    label="NickServ password"
+                    help="Sent to NickServ after connecting, for networks without SASL."
+                    type="password"
+                    placeholder={account.hasNickservPassword ? '(set)' : 'unset'}
+                    onCommit={(password) => call('setAccountNickservPassword', { accountId: account.id, password })}
+                  />
+                </div>
+              </section>
+            )}
+            {account.service === 'discord' && (
+              <section className="page-section">
+                <h4 className="section-label">Signing in</h4>
+                <div className="card">
+                  <DiscordReauth account={account} />
+                </div>
+              </section>
+            )}
+            {account.service === 'sneedchat' && (
+              <section className="page-section">
+                <h4 className="section-label">Signing in</h4>
+                <div className="card">
+                  <SneedChatBrowserLogin accountId={account.id} useTor={account.useTor} />
+                </div>
+              </section>
+            )}
+            <section className="page-section">
+              <h4 className="section-label">Where its traffic goes</h4>
+              <div className="card">{route}</div>
+            </section>
+          </>
+        )}
+
+        {tab === 'servers' && (
+          <section className="page-section">
+            <h4 className="section-label">Servers and channels</h4>
+            <div className="card">
+              <GroupIcons accountId={account.id} />
+              <HiddenAndMuted accountId={account.id} />
+            </div>
+          </section>
+        )}
+
+        {tab === 'ignored' && (
+          <section className="page-section">
+            <h4 className="section-label">People you ignore</h4>
+            <div className="card">
+              {/* Every service. Ignoring is cross-protocol and has been since
+                  #131; reading the list back was Matrix-only, which made it a
+                  setting somebody could switch on and never find again. */}
+              <IgnoreList account={account} showEmpty />
+            </div>
+          </section>
+        )}
+
+        {tab === 'service' && (
+          <section className="page-section">
+            <h4 className="section-label">{serviceTab}</h4>
+            <div className="card">
+              {account.service === 'matrix' && <MatrixAccountTools account={account} />}
+              {account.service === 'steam' && <SteamAccountTools account={account} />}
+              {account.service === 'stoat' && <StoatAccountTools account={account} />}
+              {account.service === 'signal' && <SignalAccountTools account={account} />}
+              {account.service === 'xmpp' && <XmppAccountTools account={account} />}
+              {account.service === 'twitch' && <TwitchAccountTools account={account} />}
+              {account.service === 'kick' && <KickFollowSync account={account} />}
+            </div>
+          </section>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Taking an account off. Asked first, in place: removing takes the saved
+ * sign-in, the history kept here and - for Matrix - this device's keys, and
+ * none of it comes back; it used to happen on the first click.
+ */
+function RemoveAccount({ account }: { account: Account }): JSX.Element {
+  const store = useStore()
+  const [confirming, setConfirming] = useState(false)
+  return (
+    <div className="card danger-zone">
+      {confirming ? (
+        <div className="remove-confirm" role="alertdialog" aria-label="Remove this account?">
+          <span>
+            Remove {account.displayName || account.id}? Its saved sign-in and the history kept here are deleted
+            {account.service === 'matrix' ? ', and so are this device’s keys, so encrypted history stays unreadable if you add it again' : ''}
+            .
+          </span>
+          <div className="field-row">
+            <button
+              type="button"
+              className="button danger"
+              onClick={() => {
+                // Its conversations and its rail entry with it, once it
+                // is gone. An account's own entry is listed for as long
+                // as the account exists, and nothing announces it going,
+                // so a removed account's tile stayed until a restart.
+                void window.moho
+                  .rpc('removeAccount', { accountId: account.id })
+                  .then(() => Promise.all([store.refreshAccounts(), store.refreshBuffers(), store.refreshGroups()]))
+                  .catch((e: Error) => store.toast('error', e.message))
+              }}
+            >
+              <Icon name="delete" size={16} /> Remove
+            </button>
+            <button type="button" className="button quiet" autoFocus onClick={() => setConfirming(false)}>
+              Keep it
+            </button>
           </div>
+        </div>
+      ) : (
+        <div className="setting-row">
+          <div className="setting-text">
+            <div>Remove this account from moho</div>
+            <div className="small muted">Deletes its saved sign-in and the history kept on this machine. The account itself is untouched.</div>
+          </div>
+          <button type="button" className="button danger-quiet" onClick={() => setConfirming(true)}>
+            <Icon name="delete" size={16} /> Remove account
+          </button>
         </div>
       )}
     </div>
@@ -708,30 +922,42 @@ function IrcSasl({
 
 function LabeledInput({
   label,
+  help,
   defaultValue,
   placeholder,
   type,
   onCommit
 }: {
   label: string
+  /** What the field means, under it: part of the field rather than a loose line after it. */
+  help?: string
   defaultValue?: string
   placeholder?: string
   type?: string
   onCommit: (value: string) => void
 }): JSX.Element {
   const [value, setValue] = useState(defaultValue ?? '')
+  const [saved, flash] = useSavedFlash()
+  const commit = (): void => {
+    onCommit(value)
+    flash()
+  }
   return (
     <label className="field">
-      <span className="small muted">{label}</span>
+      <span className="field-label">
+        {label}
+        <SavedMark shown={saved} />
+      </span>
       <input
         className="text-field"
         type={type}
         value={value}
         placeholder={placeholder}
         onChange={(e) => setValue(e.target.value)}
-        onBlur={() => value !== (defaultValue ?? '') && onCommit(value)}
-        onKeyDown={(e) => e.key === 'Enter' && onCommit(value)}
+        onBlur={() => value !== (defaultValue ?? '') && commit()}
+        onKeyDown={(e) => e.key === 'Enter' && commit()}
       />
+      {help && <span className="field-help">{help}</span>}
     </label>
   )
 }

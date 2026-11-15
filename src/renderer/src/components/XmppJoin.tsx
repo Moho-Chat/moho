@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useStore } from '../state/hooks'
+import { Initial, JoinAction, JoinRow, JoinSection } from './JoinParts'
 import type { Account } from '../../../shared/wire'
 
 /**
@@ -48,45 +49,58 @@ export function XmppJoin({ account }: { account: Account }): JSX.Element {
       .finally(() => setLooking(false))
   }
 
+  const address = (v: string): boolean => /^[^@\s]+@[^@\s]+$/.test(v.trim())
+
   return (
-    <div className="panel join-panel">
-      <span className="small muted">Add a contact</span>
-      <div className="field-row">
-        <input className="text-field" placeholder="friend@example.org" spellCheck={false} value={contact} disabled={!connected} onChange={(e) => setContact(e.target.value)} />
-        <input className="text-field" placeholder="Name (optional)" value={name} disabled={!connected} onChange={(e) => setName(e.target.value)} />
-        <button type="button" className="button" disabled={!connected || !/^[^@\s]+@[^@\s]+$/.test(contact.trim())} onClick={addContact}>
-          Add
-        </button>
-      </div>
-      <span className="small muted">Join a room, or make one by joining an address that is not taken</span>
-      <div className="field-row">
-        <input className="text-field" placeholder="room@conference.example.org" spellCheck={false} value={room} disabled={!connected} onChange={(e) => setRoom(e.target.value)} />
-        <input className="text-field" placeholder="Nickname" value={nick} disabled={!connected} onChange={(e) => setNick(e.target.value)} />
-        <input className="text-field" type="password" placeholder="Password (if it has one)" value={password} disabled={!connected} onChange={(e) => setPassword(e.target.value)} />
-        <button type="button" className="button" disabled={!connected || !/^[^@\s]+@[^@\s]+$/.test(room.trim())} onClick={() => join(room.trim(), nick.trim(), password)}>
-          Join
-        </button>
-      </div>
-      <span className="small muted">Rooms on your own server</span>
-      <div className="field-row">
-        <button type="button" className="button" disabled={!connected || looking} onClick={look}>
-          {looking ? 'Looking…' : 'Look'}
-        </button>
-      </div>
-      {rooms && rooms.length === 0 && <p className="small muted">Your server lists no public rooms.</p>}
-      {rooms && rooms.length > 0 && (
-        <ul className="plain-list">
-          {rooms.map((r) => (
-            <li key={r.jid} className="field-row">
-              <span className="ellipsis">{r.name || r.jid}</span>
-              <span className="small muted ellipsis">{r.jid}</span>
-              <button type="button" className="button small" onClick={() => join(r.jid)}>
-                Join
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <>
+      <JoinSection kind="people">
+        <JoinAction icon="person_add" title="Add a contact" help="Asks them to share presence with you; they answer from their own client.">
+          <div className="action-field">
+            <input className="text-field" placeholder="friend@example.org" spellCheck={false} value={contact} disabled={!connected} onChange={(e) => setContact(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && address(contact) && addContact()} />
+            <input className="text-field action-field-minor" placeholder="Name (optional)" value={name} disabled={!connected} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && address(contact) && addContact()} />
+            <button type="button" className="button primary" disabled={!connected || !address(contact)} onClick={addContact}>
+              Add contact
+            </button>
+          </div>
+        </JoinAction>
+      </JoinSection>
+
+      <JoinSection kind="join">
+        <JoinAction icon="tag" title="Join a room" help="By its address. Joining an address that is not taken makes the room.">
+          <input className="text-field" placeholder="room@conference.example.org" spellCheck={false} value={room} disabled={!connected} onChange={(e) => setRoom(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && address(room) && join(room.trim(), nick.trim(), password)} />
+          <div className="action-field">
+            <input className="text-field" placeholder="Nickname" value={nick} disabled={!connected} onChange={(e) => setNick(e.target.value)} />
+            <input className="text-field" type="password" placeholder="Password (if it has one)" value={password} disabled={!connected} onChange={(e) => setPassword(e.target.value)} />
+            <button type="button" className="button primary" disabled={!connected || !address(room)} onClick={() => join(room.trim(), nick.trim(), password)}>
+              Join
+            </button>
+          </div>
+        </JoinAction>
+      </JoinSection>
+
+      <JoinSection kind="browse">
+        <JoinAction
+          icon="travel_explore"
+          title="Rooms on your own server"
+          help={
+            rooms && rooms.length === 0
+              ? 'Your server lists no public rooms.'
+              : 'XMPP has no directory of the whole network: this is what the server your account is on says it hosts.'
+          }
+          aside={
+            <button type="button" className={rooms ? 'button quiet' : 'button primary'} disabled={!connected || looking} onClick={look}>
+              {looking ? 'Looking…' : rooms ? 'Look again' : 'Look'}
+            </button>
+          }
+        />
+        {rooms?.map((r) => (
+          <JoinRow key={r.jid} face={<Initial name={r.name || r.jid} />} name={r.name || r.jid} sub={r.jid}>
+            <button type="button" className="button quiet small" onClick={() => join(r.jid)}>
+              Join
+            </button>
+          </JoinRow>
+        ))}
+      </JoinSection>
+    </>
   )
 }

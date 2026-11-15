@@ -81,6 +81,13 @@
   --go: #248046;
   --go-hover: #1a6334;
 
+  /* How an account is doing (#339): up, on its way, turned away, switched
+     off. The same four wherever an account is listed. */
+  --state-ok: #3dbb6c;
+  --state-busy: #e3a53a;
+  --state-bad: var(--danger-text);
+  --state-off: #7d848e;
+
   /* Text on a coloured fill or over a picture, where the theme's own text
      colour would vanish. */
   --on-accent: #ffffff;
@@ -188,7 +195,9 @@
   --rail-width: 56px;
   --sidebar-width: 220px;
   --nicklist-width: 180px;
-  --settings-rail-width: 130px;
+  --settings-rail-width: 184px;
+  /* The list of accounts beside the page for the one chosen. */
+  --master-list-width: 256px;
 }
 
 * {

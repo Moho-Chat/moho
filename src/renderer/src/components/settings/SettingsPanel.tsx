@@ -13,11 +13,11 @@ import {
   useSavedFlash
 } from './controls'
 import { useChat, usePref, useStore } from '../../state/hooks'
-import { Icon } from '../Icon'
+import { Icon, ServiceMark } from '../Icon'
 import { acceleratorLabel, acceleratorOf } from '../../lib/accelerator'
 import { AccountsPanel } from '../AccountsPanel'
 import { DownloadsPanel } from '../DownloadsPanel'
-import { humanBytes } from '../../lib/util'
+import { humanBytes, serviceIcon } from '../../lib/util'
 import { DEFAULT_SEARCH_ENGINE, SEARCH_ENGINES, validTemplate } from '../../lib/searchengines'
 import { TunnelAllSwitch, useNetSettings } from './Tunnel'
 import type { Account, DccPrefs } from '../../../../shared/wire'
@@ -117,21 +117,21 @@ const CATEGORIES: { id: string; label: string; group: string; icon?: string; ser
   { id: 'accounts', label: 'Accounts', group: 'Personal', icon: 'manage_accounts' },
   { id: 'downloads', label: 'Downloads', group: 'Personal', icon: 'download' },
   // The app itself.
-  { id: 'general', label: 'General', group: 'App' },
-  { id: 'appearance', label: 'Appearance', group: 'App' },
-  { id: 'notifications', label: 'Notifications', group: 'App' },
-  { id: 'keybinds', label: 'Keybinds', group: 'App' },
+  { id: 'general', label: 'General', group: 'App', icon: 'tune' },
+  { id: 'appearance', label: 'Appearance', group: 'App', icon: 'palette' },
+  { id: 'notifications', label: 'Notifications', group: 'App', icon: 'notifications' },
+  { id: 'keybinds', label: 'Keybinds', group: 'App', icon: 'keyboard' },
   // One page per network, each only while there is an account on it.
   { id: 'irc', label: 'IRC', group: 'Networks', service: 'irc' },
   { id: 'sneedchat', label: 'Sneedchat', group: 'Networks', service: 'sneedchat' },
-  { id: 'tor', label: 'Tor', group: 'Networks' },
+  { id: 'tor', label: 'Tor', group: 'Networks', icon: 'vpn_lock' },
   { id: 'discord', label: 'Discord', group: 'Networks', service: 'discord' },
   { id: 'matrix', label: 'Matrix', group: 'Networks', service: 'matrix' },
   { id: 'kick', label: 'Kick', group: 'Networks', service: 'kick' },
   { id: 'twitch', label: 'Twitch', group: 'Networks', service: 'twitch' },
   { id: 'telegram', label: 'Telegram', group: 'Networks', service: 'telegram' },
   { id: 'stoat', label: 'Stoat', group: 'Networks', service: 'stoat' },
-  { id: 'about', label: 'About', group: 'About' }
+  { id: 'about', label: 'About', group: 'About', icon: 'info' }
 ]
 
 /**
@@ -355,6 +355,10 @@ export function SettingsPanel({ page = 'settings' }: { page?: 'settings' | 'acco
                   className={`settings-rail-item${!searching && current === c.id ? ' active' : ''}`}
                   onClick={() => go(c.id)}
                 >
+                  {/* A network's page wears the network's own mark; the rest a glyph. */}
+                  <span className="settings-rail-icon">
+                    {c.service ? <ServiceMark icon={serviceIcon(c.service)} size={16} /> : <Icon name={c.icon ?? 'settings'} size={18} />}
+                  </span>
                   {c.label}
                 </button>
               ))}
@@ -382,7 +386,11 @@ export function SettingsPanel({ page = 'settings' }: { page?: 'settings' | 'acco
               <NoMatches />
             </>
           ) : (
-            <Page id={selected} />
+            // Keyed, so going to another page is that page arriving.
+            <div key={selected} data-page={selected}>
+              <h2 className="page-title settings-title">{shown.find((c) => c.id === selected)?.label}</h2>
+              <Page id={selected} />
+            </div>
           ))}
       </div>
     </div>

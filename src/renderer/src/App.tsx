@@ -72,9 +72,7 @@ export default function App(): JSX.Element {
   const activeGroupId = useChat((s) => s.activeGroupId)
   // A stream being watched, which walks away the same way a call does.
   const watching = useChat((s) => s.watching)
-  const joinPanelAccountId = useChat((s) => s.joinPanelAccountId)
   const buffer = useActiveBuffer()
-  const joinAccount = accounts.find((a) => a.id === joinPanelAccountId)
   // Shown in the corner only when the conversation it belongs to is not the
   // one being read - and not while a panel is covering the log either, since
   // that is walking away from it too.
@@ -211,7 +209,7 @@ export default function App(): JSX.Element {
       : activePanel === 'accounts' || activePanel === 'settings' || activePanel === 'downloads'
         ? 'Settings'
         : activePanel === 'join'
-        ? `Join · ${joinAccount?.displayName ?? ''}`
+        ? 'Add or join'
         : onMentionsPage
           ? 'Mentions'
           : buffer

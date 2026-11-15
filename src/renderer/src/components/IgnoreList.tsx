@@ -17,7 +17,7 @@ import type { Account } from '../../../shared/wire'
  * there is one, its own where there is not - so the only thing that differs
  * here is the sentence explaining how far the ignore reaches.
  */
-export function IgnoreList({ account }: { account: Account }): JSX.Element | null {
+export function IgnoreList({ account, showEmpty }: { account: Account; showEmpty?: boolean }): JSX.Element | null {
   const store = useStore()
   const ignored = useChat((s) => s.ignoredByAccount)[account.id] || []
 
@@ -27,7 +27,17 @@ export function IgnoreList({ account }: { account: Account }): JSX.Element | nul
 
   // Nothing to show and nothing to explain. An empty list under a heading
   // reads as a feature that is not working rather than as an empty list.
-  if (ignored.length === 0) return null
+  if (ignored.length === 0) {
+    // On a page of its own, an empty list is said to be empty, and how to fill it.
+    return showEmpty ? (
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Nobody is ignored on this account</div>
+          <div className="small muted">Right-click somebody's name or message to ignore them. They are listed here, with the way back.</div>
+        </div>
+      </div>
+    ) : null
+  }
 
   return (
     <>

@@ -3,10 +3,11 @@ import { useMediaUrl } from '../lib/route'
 import { SwitchRow } from './Switch'
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
+import { AccountFace, AccountList, MasterDetail, StatePill, accountWhere, askAccountsFor } from './AccountList'
+import { ActionField, Initial, JoinAction, JoinListHead, JoinRow, JoinSection } from './JoinParts'
 import { ContextMenu } from './ContextMenu'
 import { RoomSearch } from './RoomSearch'
 import { useChat, useStore } from '../state/hooks'
-import { classes, serviceLabel } from '../lib/util'
 import { steamGroupInviteCode } from '../lib/steamchat'
 import type { Account, DiscordFriend } from '../../../shared/wire'
 
@@ -46,24 +47,42 @@ const ON_DISCORD_ONLY: { label: string; icon: string; why: string }[] = [
   }
 ]
 
+/** The services this pane has a page for. */
+const JOINABLE = ['irc', 'matrix', 'discord', 'kick', 'sneedchat', 'steam', 'twitch', 'telegram', 'stoat', 'xmpp', 'signal']
+
 /**
- * Per-protocol join pages rather than one generic "join by name" field: each
- * service's mechanism is genuinely different (IRC joins by channel name,
- * Discord accepts an invite, Matrix takes a room id or alias, Kick names a
- * streamer, Sneedchat's rooms are a fixed set edited in Settings), and
- * flattening them into one box would just mean a field that silently means
- * five things.
+ * The "+" pane: every account down the left, and what can be added or joined
+ * on the chosen one on the right (#339).
  *
- * The page always targets the single account whose "+" was clicked, so there
- * is no account picker here.
+ * Per-protocol pages rather than one generic "join by name" field: each
+ * service's mechanism is genuinely different (IRC joins by channel name,
+ * Matrix takes a room id or alias, Kick names a streamer, Signal a username),
+ * and flattening them into one box would just mean a field that silently
+ * means five things. What they share is their shape - the same sections in
+ * the same order, built from the parts in JoinParts.
+ *
+ * It opens on the account whose "+" was clicked. Which account it is for used
+ * to be a row of chips reading "salastil · IRC" three times over; it is the
+ * same list Settings → Accounts shows now, with the network and the state.
  */
 export function JoinPanel(): JSX.Element {
   const accountId = useChat((s) => s.joinPanelAccountId)
-  const account = useChat((s) => s.accounts).find((a) => a.id === accountId)
-
-  const store = useStore()
   const all = useChat((s) => s.accounts)
+  const store = useStore()
+  // In a narrow window the list and the page are two steps. It opens on the
+  // page, since the account is already decided; the way back shows the list.
+  const [picking, setPicking] = useState(false)
+
+  const joinable = all.filter((a) => JOINABLE.includes(a.service))
+  const account = all.find((a) => a.id === accountId) ?? joinable[0]
   if (!account) return <div className="panel muted">No account selected.</div>
+
+  const call = (connected: boolean): void => {
+    void window.moho
+      .rpc('setAccountConnected', { accountId: account.id, connected })
+      .then(() => store.refreshAccounts())
+      .catch((e: Error) => store.toast('error', e.message))
+  }
 
   const body = ((): JSX.Element => {
     switch (account.service) {
@@ -90,91 +109,111 @@ export function JoinPanel(): JSX.Element {
       case 'steam':
         return <SteamJoin account={account} />
       default:
-        return <div className="panel muted">Joining isn&apos;t supported for this service yet.</div>
+        return <p className="muted">Joining isn&apos;t supported for this service yet.</p>
     }
   })()
-  const joinable = all.filter((a) => ['irc', 'matrix', 'discord', 'kick', 'sneedchat', 'steam', 'twitch', 'telegram', 'stoat', 'xmpp', 'signal'].includes(a.service))
+
+  const offline = account.state !== 'connected' && account.state !== 'connecting'
 
   return (
-    <div className="join-frame">
-      {/* Which account this is for, first: it decides everything below it,
-          and was only ever the one selected in the footer. */}
-      {joinable.length > 1 && (
-        <div className="join-picker" role="radiogroup" aria-label="Join on">
-          <span className="small muted">Join on</span>
-          {joinable.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              role="radio"
-              aria-checked={a.id === account.id}
-              className={`service-chip${a.id === account.id ? ' active' : ''}`}
-              onClick={() => store.setActivePanel('join', a.id)}
-            >
-              {a.displayName || a.id}
-              <span className="small muted"> · {serviceLabel(a.service)}</span>
+    <MasterDetail
+      chosen={!picking}
+      onBack={() => setPicking(true)}
+      backLabel="Accounts"
+      pageKey={account.id}
+      list={
+        <AccountList
+          accounts={joinable}
+          selected={account.id}
+          onSelect={(id) => {
+            setPicking(false)
+            store.setActivePanel('join', id)
+          }}
+          label="Add or join on"
+        >
+          {/* "+" is where somebody looks for this, whatever page it lives on. */}
+          <button
+            type="button"
+            data-add-account
+            className="account-list-add"
+            onClick={() => {
+              askAccountsFor({ add: true })
+              store.setActivePanel('accounts')
+            }}
+          >
+            <span className="account-list-add-mark">
+              <Icon name="add" size={18} />
+            </span>
+            Add an account
+          </button>
+        </AccountList>
+      }
+    >
+      <div className="page join-page">
+        <header className="page-head">
+          <AccountFace account={account} size={48} />
+          <div className="page-head-text">
+            <h2 className="page-title ellipsis">{account.displayName || account.id}</h2>
+            <p className="page-sub">
+              <StatePill account={account} />
+              <span className="ellipsis">{accountWhere(account)}</span>
+            </p>
+          </div>
+          <button
+            type="button"
+            className="button quiet"
+            title="This account's settings"
+            onClick={() => {
+              askAccountsFor({ accountId: account.id })
+              store.setActivePanel('accounts')
+            }}
+          >
+            <Icon name="settings" size={16} /> Account
+          </button>
+        </header>
+        {/* Nearly everything below needs the connection, so it is said once, here, with the way to get one. */}
+        {offline && (
+          <div className="page-banner tone-off" role="status">
+            <Icon name="cloud_off" size={20} />
+            <div className="page-banner-text">
+              <div className="page-banner-title">This account is not connected</div>
+              <div className="page-banner-detail">Joining and messaging need it online.</div>
+            </div>
+            <button type="button" className="button primary" onClick={() => call(true)}>
+              Connect
             </button>
-          ))}
-        </div>
-      )}
-      {body}
-    </div>
-  )
-}
-
-/** A labelled field that fires on Enter and clears itself. */
-function SubmitField({
-  label,
-  placeholder,
-  onSubmit
-}: {
-  label: string
-  placeholder: string
-  onSubmit: (value: string) => void
-}): JSX.Element {
-  const [value, setValue] = useState('')
-  const submit = (): void => {
-    if (!value.trim()) return
-    onSubmit(value.trim())
-    setValue('')
-  }
-  return (
-    <div className="field">
-      <span className="small muted">{label}</span>
-      <div className="field-row">
-        <input
-          className="text-field"
-          placeholder={placeholder}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-        />
-        <button type="button" className="button" onClick={submit} disabled={!value.trim()}>
-          Join
-        </button>
+          </div>
+        )}
+        {body}
       </div>
-    </div>
+    </MasterDetail>
   )
 }
 
 function IrcJoin({ account }: { account: Account }): JSX.Element {
   const store = useStore()
   return (
-    <div className="panel join-panel">
-      <SubmitField
-        label="Join a channel"
-        placeholder="#channel"
-        onSubmit={(name) => void store.joinAndOpen(account.id, name)}
-      />
-      <SubmitField
-        label="Message someone"
-        placeholder="nick"
-        // IRC has no "open a DM" call - a query buffer only exists once
-        // something is sent, so this joins a buffer named for the nick.
-        onSubmit={(nick) => void store.joinAndOpen(account.id, nick)}
-      />
-      <IrcChannelBrowser account={account} />
-    </div>
+    <>
+      <JoinSection kind="people">
+        <JoinAction icon="chat" title="Message someone" help="Opens a private conversation with a nick on this network.">
+          <ActionField
+            placeholder="nick"
+            verb="Message"
+            // IRC has no "open a DM" call - a query buffer only exists once
+            // something is sent, so this joins a buffer named for the nick.
+            onSubmit={(nick) => void store.joinAndOpen(account.id, nick)}
+          />
+        </JoinAction>
+      </JoinSection>
+      <JoinSection kind="join">
+        <JoinAction icon="tag" title="Join a channel" help="By its name. A channel nobody is in yet is made by joining it.">
+          <ActionField placeholder="#channel" verb="Join" onSubmit={(name) => void store.joinAndOpen(account.id, name)} />
+        </JoinAction>
+      </JoinSection>
+      <JoinSection kind="browse">
+        <IrcChannelBrowser account={account} />
+      </JoinSection>
+    </>
   )
 }
 
@@ -278,42 +317,45 @@ function IrcChannelBrowser({ account }: { account: Account }): JSX.Element {
   }
 
   return (
-    <div className="field">
-      <span className="small muted">Browse the network&apos;s channels</span>
-      <div className="field-row">
-        <input
-          className="text-field"
-          placeholder={directory ? 'filter by name or topic' : 'ask the server for its list first'}
-          value={filter}
-          disabled={!directory}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-        {asking ? (
-          <button type="button" className="button subtle" onClick={stopWaiting}>
+    <JoinAction
+      icon="travel_explore"
+      title="The network's channels"
+      help={
+        directory
+          ? `${directory.total.toLocaleString()} channels, busiest first${
+              directory.matching !== directory.total ? ` — ${directory.matching.toLocaleString()} matching` : ''
+            }${directory.matching > directory.channels.length ? `; the busiest ${directory.channels.length} shown` : ''}`
+          : 'Asked for rather than shown: a big network answers with tens of thousands, and some refuse.'
+      }
+      aside={
+        asking ? (
+          <button type="button" className="button quiet" onClick={stopWaiting}>
             Stop waiting
           </button>
         ) : (
-          <button type="button" className="button" disabled={!serverBuffer} onClick={ask}>
+          <button type="button" className={directory ? 'button quiet' : 'button primary'} disabled={!serverBuffer} onClick={ask}>
+            <Icon name={directory ? 'refresh' : 'list'} size={16} />
             {directory ? 'Refresh' : 'List channels'}
           </button>
-        )}
-      </div>
-
+        )
+      }
+    >
       {asking && (
-        <p className="small muted">
+        <p className="small muted join-note">
           <span className="spinner" /> Asking the network. A busy one can take a minute to answer, and some refuse the
           request entirely.
         </p>
       )}
-      {problem && <p className="small error-text">{problem}</p>}
+      {problem && <p className="small error-text join-note">{problem}</p>}
 
       {directory && (
         <>
-          <p className="small muted">
-            {directory.total.toLocaleString()} channels, busiest first
-            {directory.matching !== directory.total ? ` — ${directory.matching.toLocaleString()} matching` : ''}
-            {directory.matching > directory.channels.length ? `; the busiest ${directory.channels.length} shown` : ''}
-          </p>
+          <input
+            className="text-field"
+            placeholder="Filter by name or topic"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
           <div className="channel-browser">
             {directory.channels.map((c) => (
               <button
@@ -331,7 +373,7 @@ function IrcChannelBrowser({ account }: { account: Account }): JSX.Element {
           </div>
         </>
       )}
-    </div>
+    </JoinAction>
   )
 }
 
@@ -358,34 +400,30 @@ function join(accountId: string, name: string, store: ReturnType<typeof useStore
 function KickJoin({ account }: { account: Account }): JSX.Element {
   const store = useStore()
   return (
-    <div className="panel join-panel">
-      <SubmitField
-        label="Watch a streamer's chat"
-        placeholder="handle, or a kick.com link"
-        onSubmit={(name) => void store.joinAndOpen(account.id, name)}
-      />
-      <p className="small muted">
-        Kick chat is public, so this works signed out. Signing in adds talking, and your
-        subscriber emotes for the channels you subscribe to.
-      </p>
-    </div>
+    <JoinSection kind="join">
+      <JoinAction
+        icon="live_tv"
+        title="Open a streamer's chat"
+        help="Kick chat is public, so this works signed out. Signing in adds talking, and your subscriber emotes for the channels you subscribe to."
+      >
+        <ActionField placeholder="handle, or a kick.com link" verb="Open" onSubmit={(name) => void store.joinAndOpen(account.id, name)} />
+      </JoinAction>
+    </JoinSection>
   )
 }
 
 function TwitchJoin({ account }: { account: Account }): JSX.Element {
   const store = useStore()
   return (
-    <div className="panel join-panel">
-      <SubmitField
-        label="Open a streamer's chat"
-        placeholder="channel name, or a twitch.tv link"
-        onSubmit={(name) => void store.joinAndOpen(account.id, name)}
-      />
-      <p className="small muted">
-        Twitch chat is public, so this works without signing in. Signing in adds talking and the
-        channels you follow. A channel that does not exist is said so and not kept.
-      </p>
-    </div>
+    <JoinSection kind="join">
+      <JoinAction
+        icon="live_tv"
+        title="Open a streamer's chat"
+        help="Twitch chat is public, so this works without signing in. Signing in adds talking and the channels you follow. A channel that does not exist is said so and not kept."
+      >
+        <ActionField placeholder="channel name, or a twitch.tv link" verb="Open" onSubmit={(name) => void store.joinAndOpen(account.id, name)} />
+      </JoinAction>
+    </JoinSection>
   )
 }
 
@@ -439,83 +477,71 @@ function StoatJoin({ account }: { account: Account }): JSX.Element {
       .finally(() => setBusy(false))
   }
   return (
-    <div className="panel join-panel">
-      <SubmitField
-        label="Join a server"
-        placeholder="An invite link, or its code"
-        onSubmit={(code) => void store.joinAndOpen(account.id, code)}
-      />
-      <span className="small muted">Add a friend</span>
-      <div className="field-row">
-        <input
-          className="text-field"
-          placeholder="Their name and number, like name#1234"
-          spellCheck={false}
-          autoComplete="off"
-          value={friend}
-          disabled={!connected || busy}
-          onChange={(e) => setFriend(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') ask()
-          }}
-        />
-        <button type="button" className="button" disabled={!connected || busy || !friend.trim()} onClick={ask}>
-          Add friend
-        </button>
-      </div>
-      <p className="small muted">
-        Somebody who asks to be your friend waits as a tile in the server list, where you answer. Closing a server
-        from its menu leaves it, unless you own it.
-      </p>
+    <>
+      <JoinSection kind="people">
+        <JoinAction
+          icon="person_add"
+          title="Add a friend"
+          help="Somebody who asks to be your friend waits as a tile in the server list, where you answer."
+        >
+          <ActionField
+            placeholder="Their name and number, like name#1234"
+            verb="Add friend"
+            value={friend}
+            onChange={setFriend}
+            keep
+            disabled={!connected}
+            busy={busy}
+            onSubmit={ask}
+          />
+        </JoinAction>
+        {people.friends.length > 0 && (
+          <>
+            <JoinListHead>Friends</JoinListHead>
+            {people.friends.map((p) => (
+              <JoinRow key={p.id} face={<Initial name={label(p)} />} name={label(p)} sub={p.statusText || (p.online ? 'Online' : 'Offline')}>
+                <button type="button" className="button quiet small" onClick={() => void store.openDirectMessage(account.id, p.id, label(p))}>
+                  Message
+                </button>
+                <button type="button" className="button quiet small" onClick={() => act('answerStoatFriendRequest', { userId: p.id, accept: false }, `Removed ${label(p)}`)}>
+                  Remove
+                </button>
+              </JoinRow>
+            ))}
+          </>
+        )}
+        {people.outgoing.length > 0 && (
+          <>
+            <JoinListHead>Waiting for them to accept</JoinListHead>
+            {people.outgoing.map((p) => (
+              <JoinRow key={p.id} face={<Initial name={label(p)} />} name={label(p)}>
+                <button type="button" className="button quiet small" onClick={() => act('answerStoatFriendRequest', { userId: p.id, accept: false })}>
+                  Cancel request
+                </button>
+              </JoinRow>
+            ))}
+          </>
+        )}
+      </JoinSection>
 
-      {people.friends.length > 0 && (
-        <>
-          <span className="small muted">Friends</span>
-          {people.friends.map((p) => (
-            <div key={p.id} className="field-row">
-              <span className="grow ellipsis" title={p.statusText || undefined}>
-                {label(p)}
-                {p.online ? '' : ' (offline)'}
-              </span>
-              <button type="button" className="button subtle small" onClick={() => void store.openDirectMessage(account.id, p.id, label(p))}>
-                Message
-              </button>
-              <button type="button" className="button subtle small" onClick={() => act('answerStoatFriendRequest', { userId: p.id, accept: false }, `Removed ${label(p)}`)}>
-                Remove
-              </button>
-            </div>
-          ))}
-        </>
-      )}
-
-      {people.outgoing.length > 0 && (
-        <>
-          <span className="small muted">Waiting for them to accept</span>
-          {people.outgoing.map((p) => (
-            <div key={p.id} className="field-row">
-              <span className="grow ellipsis">{label(p)}</span>
-              <button type="button" className="button subtle small" onClick={() => act('answerStoatFriendRequest', { userId: p.id, accept: false })}>
-                Cancel request
-              </button>
-            </div>
-          ))}
-        </>
-      )}
+      <JoinSection kind="join">
+        <JoinAction icon="login" title="Join a server" help="Closing a server from its menu leaves it, unless you own it.">
+          <ActionField placeholder="An invite link, or its code" verb="Join" onSubmit={(code) => void store.joinAndOpen(account.id, code)} />
+        </JoinAction>
+      </JoinSection>
 
       {people.blocked.length > 0 && (
-        <>
-          <span className="small muted">Blocked</span>
+        <JoinSection kind="manage" label="Blocked">
           {people.blocked.map((p) => (
-            <div key={p.id} className="field-row">
-              <span className="grow ellipsis">{label(p)}</span>
-              <button type="button" className="button subtle small" disabled={!connected} onClick={() => act('stoatBlock', { userId: p.id, block: false }, `Unblocked ${label(p)}`)}>
+            <JoinRow key={p.id} face={<Initial name={label(p)} />} name={label(p)}>
+              <button type="button" className="button quiet small" disabled={!connected} onClick={() => act('stoatBlock', { userId: p.id, block: false }, `Unblocked ${label(p)}`)}>
                 Unblock
               </button>
-            </div>
+            </JoinRow>
           ))}
-        </>
+        </JoinSection>
       )}
-    </div>
+    </>
   )
 }
 
@@ -536,18 +562,15 @@ interface StoatPeople {
 function TelegramJoin({ account }: { account: Account }): JSX.Element {
   const store = useStore()
   return (
-    <div className="panel join-panel">
-      <SubmitField
-        label="Join a chat, or open a conversation"
-        placeholder="@name, or a t.me link"
-        onSubmit={(name) => void store.joinAndOpen(account.id, name)}
-      />
-      <p className="small muted">
-        A public group or channel is joined by its @name or t.me link, a private one by the invite link
-        somebody gave you, and a person's @name opens a conversation with them. Telegram may ask an
-        administrator to accept a request to join. Closing a chat in the list leaves it.
-      </p>
-    </div>
+    <JoinSection kind="join">
+      <JoinAction
+        icon="alternate_email"
+        title="Join a chat, or message someone"
+        help="A public group or channel is joined by its @name or t.me link, a private one by the invite link somebody gave you, and a person's @name opens a conversation with them. Telegram may ask an administrator to accept a request to join. Closing a chat in the list leaves it."
+      >
+        <ActionField placeholder="@name, or a t.me link" verb="Open" onSubmit={(name) => void store.joinAndOpen(account.id, name)} />
+      </JoinAction>
+    </JoinSection>
   )
 }
 
@@ -619,62 +642,65 @@ function SignalJoin({ account }: { account: Account }): JSX.Element {
   }
 
   return (
-    <div className="panel join-panel">
-      <SubmitField
-        label="Message somebody"
-        placeholder="Their username, like name.42, or their number with its country code"
-        onSubmit={(who) => void store.openDirectMessage(account.id, who, who)}
-      />
-      <p className="small muted">
-        Somebody who has not accepted you yet sees your first message as a request. A number nobody has given this
-        account cannot be looked up from here: ask for their username, or start the chat from your phone.
-      </p>
+    <>
+      <JoinSection kind="people">
+        <JoinAction
+          icon="chat"
+          title="Message somebody"
+          help="Somebody who has not accepted you yet sees your first message as a request. A number nobody has given this account cannot be looked up from here: ask for their username, or start the chat from your phone."
+        >
+          <ActionField
+            placeholder="Their username, like name.42, or their number with its country code"
+            verb="Message"
+            onSubmit={(who) => void store.openDirectMessage(account.id, who, who)}
+          />
+        </JoinAction>
+      </JoinSection>
 
-      <div className="field">
-        <span className="small muted">Join a group by its link</span>
-        <div className="field-row">
-          <input
-            className="text-field"
+      <JoinSection kind="join">
+        <JoinAction
+          icon="link"
+          title="Join a group by its link"
+          help={
+            preview
+              ? `${preview.title} · ${preview.memberCount} ${preview.memberCount === 1 ? 'member' : 'members'}${preview.needsApproval ? ' · an admin approves who joins' : ''}`
+              : 'The link is looked at first, so you see what it is before joining.'
+          }
+        >
+          <ActionField
             placeholder="https://signal.group/#…"
-            spellCheck={false}
+            verb={preview ? (preview.needsApproval ? 'Ask to join' : 'Join') : 'Look'}
             value={link}
-            disabled={busy}
-            onChange={(e) => {
-              setLink(e.target.value)
+            onChange={(v) => {
+              setLink(v)
               setPreview(null)
             }}
-            onKeyDown={(e) => e.key === 'Enter' && link.trim() && void look()}
+            keep
+            busy={busy}
+            onSubmit={() => void (preview ? join() : look())}
           />
-          <button type="button" className="button" disabled={busy || !link.trim()} onClick={() => void (preview ? join() : look())}>
-            {preview ? (preview.needsApproval ? 'Ask to join' : 'Join') : 'Look'}
-          </button>
-        </div>
-        {preview && (
-          <p className="small muted">
-            {preview.title} · {preview.memberCount} {preview.memberCount === 1 ? 'member' : 'members'}
-            {preview.needsApproval ? ' · an admin approves who joins' : ''}
-          </p>
-        )}
-      </div>
+        </JoinAction>
+      </JoinSection>
 
-      <div className="field">
-        <span className="small muted">Make a group</span>
-        <input className="text-field" placeholder="Its name" value={groupName} disabled={busy} onChange={(e) => setGroupName(e.target.value)} />
-        <div className="field-row">
-          <input
-            className="text-field"
-            placeholder="Who is in it: usernames, separated by commas"
-            value={members}
-            disabled={busy}
-            onChange={(e) => setMembers(e.target.value)}
-          />
-          <button type="button" className="button" disabled={busy || !groupName.trim()} onClick={() => void create()}>
-            Make
-          </button>
-        </div>
-        <p className="small muted">You are its admin. Anybody who cannot be added straight away is invited instead.</p>
-      </div>
-    </div>
+      <JoinSection kind="create">
+        <JoinAction icon="group_add" title="Make a group" help="You are its admin. Anybody who cannot be added straight away is invited instead.">
+          <input className="text-field" placeholder="Its name" value={groupName} disabled={busy} onChange={(e) => setGroupName(e.target.value)} />
+          <div className="action-field">
+            <input
+              className="text-field"
+              placeholder="Who is in it: usernames, separated by commas"
+              value={members}
+              disabled={busy}
+              onChange={(e) => setMembers(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && groupName.trim() && void create()}
+            />
+            <button type="button" className="button primary" disabled={busy || !groupName.trim()} onClick={() => void create()}>
+              Make group
+            </button>
+          </div>
+        </JoinAction>
+      </JoinSection>
+    </>
   )
 }
 
@@ -830,119 +856,107 @@ function SteamJoin({ account }: { account: Account }): JSX.Element {
   }
 
   return (
-    <div className="panel join-panel">
-      <span className="small muted">Add a friend</span>
-      <div className="field-row">
-        <input
-          className="text-field"
-          placeholder="Account name, Steam id, friend code or invite link"
-          spellCheck={false}
-          autoComplete="off"
-          value={target}
-          disabled={!connected || busy}
-          onChange={(e) => setTarget(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') ask()
-          }}
-        />
-        <button type="button" className="button" disabled={!connected || busy || !target.trim()} onClick={ask}>
-          Add friend
-        </button>
-      </div>
-      {!connected && <p className="small muted">Friends can be added once this account is connected.</p>}
+    <>
+      <JoinSection kind="people">
+        <JoinAction
+          icon="person_add"
+          title="Add a friend"
+          help={connected ? 'Those who have asked you wait as tiles in the server list, where you answer.' : 'Friends can be added once this account is connected.'}
+        >
+          <ActionField
+            placeholder="Account name, Steam id, friend code or invite link"
+            verb="Add friend"
+            value={target}
+            onChange={setTarget}
+            keep
+            disabled={!connected}
+            busy={busy}
+            onSubmit={ask}
+          />
+        </JoinAction>
+        {requests.outgoing.length > 0 && (
+          <>
+            <JoinListHead>Waiting for them to accept</JoinListHead>
+            {requests.outgoing.map((p) => (
+              <JoinRow key={p.steamid} face={<Initial name={label(p)} />} name={label(p)}>
+                <button type="button" className="button quiet small" onClick={() => withdraw(p)}>
+                  Cancel request
+                </button>
+              </JoinRow>
+            ))}
+          </>
+        )}
+      </JoinSection>
 
-      <span className="small muted">Join a group</span>
-      <div className="field-row">
-        <input
-          className="text-field"
-          placeholder="An invite link, like s.team/chat/…"
-          spellCheck={false}
-          autoComplete="off"
-          value={groupLink}
-          disabled={!connected || busy}
-          onChange={(e) => setGroupLink(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') joinGroup()
-          }}
-        />
-        <button type="button" className="button" disabled={!connected || busy || !groupLink.trim()} onClick={joinGroup}>
-          Join
-        </button>
-      </div>
-      <span className="small muted">Start a group</span>
-      <div className="field-row">
-        <input
-          className="text-field"
-          placeholder="A name for it"
-          value={groupName}
-          disabled={!connected || busy}
-          onChange={(e) => setGroupName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') makeGroup()
-          }}
-        />
-        <button type="button" className="button" disabled={!connected || busy || !groupName.trim()} onClick={makeGroup}>
-          Create
-        </button>
-      </div>
+      <JoinSection kind="join">
+        <JoinAction icon="group" title="Join a group" help="By the invite link somebody gave you.">
+          <ActionField
+            placeholder="An invite link, like s.team/chat/…"
+            verb="Join"
+            value={groupLink}
+            onChange={setGroupLink}
+            keep
+            disabled={!connected}
+            busy={busy}
+            onSubmit={joinGroup}
+          />
+        </JoinAction>
+      </JoinSection>
 
-      {requests.outgoing.length > 0 && (
-        <>
-          <span className="small muted">Waiting for them to accept</span>
-          {requests.outgoing.map((p) => (
-            <div key={p.steamid} className="field-row">
-              <span className="grow">{label(p)}</span>
-              <button type="button" className="button subtle small" onClick={() => withdraw(p)}>
-                Cancel request
-              </button>
-            </div>
-          ))}
-        </>
-      )}
+      <JoinSection kind="create">
+        <JoinAction icon="group_add" title="Start a group" help="A group chat of your own, to invite friends to.">
+          <ActionField
+            placeholder="A name for it"
+            verb="Create"
+            value={groupName}
+            onChange={setGroupName}
+            keep
+            disabled={!connected}
+            busy={busy}
+            onSubmit={makeGroup}
+          />
+        </JoinAction>
+      </JoinSection>
 
       {/* A link anybody can add this account by, even if it takes no requests
           from strangers: good for a month, and taken back here. */}
       {connected && links !== null && (
-        <>
-          <span className="small muted">Your invite links</span>
-          {links.length === 0 && <p className="small muted">None yet. A link lets whoever has it add you, for thirty days.</p>}
+        <JoinSection kind="manage" label="Your invite links">
+          <JoinAction
+            icon="link"
+            title="A link that lets whoever has it add you"
+            help={links.length === 0 ? 'None yet. Each is good for thirty days.' : 'Each is good for thirty days.'}
+            aside={
+              <button type="button" className="button quiet" onClick={() => changeLinks('create')}>
+                Make a link
+              </button>
+            }
+          />
           {links.map((l) => (
-            <div key={l.token} className="field-row">
-              <span className="grow ellipsis" title={l.link}>
-                {l.link}
-              </span>
-              <button type="button" className="button subtle small" onClick={() => copy(l.link)}>
+            <JoinRow key={l.token} name={<span className="selectable">{l.link}</span>} title={l.link}>
+              <button type="button" className="button quiet small" onClick={() => copy(l.link)}>
                 Copy
               </button>
-              <button type="button" className="button subtle small" onClick={() => changeLinks('revoke', l.token)}>
+              <button type="button" className="button quiet small" onClick={() => changeLinks('revoke', l.token)}>
                 Revoke
               </button>
-            </div>
+            </JoinRow>
           ))}
-          <div className="field-row">
-            <button type="button" className="button subtle small" onClick={() => changeLinks('create')}>
-              Make a link
-            </button>
-          </div>
-        </>
+        </JoinSection>
       )}
 
       {blocked.length > 0 && (
-        <>
-          <span className="small muted">Blocked</span>
+        <JoinSection kind="manage" label="Blocked">
           {blocked.map((p) => (
-            <div key={p.steamid} className="field-row">
-              <span className="grow ellipsis" title={p.steamid}>
-                {p.name}
-              </span>
-              <button type="button" className="button subtle small" disabled={!connected} onClick={() => unblock(p)}>
+            <JoinRow key={p.steamid} face={<Initial name={p.name} />} name={p.name} title={p.steamid}>
+              <button type="button" className="button quiet small" disabled={!connected} onClick={() => unblock(p)}>
                 Unblock
               </button>
-            </div>
+            </JoinRow>
           ))}
-        </>
+        </JoinSection>
       )}
-    </div>
+    </>
   )
 }
 
@@ -969,11 +983,16 @@ function CreateMatrixRoom({ account }: { account: Account }): JSX.Element {
 
   if (!open) {
     return (
-      <div className="field">
-        <button type="button" className="button" onClick={() => setOpen(true)}>
-          Create a room or space
-        </button>
-      </div>
+      <JoinAction
+        icon="add_circle"
+        title="Create a room or space"
+        help="A room is a place to talk; a space holds other rooms."
+        aside={
+          <button type="button" className="button quiet" onClick={() => setOpen(true)}>
+            New room…
+          </button>
+        }
+      />
     )
   }
 
@@ -996,8 +1015,7 @@ function CreateMatrixRoom({ account }: { account: Account }): JSX.Element {
   }
 
   return (
-    <div className="field">
-      <span className="small muted">{isSpace ? 'New space' : 'New room'}</span>
+    <JoinAction icon="add_circle" title={isSpace ? 'New space' : 'New room'} help="It appears in the list once the homeserver confirms it.">
       <input
         className="text-field"
         autoFocus
@@ -1032,49 +1050,61 @@ function CreateMatrixRoom({ account }: { account: Account }): JSX.Element {
         disabled={isPublic}
         onChange={setEncrypted}
       />
-      <div className="field-row">
+      <div className="join-buttons">
         <button type="button" className="button primary" disabled={busy || !name.trim()} onClick={create}>
-          {busy ? 'Creating…' : 'Create'}
+          {busy ? 'Creating…' : isSpace ? 'Create space' : 'Create room'}
         </button>
-        <button type="button" className="button" onClick={() => setOpen(false)}>
+        <button type="button" className="button quiet" onClick={() => setOpen(false)}>
           Cancel
         </button>
       </div>
-    </div>
+    </JoinAction>
   )
 }
 
 function MatrixJoin({ account }: { account: Account }): JSX.Element {
   const store = useStore()
   return (
-    <div className="panel join-panel">
-      <SubmitField
-        label="Join a room or space"
-        // A Space is just a room with an m.space creation type, joined through
-        // this same endpoint - no separate mechanism needed.
-        placeholder="#room:server or !roomid:server"
-        onSubmit={(roomIdOrAlias) =>
-          // Named by what was typed until the room says otherwise: an address
-          // is what somebody has in hand here, and a row called by it is
-          // better than no row while the join happens.
-          void store
-            .joinMatrixRoom(account.id, roomIdOrAlias, roomIdOrAlias)
-            .catch((e: Error) => store.toast('error', e.message))
-        }
-      />
-      <SubmitField
-        label="Start a DM"
-        placeholder="@user:server"
-        onSubmit={(userId) =>
-          void window.moho
-            .rpc<{ bufferId: string }>('openMatrixDm', { accountId: account.id, userId, displayName: '' })
-            .then((r) => store.selectBuffer(r.bufferId))
-            .catch((e: Error) => store.toast('error', e.message))
-        }
-      />
-      <FindRoomButton account={account} />
-      <CreateMatrixRoom account={account} />
-    </div>
+    <>
+      <JoinSection kind="people">
+        <JoinAction icon="chat" title="Message someone" help="Starts a direct message with a Matrix address.">
+          <ActionField
+            placeholder="@user:server"
+            verb="Message"
+            onSubmit={(userId) =>
+              void window.moho
+                .rpc<{ bufferId: string }>('openMatrixDm', { accountId: account.id, userId, displayName: '' })
+                .then((r) => store.selectBuffer(r.bufferId))
+                .catch((e: Error) => store.toast('error', e.message))
+            }
+          />
+        </JoinAction>
+      </JoinSection>
+      <JoinSection kind="join">
+        <JoinAction icon="tag" title="Join a room or space" help="By its address or its id. A space is joined the same way as a room.">
+          <ActionField
+            // A Space is just a room with an m.space creation type, joined through
+            // this same endpoint - no separate mechanism needed.
+            placeholder="#room:server or !roomid:server"
+            verb="Join"
+            onSubmit={(roomIdOrAlias) =>
+              // Named by what was typed until the room says otherwise: an address
+              // is what somebody has in hand here, and a row called by it is
+              // better than no row while the join happens.
+              void store
+                .joinMatrixRoom(account.id, roomIdOrAlias, roomIdOrAlias)
+                .catch((e: Error) => store.toast('error', e.message))
+            }
+          />
+        </JoinAction>
+      </JoinSection>
+      <JoinSection kind="create">
+        <CreateMatrixRoom account={account} />
+      </JoinSection>
+      <JoinSection kind="browse">
+        <FindRoomButton account={account} />
+      </JoinSection>
+    </>
   )
 }
 
@@ -1089,13 +1119,18 @@ function MatrixJoin({ account }: { account: Account }): JSX.Element {
 function FindRoomButton({ account }: { account: Account }): JSX.Element {
   const [open, setOpen] = useState(false)
   return (
-    <div className="field">
-      <span className="small muted">Find a public room</span>
-      <button type="button" className="button" onClick={() => setOpen(true)}>
-        <Icon name="search" size={15} /> Search every homeserver
-      </button>
+    <JoinAction
+      icon="travel_explore"
+      title="Find a public room"
+      help="Searches the room directories of every homeserver you name."
+      aside={
+        <button type="button" className="button primary" onClick={() => setOpen(true)}>
+          <Icon name="search" size={16} /> Search rooms
+        </button>
+      }
+    >
       {open && <RoomSearch account={account} onClose={() => setOpen(false)} />}
-    </div>
+    </JoinAction>
   )
 }
 
@@ -1169,38 +1204,32 @@ function SneedchatRooms({ account }: { account: Account }): JSX.Element {
   }
 
   return (
-    <div className="panel join-panel">
-      <div className="field">
-        <span className="small muted">
-          Rooms{asking ? ' — asking the site…' : ''}
-        </span>
-        {rooms.map((room) => (
-          <label key={room.id} className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={enabled.some((r) => r.id === room.id)}
-              onChange={(e) => toggle(room.id, e.target.checked)}
-            />
-            <span>#{room.name}</span>
-          </label>
-        ))}
+    <JoinSection kind="join" label={asking ? 'Rooms — asking the site…' : 'Rooms'}>
+      <JoinAction
+        icon="forum"
+        title="The rooms this account stays in"
+        help={
+          // Closing every room is allowed: the account stays signed in, and
+          // this is where one is opened again. Closing a room deletes its
+          // history, which is why switching one off is not undone by switching it on.
+          enabled.length === 0 ? 'No rooms open. Switch one on to join it.' : 'Switching a room off closes it and deletes its history.'
+        }
+      >
         {error && (
-          <span className="small muted">
-            Could not read the site&apos;s room list ({error}) — showing only the rooms this account
-            has open.
-          </span>
+          <p className="small muted join-note">
+            Could not read the site&apos;s room list ({error}) — showing only the rooms this account has open.
+          </p>
         )}
-        {/* Closing every room is allowed: the account stays signed in, and
-            this is where one is opened again. Closing a room deletes its
-            history, which is why unticking is not undone by ticking. */}
-        {enabled.length === 0 && (
-          <span className="small muted">No rooms open. Tick one to join it.</span>
-        )}
-        {enabled.length > 0 && (
-          <span className="small muted">Unticking a room closes it and deletes its history.</span>
-        )}
-      </div>
-    </div>
+      </JoinAction>
+      {rooms.map((room) => (
+        <SwitchRow
+          key={room.id}
+          title={`#${room.name}`}
+          checked={enabled.some((r) => r.id === room.id)}
+          onChange={(on) => toggle(room.id, on)}
+        />
+      ))}
+    </JoinSection>
   )
 }
 
@@ -1287,158 +1316,185 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
       .catch((e: Error) => store.toast('error', e.message))
   }
 
+  const open = (userId: string): void =>
+    void window.moho
+      .rpc<{ bufferId: string }>('openDiscordDm', { accountId: account.id, userId })
+      .then((r) => store.selectBuffer(r.bufferId))
+      .catch((e: Error) => store.toast('error', e.message))
+
   return (
-    <div className="panel join-panel">
-      {/* Done in Discord's web app, in the browser, rather than here. */}
-      <div className="join-elsewhere-list">
-        {ON_DISCORD_ONLY.map((item) => (
-          <div key={item.label} className="join-elsewhere-item">
-            <button
-              type="button"
-              className="button join-elsewhere"
-              title="Opens discord.com in your browser"
-              onClick={() => void window.moho.openExternal(DISCORD_WEB)}
-            >
-              <Icon name={item.icon} size={16} />
-              {item.label} on discord.com
-              <Icon name="open_in_new" size={14} />
-            </button>
-            <p className="small muted join-elsewhere-why">{item.why}</p>
-          </div>
-        ))}
-      </div>
-
-      {waiting.length > 0 && (
-        <>
-          <div className="join-friends-header">
-            <span className="setting-text">Waiting for them to accept</span>
-          </div>
-          {waiting.map((f) => (
-            <div key={f.userId} className="friend-row request">
-              {f.avatarUrl ? (
-                <img className="friend-avatar" src={media(f.avatarUrl)} alt="" />
-              ) : (
-                <span className="friend-avatar placeholder">{(f.globalName || f.username).slice(0, 1)}</span>
-              )}
-              <span className="ellipsis">{f.globalName || f.username}</span>
-              <button type="button" className="button subtle" onClick={() => answer(f.userId, false)}>
-                Cancel request
+    <>
+      <JoinSection kind="people">
+        <JoinAction
+          icon="group"
+          title="Friends"
+          help={
+            picking
+              ? picking.length === 0
+                ? 'Pick the people to start a group message with.'
+                : `${picking.length} selected${picking.length >= GROUP_DM_MAX ? ' — that is the most Discord allows' : ''}`
+              : 'Click a friend to open your conversation; right-click for more.'
+          }
+          aside={
+            <div className="join-tools">
+              <div className="segmented" role="group" aria-label="Which friends">
+                <button type="button" className={onlineOnly ? 'active' : undefined} onClick={() => setOnlineOnly(true)}>
+                  Online
+                </button>
+                <button type="button" className={!onlineOnly ? 'active' : undefined} onClick={() => setOnlineOnly(false)}>
+                  All
+                </button>
+              </div>
+              <button type="button" className="icon-button" title="Refresh" onClick={refreshFriends}>
+                <Icon name="refresh" size={16} />
               </button>
+              {picking ? (
+                <>
+                  <button
+                    type="button"
+                    className="button primary"
+                    // One person is not a group: Discord would answer the list form
+                    // with a brand-new two-person group sitting beside the DM you
+                    // already have with them, which is not what picking one name
+                    // means.
+                    disabled={picking.length < 2}
+                    onClick={() =>
+                      void window.moho
+                        .rpc<{ bufferId: string }>('openDiscordGroupDm', {
+                          accountId: account.id,
+                          userIds: picking
+                        })
+                        .then((r) => {
+                          setPicking(null)
+                          return store.selectBuffer(r.bufferId)
+                        })
+                        .catch((e: Error) => store.toast('error', e.message))
+                    }
+                  >
+                    Start group
+                  </button>
+                  <button type="button" className="button quiet" onClick={() => setPicking(null)}>
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="button quiet" title="Start a message with several people at once" onClick={() => setPicking([])}>
+                  <Icon name="group_add" size={16} /> New group
+                </button>
+              )}
             </div>
-          ))}
-        </>
-      )}
+          }
+        />
 
-      <div className="join-friends-header">
-        <span className="setting-text">Friends</span>
-        <button
-          type="button"
-          className={onlineOnly ? 'tab active' : 'tab'}
-          onClick={() => setOnlineOnly(true)}
-        >
-          Online
-        </button>
-        <button
-          type="button"
-          className={!onlineOnly ? 'tab active' : 'tab'}
-          onClick={() => setOnlineOnly(false)}
-        >
-          All
-        </button>
-        <button type="button" className="icon-button" title="Refresh" onClick={refreshFriends}>
-          <Icon name="refresh" size={16} />
-        </button>
-        <button
-          type="button"
-          className={picking ? 'tab active' : 'tab'}
-          title="Start a message with several people at once"
-          onClick={() => setPicking(picking ? null : [])}
-        >
-          <Icon name="group_add" size={15} />
-          {picking ? 'Cancel' : 'Group'}
-        </button>
-      </div>
+        {shown.length === 0 && <p className="small muted join-empty">{onlineOnly ? 'No friends online.' : 'No friends yet.'}</p>}
 
-      {picking && (
-        <div className="group-dm-bar small">
-          <span className="muted">
-            {picking.length === 0
-              ? 'Pick the people to start a group message with.'
-              : `${picking.length} selected${picking.length >= GROUP_DM_MAX ? ' — that is the most Discord allows' : ''}`}
-          </span>
-          <button
-            type="button"
-            className="button"
-            // One person is not a group: Discord would answer the list form
-            // with a brand-new two-person group sitting beside the DM you
-            // already have with them, which is not what picking one name
-            // means.
-            disabled={picking.length < 2}
-            onClick={() =>
-              void window.moho
-                .rpc<{ bufferId: string }>('openDiscordGroupDm', {
-                  accountId: account.id,
-                  userIds: picking
-                })
-                .then((r) => {
-                  setPicking(null)
-                  return store.selectBuffer(r.bufferId)
-                })
-                .catch((e: Error) => store.toast('error', e.message))
+        {shown.map((f) => (
+          <JoinRow
+            key={f.userId}
+            picked={picking?.includes(f.userId)}
+            face={
+              <>
+                {picking && <Icon name={picking.includes(f.userId) ? 'check_circle' : 'radio_button_unchecked'} size={18} fill={picking.includes(f.userId)} />}
+                {f.avatarUrl ? <img className="friend-avatar" src={media(f.avatarUrl)} alt="" /> : <Initial name={f.globalName || f.username} />}
+              </>
             }
-          >
-            Start group
-          </button>
-        </div>
-      )}
-
-      {shown.length === 0 && (
-        <p className="small muted">{onlineOnly ? 'No friends online.' : 'No friends yet.'}</p>
-      )}
-
-      {shown.map((f) => (
-        <button
-          key={f.userId}
-          type="button"
-          className={classes('friend-row', picking?.includes(f.userId) && 'picked')}
-          // Where taking somebody off the list lives. Not a button on the row:
-          // the row is itself a button - clicking it opens the conversation -
-          // and a remove sitting permanently beside a name is a remove that
-          // eventually gets pressed by accident.
-          onContextMenu={(e) => {
-            if (picking) return
-            e.preventDefault()
-            setFriendMenu({ x: e.clientX, y: e.clientY, friend: f })
-          }}
-          onClick={() => {
-            if (picking) {
-              const has = picking.includes(f.userId)
-              if (!has && picking.length >= GROUP_DM_MAX) {
-                store.toast('info', `A group message holds ${GROUP_DM_MAX + 1} people including you.`)
+            name={f.globalName || f.username}
+            sub={f.username}
+            // Where taking somebody off the list lives. Not a button on the row:
+            // the row is itself a button - clicking it opens the conversation -
+            // and a remove sitting permanently beside a name is a remove that
+            // eventually gets pressed by accident.
+            onContextMenu={(e) => {
+              if (picking) return
+              e.preventDefault()
+              setFriendMenu({ x: e.clientX, y: e.clientY, friend: f })
+            }}
+            onClick={() => {
+              if (picking) {
+                const has = picking.includes(f.userId)
+                if (!has && picking.length >= GROUP_DM_MAX) {
+                  store.toast('info', `A group message holds ${GROUP_DM_MAX + 1} people including you.`)
+                  return
+                }
+                setPicking(has ? picking.filter((id) => id !== f.userId) : [...picking, f.userId])
                 return
               }
-              setPicking(has ? picking.filter((id) => id !== f.userId) : [...picking, f.userId])
-              return
-            }
-            void window.moho
-              .rpc<{ bufferId: string }>('openDiscordDm', { accountId: account.id, userId: f.userId })
-              .then((r) => store.selectBuffer(r.bufferId))
-              .catch((e: Error) => store.toast('error', e.message))
-          }}
+              open(f.userId)
+            }}
+          >
+            <span className={`status-dot ${f.status || 'offline'}`} />
+          </JoinRow>
+        ))}
+
+        {waiting.length > 0 && (
+          <>
+            <JoinListHead>Waiting for them to accept</JoinListHead>
+            {waiting.map((f) => (
+              <JoinRow
+                key={f.userId}
+                face={f.avatarUrl ? <img className="friend-avatar" src={media(f.avatarUrl)} alt="" /> : <Initial name={f.globalName || f.username} />}
+                name={f.globalName || f.username}
+                sub={f.username}
+              >
+                <button type="button" className="button quiet small" onClick={() => answer(f.userId, false)}>
+                  Cancel request
+                </button>
+              </JoinRow>
+            ))}
+          </>
+        )}
+
+        {/* Several ids make a group, one makes the ordinary DM - the same rule
+            the daemon follows, so a comma is the only difference between the
+            two and nobody has to find a second field. */}
+        <JoinAction icon="chat" title="Message by user ID" help="For somebody who is not a friend yet. Several ids, separated by commas, start a group.">
+          <ActionField
+            placeholder="numeric user id, or several separated by commas"
+            verb="Message"
+            onSubmit={(entered) => {
+              const ids = entered
+                .split(/[,\s]+/)
+                .map((s) => s.trim())
+                .filter(Boolean)
+              if (ids.length === 0) return
+              const [method, params] =
+                ids.length === 1
+                  ? ['openDiscordDm', { accountId: account.id, userId: ids[0] }]
+                  : ['openDiscordGroupDm', { accountId: account.id, userIds: ids }]
+              void window.moho
+                .rpc<{ bufferId: string }>(method as string, params as Record<string, unknown>)
+                .then((r) => store.selectBuffer(r.bufferId))
+                .catch((e: Error) => store.toast('error', e.message))
+            }}
+          />
+        </JoinAction>
+      </JoinSection>
+
+      {/* Done in Discord's web app, in the browser, rather than here: said
+          once, after what can be done here, rather than three times before it. */}
+      <JoinSection kind="elsewhere" label="Only on discord.com">
+        <JoinAction
+          icon="open_in_new"
+          title="Joining a server, adding a friend, creating a server"
+          help="Discord puts each of these behind a captcha, and a third-party client that answers one gets the account flagged for spam. So moho leaves them to Discord's own app; what you do there shows up here."
         >
-          {picking && (
-            <Icon name={picking.includes(f.userId) ? 'check_circle' : 'radio_button_unchecked'} size={16} />
-          )}
-          {f.avatarUrl ? (
-            <img className="friend-avatar" src={media(f.avatarUrl)} alt="" />
-          ) : (
-            <span className="friend-avatar placeholder">{(f.globalName || f.username).slice(0, 1)}</span>
-          )}
-          <span className="ellipsis">{f.globalName || f.username}</span>
-          <span className="small muted ellipsis">{f.username}</span>
-          <span className={`status-dot ${f.status || 'offline'}`} />
-        </button>
-      ))}
+          <div className="join-buttons">
+            {ON_DISCORD_ONLY.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                className="button quiet join-elsewhere"
+                title={`${item.why} Opens discord.com in your browser.`}
+                onClick={() => void window.moho.openExternal(DISCORD_WEB)}
+              >
+                <Icon name={item.icon} size={16} />
+                {item.label}
+                <Icon name="open_in_new" size={14} />
+              </button>
+            ))}
+          </div>
+        </JoinAction>
+      </JoinSection>
 
       {friendMenu && (
         <ContextMenu
@@ -1469,28 +1525,6 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
         />
       )}
 
-      {/* Several ids make a group, one makes the ordinary DM - the same rule
-          the daemon follows, so a comma is the only difference between the
-          two and nobody has to find a second field. */}
-      <SubmitField
-        label="Message by user ID"
-        placeholder="numeric user id, or several separated by commas"
-        onSubmit={(entered) => {
-          const ids = entered
-            .split(/[,\s]+/)
-            .map((s) => s.trim())
-            .filter(Boolean)
-          if (ids.length === 0) return
-          const [method, params] =
-            ids.length === 1
-              ? ['openDiscordDm', { accountId: account.id, userId: ids[0] }]
-              : ['openDiscordGroupDm', { accountId: account.id, userIds: ids }]
-          void window.moho
-            .rpc<{ bufferId: string }>(method as string, params as Record<string, unknown>)
-            .then((r) => store.selectBuffer(r.bufferId))
-            .catch((e: Error) => store.toast('error', e.message))
-        }}
-      />
-    </div>
+    </>
   )
 }
