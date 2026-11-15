@@ -204,11 +204,11 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
             <div className="setting-text">
               <div>Your profile</div>
               <div className="small muted">
-                What people you message see.{profile.username ? ` Your username is ${profile.username}.` : ''} A username is
-                chosen or changed on the phone.
+                What people you message see.
               </div>
             </div>
           </div>
+          <UsernameRow accountId={account.id} username={profile.username ?? null} onChanged={loadProfile} />
           <div className="field-row">
             <input className="text-field" placeholder="First name" value={edited.given} disabled={busy} onChange={(e) => setEdited({ ...edited, given: e.target.value })} />
             <input className="text-field" placeholder="Last name (optional)" value={edited.family} disabled={busy} onChange={(e) => setEdited({ ...edited, family: e.target.value })} />
@@ -623,6 +623,96 @@ function NotificationProfiles({ accountId }: { accountId: string }): JSX.Element
           </span>
         </div>
       ))}
+    </>
+  )
+}
+
+/**
+ * The account's username: chosen here (a name, and a number or one Signal picks), removed, and its link and QR code
+ * shown or made anew - as on the phone, which hears of it through the shared settings.
+ */
+function UsernameRow({ accountId, username, onChanged }: { accountId: string; username: string | null; onChanged: () => void }): JSX.Element {
+  const store = useStore()
+  const [nickname, setNickname] = useState('')
+  const [number, setNumber] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [link, setLink] = useState<{ link: string; qr: string } | null>(null)
+  const ask = (params: Record<string, unknown>, done: (name: string | null) => string): void => {
+    setBusy(true)
+    void window.moho
+      .rpc<{ username: string | null }>('signalUsername', { accountId, ...params })
+      .then((r) => {
+        store.toast('info', done(r.username))
+        setNickname('')
+        setNumber('')
+        setLink(null)
+        onChanged()
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+  const showLink = (): void => {
+    void window.moho
+      .rpc<{ link: string; qr: string }>('signalUsernameLink', { accountId })
+      .then(setLink)
+      .catch((e: Error) => store.toast('error', e.message))
+  }
+  return (
+    <>
+      <div className="small muted">{username ? `Your username is ${username}.` : 'You have no username yet: people can find you by it without your number.'}</div>
+      <div className="field-row">
+        <input className="text-field" placeholder={username ? 'A new name part' : 'Name part, like moho'} value={nickname} disabled={busy} onChange={(e) => setNickname(e.target.value)} />
+        <input className="text-field" style={{ maxWidth: '7em' }} placeholder="Number (optional)" value={number} disabled={busy} onChange={(e) => setNumber(e.target.value.replace(/[^0-9]/g, ''))} />
+        <button
+          type="button"
+          className="button"
+          disabled={busy || !nickname.trim()}
+          onClick={() => {
+            if (username && !window.confirm(`Change your username from ${username}? The old one stops working, and so do links to it.`)) return
+            ask({ nickname: nickname.trim(), number: number || undefined }, (name) => `Your username is now ${name}`)
+          }}
+        >
+          {username ? 'Change' : 'Choose'}
+        </button>
+      </div>
+      {username && (
+        <div className="field-row">
+          <button type="button" className="button subtle small" disabled={busy} onClick={showLink}>
+            Link and QR code
+          </button>
+          <button
+            type="button"
+            className="button subtle small"
+            disabled={busy}
+            onClick={() => {
+              if (window.confirm('Make a new link? The old link and QR code stop working.')) ask({ resetLink: true }, () => 'Your username has a new link')
+            }}
+          >
+            New link
+          </button>
+          <button
+            type="button"
+            className="button subtle small danger"
+            disabled={busy}
+            onClick={() => {
+              if (window.confirm(`Remove the username ${username}? People will need your number to find you.`)) ask({ remove: true }, () => 'Your username was removed')
+            }}
+          >
+            Remove
+          </button>
+        </div>
+      )}
+      {link && (
+        <div className="field">
+          <img className="qr-image" src={link.qr} alt="Your username link as a QR code" />
+          <div className="field-row">
+            <input className="text-field" readOnly value={link.link} onFocus={(e) => e.target.select()} />
+            <button type="button" className="button subtle small" onClick={() => void navigator.clipboard.writeText(link.link).then(() => store.toast('info', 'Link copied'))}>
+              Copy
+            </button>
+          </div>
+        </div>
+      )}
     </>
   )
 }
