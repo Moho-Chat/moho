@@ -700,7 +700,10 @@ function AccountPage({ account, serviceName }: { account: Account; serviceName: 
           </section>
         )}
 
-        {tab === 'service' && (
+        {/* XMPP has more of its own than a card holds: a section each, down the side. */}
+        {tab === 'service' && account.service === 'xmpp' && <XmppAccountTools account={account} />}
+
+        {tab === 'service' && account.service !== 'xmpp' && (
           <section className="page-section">
             <h4 className="section-label">{serviceTab}</h4>
             <div className="card">
@@ -708,7 +711,6 @@ function AccountPage({ account, serviceName }: { account: Account; serviceName: 
               {account.service === 'steam' && <SteamAccountTools account={account} />}
               {account.service === 'stoat' && <StoatAccountTools account={account} />}
               {account.service === 'signal' && <SignalAccountTools account={account} />}
-              {account.service === 'xmpp' && <XmppAccountTools account={account} />}
               {account.service === 'twitch' && <TwitchAccountTools account={account} />}
               {account.service === 'kick' && <KickFollowSync account={account} />}
             </div>

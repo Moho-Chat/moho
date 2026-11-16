@@ -311,6 +311,52 @@ export function Tabs<T extends string>({
 }
 
 /**
+ * Sections down the side of a page, for a page with too many parts for a row
+ * of tabs: the list on the left, the one chosen on the right. One of them is
+ * always showing. In a narrow page the list lies across the top instead.
+ */
+export function SideTabs<T extends string>({
+  groups,
+  value,
+  onChange,
+  label,
+  children
+}: {
+  groups: { label: string; items: { id: T; label: string; icon: string; danger?: boolean }[] }[]
+  value: T
+  onChange: (id: T) => void
+  label: string
+  children: React.ReactNode
+}): JSX.Element {
+  return (
+    <div className="side-tabs">
+      <nav className="side-tabs-list" aria-label={label}>
+        {groups.map((g, i) => (
+          <div key={g.label || i} className="side-tabs-group">
+            {g.label && <div className="side-tabs-heading ellipsis">{g.label}</div>}
+            {g.items.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                aria-current={item.id === value ? 'page' : undefined}
+                className={classes('side-tabs-item', item.id === value && 'active', item.danger && 'danger')}
+                onClick={() => onChange(item.id)}
+              >
+                <Icon name={item.icon} size={18} />
+                {item.label}
+              </button>
+            ))}
+          </div>
+        ))}
+      </nav>
+      <div key={value} className="side-tabs-page">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+/**
  * A view of Settings → Accounts asked for from somewhere else: the "+" pane's
  * "Add an account", an account's own settings from its row there.
  *

@@ -4,6 +4,7 @@ import { SwitchRow } from './Switch'
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { AccountFace, AccountList, MasterDetail, StatePill, accountWhere, askAccountsFor } from './AccountList'
+import { fuzzyFilter } from '../lib/fuzzy'
 import { ActionField, Initial, JoinAction, JoinListHead, JoinRow, JoinSection } from './JoinParts'
 import { ContextMenu } from './ContextMenu'
 import { RoomSearch } from './RoomSearch'
@@ -1244,6 +1245,7 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
   const store = useStore()
   const [friends, setFriends] = useState<DiscordFriend[]>([])
   const [onlineOnly, setOnlineOnly] = useState(true)
+  const [query, setQuery] = useState('')
   /**
    * Who is going into a new group message, or null when not making one.
    *
@@ -1286,7 +1288,13 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
   // the server list with every other question that wants a yes or a no.
   const waiting = friends.filter((f) => f.kind === 'outgoing')
   const settled = friends.filter((f) => !f.kind || f.kind === 'friend')
-  const shown = onlineOnly ? settled.filter((f) => f.status && f.status !== 'offline') : settled
+  // Searching looks through everybody: somebody typing a name wants that
+  // person, whether or not they happen to be online.
+  const shown = query.trim()
+    ? fuzzyFilter(settled, query, (f) => [f.globalName || f.username, f.username])
+    : onlineOnly
+      ? settled.filter((f) => f.status && f.status !== 'offline')
+      : settled
 
   const answer = (userId: string, accept: boolean): void => {
     void window.moho
@@ -1324,6 +1332,33 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
 
   return (
     <>
+      {/* Done in Discord's web app, in the browser, rather than here: said
+          once rather than three times. First, since it is short and what is
+          under it - the friends - is as long as the account has friends. */}
+      <JoinSection kind="elsewhere" label="Only on discord.com">
+        <JoinAction
+          icon="open_in_new"
+          title="Joining a server, adding a friend, creating a server"
+          help="Discord puts each of these behind a captcha, and a third-party client that answers one gets the account flagged for spam. So moho leaves them to Discord's own app; what you do there shows up here."
+        >
+          <div className="join-buttons">
+            {ON_DISCORD_ONLY.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                className="button quiet join-elsewhere"
+                title={`${item.why} Opens discord.com in your browser.`}
+                onClick={() => void window.moho.openExternal(DISCORD_WEB)}
+              >
+                <Icon name={item.icon} size={16} />
+                {item.label}
+                <Icon name="open_in_new" size={14} />
+              </button>
+            ))}
+          </div>
+        </JoinAction>
+      </JoinSection>
+
       <JoinSection kind="people">
         <JoinAction
           icon="group"
@@ -1386,8 +1421,41 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
           }
         />
 
-        {shown.length === 0 && <p className="small muted join-empty">{onlineOnly ? 'No friends online.' : 'No friends yet.'}</p>}
+        {/* The list is as long as the account has friends, so it is searched
+            rather than read, and scrolls in a box of its own rather than
+            pushing the rest of the page away. */}
+        {settled.length > 0 && (
+          <label className="join-search">
+            <Icon name="search" size={16} />
+            <input
+              placeholder={`Search ${settled.length} friend${settled.length === 1 ? '' : 's'}`}
+              spellCheck={false}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape' && query) {
+                  e.stopPropagation()
+                  setQuery('')
+                }
+                // Enter takes the best match, which is what typing a name is for.
+                if (e.key === 'Enter' && query.trim() && shown[0] && !picking) open(shown[0].userId)
+              }}
+            />
+            {query && (
+              <button type="button" className="icon-button" title="Clear" onClick={() => setQuery('')}>
+                <Icon name="close" size={14} />
+              </button>
+            )}
+          </label>
+        )}
 
+        {shown.length === 0 && (
+          <p className="small muted join-empty">
+            {query.trim() ? `No friend matches “${query.trim()}”.` : onlineOnly ? 'No friends online.' : 'No friends yet.'}
+          </p>
+        )}
+
+        <div className="join-scroll">
         {shown.map((f) => (
           <JoinRow
             key={f.userId}
@@ -1425,6 +1493,7 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
             <span className={`status-dot ${f.status || 'offline'}`} />
           </JoinRow>
         ))}
+        </div>
 
         {waiting.length > 0 && (
           <>
@@ -1467,32 +1536,6 @@ function DiscordJoin({ account }: { account: Account }): JSX.Element {
                 .catch((e: Error) => store.toast('error', e.message))
             }}
           />
-        </JoinAction>
-      </JoinSection>
-
-      {/* Done in Discord's web app, in the browser, rather than here: said
-          once, after what can be done here, rather than three times before it. */}
-      <JoinSection kind="elsewhere" label="Only on discord.com">
-        <JoinAction
-          icon="open_in_new"
-          title="Joining a server, adding a friend, creating a server"
-          help="Discord puts each of these behind a captcha, and a third-party client that answers one gets the account flagged for spam. So moho leaves them to Discord's own app; what you do there shows up here."
-        >
-          <div className="join-buttons">
-            {ON_DISCORD_ONLY.map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                className="button quiet join-elsewhere"
-                title={`${item.why} Opens discord.com in your browser.`}
-                onClick={() => void window.moho.openExternal(DISCORD_WEB)}
-              >
-                <Icon name={item.icon} size={16} />
-                {item.label}
-                <Icon name="open_in_new" size={14} />
-              </button>
-            ))}
-          </div>
         </JoinAction>
       </JoinSection>
 

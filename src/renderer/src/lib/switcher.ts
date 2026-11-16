@@ -1,4 +1,5 @@
 import { bufferDisplayName, guildOf } from './util'
+import { wordScore } from './fuzzy'
 
 /** What the quick switcher needs of a conversation, and of where it lives. */
 export interface SwitcherBuffer {
@@ -20,28 +21,6 @@ export interface SwitcherHit<B extends SwitcherBuffer> {
 }
 
 const MAX_HITS = 50
-
-/** Every character of `needle` in `hay`, in order. */
-function subsequence(hay: string, needle: string): boolean {
-  let at = 0
-  for (const ch of needle) {
-    at = hay.indexOf(ch, at)
-    if (at < 0) return false
-    at++
-  }
-  return true
-}
-
-/** How well one word of the query matches a title; 0 is not at all. */
-function wordScore(title: string, word: string): number {
-  if (title === word) return 120
-  if (title.startsWith(word)) return 100
-  // At the start of a word inside it: "dev" in "moho-dev", "eagle" in "the eagles nest".
-  if (new RegExp(`(^|[^\\p{L}\\p{N}])${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'u').test(title)) return 80
-  if (title.includes(word)) return 60
-  if (subsequence(title, word)) return 30
-  return 0
-}
 
 /**
  * The conversations to offer for what was typed.

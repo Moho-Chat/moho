@@ -198,6 +198,11 @@ export default function App(): JSX.Element {
 
   const openThread = useChat((s) => s.openThread)
 
+  // A pane has the window: one that was opened, or - with no account yet -
+  // the page for adding the first.
+  const paneOpen = activePanel !== '' || accounts.length === 0
+  const sidebarShown = !sidebarFolded && !paneOpen
+
   // A stale restored id is harmless: it simply resolves to no buffer and the
   // empty state shows, exactly as it would for "".
   const showNickList =
@@ -221,13 +226,15 @@ export default function App(): JSX.Element {
       <TitleBar />
 
       <div className="app-body">
-        {!sidebarFolded && (
+        {/* The servers are always here (#339): they are how the window is got
+            around, and a pane that hid them left only its own close button as
+            the way out. */}
+        <ServerRail />
+        {/* The channel list is not: it folds away by hand, and gives its room
+            up whenever a pane - Settings, Accounts, Downloads, "+" - has the
+            window, since nothing in it belongs to what the pane is showing. */}
+        {sidebarShown && (
           <>
-            {/* The rail folds away with the channel list: they are one
-                navigation surface, and leaving a strip of server icons beside
-                a collapsed sidebar would be a column that selects something
-                you cannot see. */}
-            <ServerRail />
             <div className="sidebar">
               <BufferList />
             </div>
@@ -237,11 +244,14 @@ export default function App(): JSX.Element {
 
         <div className="main-column">
           <div className="main-header">
-            <IconButton
-              name={sidebarFolded ? 'chevron_right' : 'chevron_left'}
-              title={sidebarFolded ? 'Show sidebar' : 'Hide sidebar'}
-              onClick={() => setSidebarFolded(!sidebarFolded)}
-            />
+            {/* Not while a pane has folded the list for itself: there is nothing for it to fold. */}
+            {!paneOpen && (
+              <IconButton
+                name={sidebarFolded ? 'chevron_right' : 'chevron_left'}
+                title={sidebarFolded ? 'Show channel list' : 'Hide channel list'}
+                onClick={() => setSidebarFolded(!sidebarFolded)}
+              />
+            )}
             {/* A conversation is headed by whoever it is with, the same way
                 its row in the list is - the picture and the name together,
                 and both are the way into its menu. The row in the list is

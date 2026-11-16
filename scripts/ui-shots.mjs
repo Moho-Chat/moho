@@ -364,7 +364,7 @@ const MANY = `(() => {
     acc('twitch:salastil', 'twitch', 'salastil', { moderation: true }),
     acc('telegram:1', 'telegram', 'Salastil'),
     acc('stoat:01J', 'stoat', 'salastil', { state: 'error' }),
-    acc('salastil@chatterboxtown.us', 'xmpp', 'salastil', { routeLevel: 'strict', useTor: true }),
+    acc('xmpp:salastil@chatterboxtown.us', 'xmpp', 'salastil@chatterboxtown.us', { routeLevel: 'strict', useTor: true }),
     acc('signal:+15550100', 'signal', 'Salastil')
   ]
   const local = s.accounts.filter((a) => a.id.includes('localhost') || a.id.includes('127.0.0.1'))
@@ -440,6 +440,33 @@ const REWORK = [
   { name: 'rework-tab-connection', setup: async (p) => { await accountOpen('salastil@irc.libera.chat', 1)(p); await p.evaluate(`document.querySelector('[data-tab=connection]')?.click()`); await sleep(400) } },
   { name: 'rework-tab-service', setup: async (p) => { await accountOpen('@salastil:poa.st', 4)(p); await p.evaluate(`document.querySelector('[data-tab=service]')?.click()`); await clearToasts(p) } },
   { name: 'rework-tab-servers', setup: async (p) => { await accountOpen('discord:shots', 6)(p); await p.evaluate(`document.querySelector('[data-tab=servers]')?.click()`); await sleep(400) } },
+  // XMPP's own tab: its sections down the side (#339, comment 579).
+  { name: 'rework-xmpp-tools', setup: async (p) => { await accountOpen('xmpp:salastil@chatterboxtown.us', 13)(p); await p.evaluate(`document.querySelector('[data-tab=service]')?.click()`); await clearToasts(p) } },
+  {
+    name: 'rework-xmpp-tools-privacy',
+    setup: async (p) => {
+      await accountOpen('xmpp:salastil@chatterboxtown.us', 13)(p)
+      await p.evaluate(`document.querySelector('[data-tab=service]')?.click()`)
+      await sleep(300)
+      await p.evaluate(`[...document.querySelectorAll('.side-tabs-item')].find((b) => b.innerText.includes('Contacts'))?.click()`)
+      await clearToasts(p)
+    }
+  },
+  // A long friends list: searched, and in a box of its own (comment 582).
+  {
+    name: 'rework-join-discord-friends',
+    setup: async (p) => {
+      await joinOn('discord:shots')(p)
+      await p.evaluate(`(() => {
+        const s = window.__mohoShots.state()
+        const names = ['Gaunt King', 'Clarence', 'Wren', 'Old Friend', 'Quiet One', 'Ada', 'Brook', 'Cass', 'Dmitri', 'Esme', 'Finch', 'Greta', 'Hollis', 'Ines', 'Jun', 'Kit', 'Lark', 'Milo', 'Nell', 'Orin', 'Pia', 'Quill', 'Rhea', 'Sol', 'Tamsin', 'Uri', 'Vale', 'Wynn', 'Xan', 'Yara']
+        const friends = names.map((n, i) => ({ userId: String(1000 + i), username: n.toLowerCase().replace(/ /g, '_') + (i % 3 ? '' : '.' + i), globalName: n, status: ['online', 'idle', 'dnd', 'online', 'offline'][i % 5] }))
+        window.__mohoShots.patch({ discordFriends: { ...s.discordFriends, 'discord:shots': friends } })
+        return true
+      })()`)
+      await sleep(500)
+    }
+  },
   { name: 'rework-add-grid', setup: async (p) => { await many(p); await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`); await sleep(400); await p.evaluate(`document.querySelector('[data-add-account]')?.click()`); await clearToasts(p) } },
   {
     name: 'rework-narrow-list',
@@ -463,7 +490,7 @@ const REWORK = [
   { name: 'rework-join-matrix', setup: joinOn('@salastil:poa.st') },
   { name: 'rework-join-steam', setup: joinOn('steam:76561198000000001') },
   { name: 'rework-join-signal', setup: joinOn('signal:+15550100') },
-  { name: 'rework-join-xmpp', setup: joinOn('salastil@chatterboxtown.us') },
+  { name: 'rework-join-xmpp', setup: joinOn('xmpp:salastil@chatterboxtown.us') },
   { name: 'rework-settings-general', setup: async (p) => { await many(p); await p.evaluate(`window.__mohoShots.store.setActivePanel('settings')`); await clearToasts(p) } },
   { name: 'rework-chat', setup: async (p) => { await setMode(p, 'comfy'); await openChannel(p, '#general') } }
 ]

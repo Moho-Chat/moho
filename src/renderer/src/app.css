@@ -12995,3 +12995,284 @@ span.tone-bad {
 .master-detail.solo .master-detail-body {
   padding-left: max(var(--spacing-xl), calc((100% - 720px) / 2));
 }
+
+/* --- a list as long as an account has friends: searched, and in a box ------- */
+
+.join-search {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  height: 32px;
+  margin: 0 var(--spacing-l) var(--spacing-s);
+  padding: 0 var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-lowest);
+  color: var(--surface-variant-text);
+  transition:
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
+}
+
+.join-search:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-hover);
+}
+
+.join-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--surface-text);
+}
+
+.join-search .icon-button {
+  width: 22px;
+  height: 22px;
+}
+
+/* A defined height: about eight people, then it scrolls. */
+.join-scroll {
+  max-height: 328px;
+  overflow-y: auto;
+  border-top: 1px solid var(--outline-light);
+}
+
+.join-scroll:empty {
+  display: none;
+}
+
+.join-scroll > .join-row:last-child {
+  padding-bottom: 6px;
+}
+
+.join-card > .join-search + .join-empty {
+  padding-top: 0;
+}
+
+/* The header's name, where the fold arrow in front of it is away. */
+.main-header > .main-header-title:first-child {
+  padding-left: var(--spacing-s);
+}
+
+/* --- sections down the side of a page (XMPP's own tab) ------------------------ */
+
+.page.account-page {
+  max-width: 880px;
+  container: account-page / inline-size;
+}
+
+.side-tabs {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-xl);
+}
+
+.side-tabs-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+  flex: none;
+  width: 184px;
+}
+
+.side-tabs-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.side-tabs-heading {
+  padding: 0 var(--spacing-s) var(--spacing-xxs);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.side-tabs-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  text-align: left;
+  color: var(--surface-variant-text);
+  transition:
+    background-color var(--motion-fast) ease,
+    color var(--motion-fast) ease;
+}
+
+.side-tabs-item:hover {
+  background: var(--surface-hover);
+  color: var(--surface-text);
+}
+
+.side-tabs-item.active {
+  background: var(--surface-selected);
+  color: var(--surface-text);
+  font-weight: var(--weight-medium);
+}
+
+.side-tabs-item.active .icon {
+  color: var(--primary);
+}
+
+.side-tabs-item.danger,
+.side-tabs-item.danger.active .icon {
+  color: var(--danger-text);
+}
+
+.side-tabs-page {
+  flex: 1;
+  min-width: 0;
+  animation: page-in var(--motion) var(--ease);
+}
+
+/* Too narrow for the list beside the page: it lies across the top. */
+@container account-page (max-width: 600px) {
+  .side-tabs {
+    flex-direction: column;
+    gap: var(--spacing-l);
+  }
+
+  .side-tabs-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+    width: auto;
+  }
+
+  .side-tabs-group {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+  }
+
+  .side-tabs-heading {
+    display: none;
+  }
+
+  .side-tabs-item {
+    box-shadow: inset 0 0 0 1px var(--outline-medium);
+  }
+}
+
+/* One section: its title, a line on what it is, then its cards. */
+.tool-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+}
+
+.tool-title {
+  margin: 0;
+  font-size: var(--font-size-large);
+  font-weight: var(--weight-semibold);
+}
+
+.tool-desc {
+  margin: calc(var(--spacing-s) * -1) 0 0;
+  font-size: var(--font-size-compact);
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-l);
+}
+
+.tool-actions {
+  display: flex;
+  gap: var(--spacing-s);
+}
+
+.tool-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+  padding: var(--spacing-l) 0;
+}
+
+.tool-fields p {
+  margin: 0;
+}
+
+.tool-list > .setting-row {
+  padding: var(--spacing-s) 0;
+}
+
+.tool-none {
+  margin: 0;
+  padding: var(--spacing-m) 0;
+}
+
+.tool-pick {
+  text-align: left;
+  border-radius: var(--corner-radius-small);
+}
+
+.setting-row.chosen .tool-pick > :first-child {
+  color: var(--primary);
+}
+
+.tool-rule {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-m);
+}
+
+.tool-rule-new {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+}
+
+.tool-rule-new > .text-field {
+  flex: 1 1 130px;
+  width: auto;
+}
+
+.tool-details {
+  padding: var(--spacing-m) 0;
+}
+
+.tool-details > summary {
+  cursor: pointer;
+  font-weight: var(--weight-medium);
+}
+
+.tool-details .plain-list {
+  margin-top: var(--spacing-s);
+  color: var(--text-muted);
+}
+
+.tool-pane .card > .switch-row {
+  padding: var(--spacing-m) 0;
+}
+
+.tool-pane .card > .setting-row + .switch-row {
+  border-top: 1px solid var(--outline-medium);
+}
+
+.tool-pane .card.card-fields > .switch-row {
+  padding: 0;
+}
+
+.tool-pane .card.card-fields.danger-zone {
+  display: flex;
+  padding: var(--spacing-l);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .side-tabs-page {
+    animation: none;
+  }
+}
