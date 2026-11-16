@@ -356,6 +356,26 @@ export function SideTabs<T extends string>({
   )
 }
 
+/** One section's page: what it is, what it means, and its cards. */
+export function ToolPane({ title, desc, children }: { title: string; desc: string; children: React.ReactNode }): JSX.Element {
+  return (
+    <div className="tool-pane">
+      <h3 className="tool-title">{title}</h3>
+      <p className="tool-desc">{desc}</p>
+      {children}
+    </div>
+  )
+}
+
+/** Said while a section waits on the service for what it shows. */
+export function Asking({ what = 'the server' }: { what?: string }): JSX.Element {
+  return (
+    <p className="small muted tool-none">
+      <span className="spinner" /> Asking {what}…
+    </p>
+  )
+}
+
 /**
  * A view of Settings → Accounts asked for from somewhere else: the "+" pane's
  * "Add an account", an account's own settings from its row there.

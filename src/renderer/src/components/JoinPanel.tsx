@@ -530,18 +530,6 @@ function StoatJoin({ account }: { account: Account }): JSX.Element {
           <ActionField placeholder="An invite link, or its code" verb="Join" onSubmit={(code) => void store.joinAndOpen(account.id, code)} />
         </JoinAction>
       </JoinSection>
-
-      {people.blocked.length > 0 && (
-        <JoinSection kind="manage" label="Blocked">
-          {people.blocked.map((p) => (
-            <JoinRow key={p.id} face={<Initial name={label(p)} />} name={label(p)}>
-              <button type="button" className="button quiet small" disabled={!connected} onClick={() => act('stoatBlock', { userId: p.id, block: false }, `Unblocked ${label(p)}`)}>
-                Unblock
-              </button>
-            </JoinRow>
-          ))}
-        </JoinSection>
-      )}
     </>
   )
 }
@@ -730,7 +718,6 @@ function SteamJoin({ account }: { account: Account }): JSX.Element {
   const [target, setTarget] = useState('')
   const [busy, setBusy] = useState(false)
   const [requests, setRequests] = useState<SteamRequests>({ incoming: [], outgoing: [] })
-  const [blocked, setBlocked] = useState<{ steamid: string; name: string }[]>([])
   const [links, setLinks] = useState<{ token: string; link: string; created: number }[] | null>(null)
   const connected = account.state === 'connected'
 
@@ -745,21 +732,9 @@ function SteamJoin({ account }: { account: Account }): JSX.Element {
       const d = e.data as { accountId?: string; requests?: SteamRequests }
       if (d.accountId === account.id && d.requests) setRequests(d.requests)
     })
-    // Who is blocked, and what links have been given out: neither has a place
-    // in the conversation list, so they are here, where friends are added.
-    void window.moho
-      .rpc<{ steamid: string; name: string }[]>('steamBlockedList', { accountId: account.id })
-      .then((b) => live && setBlocked(b))
-      .catch(() => {})
-    const offBlocked = window.moho.onEvent((e) => {
-      if (e.event !== 'steamBlocked') return
-      const d = e.data as { accountId?: string; blocked?: { steamid: string; name: string }[] }
-      if (d.accountId === account.id && d.blocked) setBlocked(d.blocked)
-    })
     return () => {
       live = false
       off()
-      offBlocked()
     }
   }, [account.id])
 
@@ -789,13 +764,6 @@ function SteamJoin({ account }: { account: Account }): JSX.Element {
       .copyText(text)
       .then(() => store.toast('info', 'Copied'))
       .catch(() => store.toast('error', 'Could not copy'))
-  }
-
-  const unblock = (p: { steamid: string; name: string }): void => {
-    void window.moho
-      .rpc('steamUnblock', { accountId: account.id, steamid: p.steamid })
-      .then(() => store.toast('info', `Unblocked ${p.name}`))
-      .catch((e: Error) => store.toast('error', e.message))
   }
 
   const label = (p: SteamPerson): string => p.name || p.steamid
@@ -940,18 +908,6 @@ function SteamJoin({ account }: { account: Account }): JSX.Element {
               </button>
               <button type="button" className="button quiet small" onClick={() => changeLinks('revoke', l.token)}>
                 Revoke
-              </button>
-            </JoinRow>
-          ))}
-        </JoinSection>
-      )}
-
-      {blocked.length > 0 && (
-        <JoinSection kind="manage" label="Blocked">
-          {blocked.map((p) => (
-            <JoinRow key={p.steamid} face={<Initial name={p.name} />} name={p.name} title={p.steamid}>
-              <button type="button" className="button quiet small" disabled={!connected} onClick={() => unblock(p)}>
-                Unblock
               </button>
             </JoinRow>
           ))}

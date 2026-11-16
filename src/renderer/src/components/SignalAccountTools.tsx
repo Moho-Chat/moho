@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { useChat, useStore } from '../state/hooks'
 import { resolveMediaUrl } from '../lib/util'
 import { ChoiceSetting } from './settings/controls'
+import { Icon } from './Icon'
+import { SwitchRow } from './Switch'
+import { Asking, SideTabs, ToolPane } from './AccountList'
 import type { Account, SignalCallLink } from '../../../shared/wire'
 
 /** One of the account's devices, as the phone's list of linked devices shows it. */
@@ -22,11 +25,12 @@ function when(seconds: number): string {
  * Signal lets only the phone remove another device, so the others are listed and not offered for removal; this one is
  * removed by removing the account here.
  */
-export function SignalAccountTools({ account }: { account: Account }): JSX.Element | null {
+export function SignalAccountTools({ account }: { account: Account }): JSX.Element {
   const store = useStore()
   const [devices, setDevices] = useState<Device[] | null>(null)
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
+  const [section, setSection] = useState<'profile' | 'privacy' | 'blocked' | 'stories' | 'stickers' | 'links' | 'profiles' | 'devices' | 'export'>('profile')
   /** The account's own profile: what others see it called, and its about line. */
   const [profile, setProfile] = useState<{ given: string; family: string; about: string; emoji: string; username?: string | null; avatar?: string | null } | null>(null)
   const [edited, setEdited] = useState<{ given: string; family: string; about: string; emoji: string } | null>(null)
@@ -135,7 +139,19 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
   const profileChanged =
     !!profile && !!edited && (edited.given !== profile.given || edited.family !== profile.family || edited.about !== profile.about || edited.emoji !== profile.emoji)
 
-  if (!devices) return null
+  // An account still connecting has no answer yet: said, rather than a tab with nothing in it.
+  if (!devices) {
+    return (
+      <div className="card">
+        <div className="setting-row">
+          <div className="setting-text">
+            <div>Nothing to show until this account is connected</div>
+            <div className="small muted">Its profile, privacy and linked devices are read from Signal.</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
   const mine = devices.find((d) => d.isThis)
   const rename = (): void => {
     setBusy(true)
@@ -149,237 +165,299 @@ export function SignalAccountTools({ account }: { account: Account }): JSX.Eleme
       .finally(() => setBusy(false))
   }
 
+  const toggle = (key: string, label: string, on: boolean | null, help?: string): JSX.Element => (
+    <SwitchRow
+      key={key}
+      title={label}
+      description={on === null ? 'Not known yet' : help}
+      checked={!!on}
+      disabled={busy || on === null}
+      onChange={(next) => setShared({ setting: key, on: next }, `${label}: ${next ? 'on' : 'off'}, on all your devices`)}
+    />
+  )
+
+  // A section each, down the side (#339): what was one column of everything Signal keeps for an account.
   return (
-    <div className="account-tools">
-      <div className="setting-row">
-        <div className="setting-text">
-          <div>Export this device</div>
-          <div className="small muted">
-            A file sealed with a passphrase, holding this linked device&apos;s keys and conversations, to bring it back after
-            moho is put on again (Add account, Signal). Only bring it back where this copy is gone: two copies of one device
-            break each other. Messages that come after the export are not in it.
-          </div>
-        </div>
-        {!exporting && (
-          <button type="button" className="button" disabled={busy} onClick={() => setExporting({ passphrase: '', again: '' })}>
-            Export…
-          </button>
-        )}
-      </div>
-      {exporting && (
-        <div className="field-row">
-          <input
-            className="text-field"
-            type="password"
-            placeholder="Passphrase (8 or more characters)"
-            value={exporting.passphrase}
-            autoFocus
-            disabled={busy}
-            onChange={(e) => setExporting({ ...exporting, passphrase: e.target.value })}
-          />
-          <input
-            className="text-field"
-            type="password"
-            placeholder="Again"
-            value={exporting.again}
-            disabled={busy}
-            onChange={(e) => setExporting({ ...exporting, again: e.target.value })}
-          />
-          <button
-            type="button"
-            className="button"
-            disabled={busy || exporting.passphrase.length < 8 || exporting.passphrase !== exporting.again}
-            onClick={exportAccount}
-          >
-            Save…
-          </button>
-          <button type="button" className="button" disabled={busy} onClick={() => setExporting(null)}>
-            Cancel
-          </button>
-        </div>
-      )}
-      {profile && edited && (
-        <>
-          <div className="setting-row">
-            <div className="setting-text">
-              <div>Your profile</div>
-              <div className="small muted">
-                What people you message see.
+    <SideTabs
+      label="Signal"
+      value={section}
+      onChange={setSection}
+      groups={[
+        {
+          label: 'You',
+          items: [
+            { id: 'profile', label: 'Profile', icon: 'badge' },
+            { id: 'privacy', label: 'Privacy', icon: 'shield' },
+            { id: 'blocked', label: 'Blocked', icon: 'block' }
+          ]
+        },
+        {
+          label: 'Yours',
+          items: [
+            { id: 'stories', label: 'Stories', icon: 'auto_stories' },
+            { id: 'stickers', label: 'Sticker packs', icon: 'mood' },
+            { id: 'links', label: 'Call links', icon: 'link' },
+            { id: 'profiles', label: 'Notification profiles', icon: 'notifications' }
+          ]
+        },
+        { label: 'This device', items: [{ id: 'devices', label: 'Linked devices', icon: 'devices' }, { id: 'export', label: 'Export', icon: 'save' }] }
+      ]}
+    >
+      {section === 'profile' && (
+        <ToolPane title="Profile" desc="What people you message see. Your phone picks a change up too.">
+          {profile && edited ? (
+            <>
+              <div className="card">
+                <div className="setting-row">
+                  {profile.avatar ? <img className="tool-avatar" src={resolveMediaUrl(profile.avatar)} alt="" /> : <span className="tool-avatar placeholder"><Icon name="person" size={24} /></span>}
+                  <div className="setting-text">
+                    <div>{profile.avatar ? 'Your picture' : 'No picture yet'}</div>
+                    <div className="small muted">A JPEG, PNG or WebP.</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="button quiet"
+                    disabled={busy || !profile.given.trim()}
+                    onClick={() =>
+                      void window.moho.pickFile(['jpg', 'jpeg', 'png', 'webp']).then((path) => {
+                        if (path) setPicture(path)
+                      })
+                    }
+                  >
+                    {profile.avatar ? 'Change picture…' : 'Choose a picture…'}
+                  </button>
+                  {profile.avatar && (
+                    <button type="button" className="button quiet" disabled={busy || !profile.given.trim()} onClick={() => setPicture('')}>
+                      Remove
+                    </button>
+                  )}
+                </div>
               </div>
+              <div className="card card-fields">
+                <div className="tool-grid">
+                  <label className="field">
+                    <span className="field-label">First name</span>
+                    <input className="text-field" placeholder="First name" value={edited.given} disabled={busy} onChange={(e) => setEdited({ ...edited, given: e.target.value })} />
+                  </label>
+                  <label className="field">
+                    <span className="field-label">Last name</span>
+                    <input className="text-field" placeholder="Last name (optional)" value={edited.family} disabled={busy} onChange={(e) => setEdited({ ...edited, family: e.target.value })} />
+                  </label>
+                </div>
+                <label className="field">
+                  <span className="field-label">About</span>
+                  <div className="action-field">
+                    <input className="text-field emoji-field" placeholder="🙂" value={edited.emoji} disabled={busy} onChange={(e) => setEdited({ ...edited, emoji: e.target.value })} />
+                    <input className="text-field" placeholder="About" value={edited.about} disabled={busy} onChange={(e) => setEdited({ ...edited, about: e.target.value })} />
+                  </div>
+                </label>
+                <div className="tool-actions">
+                  <button type="button" className="button primary" disabled={busy || !profileChanged || !edited.given.trim()} onClick={saveProfile}>
+                    Save
+                  </button>
+                </div>
+              </div>
+              <div className="card tool-own">
+                <UsernameRow accountId={account.id} username={profile.username ?? null} onChanged={loadProfile} />
+              </div>
+            </>
+          ) : (
+            <Asking what="Signal" />
+          )}
+        </ToolPane>
+      )}
+
+      {section === 'privacy' && (
+        <ToolPane title="Privacy" desc="Kept by Signal for the whole account: a change here reaches the phone too.">
+          {settings ? (
+            <>
+              <div className="card">
+                {toggle('readReceipts', 'Read receipts', settings.readReceipts)}
+                {toggle('typingIndicators', 'Typing indicators', settings.typingIndicators)}
+                {toggle('linkPreviews', 'Link previews', settings.linkPreviews)}
+                {toggle('sealedSenderIndicators', 'Sealed sender indicators', settings.sealedSenderIndicators)}
+              </div>
+              <div className="card">
+                {toggle('findableByNumber', 'People can find you by your number', settings.findableByNumber)}
+                {toggle('storyViewReceipts', 'Tell people you viewed their stories', settings.storyViewReceipts)}
+                {toggle('storiesDisabled', 'Turn stories off', settings.storiesDisabled)}
+                {toggle('keepMutedChatsArchived', 'Keep muted chats archived', settings.keepMutedChatsArchived)}
+              </div>
+              <div className="card tool-own">
+                <ChoiceSetting
+                  label="Who can see your number"
+                  value={String(settings.phoneNumberSharing ?? 0)}
+                  options={[
+                    ...(settings.phoneNumberSharing ? [] : [{ value: '0', label: 'Not known yet' }]),
+                    { value: '1', label: 'Everybody' },
+                    { value: '2', label: 'Nobody' }
+                  ]}
+                  disabled={busy || settings.phoneNumberSharing === null}
+                  onChange={(v) => setShared({ setting: 'phoneNumberSharing', value: Number(v) }, v === '1' ? 'Everybody can see your number' : 'Nobody can see your number')}
+                />
+                <ChoiceSetting
+                  label="Disappearing messages for new chats"
+                  value={String(settings.defaultTimer ?? 0)}
+                  options={[
+                    { value: '0', label: 'Off' },
+                    { value: '3600', label: '1 hour' },
+                    { value: '28800', label: '8 hours' },
+                    { value: '86400', label: '1 day' },
+                    { value: '604800', label: '1 week' },
+                    { value: '2419200', label: '4 weeks' },
+                    ...([0, 3600, 28800, 86400, 604800, 2419200].includes(settings.defaultTimer ?? 0) ? [] : [{ value: String(settings.defaultTimer), label: `${settings.defaultTimer} seconds` }])
+                  ]}
+                  disabled={busy || settings.defaultTimer === null}
+                  onChange={(v) => setShared({ setting: 'defaultTimer', value: Number(v) }, 'The timer for new chats was changed')}
+                />
+              </div>
+            </>
+          ) : (
+            <Asking what="Signal" />
+          )}
+        </ToolPane>
+      )}
+
+      {section === 'blocked' && (
+        <ToolPane title="Blocked" desc="People this account has blocked, on every device. Blocking somebody is done from their conversation.">
+          <div className="card tool-list">
+            {(settings?.blocked ?? []).map((b) => (
+              <div key={b.id} className="setting-row">
+                <Icon name="block" size={18} color="var(--warning)" />
+                <div className="setting-text ellipsis">{b.name}</div>
+                <button
+                  type="button"
+                  className="button quiet small"
+                  disabled={busy}
+                  onClick={() =>
+                    void window.moho
+                      .rpc('signalBlock', { accountId: account.id, id: b.id, blocked: false })
+                      .then(() => {
+                        store.toast('info', `${b.name} is unblocked`)
+                        loadSettings()
+                      })
+                      .catch((e: Error) => store.toast('error', e.message))
+                  }
+                >
+                  Unblock
+                </button>
+              </div>
+            ))}
+            {!settings?.blocked.length && <p className="small muted tool-none">Nobody is blocked</p>}
+          </div>
+        </ToolPane>
+      )}
+
+      {section === 'stories' && (
+        <ToolPane title="Stories" desc="Who your stories reach, kept for all your devices.">
+          <div className="card tool-own">
+            <StoryLists accountId={account.id} />
+          </div>
+        </ToolPane>
+      )}
+      {section === 'stickers' && (
+        <ToolPane title="Sticker packs" desc="Added or taken off here, they are on your phone too.">
+          <div className="card tool-own">
+            <StickerPacks accountId={account.id} />
+          </div>
+        </ToolPane>
+      )}
+      {section === 'links' && (
+        <ToolPane title="Call links" desc="Links anybody can join a call by, made and taken down here.">
+          <div className="card tool-own">
+            <CallLinks accountId={account.id} />
+          </div>
+        </ToolPane>
+      )}
+      {section === 'profiles' && (
+        <ToolPane title="Notification profiles" desc="The profiles your phone made, which decide who may notify you and when.">
+          <div className="card tool-own">
+            <NotificationProfiles accountId={account.id} />
+          </div>
+        </ToolPane>
+      )}
+
+      {section === 'devices' && (
+        <ToolPane title="Linked devices" desc="Everything signed in to this Signal account. Remove one from Signal on your phone: Settings, then Linked devices.">
+          <div className="card tool-list">
+            {devices.map((d) => (
+              <div key={d.id} className="setting-row">
+                <Icon name={d.id === 1 ? 'smartphone' : 'computer'} size={18} />
+                <div className="setting-text">
+                  <div>
+                    {d.name || (d.id === 1 ? 'Phone' : `Device ${d.id}`)}
+                    {d.isThis ? ' (this one)' : ''}
+                  </div>
+                  <div className="small muted">last seen {when(d.lastSeen)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {mine && (
+            <div className="card card-fields">
+              <label className="field">
+                <span className="field-label">Name of this device in that list</span>
+                <div className="action-field">
+                  <input className="text-field" type="text" value={name} disabled={busy} onChange={(e) => setName(e.target.value)} />
+                  <button type="button" className="button primary" disabled={busy || !name.trim() || name.trim() === mine.name} onClick={rename}>
+                    Rename
+                  </button>
+                </div>
+              </label>
             </div>
-          </div>
-          <UsernameRow accountId={account.id} username={profile.username ?? null} onChanged={loadProfile} />
-          <div className="field-row">
-            <input className="text-field" placeholder="First name" value={edited.given} disabled={busy} onChange={(e) => setEdited({ ...edited, given: e.target.value })} />
-            <input className="text-field" placeholder="Last name (optional)" value={edited.family} disabled={busy} onChange={(e) => setEdited({ ...edited, family: e.target.value })} />
-          </div>
-          <div className="field-row">
-            <input className="text-field emoji-field" placeholder="🙂" value={edited.emoji} disabled={busy} onChange={(e) => setEdited({ ...edited, emoji: e.target.value })} />
-            <input className="text-field" placeholder="About" value={edited.about} disabled={busy} onChange={(e) => setEdited({ ...edited, about: e.target.value })} />
-            <button type="button" className="button" disabled={busy || !profileChanged || !edited.given.trim()} onClick={saveProfile}>
-              Save
-            </button>
-          </div>
-          <div className="field-row">
-            {profile.avatar && <img className="avatar-preview" src={resolveMediaUrl(profile.avatar)} alt="" width={40} height={40} style={{ borderRadius: '50%' }} />}
-            <button
-              type="button"
-              className="button"
-              disabled={busy || !profile.given.trim()}
-              onClick={() =>
-                void window.moho.pickFile(['jpg', 'jpeg', 'png', 'webp']).then((path) => {
-                  if (path) setPicture(path)
-                })
-              }
-            >
-              {profile.avatar ? 'Change picture…' : 'Choose a picture…'}
-            </button>
-            {profile.avatar && (
-              <button type="button" className="button" disabled={busy || !profile.given.trim()} onClick={() => setPicture('')}>
-                Remove picture
-              </button>
+          )}
+        </ToolPane>
+      )}
+
+      {section === 'export' && (
+        <ToolPane
+          title="Export this device"
+          desc="A file sealed with a passphrase, holding this linked device's keys and conversations, to bring it back after moho is put on again (Add account, Signal)."
+        >
+          <div className="card card-fields">
+            <p className="warning-note">
+              <Icon name="warning" size={16} /> Only bring it back where this copy is gone: two copies of one device break each other. Messages that come after the export are not in it.
+            </p>
+            {exporting ? (
+              <>
+                <div className="tool-grid">
+                  <label className="field">
+                    <span className="field-label">Passphrase</span>
+                    <input
+                      className="text-field"
+                      type="password"
+                      placeholder="8 or more characters"
+                      value={exporting.passphrase}
+                      autoFocus
+                      disabled={busy}
+                      onChange={(e) => setExporting({ ...exporting, passphrase: e.target.value })}
+                    />
+                  </label>
+                  <label className="field">
+                    <span className="field-label">Again</span>
+                    <input className="text-field" type="password" placeholder="Again" value={exporting.again} disabled={busy} onChange={(e) => setExporting({ ...exporting, again: e.target.value })} />
+                  </label>
+                </div>
+                <div className="tool-actions">
+                  <button type="button" className="button primary" disabled={busy || exporting.passphrase.length < 8 || exporting.passphrase !== exporting.again} onClick={exportAccount}>
+                    Save…
+                  </button>
+                  <button type="button" className="button quiet" disabled={busy} onClick={() => setExporting(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="tool-actions">
+                <button type="button" className="button quiet" disabled={busy} onClick={() => setExporting({ passphrase: '', again: '' })}>
+                  Export…
+                </button>
+              </div>
             )}
           </div>
-        </>
+        </ToolPane>
       )}
-      {settings && (
-        <>
-          <div className="setting-row">
-            <div className="setting-text">
-              <div>Privacy, on all your devices</div>
-              <div className="small muted">
-                Kept by Signal for the whole account: a change here reaches the phone too.
-                {settings.defaultTimer ? ` New chats disappear after ${settings.defaultTimer} seconds.` : ''}
-              </div>
-            </div>
-          </div>
-          {(
-            [
-              ['readReceipts', 'Read receipts', settings.readReceipts],
-              ['typingIndicators', 'Typing indicators', settings.typingIndicators],
-              ['linkPreviews', 'Link previews', settings.linkPreviews],
-              ['sealedSenderIndicators', 'Sealed sender indicators', settings.sealedSenderIndicators]
-            ] as const
-          ).map(([key, label, on]) => (
-            <label key={key} className="small poll-disclosed" title={on === null ? 'Not known yet' : undefined}>
-              <input
-                type="checkbox"
-                checked={!!on}
-                disabled={busy || on === null}
-                onChange={(e) => {
-                  setBusy(true)
-                  void window.moho
-                    .rpc('signalSharedChange', { accountId: account.id, setting: key, on: e.target.checked })
-                    .then(() => {
-                      store.toast('info', `${label} ${e.target.checked ? 'on' : 'off'}, on all your devices`)
-                      loadSettings()
-                    })
-                    .catch((err: Error) => store.toast('error', err.message))
-                    .finally(() => setBusy(false))
-                }}
-              />
-              {label}
-            </label>
-          ))}
-          {(
-            [
-              ['findableByNumber', 'People can find you by your number', settings.findableByNumber],
-              ['storyViewReceipts', 'Tell people you viewed their stories', settings.storyViewReceipts],
-              ['storiesDisabled', 'Turn stories off', settings.storiesDisabled],
-              ['keepMutedChatsArchived', 'Keep muted chats archived', settings.keepMutedChatsArchived]
-            ] as const
-          ).map(([key, label, on]) => (
-            <label key={key} className="small poll-disclosed" title={on === null ? 'Not known yet' : undefined}>
-              <input type="checkbox" checked={!!on} disabled={busy || on === null} onChange={(e) => setShared({ setting: key, on: e.target.checked }, `${label}: ${e.target.checked ? 'on' : 'off'}`)} />
-              {label}
-            </label>
-          ))}
-          <ChoiceSetting
-            label="Who can see your number"
-            value={String(settings.phoneNumberSharing ?? 0)}
-            options={[
-              ...(settings.phoneNumberSharing ? [] : [{ value: '0', label: 'Not known yet' }]),
-              { value: '1', label: 'Everybody' },
-              { value: '2', label: 'Nobody' }
-            ]}
-            disabled={busy || settings.phoneNumberSharing === null}
-            onChange={(v) => setShared({ setting: 'phoneNumberSharing', value: Number(v) }, v === '1' ? 'Everybody can see your number' : 'Nobody can see your number')}
-          />
-          <ChoiceSetting
-            label="Disappearing messages for new chats"
-            value={String(settings.defaultTimer ?? 0)}
-            options={[
-              { value: '0', label: 'Off' },
-              { value: '3600', label: '1 hour' },
-              { value: '28800', label: '8 hours' },
-              { value: '86400', label: '1 day' },
-              { value: '604800', label: '1 week' },
-              { value: '2419200', label: '4 weeks' },
-              ...([0, 3600, 28800, 86400, 604800, 2419200].includes(settings.defaultTimer ?? 0) ? [] : [{ value: String(settings.defaultTimer), label: `${settings.defaultTimer} seconds` }])
-            ]}
-            disabled={busy || settings.defaultTimer === null}
-            onChange={(v) => setShared({ setting: 'defaultTimer', value: Number(v) }, 'The timer for new chats was changed')}
-          />
-          <StoryLists accountId={account.id} />
-          <StickerPacks accountId={account.id} />
-          <CallLinks accountId={account.id} />
-          <NotificationProfiles accountId={account.id} />
-          {settings.blocked.length > 0 && (
-            <>
-              <div className="small muted">Blocked</div>
-              <ul className="plain-list">
-                {settings.blocked.map((b) => (
-                  <li key={b.id} className="small field-row">
-                    <span className="grow">{b.name}</span>
-                    <button
-                      type="button"
-                      className="button"
-                      disabled={busy}
-                      onClick={() =>
-                        void window.moho
-                          .rpc('signalBlock', { accountId: account.id, id: b.id, blocked: false })
-                          .then(() => {
-                            store.toast('info', `${b.name} is unblocked`)
-                            loadSettings()
-                          })
-                          .catch((e: Error) => store.toast('error', e.message))
-                      }
-                    >
-                      Unblock
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </>
-      )}
-      <div className="setting-row">
-        <div className="setting-text">
-          <div>Linked devices</div>
-          <div className="small muted">Remove one from Signal on your phone: Settings, then Linked devices.</div>
-        </div>
-      </div>
-      <ul className="plain-list">
-        {devices.map((d) => (
-          <li key={d.id} className="small">
-            {d.name || (d.id === 1 ? 'Phone' : `Device ${d.id}`)}
-            {d.isThis ? ' (this one)' : ''} <span className="muted">· last seen {when(d.lastSeen)}</span>
-          </li>
-        ))}
-      </ul>
-      {mine && (
-        <div className="field-row">
-          <label className="field">
-            <span className="small muted">Name of this device in that list</span>
-            <input className="text-field" type="text" value={name} disabled={busy} onChange={(e) => setName(e.target.value)} />
-          </label>
-          <button type="button" className="button" disabled={busy || !name.trim() || name.trim() === mine.name} onClick={rename}>
-            Rename
-          </button>
-        </div>
-      )}
-    </div>
+    </SideTabs>
   )
 }
 

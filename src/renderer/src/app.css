@@ -13358,3 +13358,122 @@ p.downloads-folder {
 .download-row .download-actions .icon-button:focus-visible {
   color: var(--surface-text);
 }
+
+/* --- the spinner, where it stands in a line of words --------------------------- */
+
+/* A span has no width of its own: beside words, not in a flex row, it was a
+   sliver. Sized as a box, and set on the line rather than under it. */
+.spinner {
+  display: inline-block;
+  vertical-align: -2px;
+}
+
+.tool-none > .spinner,
+.join-note > .spinner {
+  margin-right: 6px;
+}
+
+/* --- buttons: what a button with no rank of its own looks like ----------------- */
+
+/* A button that was given no rank used to be the filled accent, so a page of
+   them was a page of equally loud buttons. It is tinted now - plainly a
+   button, and plainly not the one thing the page is for. `primary` is the
+   filled one. */
+.button:not(.primary, .subtle, .quiet, .danger, .danger-quiet, .hotkey-recorder) {
+  background: var(--primary-pressed);
+  color: var(--secondary);
+}
+
+.button:not(.primary, .subtle, .quiet, .danger, .danger-quiet, .hotkey-recorder):hover {
+  filter: none;
+  background: var(--primary-selected);
+  color: var(--surface-text);
+}
+
+/* Beside a quiet one - Save next to Cancel - it is the main action of the
+   pair, whatever it was called, and is drawn as one. */
+.button:not(.primary, .subtle, .quiet, .danger, .danger-quiet, .hotkey-recorder):is(:has(~ .button.subtle), :has(~ .button.quiet), .button.subtle ~ *, .button.quiet ~ *) {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+
+.button:not(.primary, .subtle, .quiet, .danger, .danger-quiet, .hotkey-recorder):is(:has(~ .button.subtle), :has(~ .button.quiet), .button.subtle ~ *, .button.quiet ~ *):hover {
+  filter: brightness(1.1);
+  background: var(--primary);
+  color: var(--primary-text);
+}
+
+.button[disabled]:not(.primary, .subtle, .quiet, .danger, .danger-quiet, .hotkey-recorder),
+.button[disabled]:not(.primary, .subtle, .quiet, .danger, .danger-quiet, .hotkey-recorder):is(:has(~ .button.subtle), :has(~ .button.quiet), .button.subtle ~ *, .button.quiet ~ *) {
+  background: var(--surface-container-highest);
+  color: var(--text-muted);
+}
+
+/* --- a service's own sections: what the older tools bring with them ------------- */
+
+.tool-avatar {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.tool-avatar.placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-container-highest);
+  color: var(--text-muted);
+}
+
+/* Tools written for the fold-down, in a card: room top and bottom, and their own rows as rows. */
+.card.tool-own,
+.card.matrix-tools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding-top: var(--spacing-m);
+  padding-bottom: var(--spacing-m);
+}
+
+.card.tool-own:empty {
+  display: none;
+}
+
+.card.tool-own > .setting-row,
+.card.matrix-tools > .setting-row {
+  padding: var(--spacing-xs) 0;
+  border-bottom: 0;
+}
+
+.card.matrix-tools .device-row {
+  background: var(--surface-container);
+  border-color: var(--outline-light);
+}
+
+.card.matrix-tools.danger-zone {
+  display: flex;
+}
+
+.section-label.section-label-next {
+  margin-top: var(--spacing-xl);
+}
+
+.card > .device-row {
+  margin-bottom: var(--spacing-s);
+}
+
+/* --- sign-in forms: what a form says about itself is quieter than what it asks -- */
+
+.add-account-form > .add-form > p,
+.add-account-form > .add-form > .small.muted {
+  max-width: 76ch;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.add-account-form > .add-form > p strong,
+.add-account-form > .add-form > p b {
+  color: var(--surface-variant-text);
+}

@@ -489,6 +489,21 @@ const REWORK = [
       await sleep(500)
     }
   },
+  // Each service's sign-in form, on its page.
+  ...['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram', 'stoat', 'signal', 'xmpp'].map((service) => ({
+    name: 'rework-form-' + service,
+    setup: async (p) => {
+      await many(p)
+      await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`)
+      await sleep(300)
+      await p.evaluate(`document.querySelector('[data-add-account]')?.click()`)
+      await sleep(250)
+      await p.evaluate(`document.querySelector('[data-add-service="${service}"]')?.click()`)
+      await clearToasts(p)
+    }
+  })),
+  { name: 'rework-tab-ignored-steam', setup: async (p) => { await accountOpen('steam:76561198000000001', 9)(p); await p.evaluate(`document.querySelector('[data-tab=ignored]')?.click()`); await clearToasts(p) } },
+  { name: 'rework-tab-matrix-keys', setup: async (p) => { await accountOpen('@salastil:poa.st', 4)(p); await p.evaluate(`document.querySelector('[data-tab=service]')?.click()`); await sleep(300); await p.evaluate(`[...document.querySelectorAll('.side-tabs-item')].find((b) => b.innerText.includes('Keys'))?.click()`); await clearToasts(p) } },
   { name: 'rework-add-grid', setup: async (p) => { await many(p); await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`); await sleep(400); await p.evaluate(`document.querySelector('[data-add-account]')?.click()`); await clearToasts(p) } },
   {
     name: 'rework-narrow-list',
@@ -1731,7 +1746,7 @@ async function main() {
         // Every scene starts from the same place: nothing open, the IRC
         // network showing, the mouse out of the way.
         await escape(page)
-        await page.evaluate(`window.__mohoShots.store.setActivePanel(''), window.__mohoShots.patch({ toasts: [], typingByBuffer: {}, replyingTo: null })`)
+        await page.evaluate(`window.__mohoShots.store.setActivePanel(''), window.__mohoShots.patch({ toasts: [], typingByBuffer: {}, replyingTo: null, transfers: [] })`)
         await mouse(page, 'mouseMoved', SIZE.width - 1, SIZE.height - 1)
         await scene.setup(page)
         if (scene.video) {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
 import { SwitchRow } from './Switch'
-import { AccountFace, SideTabs } from './AccountList'
+import { AccountFace, Asking, SideTabs, ToolPane } from './AccountList'
 import { XmppDataForm, type XmppForm } from './XmppDataForm'
 import { useStore } from '../state/hooks'
 import type { Account } from '../../../shared/wire'
@@ -787,25 +787,6 @@ function XmppConnectedTools({ account }: { account: Account }): JSX.Element {
 /** The server part of an XMPP account's id. */
 function accountServer(id: string): string {
   return id.includes('@') ? id.slice(id.lastIndexOf('@') + 1) : ''
-}
-
-/** One section's page: what it is, what it means, and its controls. */
-function ToolPane({ title, desc, children }: { title: string; desc: string; children: React.ReactNode }): JSX.Element {
-  return (
-    <div className="tool-pane">
-      <h3 className="tool-title">{title}</h3>
-      <p className="tool-desc">{desc}</p>
-      {children}
-    </div>
-  )
-}
-
-function Asking(): JSX.Element {
-  return (
-    <p className="small muted tool-none">
-      <span className="spinner" /> Asking the server…
-    </p>
-  )
 }
 
 function XmppStoppedTools({ account }: { account: Account }): JSX.Element | null {

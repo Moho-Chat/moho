@@ -11,6 +11,7 @@ import { XmppDataForm, type XmppForm } from './XmppDataForm'
 import { SteamAccountTools } from './SteamAccountTools'
 import { TwitchSignIn } from './TwitchSignIn'
 import { IgnoreList } from './IgnoreList'
+import { BlockedList } from './BlockedList'
 import { TunnelAllSwitch } from './settings/Tunnel'
 import { useChat, useConnectionDetail, usePref, useStore } from '../state/hooks'
 import { bufferDisplayName, classes, resolveMediaUrl, serviceIcon, serviceLabel } from '../lib/util'
@@ -697,20 +698,29 @@ function AccountPage({ account, serviceName }: { account: Account; serviceName: 
                   setting somebody could switch on and never find again. */}
               <IgnoreList account={account} showEmpty />
             </div>
+            {/* The other kind of shutting somebody out, where the service has one. */}
+            {(account.service === 'steam' || account.service === 'stoat') && (
+              <>
+                <h4 className="section-label section-label-next">People the account has blocked</h4>
+                <div className="card">
+                  <BlockedList account={account} />
+                </div>
+              </>
+            )}
           </section>
         )}
 
         {/* XMPP has more of its own than a card holds: a section each, down the side. */}
         {tab === 'service' && account.service === 'xmpp' && <XmppAccountTools account={account} />}
+        {tab === 'service' && account.service === 'signal' && <SignalAccountTools account={account} />}
+        {tab === 'service' && account.service === 'matrix' && <MatrixAccountTools account={account} />}
 
-        {tab === 'service' && account.service !== 'xmpp' && (
+        {tab === 'service' && !['xmpp', 'signal', 'matrix'].includes(account.service) && (
           <section className="page-section">
             <h4 className="section-label">{serviceTab}</h4>
             <div className="card">
-              {account.service === 'matrix' && <MatrixAccountTools account={account} />}
               {account.service === 'steam' && <SteamAccountTools account={account} />}
               {account.service === 'stoat' && <StoatAccountTools account={account} />}
-              {account.service === 'signal' && <SignalAccountTools account={account} />}
               {account.service === 'twitch' && <TwitchAccountTools account={account} />}
               {account.service === 'kick' && <KickFollowSync account={account} />}
             </div>
