@@ -1264,6 +1264,7 @@ function BufferRow({
         {/* Told only of what names you: not silent, so not drawn muted, but
             not an ordinary row either. */}
         {!muted && buffer.notify === 'mentions' && <Icon name="alternate_email" size={13} className="buffer-muted-icon" />}
+        {!muted && buffer.notify === 'direct' && <Icon name="person" size={13} className="buffer-muted-icon" />}
         {/* One badge, and being on air wins it: a live channel says LIVE,
             an off-air one says how much was said while you were away. The
             two flickering against each other in the same slot as messages

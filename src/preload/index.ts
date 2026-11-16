@@ -154,6 +154,16 @@ const api = {
 
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke(IPC.openExternal, url),
 
+  /**
+   * A finished transfer's file: opened with whatever the system opens it with
+   * ('open'), or shown selected in the file manager ('reveal'). With no id,
+   * 'folder' opens the folder downloads are saved to. The window names the
+   * transfer and main finds where it landed from the daemon, so nothing here
+   * can be made to open a path of somebody else's choosing.
+   */
+  transferFile: (action: 'open' | 'reveal' | 'folder', id = ''): Promise<{ error?: string }> =>
+    ipcRenderer.invoke(IPC.transferFile, action, id),
+
   /** A finished document (a Telegram Instant View) in a window of its own. */
   openArticle: (title: string, html: string): Promise<void> => ipcRenderer.invoke(IPC.openArticle, title, html),
 

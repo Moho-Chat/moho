@@ -2815,6 +2815,21 @@ export class ChatStore {
    * row that still says what it was, rather than a menu that claims one thing
    * while the account holds another.
    */
+  /**
+   * Takes transfers out of the history: the ones named, or a kind of them,
+   * optionally only those older than so many days. The files stay where they
+   * are. Answers with how many went.
+   */
+  async forgetTransfers(what: { ids: string[] } | { which: 'failed' | 'finished' | 'missing' | 'all'; olderThanDays?: number }): Promise<number> {
+    try {
+      const r = await window.moho.rpc<{ removed: number }>('forgetTransfers', what)
+      return r.removed
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+      return 0
+    }
+  }
+
   async setNotifyLevel(bufferId: string, level: NotifyLevel): Promise<void> {
     try {
       await window.moho.rpc('setNotifyLevel', { bufferId, level })
@@ -4650,6 +4665,13 @@ export class ChatStore {
         const t = data as unknown as DccTransfer
         const rest = this.state.transfers.filter((x) => x.id !== t.id)
         this.set({ transfers: [t, ...rest] })
+        break
+      }
+
+      // Taken out of the history, here or in another window.
+      case 'transfersForgotten': {
+        const gone = new Set((data as unknown as { ids: string[] }).ids)
+        this.set({ transfers: this.state.transfers.filter((t) => !gone.has(t.id)) })
         break
       }
 

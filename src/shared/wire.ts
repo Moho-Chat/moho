@@ -159,13 +159,13 @@ export interface Buffer {
    * The window draws and offers it the same either way - it is the daemon's
    * to decide what a level means for a message, and this is only its answer.
    */
-  notify?: 'all' | 'mentions' | 'mute'
+  notify?: 'all' | 'mentions' | 'direct' | 'mute'
   /**
    * What actually applies, where that is not what was set on this
    * conversation: a channel left on its default inside a server somebody muted
    * is silent. Absent when it is the same as `notify`.
    */
-  notifyApplied?: 'default' | 'all' | 'mentions' | 'mute'
+  notifyApplied?: 'default' | 'all' | 'mentions' | 'direct' | 'mute'
   /**
    * Starred on the account itself - Matrix's `m.favourite` tag today.
    *
@@ -358,6 +358,8 @@ export interface DccTransfer {
   path?: string | null
   /** Why it failed, or why it was turned down. */
   error?: string | null
+  /** When it started, in seconds. Absent from a daemon older than the history being cleared by age. */
+  startedAt?: number
 }
 
 /** What receiving files is allowed to do. Lives with the daemon, which is what writes them. */

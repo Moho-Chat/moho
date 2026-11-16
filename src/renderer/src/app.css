@@ -13276,3 +13276,85 @@ span.tone-bad {
     animation: none;
   }
 }
+
+/* --- downloads: where they go, what to do with one, clearing the list -------- */
+
+.downloads {
+  max-width: 760px;
+}
+
+.downloads-head {
+  margin-bottom: var(--spacing-m);
+}
+
+p.downloads-folder {
+  margin-top: 2px;
+}
+
+.downloads-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-s) var(--spacing-m);
+  margin-bottom: var(--spacing-l);
+}
+
+.downloads-count {
+  margin-left: 6px;
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.downloads-none {
+  margin: var(--spacing-l) var(--spacing-xs);
+}
+
+.downloads .settings-section {
+  max-width: none;
+}
+
+.download-row {
+  border: 1px solid var(--outline-light);
+  border-radius: var(--corner-radius);
+  transition:
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease;
+}
+
+.download-row:hover {
+  border-color: var(--outline-strong);
+  background: var(--surface-container);
+}
+
+.download-name {
+  font-weight: var(--weight-medium);
+}
+
+.download-mark.declined {
+  color: var(--state-off);
+}
+
+.download-mark.failed {
+  color: var(--state-bad);
+}
+
+.download-mark.done {
+  color: var(--state-ok);
+}
+
+.download-when {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-muted);
+}
+
+/* What can be done with a finished one: there, and quiet until the row is looked at. */
+.download-row .download-actions .icon-button {
+  color: var(--text-muted);
+}
+
+.download-row:hover .download-actions .icon-button,
+.download-row .download-actions .icon-button:focus-visible {
+  color: var(--surface-text);
+}

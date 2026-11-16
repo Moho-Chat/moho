@@ -878,6 +878,43 @@ function wireIpc(): void {
     }
   })
 
+  // A downloaded file, opened or shown where it is. The window says which
+  // transfer and what to do; where that is on disk is the daemon's to say,
+  // asked here. A path from the page is never opened: it is the one process
+  // that renders what strangers send, and "open this file" is not something
+  // it should be able to ask of an arbitrary path.
+  ipcMain.handle(IPC.transferFile, async (_e, action: string, id: string): Promise<{ error?: string }> => {
+    try {
+      if (action === 'folder') {
+        const dcc = (await client.request('getDccPrefs', {})) as { resolvedDirectory?: string }
+        const dir = dcc.resolvedDirectory
+        if (!dir || !fs.existsSync(dir)) return { error: 'The downloads folder does not exist yet. It is made when the first file arrives.' }
+        const failed = await shell.openPath(dir)
+        return failed ? { error: failed } : {}
+      }
+      const all = (await client.request('listTransfers', {})) as { id: string; path?: string | null }[]
+      const file = all.find((t) => t.id === id)?.path
+      if (!file) return { error: 'moho has no record of where that file went.' }
+      if (!fs.existsSync(file)) {
+        // Moved, renamed or deleted since. Its folder is the next best thing to show, if that is still there.
+        const dir = path.dirname(file)
+        if (action === 'reveal' && fs.existsSync(dir)) {
+          const failed = await shell.openPath(dir)
+          return failed ? { error: failed } : { error: 'The file is no longer there. This is the folder it was saved to.' }
+        }
+        return { error: 'The file is no longer where it was saved.' }
+      }
+      if (action === 'reveal') {
+        shell.showItemInFolder(file)
+        return {}
+      }
+      const failed = await shell.openPath(file)
+      return failed ? { error: failed } : {}
+    } catch (err) {
+      return { error: (err as Error).message }
+    }
+  })
+
   ipcMain.handle(IPC.prefsGetAll, () => prefs.all())
   ipcMain.handle(IPC.prefsSet, (e, key: string, value: unknown) => applyPref(key, value, e.sender))
 

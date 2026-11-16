@@ -419,6 +419,28 @@ const accountOpen = (accountId, nth) => async (page) => {
   await clearToasts(page)
 }
 
+/** A history of transfers, as a busy XDCC channel leaves one. */
+const downloads = async (page) => {
+  await page.evaluate(`(() => {
+    const now = Math.floor(Date.now() / 1000)
+    const row = (id, fileName, state, ago, extra = {}) => ({ id, accountId: 'irc:x', kind: 'dcc', outgoing: false, from: 'Gattsu', fileName, rawName: fileName, size: 1397541964, received: 1397541964, rate: 0, state, startedAt: now - ago, path: state === 'done' ? '/home/you/Downloads/' + fileName : null, error: null, ...extra })
+    const ep = (n, title) => 'Mushoku.Tensei.S02E0' + n + '.' + title + '.1080p.WEB-DL.mkv'
+    window.__mohoShots.patch({ transfers: [
+      row('t1', ep(6, 'I.Do.Not.Want.to.Die'), 'receiving', 40, { received: 612000000, rate: 4200000 }),
+      row('t2', ep(5, 'Ranoa.University.of.Magic'), 'done', 1800),
+      row('t3', ep(4, 'Letter.of.Recommendation'), 'done', 5400),
+      row('t4', ep(1, 'The.Depressed.Magician'), 'failed', 9000, { received: 528027476, error: 'connection ended after 528027476 of 1397541964 bytes' }),
+      row('t5', ep(3, 'Fast.Approach'), 'declined', 86400 * 2, { error: 'declined' }),
+      row('t6', ep(2, 'The.Midnight.Forest'), 'failed', 86400 * 9, { received: 381159136, error: 'connection ended after 381159136 of 1580231143 bytes' }),
+      row('t7', '[SubsPlease] Mushoku Tensei - 01v2 (1080p) [F76E4E71].mkv', 'done', 86400 * 12),
+      row('t8', 'Alexcellence-2026-09-12', 'done', 86400 * 40, { kind: 'export', from: 'Alexcellence', received: 46, size: 46 })
+    ] })
+    window.__mohoShots.store.setActivePanel('downloads')
+    return true
+  })()`)
+  await sleep(500)
+}
+
 const REWORK = [
   { name: 'rework-accounts', setup: async (p) => { await many(p); await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`); await clearToasts(p) } },
   { name: 'rework-account-irc', setup: accountOpen('salastil@irc.libera.chat', 1) },
@@ -484,7 +506,26 @@ const REWORK = [
     setup: async (p) => { await p.evaluate(`window.__mohoShots.patch({ accounts: [], groups: [], buffers: [], activeBufferId: '', activeGroupId: '' }), true`); await clearToasts(p) },
     after: async (p) => { await p.call('Page.reload'); await until(p, 'window.__mohoShots && document.querySelector(".buffer-row")', 'the window after a reload'); await p.call('Emulation.setDeviceMetricsOverride', { ...SIZE, deviceScaleFactor: 1, mobile: false }) }
   },
-  { name: 'rework-downloads', setup: async (p) => { await p.evaluate(`window.__mohoShots.store.setActivePanel('downloads')`); await sleep(400) } },
+  // Downloads with a history in it (comment 581): the folder first, what can be done with a row, clearing.
+  { name: 'rework-downloads', setup: async (p) => { await downloads(p) } },
+  {
+    name: 'rework-downloads-clear',
+    setup: async (p) => { await downloads(p); await p.evaluate(`[...document.querySelectorAll('.downloads-head .button')].find((b) => b.innerText.includes('Clear'))?.click()`); await sleep(300) }
+  },
+  // The notification levels on a channel, with direct mentions only among them (comment 583).
+  {
+    name: 'rework-notify-menu',
+    setup: async (p) => {
+      await discord(false)(p)
+      const c = await centre(p, '.buffer-row', 'general')
+      if (c) {
+        await mouse(p, 'mousePressed', c.x, c.y, 'right')
+        await mouse(p, 'mouseReleased', c.x, c.y, 'right')
+      }
+      await sleep(300)
+    },
+    clip: { x: 0, y: 44, width: 520, height: 520 }
+  },
   { name: 'rework-join-irc', setup: joinOn('salastil@irc.libera.chat') },
   { name: 'rework-join-discord', setup: joinOn('discord:shots') },
   { name: 'rework-join-matrix', setup: joinOn('@salastil:poa.st') },
