@@ -17,7 +17,9 @@ import { PlaceField } from './PlaceField'
 import { VoiceRecorder } from './VoiceRecorder'
 import { useActiveBuffer, useChat, useStore } from '../state/hooks'
 import { emojiPreview } from '../lib/format'
-import { bufferDisplayName, classes, fileNameOf, humanSize, isImageFile, resolveMediaUrl } from '../lib/util'
+import { StagedTray, type StagedAttachment } from './StagedTray'
+import { fileKind } from '../lib/filekind'
+import { bufferDisplayName, classes, fileNameOf, isImageFile } from '../lib/util'
 import { completeNick, cyclePrefix, type Completion } from '../lib/completion'
 import {
   mentionInsert,
@@ -31,19 +33,6 @@ import { withTone } from '../lib/skintone'
 import { STEAM_FILE_TYPES, steamFileRefusal } from '../lib/steamfiles'
 import { usePref } from '../state/hooks'
 import { rankShortcodes, shortcodeQuery, unicodeTargets, type ShortcodeTarget } from '../lib/shortcodes'
-
-interface StagedAttachment {
-  id: number
-  path: string
-  name: string
-  isImage: boolean
-  /** A picture of it where the path cannot be shown: made from the dropped file. */
-  preview?: string
-  /** In bytes, once it has been asked. */
-  size?: number | null
-  /** Sent hidden behind a spoiler: Discord, Steam, Telegram and Stoat. On Signal, sent to view once. */
-  spoiler: boolean
-}
 
 /**
  * How often to repeat a typing notice while somebody keeps writing.
@@ -489,7 +478,9 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
     }
     const id = ++seqRef.current
     const isImage = isImageFile(name)
-    const preview = file && isImage ? URL.createObjectURL(file) : undefined
+    // A picture or a video shows itself on its card, and a sound says how long it is; the dropped file is what
+    // those are read from.
+    const preview = file && ['image', 'video', 'audio'].includes(fileKind(name)) ? URL.createObjectURL(file) : undefined
     setStaged((s) => [...s, { id, path, name, isImage, spoiler: false, preview }])
     // Its size is the main process's to read; the card says it when it comes.
     void window.moho.fileSize(path).then((size) => {
@@ -1134,62 +1125,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
         </div>
       )}
 
-      {staged.length > 0 && (
-        <div className="composer-attachments">
-          {staged.map((att) => (
-            <div key={att.id} className={classes('staged-card', att.spoiler && 'is-spoiler')}>
-              <div className="staged-preview">
-                {att.isImage ? (
-                  <img src={att.preview ?? resolveMediaUrl(att.path)} alt="" />
-                ) : (
-                  <Icon name="description" size={32} />
-                )}
-                {att.spoiler && <span className="staged-spoiler-pill">{service === 'signal' ? 'VIEW ONCE' : 'SPOILER'}</span>}
-              </div>
-              <div className="staged-meta">
-                <span className="staged-name ellipsis" title={att.name}>
-                  {att.name}
-                </span>
-                {typeof att.size === 'number' && <span className="small muted">{humanSize(att.size)}</span>}
-              </div>
-              {/* On the card's corner, and there only while it is pointed at
-                  or focused - they would be a dozen buttons otherwise. */}
-              <div className="staged-actions">
-                {service === 'signal' && /\.(jpe?g|png|gif|webp|heic|mp4|m4v|mov|webm)$/i.test(att.name) && (
-                  <button
-                    type="button"
-                    className={classes('staged-action', att.spoiler && 'on')}
-                    title={att.spoiler ? 'Send normally' : 'View once: each person can open it one time'}
-                    aria-pressed={att.spoiler}
-                    onClick={() => setStaged((s) => s.map((x) => (x.id === att.id ? { ...x, spoiler: !x.spoiler } : x)))}
-                  >
-                    <Icon name={att.spoiler ? 'timer' : 'timer_off'} size={16} />
-                  </button>
-                )}
-                {(service === 'discord' || service === 'steam' || service === 'telegram' || service === 'stoat') && (
-                  <button
-                    type="button"
-                    className={classes('staged-action', att.spoiler && 'on')}
-                    title={att.spoiler ? 'Not a spoiler' : 'Mark as spoiler'}
-                    aria-pressed={att.spoiler}
-                    onClick={() => setStaged((s) => s.map((x) => (x.id === att.id ? { ...x, spoiler: !x.spoiler } : x)))}
-                  >
-                    <Icon name={att.spoiler ? 'visibility_off' : 'visibility'} size={16} />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="staged-action danger"
-                  title="Remove"
-                  onClick={() => setStaged((s) => s.filter((x) => x.id !== att.id))}
-                >
-                  <Icon name="delete" size={16} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {staged.length > 0 && <StagedTray staged={staged} onChange={setStaged} service={service ?? ''} />}
 
       <div className="composer-row">
        <div className="composer-box">

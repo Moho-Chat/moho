@@ -2327,22 +2327,63 @@ button.video-tile {
   flex: 1;
 }
 
+/* What is about to be sent: one row of small cards that scrolls sideways,
+   under a line saying how much there is (#339). */
+.staged-tray {
+  padding: var(--spacing-xs) var(--spacing-s) 0;
+}
+
+.staged-summary {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 2px var(--spacing-xs);
+  white-space: pre;
+}
+
+.staged-clear {
+  margin-left: auto;
+  color: var(--surface-variant-text);
+  font-size: inherit;
+}
+
+.staged-clear:hover {
+  color: var(--danger);
+}
+
 .composer-attachments {
   display: flex;
-  flex-wrap: wrap;
   gap: var(--spacing-xs);
-  padding: var(--spacing-xs) var(--spacing-s) 0;
+  overflow-x: auto;
+  padding-bottom: var(--spacing-xs);
+  scrollbar-width: thin;
 }
 
 .staged-card {
   position: relative;
   display: flex;
+  flex: none;
   flex-direction: column;
-  width: 140px;
+  width: 112px;
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
   overflow: hidden;
-  transition: background var(--motion-fast) var(--ease);
+  transition:
+    background var(--motion-fast) var(--ease),
+    opacity var(--motion-fast) var(--ease),
+    box-shadow var(--motion-fast) var(--ease);
+}
+
+.staged-card[draggable='true'] {
+  cursor: grab;
+}
+
+.staged-card.dragging {
+  opacity: 0.4;
+}
+
+.staged-card.drop-target {
+  box-shadow: 0 0 0 2px var(--primary);
 }
 
 .staged-preview {
@@ -2350,20 +2391,33 @@ button.video-tile {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 96px;
+  width: 100%;
+  height: 72px;
+  padding: 0;
   background: var(--surface-container-lowest, rgba(0, 0, 0, 0.25));
   color: var(--surface-variant-text);
   overflow: hidden;
 }
 
-.staged-preview img {
+.staged-preview:not(:disabled) {
+  cursor: zoom-in;
+}
+
+.staged-preview img,
+.staged-preview video {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  pointer-events: none;
+}
+
+.staged-preview audio {
+  display: none;
 }
 
 /* Hidden behind a spoiler: blurred until it is sent, as it will be seen. */
-.staged-card.is-spoiler .staged-preview img {
+.staged-card.is-spoiler .staged-preview img,
+.staged-card.is-spoiler .staged-preview video {
   filter: blur(14px);
   transform: scale(1.2);
 }
@@ -2379,11 +2433,50 @@ button.video-tile {
   letter-spacing: 0.06em;
 }
 
+/* Says it is a video, over the frame of it. */
+.staged-play {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--scrim-strong);
+  color: var(--on-accent);
+}
+
+.staged-card.is-spoiler .staged-play {
+  display: none;
+}
+
+.staged-length,
+.staged-ext {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: 0 5px;
+  border-radius: var(--corner-radius-small);
+  background: var(--scrim-strong);
+  color: var(--on-accent);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium, 500);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+
+.staged-ext {
+  background: var(--surface-container-highest);
+  color: var(--surface-variant-text);
+  letter-spacing: 0.04em;
+}
+
 .staged-meta {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: var(--spacing-xs) var(--spacing-s);
+  padding: 3px var(--spacing-xs) 4px;
+  line-height: 1.3;
 }
 
 .staged-name {
@@ -2392,15 +2485,15 @@ button.video-tile {
 
 .staged-actions {
   position: absolute;
-  top: var(--spacing-xs);
-  right: var(--spacing-xs);
+  top: 3px;
+  right: 3px;
   display: flex;
   gap: 2px;
 }
 
-/* Each one fades, rather than the pair: a spoiler mark stays in view while
-   the rest wait for the pointer. */
-.staged-action:not(.on) {
+/* Each one fades, rather than the lot: removing is always in reach, a mark
+   that is on stays in view, and the rest wait for the pointer. */
+.staged-action:not(.on, .always) {
   opacity: 0;
   transition: opacity var(--motion-fast) var(--ease);
 }
@@ -2414,9 +2507,9 @@ button.video-tile {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--corner-radius-small);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
   background: var(--scrim-strong);
   color: var(--on-accent);
 }
@@ -13476,4 +13569,12 @@ p.downloads-folder {
 .add-account-form > .add-form > p strong,
 .add-account-form > .add-form > p b {
   color: var(--surface-variant-text);
+}
+
+/* The box's own border says it is focused; the text inside it does not draw
+   a second ring, which showed as a rule either side of what was typed (#339). */
+.composer-box .composer-input:focus,
+.composer-box .composer-input:focus-visible {
+  outline: none;
+  box-shadow: none;
 }

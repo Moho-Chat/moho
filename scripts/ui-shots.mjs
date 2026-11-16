@@ -659,7 +659,12 @@ const SCENES = [
       await discord(false)(p)
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'moho-tray-'))
       const make = (name, bytes) => { const f = path.join(dir, name); fs.writeFileSync(f, Buffer.alloc(bytes, 1)); return f }
-      const files = [make('finished-amigurumi-owl.png', 482_000), make('pattern-notes.pdf', 1_900_000), make('workshop-clip.mp4', 12_400_000), make('granny-square-closeup.jpg', 233_000)]
+      // A video that is one, so its card has a frame to show and a length to say.
+      const clip = path.join(dir, 'workshop-clip.mp4')
+      execFileSync('ffmpeg', ['-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=10', '-t', '83', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-crf', '38', clip])
+      const voice = path.join(dir, 'voice-memo.ogg')
+      execFileSync('ffmpeg', ['-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440', '-t', '47', '-c:a', 'libopus', '-b:a', '12k', voice])
+      const files = [make('finished-amigurumi-owl.png', 482_000), make('pattern-notes.pdf', 1_900_000), clip, make('granny-square-closeup.jpg', 233_000), voice, make('yarn-stash.zip', 5_300_000)]
       await p.evaluate(`(async () => {
         const art = (a, b, label) => new Promise((resolve) => {
           const c = document.createElement('canvas'); c.width = 320; c.height = 200
@@ -670,11 +675,14 @@ const SCENES = [
         const owl = await art('#e0a43a', '#b0457a', 'owl')
         const squares = await art('#3a8fe0', '#4a2f9a', 'squares')
         const mk = (blob, name) => new File([blob], name, { type: 'image/png' })
+        const bytes = (b64, name, type) => new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], name, { type })
         window.dispatchEvent(new CustomEvent('moho:stage-files', { detail: [
           { path: ${JSON.stringify(files[0])}, file: mk(owl, 'owl.png') },
           { path: ${JSON.stringify(files[1])} },
-          { path: ${JSON.stringify(files[2])} },
-          { path: ${JSON.stringify(files[3])}, file: mk(squares, 'squares.png') }
+          { path: ${JSON.stringify(files[2])}, file: bytes(${JSON.stringify(fs.readFileSync(files[2]).toString('base64'))}, 'workshop-clip.mp4', 'video/mp4') },
+          { path: ${JSON.stringify(files[3])}, file: mk(squares, 'squares.png') },
+          { path: ${JSON.stringify(files[4])}, file: bytes(${JSON.stringify(fs.readFileSync(files[4]).toString('base64'))}, 'voice-memo.ogg', 'audio/ogg') },
+          { path: ${JSON.stringify(files[5])} }
         ] }))
       })()`)
       await sleep(700)
