@@ -60,14 +60,36 @@ export function ThreadPanel(): JSX.Element | null {
   const replyCount = messages.filter((m) => m.id !== thread?.rootId).length
 
   if (!thread) return null
+  const root = messages.find((m) => m.id === thread.rootId)
+  const people = new Set(messages.map((m) => m.senderId || m.from)).size
+  // Only where the log has it on the page to go to.
+  const inLog = (messagesByBuffer[thread.bufferId] || []).some((m) => m.id === thread.rootId)
 
   return (
     <div className="thread-pane">
       <div className="thread-header">
-        <span className="thread-title ellipsis">Thread</span>
-        <span className="small muted">
-          {replyCount === 1 ? '1 reply' : `${replyCount} replies`}
+        <span className="thread-heading">
+          <span className="thread-title ellipsis">Thread</span>
+          {/* What it hangs from and who is in it: the first line of the message it grew out of, and how
+              many people have spoken (#339). */}
+          <span className="small muted ellipsis">
+            {[
+              // The counts first: they are short, and the line is cut at its end.
+              replyCount === 1 ? '1 reply' : `${replyCount} replies`,
+              people > 1 ? `${people} people` : '',
+              root?.body ? root.body.split('\n')[0].slice(0, 80) : ''
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
         </span>
+        {root && inLog && (
+          <IconButton
+            name="arrow_outward"
+            title="Go to the message this hangs from"
+            onClick={() => store.setJumpTarget(root.id)}
+          />
+        )}
         <IconButton name="close" title="Close thread" onClick={() => store.closeThreadPanel()} />
       </div>
 

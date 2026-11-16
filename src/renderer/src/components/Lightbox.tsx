@@ -42,6 +42,9 @@ interface Props {
  * cache, a Sneedchat attachment pulled over Tor and a Discord CDN link all
  * open the same way.
  */
+/** How many pictures the strip shows either side of the one open. */
+const STRIP_EITHER_SIDE = 5
+
 export function Lightbox({ source: opened, anchor = null, onClose }: Props): JSX.Element {
   // Who is beside it, worked out once on opening: scrolling the log behind the
   // viewer should not change what the arrows reach.
@@ -72,6 +75,17 @@ export function Lightbox({ source: opened, anchor = null, onClose }: Props): JSX
     setNatural(null)
     setNote('')
   }
+
+  /** Straight to one of the others, from the strip along the foot. */
+  const goTo = (to: number): void => {
+    if (!gallery || to === index || to < 0 || to >= count) return
+    setIndex(to)
+    setView(FIT)
+    setNatural(null)
+    setNote('')
+  }
+  // The ones either side of this one, for the strip: enough to see where it sits, not the whole conversation.
+  const strip = gallery && count > 1 ? Array.from({ length: count }, (_, i) => i).filter((i) => Math.abs(i - index) <= STRIP_EITHER_SIDE) : []
 
   // How big the picture is drawn at rest, and the window it is drawn in: what
   // zooming and panning are measured against.
@@ -244,7 +258,7 @@ export function Lightbox({ source: opened, anchor = null, onClose }: Props): JSX
       {/* The stage fills the backdrop, so it must not stop the click itself -
           the empty space around the media is part of "outside", and clicking
           there closes. Only the media and the toolbar hold their clicks. */}
-      <div ref={stageRef} className={`lightbox-stage${zoomed ? ' zoomed' : ''}`}>
+      <div ref={stageRef} className={`lightbox-stage${zoomed ? ' zoomed' : ''}${strip.length > 0 ? ' with-strip' : ''}`}>
         {source.kind === 'video' ? (
           <video
             key={index}
@@ -285,6 +299,28 @@ export function Lightbox({ source: opened, anchor = null, onClose }: Props): JSX
           />
         )}
       </div>
+
+      {/* The pictures either side, small, along the foot (#339): where this one sits among them, and the way
+          to any of them without stepping through the ones between. */}
+      {strip.length > 0 && gallery && (
+        <div className="lightbox-strip" onMouseDown={(e) => e.stopPropagation()}>
+          {strip.map((i) => {
+            const item = i === first ? opened : gallery.items[i]()
+            return (
+              <button
+                key={i}
+                type="button"
+                className={`lightbox-thumb${i === index ? ' current' : ''}`}
+                title={item.filename || `Picture ${i + 1}`}
+                aria-current={i === index}
+                onClick={() => goTo(i)}
+              >
+                {item.kind === 'video' ? <Icon name="movie" size={20} /> : <img src={item.src} alt="" loading="lazy" draggable={false} />}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {count > 1 && (
         <>

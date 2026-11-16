@@ -14579,3 +14579,107 @@ select.text-field {
   gap: var(--spacing-xs);
   padding: var(--spacing-xxs) var(--spacing-s);
 }
+
+.context-menu-icon-gap {
+  flex: none;
+  width: 16px;
+}
+
+/* A thread's head: what it is, and under that what it hangs from. */
+.thread-heading {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+/* Forum cards: the title leads; tags and counts are quiet, and the picture
+   keeps a picture's shape instead of a fixed square. */
+.forum-tag {
+  background: var(--surface-container-high);
+  color: var(--surface-variant-text);
+  font-size: var(--font-size-xs);
+}
+
+.forum-post-meta {
+  color: var(--surface-variant-text);
+  font-size: var(--font-size-small);
+}
+
+.forum-post-thumb {
+  width: 116px;
+  height: 76px;
+}
+
+/* The viewer: a bar that is a bar, the picture clear of it, and the pictures
+   either side along the foot. */
+.lightbox-bar {
+  background: rgba(0, 0, 0, 0.72);
+  padding: var(--spacing-xs) var(--spacing-m);
+}
+
+.lightbox-actions .icon-button {
+  width: 34px;
+  height: 34px;
+}
+
+.lightbox-stage {
+  box-sizing: border-box;
+  padding: 56px 0 var(--spacing-m);
+}
+
+.lightbox-stage.with-strip {
+  padding-bottom: 84px;
+}
+
+.lightbox-media {
+  max-height: 100%;
+}
+
+.lightbox-strip {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  bottom: var(--spacing-s);
+  display: flex;
+  gap: 6px;
+  max-width: 92%;
+  padding: 6px;
+  border-radius: var(--corner-radius);
+  background: rgba(0, 0, 0, 0.72);
+  transform: translateX(-50%);
+}
+
+.lightbox-thumb {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-high);
+  color: var(--surface-variant-text);
+  overflow: hidden;
+  opacity: 0.55;
+  transition:
+    opacity var(--motion-fast) var(--ease),
+    box-shadow var(--motion-fast) var(--ease);
+}
+
+.lightbox-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.lightbox-thumb:hover {
+  opacity: 0.9;
+}
+
+.lightbox-thumb.current {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--primary);
+}

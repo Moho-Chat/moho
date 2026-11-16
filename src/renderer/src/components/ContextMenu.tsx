@@ -64,6 +64,7 @@ interface Props {
  * size is known.
  */
 export function ContextMenu({ x, y, entries, above, onClose }: Props): JSX.Element {
+  const anyIcon = entries.some((e) => 'icon' in e && !!e.icon)
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ x, y })
 
@@ -199,7 +200,8 @@ export function ContextMenu({ x, y, entries, above, onClose }: Props): JSX.Eleme
               onClose()
             }}
           >
-            {entry.icon && <Icon name={entry.icon} size={16} />}
+            {/* Where any entry has a glyph, the ones without keep its place, so the words line up down the menu. */}
+            {entry.icon ? <Icon name={entry.icon} size={16} /> : anyIcon ? <span className="context-menu-icon-gap" /> : null}
             <span className="context-menu-label">{entry.label}</span>
             {entry.shortcut && <kbd className="context-menu-shortcut">{entry.shortcut}</kbd>}
             {entry.checked && <Icon name="check" size={16} className="context-menu-check" />}
