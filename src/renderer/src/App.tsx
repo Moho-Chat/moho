@@ -206,7 +206,8 @@ export default function App(): JSX.Element {
   // stops or the conversation changes. The server rail stays.
   const [theatre] = usePref<boolean>('ui.theatre', false)
   const theatreOn = theatre && !!watching && !streamElsewhere && !streamPoppedOut && !watchMinimized
-  const sidebarShown = !sidebarFolded && !paneOpen && !theatreOn
+  // Nor on the mentions page, which has no channels to list: it brings its own list of places.
+  const sidebarShown = !sidebarFolded && !paneOpen && !theatreOn && !onMentionsPage
 
   // A stale restored id is harmless: it simply resolves to no buffer and the
   // empty state shows, exactly as it would for "".
@@ -254,7 +255,7 @@ export default function App(): JSX.Element {
         <div className="main-column">
           <div className="main-header">
             {/* Not while a pane has folded the list for itself: there is nothing for it to fold. */}
-            {!paneOpen && (
+            {!paneOpen && !onMentionsPage && (
               <IconButton
                 name={sidebarFolded ? 'chevron_right' : 'chevron_left'}
                 title={sidebarFolded ? 'Show channel list' : 'Hide channel list'}

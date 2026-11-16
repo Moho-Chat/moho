@@ -388,7 +388,9 @@ export function formatFullTime(ts: number): string {
     month: 'long',
     day: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    // By the clock chosen in Appearance, as every other time is.
+    ...hour12Option()
   })
 }
 

@@ -5,7 +5,8 @@ import { HeaderPopover } from './HeaderPopover'
 import { Avatar } from './Avatar'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { isMutedBuffer, MENTIONS_GROUP_ID } from '../lib/groups'
-import { bufferDisplayName, formatFullTime, formatRelativeTime, serviceLabel } from '../lib/util'
+import { bufferDisplayName, classes, formatFullTime, formatRelativeTime, serviceLabel } from '../lib/util'
+import { byPlace, isUnreadMention, withRead } from '../lib/mentioninbox'
 import { useEscapeLayer } from '../lib/layers'
 
 /**
@@ -49,7 +50,11 @@ export function MentionsInbox(): JSX.Element {
    * user never touched.
    */
   const [dismissedTs, setDismissedTs] = usePref<number>('mentionsDismissedTs', 0)
+  const [read, setRead] = usePref<string[]>('mentions.read', [])
+  const groups = useChat((s) => s.groups)
   const [open, setOpen] = useState(false)
+  /** Which row the arrow keys are on. */
+  const [at, setAt] = useState(0)
   /** Loading backwards towards a mention, which can take a moment. */
   const [jumping, setJumping] = useState(false)
   const box = useRef<HTMLDivElement>(null)
@@ -57,18 +62,29 @@ export function MentionsInbox(): JSX.Element {
   const unread = useMemo(
     () =>
       mentions.filter((m) => {
-        // Dismissed from the inbox, or the conversation itself has been read
-        // since - opening the channel is the other, more natural way to
-        // answer a mention, and it should not still be waiting afterwards.
-        if (m.ts <= dismissedTs) return false
-        if (m.ts <= (lastReadTs[m.bufferId] ?? 0)) return false
+        // Emptied from the inbox, ticked off, or the conversation itself has
+        // been read since - opening the channel is the other, more natural
+        // way to answer a mention, and it should not still be waiting
+        // afterwards. The page counts the same ones: see lib/mentions.ts.
+        if (!isUnreadMention(m, { lastRead: lastReadTs, emptiedTs: dismissedTs, read })) return false
         // A muted conversation was told not to ask for attention. Badging a
         // button on its behalf is the one place that would be ignored.
         const buffer = buffers.find((b) => b.id === m.bufferId)
         return !buffer || !isMutedBuffer(buffer, muted, mutedGroups)
       }),
-    [mentions, dismissedTs, lastReadTs, buffers, muted, mutedGroups]
+    [mentions, dismissedTs, lastReadTs, buffers, muted, mutedGroups, read]
   )
+  /** Where each is from: its server by name, or whose direct messages. */
+  const placeName = (bufferId: string): string => {
+    const buffer = buffers.find((b) => b.id === bufferId)
+    const group = groups.find((g) => g.id === buffer?.groupId)
+    if (group && group.kind !== 'account' && group.kind !== 'dms') return group.name
+    const account = accounts.find((a) => a.id === buffer?.accountId)
+    return account ? serviceLabel(account.service) : 'Elsewhere'
+  }
+  // Under a small heading each when more than one place is waiting, in the order they came.
+  const runs = byPlace(unread, (m) => placeName(m.bufferId))
+  const ordered = runs.flatMap((r) => r.items)
 
   useEscapeLayer(() => setOpen(false), open)
 
@@ -83,6 +99,29 @@ export function MentionsInbox(): JSX.Element {
     return () => {
       document.removeEventListener('mousedown', close)
     }
+  }, [open])
+
+  // The arrow keys walk the list while it is open, Enter goes to the one they are on, and Delete ticks it off.
+  useEffect(() => {
+    if (!open) return
+    setAt(0)
+    const onKey = (e: KeyboardEvent): void => {
+      const list = orderedRef.current
+      if (list.length === 0) return
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        setAt((i) => (i + (e.key === 'ArrowDown' ? 1 : list.length - 1)) % list.length)
+      } else if (e.key === 'Enter' && !(e.target as HTMLElement).closest('button')) {
+        e.preventDefault()
+        setAt((i) => {
+          const m = list[Math.min(i, list.length - 1)]
+          if (m) void jumpRef.current(m.bufferId, m.id)
+          return i
+        })
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
   const jumpTo = async (bufferId: string, id: string): Promise<void> => {
@@ -103,6 +142,11 @@ export function MentionsInbox(): JSX.Element {
     }
     store.setJumpTarget(id)
   }
+
+  const orderedRef = useRef(ordered)
+  orderedRef.current = ordered
+  const jumpRef = useRef(jumpTo)
+  jumpRef.current = jumpTo
 
   // A new release counts as one more thing waiting, so the badge shows it.
   const waiting = unread.length + (release ? 1 : 0)
@@ -137,12 +181,8 @@ export function MentionsInbox(): JSX.Element {
                   : `${unread.length} unread ${unread.length === 1 ? 'mention' : 'mentions'}`}
             </span>
             {unread.length > 0 && (
-              <button
-                type="button"
-                className="link-button"
-                onClick={() => setDismissedTs(Math.floor(Date.now() / 1000))}
-              >
-                Mark all read
+              <button type="button" className="button quiet mentions-mark-all" onClick={() => setDismissedTs(Math.floor(Date.now() / 1000))}>
+                <Icon name="done_all" size={15} /> Mark all read
               </button>
             )}
           </div>
@@ -186,41 +226,43 @@ export function MentionsInbox(): JSX.Element {
             </div>
           )}
 
-          {unread.map((m) => {
-            const buffer = buffers.find((b) => b.id === m.bufferId)
-            const account = accounts.find((a) => a.id === buffer?.accountId)
-            // A mention whose conversation this client has since forgotten
-            // still shows: the message is the point, and hiding it because
-            // the buffer list moved on would lose the very thing collected.
-            const where = buffer ? bufferDisplayName(buffer.name) : 'a closed conversation'
-            return (
-              <button
-                key={m.id}
-                type="button"
-                className="mention-row"
-                onClick={() => buffer && void jumpTo(buffer.id, m.id)}
-                disabled={!buffer}
-              >
-                <Avatar name={m.from} url={m.avatarUrl} size={28} accountId={accountOfBuffer(m.bufferId)} />
-                <span className="mention-body">
-                  <span className="mention-head small">
-                    <span className="mention-from">{m.from}</span>
-                    <span className="muted ellipsis">
-                      in {where}
-                      {account ? ` · ${serviceLabel(account.service)}` : ''}
-                    </span>
-                    {/* Relative, with the exact time on hover: the panel is
-                        narrow, and "3h ago" is what decides whether a mention
-                        still needs answering. */}
-                    <span className="muted mention-when" title={formatFullTime(m.ts)}>
-                      {formatRelativeTime(m.ts)}
-                    </span>
-                  </span>
-                  <span className="mention-text small ellipsis">{m.body}</span>
-                </span>
-              </button>
-            )
-          })}
+          <div className="mentions-panel-rows">
+            {runs.map((run) => (
+              <div key={run.place} className="mentions-run">
+                {runs.length > 1 && <div className="mentions-run-head ellipsis">{run.place}</div>}
+                {run.items.map((m) => {
+                  const buffer = buffers.find((b) => b.id === m.bufferId)
+                  // A mention whose conversation this client has since forgotten
+                  // still shows: the message is the point, and hiding it because
+                  // the buffer list moved on would lose the very thing collected.
+                  const where = buffer ? bufferDisplayName(buffer.name) : 'a closed conversation'
+                  return (
+                    <div key={m.id} className={classes('mention-entry', 'compact', ordered[at]?.id === m.id && 'at')}>
+                      <button type="button" className="mention-open" onClick={() => buffer && void jumpTo(buffer.id, m.id)} disabled={!buffer}>
+                        <Avatar name={m.from} url={m.avatarUrl} size={28} accountId={accountOfBuffer(m.bufferId)} />
+                        <span className="mention-body">
+                          <span className="mention-head small">
+                            <span className="mention-from">{m.from}</span>
+                            <span className="muted ellipsis">in {where}</span>
+                            {/* Relative, with the exact time on hover: the panel is
+                                narrow, and "3h ago" is what decides whether a mention
+                                still needs answering. */}
+                            <span className="muted mention-when" title={formatFullTime(m.ts)}>
+                              {formatRelativeTime(m.ts)}
+                            </span>
+                          </span>
+                          <span className="mention-text-two small">{m.body}</span>
+                        </span>
+                      </button>
+                      <span className="mention-actions">
+                        <IconButton name="done" size={16} title="Mark this one read" onClick={() => setRead(withRead(read, m.id))} />
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
 
           {/* The way to the full page, which is the same list without the
               unread filter. The dropdown is for what is still owed an answer;

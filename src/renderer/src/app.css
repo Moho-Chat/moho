@@ -13920,3 +13920,207 @@ p.downloads-folder {
 .main-header {
   container: main-header / inline-size;
 }
+
+/* --- mentions: the page and the popover (#339) -------------------------------- */
+
+/* The places that mentioned you down the left, the mentions on the right:
+   the frame every other pane has, in the column the channel list left. */
+.mentions-page:not(.empty) {
+  display: flex;
+  padding: 0;
+  overflow: hidden;
+  container: mentions / inline-size;
+}
+
+.mentions-places {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 1px;
+  width: var(--master-list-width);
+  padding: var(--spacing-s);
+  border-right: 1px solid var(--outline-light);
+  overflow-y: auto;
+}
+
+.mentions-places .side-tabs-heading {
+  padding: var(--spacing-s) var(--spacing-s) var(--spacing-xxs);
+}
+
+.mentions-place-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.mentions-place-icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.mentions-place-icon.mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-container-highest);
+}
+
+.mentions-place-count {
+  flex: none;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--mention);
+  color: var(--on-accent);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  line-height: 18px;
+  text-align: center;
+}
+
+.mentions-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mentions-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  border-bottom: 1px solid var(--outline-light);
+}
+
+.mentions-head .button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+}
+
+.mentions-rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: var(--spacing-m);
+}
+
+/* Read is dimmed, not gone: the page is everything, and what is waiting
+   stands out of it. */
+.mention-entry.read .mention-open {
+  opacity: 0.62;
+}
+
+.mention-entry.read:hover .mention-open {
+  opacity: 1;
+}
+
+.mention-reply {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mention-reply-from {
+  font-weight: var(--weight-medium);
+}
+
+.mention-thumb {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--corner-radius-small);
+  object-fit: cover;
+}
+
+/* What can be done with one, on its row while it is pointed at. */
+.mention-actions {
+  position: absolute;
+  top: var(--spacing-xs);
+  right: var(--spacing-s);
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-high);
+  box-shadow: var(--shadow-1, 0 1px 3px rgba(0, 0, 0, 0.3));
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+
+.mention-entry:hover .mention-actions,
+.mention-actions:focus-within {
+  opacity: 1;
+}
+
+/* Narrow: the places lie across the top. */
+@container mentions (max-width: 620px) {
+  .mentions-page:not(.empty) {
+    flex-direction: column;
+  }
+
+  .mentions-places {
+    flex-direction: row;
+    width: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--outline-light);
+    overflow-x: auto;
+  }
+
+  .mentions-places .side-tabs-heading {
+    display: none;
+  }
+
+  .mentions-places .side-tabs-item {
+    flex: none;
+    max-width: 180px;
+  }
+}
+
+/* The popover: the same row, smaller, under a heading for each place when
+   more than one is waiting. */
+.mentions-panel-rows {
+  max-height: min(60vh, 460px);
+  overflow-y: auto;
+}
+
+.mentions-run-head {
+  padding: var(--spacing-xs) var(--spacing-s) 2px;
+  color: var(--surface-variant-text);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.mention-entry.compact {
+  border-left: none;
+  border-radius: var(--radius-xs);
+}
+
+.mention-entry.compact .mention-open {
+  padding: var(--spacing-xs) var(--spacing-s);
+}
+
+/* Where the arrow keys are. */
+.mention-entry.compact.at {
+  background: var(--surface-selected);
+}
+
+.mention-entry.compact .mention-actions {
+  top: 2px;
+  right: 2px;
+}
+
+.mentions-mark-all {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  padding: 1px var(--spacing-xs);
+  font-size: var(--font-size-small);
+}
