@@ -80,6 +80,7 @@ export function captionTrack(tracks: CaptionTrack[], wanted: string, language = 
 /** 41,677 as 41.6K: a count read at a glance. */
 export function shortCount(n: number): string {
   if (n < 1000) return String(n)
-  if (n < 1_000_000) return `${(Math.floor(n / 100) / 10).toFixed(n < 100_000 ? 1 : 0)}K`
+  if (n < 100_000) return `${(Math.floor(n / 100) / 10).toFixed(1)}K`
+  if (n < 1_000_000) return `${Math.floor(n / 1000)}K`
   return `${(Math.floor(n / 100_000) / 10).toFixed(1)}M`
 }
