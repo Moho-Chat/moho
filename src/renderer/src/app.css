@@ -14124,3 +14124,131 @@ p.downloads-folder {
   padding: 1px var(--spacing-xs);
   font-size: var(--font-size-small);
 }
+
+/* --- what a search found, beside the conversation (#339) ----------------------- */
+
+.search-pane {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 340px;
+  min-width: 0;
+  background: var(--surface-container-low, var(--surface));
+  animation: fade-in var(--motion) var(--ease);
+}
+
+.search-pane-head {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--spacing-s) var(--spacing-s) var(--spacing-s) var(--spacing-m);
+  border-bottom: 1px solid var(--outline-light);
+}
+
+.search-pane-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-weight: var(--weight-medium);
+}
+
+.search-pane-title .ellipsis {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-pane-note {
+  margin-top: var(--spacing-xxs);
+}
+
+.search-pane-rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--spacing-xs) var(--spacing-s);
+}
+
+.search-pane-rows .date-divider {
+  margin: var(--spacing-s) var(--spacing-xs) var(--spacing-xxs);
+}
+
+.search-pane-empty {
+  padding: var(--spacing-l) var(--spacing-m);
+  text-align: center;
+}
+
+/* A result is the message it is: who, when, and the words. */
+.search-hit {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-s);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  text-align: left;
+  transition: background var(--motion-fast) var(--ease);
+}
+
+.search-hit:hover {
+  background: var(--surface-hover);
+}
+
+.search-hit.event {
+  opacity: 0.7;
+}
+
+.search-hit-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.search-hit-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-s);
+}
+
+.search-hit-from {
+  min-width: 0;
+  font-weight: var(--weight-semibold);
+}
+
+.search-hit-when {
+  flex: none;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.search-hit-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: var(--surface-variant-text);
+}
+
+.search-hit-text mark {
+  padding: 0 1px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--primary) 32%, transparent);
+  color: var(--surface-text);
+}
+
+.search-pane-foot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-m);
+  border-top: 1px solid var(--outline-light);
+}
+
+.search-popover-count {
+  padding: var(--spacing-xs) var(--spacing-xxs) 0;
+}

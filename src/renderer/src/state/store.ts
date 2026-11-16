@@ -664,6 +664,8 @@ export interface ChatState {
   callPoppedOut: boolean
   /** The stream being watched is in a window of its own. */
   streamPoppedOut: boolean
+  /** Whether a search has results to show in the column beside the conversation. */
+  searchPane: boolean
   /** Whether that window is the small one kept over everything else. */
   streamOnTop: boolean
   /**
@@ -898,6 +900,7 @@ const INITIAL: ChatState = {
   callMinimized: false,
   callPoppedOut: false,
   streamPoppedOut: false,
+  searchPane: false,
   streamOnTop: false,
   callMembers: {},
   watching: null,
@@ -3602,6 +3605,10 @@ export class ChatStore {
   /** Puts the call away, or brings it back. It keeps running either way. */
   /** Moves the call into a window of its own, or back over the conversation. */
   /** Puts the stream being watched in a window of its own, or back. */
+  setSearchPane(open: boolean): void {
+    if (this.state.searchPane !== open) this.set({ searchPane: open })
+  }
+
   setStreamPoppedOut(poppedOut: boolean, onTop = false): void {
     this.set({ streamPoppedOut: poppedOut, streamOnTop: poppedOut && onTop, watchMinimized: false })
   }

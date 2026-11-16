@@ -28,6 +28,7 @@ import { IncomingCallPanel } from './components/IncomingCallPanel'
 import { CallAudio, CallStage, ScreenPicker } from './components/CallStage'
 import { CallWindowHost } from './components/stage/CallWindowHost'
 import { StreamStage, StreamWindowHost } from './components/StreamStage'
+import { SEARCH_PANE_HOST } from './components/SearchPane'
 import { EventCreatePanel, EventsPane } from './components/DiscordEvents'
 import { DiscordModal } from './components/DiscordModal'
 import { FileDrop } from './components/FileDrop'
@@ -218,6 +219,8 @@ export default function App(): JSX.Element {
   const showNickList =
     !userListFolded && !theatreOn && !noMemberList && activePanel === '' && !onMentionsPage && !peeking && buffer?.kind === 'channel'
 
+  const searchShown = useChat((s) => s.searchPane) && activePanel === '' && !onMentionsPage && !peeking && !!buffer
+
   const headerTitle =
     peeking
       ? `Looking · ${peek?.name || peek?.alias || ''}`
@@ -348,7 +351,16 @@ export default function App(): JSX.Element {
           </>
         )}
 
-        {!openThread && showNickList && (
+        {/* What a search found stands there too, for as long as it has anything: beside the log it is
+            about, so a result can be gone to and the next one tried. */}
+        {!openThread && searchShown && (
+          <>
+            <div className="divider-v" />
+            <div className="search-pane" id={SEARCH_PANE_HOST} />
+          </>
+        )}
+
+        {!openThread && !searchShown && showNickList && (
           <>
             <ColumnResizer width={nicklistWidth} onWidth={setNicklistWidth} min={140} max={420} grows="left" label="Member list width" />
             <div className="nicklist-pane">

@@ -5,8 +5,9 @@ import { DiscordInvite } from './DiscordInvite'
 import { RoomSettings } from './RoomSettings'
 import { SignalGroupSettings } from './SignalGroupSettings'
 import { HeaderPopover } from './HeaderPopover'
+import { SearchPane } from './SearchPane'
 import { useChat, useStore } from '../state/hooks'
-import { bufferDisplayName, classes, formatFullTime } from '../lib/util'
+import { classes, formatFullTime } from '../lib/util'
 import { shortCount } from '../lib/streamplayer'
 import { hasQuery, parseSearch, suggestions } from '../lib/searchfilters'
 import type { BufferEntry, LiveCard } from '../state/store'
@@ -773,6 +774,13 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
     return () => clearInterval(timer)
   }, [hasStream, buffer.id, buffer.kind])
 
+  // The column beside the conversation is there for as long as there is something to put in it.
+  const hasResults = results !== null
+  useEffect(() => {
+    store.setSearchPane(hasResults)
+    return () => store.setSearchPane(false)
+  }, [hasResults, store])
+
   const rerun = async (): Promise<void> => {
     setSearching(true)
     try {
@@ -1241,40 +1249,36 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
             </div>
           )}
 
+          {/* The results are beside the conversation, not in here: this is the box and its filters. */}
           {results && (
-            <div className="search-results">
-              <div className="search-results-head small muted">
-                {searching
-                  ? 'Searching…'
-                  : jumping
-                    ? 'Loading older messages…'
-                    : total !== null && total > results.length
-                      ? // What the server found, not what it sent: a search
-                        // answering "25 results" when there are thousands is
-                        // a wrong answer to "how much is there".
-                        `${results.length} of ${total.toLocaleString()} results`
-                      : `${results.length} ${results.length === 1 ? 'result' : 'results'}`}
-              </div>
-              {results.map((m) => (
-                <button key={m.id} type="button" className="search-result" onClick={() => void jumpToResult(m)}>
-                  <span className="search-result-head small">
-                    <span className="search-result-from">{m.from}</span>
-                    {m.bufferId && m.bufferId !== buffer.id && (
-                      <span className="muted ellipsis">
-                        in {roomNames[m.bufferId] || bufferDisplayName(m.bufferId)}
-                      </span>
-                    )}
-                    <span className="muted">{formatFullTime(m.ts)}</span>
-                  </span>
-                  <span className="search-result-body small ellipsis">{m.body}</span>
-                </button>
-              ))}
-              {!searching && results.length === 0 && (
-                <div className="search-results-empty small muted">Nothing found in this conversation.</div>
-              )}
+            <div className="small muted search-popover-count">
+              {searching ? 'Searching…' : 'What it found is beside the conversation.'}
             </div>
           )}
         </HeaderPopover>
+      )}
+
+      {results && (
+        <SearchPane
+          query={query}
+          results={results}
+          total={total}
+          searching={searching}
+          jumping={jumping}
+          here={buffer.id}
+          roomNames={roomNames}
+          notes={[
+            // Why an encrypted room finds only what this window already had: the server holds ciphertext.
+            ...(isMatrix && encrypted ? ['This room is encrypted, so the server cannot search it. These are from what this window has downloaded.'] : []),
+            ...(indexing ? ['Discord is still indexing this server. Try again in a minute.'] : [])
+          ]}
+          onJump={(m) => void jumpToResult(m)}
+          onClose={() => {
+            setQuery('')
+            setResults(null)
+            setSearchOpen(false)
+          }}
+        />
       )}
     </div>
   )
