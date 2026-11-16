@@ -34,7 +34,7 @@ import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../
 import { heldOnAccount, type NotifyLevel } from '../lib/notifylevels'
 import { runExport } from '../lib/exporter'
 import type { ForumPost } from '../lib/forum'
-import { DM_GROUP_ID, INVITATIONS_GROUP_ID, isDirectMessage } from '../lib/groups'
+import { DM_GROUP_ID, INVITATIONS_GROUP_ID, MENTIONS_GROUP_ID, isDirectMessage } from '../lib/groups'
 import { listInvitations, type Invitation, type FileOffer } from '../lib/invitations'
 import { ircNetworkFor } from '../lib/networks'
 import { parseDeepLink, type DeepLink, type IrcLink } from '../../../shared/deeplink'
@@ -1489,7 +1489,13 @@ export class ChatStore {
       // The tray's menu: Settings, and a status for every account.
       window.moho.onTrayCommand((command, arg) => {
         if (command === 'settings') this.setActivePanel('settings')
-        else if (arg === 'online' || arg === 'idle' || arg === 'dnd' || arg === 'invisible') void this.setStatusEverywhere(arg)
+        else if (command === 'mentions') {
+          this.setActivePanel('')
+          this.selectGroup(MENTIONS_GROUP_ID)
+        } else if (command === 'markAllRead') {
+          // Everything the tray was counting: each conversation with something unread in it.
+          void this.markBuffersRead(this.state.buffers.filter((b) => b.unread > 0 || b.mentions > 0).map((b) => b.id))
+        } else if (arg === 'online' || arg === 'idle' || arg === 'dnd' || arg === 'invisible') void this.setStatusEverywhere(arg)
       })
       window.moho.onDeepLink((url) => this.followDeepLink(url))
     }

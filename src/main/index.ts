@@ -28,7 +28,7 @@ import { NobilisProcess } from './nobilis-process'
 import { Prefs } from './prefs'
 import { Notifier } from './notifications'
 import { IdleWatcher } from './idle'
-import { NOTHING_WAITING, trayIconFile, trayMenu, trayTooltip, type TrayState, type TrayStatus } from './tray'
+import { NOTHING_WAITING, PAUSED_FOREVER, isPaused, pauseEnd, trayIconFile, trayMenu, trayTooltip, type TrayMode, type TrayState, type TrayStatus, type TrayWaiting } from './tray'
 import { browserLogin, LOGIN_FLOWS } from './browser-login'
 import { feedTwitchSignIn, twitchSignIn } from './twitch-signin'
 import { answerIntegrity, mintIntegrity } from './twitch-integrity'
@@ -649,8 +649,44 @@ function toggleFromTray(): void {
   mainWindow.focus()
 }
 
+/** When notifications were paused until, in milliseconds: 0 for not, PAUSED_FOREVER for no end. */
+const pausedUntil = (): number => prefs.get<number>('notifications.pausedUntil', 0)
+const notificationsPaused = (): boolean => isPaused(pausedUntil(), Date.now())
+let pauseTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Pauses notifications until then, or ends a pause with 0, and redraws the tray when the pause runs out. */
+function setPausedUntil(until: number): void {
+  prefs.set('notifications.pausedUntil', until)
+  if (pauseTimer) clearTimeout(pauseTimer)
+  pauseTimer = null
+  const left = until - Date.now()
+  // A timer cannot be set further out than about 24 days; a pause never is.
+  if (until > 0 && left > 0) pauseTimer = setTimeout(() => updateTray(lastTray), Math.min(left + 500, 2 ** 31 - 1))
+  updateTray(lastTray)
+}
+
+/** "until 14:30", by the clock the system uses. */
+function pausedWords(): string | null {
+  const until = pausedUntil()
+  if (!isPaused(until, Date.now())) return null
+  if (until === PAUSED_FOREVER) return 'until turned back on'
+  const end = new Date(until)
+  const time = end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return end.toDateString() === new Date().toDateString() ? `until ${time}` : `until tomorrow, ${time}`
+}
+
+/**
+ * What the icon says besides the count: that nothing can arrive, or that what arrives will not be announced.
+ * Offline is the daemon not answering or no account connected - the window says which accounts are.
+ */
+function trayMode(): TrayMode {
+  if (!client.linkUp || Object.keys(accountStatus).length === 0) return 'offline'
+  if (trayStatus === 'dnd' || notificationsPaused()) return 'quiet'
+  return 'normal'
+}
+
 function trayIcon(unread: number): Electron.NativeImage {
-  lastTrayIcon = trayIconFile(nativeTheme.shouldUseDarkColors, unread)
+  lastTrayIcon = trayIconFile(nativeTheme.shouldUseDarkColors, unread, trayMode())
   const img = nativeImage.createFromPath(resourcePath('icons', lastTrayIcon))
   // A missing icon file would otherwise produce an invisible tray entry the
   // user can never click; fall back to the app icon so the entry still exists.
@@ -670,9 +706,9 @@ const isTrayStatus = (v: unknown): v is TrayStatus => v === 'online' || v === 'i
  * are about moho itself - settings, and a status set across every account -
  * are the window's to carry out, since it is what holds the accounts.
  */
-function tellWindow(command: 'settings' | 'status', arg?: string): void {
+function tellWindow(command: 'settings' | 'status' | 'mentions' | 'markAllRead', arg?: string): void {
   if (!mainWindow) createWindow()
-  if (command === 'settings') {
+  if (command === 'settings' || command === 'mentions') {
     mainWindow?.show()
     mainWindow?.focus()
   }
@@ -706,7 +742,9 @@ function refreshTrayMenu(): void {
       windowVisible: !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible(),
       status: trayStatus,
       offered: trayOffered,
-      invisibleName: trayInvisibleName
+      invisibleName: trayInvisibleName,
+      paused: pausedWords(),
+      version: app.getVersion()
     },
     {
       toggleWindow,
@@ -714,6 +752,11 @@ function refreshTrayMenu(): void {
         const id = lastTray.latest ?? notifier.latestUnread()
         if (id) openConversation(id)
       },
+      openConversation,
+      openMentions: () => tellWindow('mentions'),
+      markAllRead: () => tellWindow('markAllRead'),
+      pause: (choice) => setPausedUntil(pauseEnd(choice, Date.now())),
+      resume: () => setPausedUntil(0),
       openSettings: () => tellWindow('settings'),
       setStatus: (status) => {
         trayStatus = status
@@ -748,12 +791,12 @@ function updateTray(state: TrayState): void {
   // The taskbar flash: asking for attention while the window is not in front.
   const flash = prefs.get<boolean>('notifications.flash', true)
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.flashFrame(flash && state.unread > 0 && trayStatus !== 'dnd' && !mainWindow.isFocused())
+    mainWindow.flashFrame(flash && state.unread > 0 && trayStatus !== 'dnd' && !notificationsPaused() && !mainWindow.isFocused())
   }
   refreshTrayMenu()
   if (!tray) return
   tray.setImage(trayIcon(badge ? state.unread : 0))
-  lastTrayTooltip = trayTooltip(state, badge)
+  lastTrayTooltip = trayTooltip(state, badge, trayMode(), notificationsPaused() ? 'notifications paused' : 'do not disturb')
   tray.setToolTip(lastTrayTooltip)
   send(IPC.link, client.linkUp)
 }
@@ -937,10 +980,15 @@ function wireIpc(): void {
 
   // What is waiting, as the window counts it. The tray's number is the window's
   // own: counted here from notifications it drifted from what the window showed.
-  ipcMain.on(IPC.trayUnread, (_e, count: { dms: number; mentions: number; latest: string | null }) => {
+  ipcMain.on(IPC.trayUnread, (_e, count: { dms: number; mentions: number; latest: string | null; waiting?: unknown }) => {
     const dms = Math.max(0, Number(count?.dms) || 0)
     const mentions = Math.max(0, Number(count?.mentions) || 0)
-    updateTray({ unread: dms + mentions, dms, mentions, latest: typeof count?.latest === 'string' ? count.latest : null })
+    // Names come from the services, so they are taken as text and nothing else, and not many of them.
+    const waiting: TrayWaiting[] = (Array.isArray(count?.waiting) ? count.waiting : [])
+      .filter((w): w is TrayWaiting => !!w && typeof w.id === 'string' && typeof w.name === 'string')
+      .slice(0, 20)
+      .map((w) => ({ id: w.id, name: w.name.replace(/[\r\n]+/g, ' ').slice(0, 80), count: Math.max(1, Number(w.count) || 1), direct: !!w.direct }))
+    updateTray({ unread: dms + mentions, dms, mentions, latest: typeof count?.latest === 'string' ? count.latest : null, waiting })
   })
 
   ipcMain.handle(IPC.markBufferRead, (_e, bufferId: string) => notifier.clear(bufferId))
@@ -1499,7 +1547,8 @@ app.whenReady().then(() => {
     openConversation,
     () => mainWindow?.webContents ?? null,
     (bufferId) => popoutState().watched.includes(bufferId),
-    (accountId) => accountStatus[accountId] === 'dnd'
+    // Paused from the tray counts as every account asking for quiet: nothing pops up, and it all still counts.
+    (accountId) => accountStatus[accountId] === 'dnd' || notificationsPaused()
   )
 
   signalCalls = new SignalCalls({
@@ -1510,6 +1559,8 @@ app.whenReady().then(() => {
 
   client.on('link', (up) => {
     send(IPC.link, up)
+    // The tray says when the daemon is not answering.
+    updateTray(lastTray)
     if (!up) return
     // A daemon that has just started knows nothing of this.
     if (idleWatcher.isIdle()) void client.request('setUserIdle', { idle: true }).catch(() => {})

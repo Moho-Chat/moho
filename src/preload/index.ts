@@ -108,8 +108,8 @@ const api = {
   },
 
   /** The tray menu asking this window to open Settings, or to set a status on every account. */
-  onTrayCommand(cb: (command: 'settings' | 'status', arg?: string) => void): () => void {
-    const handler = (_e: unknown, command: 'settings' | 'status', arg?: string): void => cb(command, arg)
+  onTrayCommand(cb: (command: 'settings' | 'status' | 'mentions' | 'markAllRead', arg?: string) => void): () => void {
+    const handler = (_e: unknown, command: 'settings' | 'status' | 'mentions' | 'markAllRead', arg?: string): void => cb(command, arg)
     ipcRenderer.on(IPC.trayCommand, handler)
     return () => ipcRenderer.off(IPC.trayCommand, handler)
   },
@@ -124,7 +124,7 @@ const api = {
   },
 
   /** Says what is waiting, counted the way the rail counts it, for the tray's number. */
-  setTrayUnread(count: { dms: number; mentions: number; latest: string | null }): void {
+  setTrayUnread(count: { dms: number; mentions: number; latest: string | null; waiting?: { id: string; name: string; count: number; direct: boolean }[] }): void {
     ipcRenderer.send(IPC.trayUnread, count)
   },
 
