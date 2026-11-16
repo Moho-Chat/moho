@@ -1130,7 +1130,8 @@ const SCENES = [
     ['dnd', 'connected', 'dnd'],
     ['idle', 'connected', 'idle'],
     ['connecting', 'connecting', 'online'],
-    ['offline', 'disconnected', 'online']
+    ['offline', 'disconnected', 'online'],
+    ['refused', 'auth_failed', 'online']
   ].flatMap(([name, state, status]) => [
     {
       name: `presence-${name}-footer`,

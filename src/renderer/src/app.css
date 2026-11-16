@@ -13578,3 +13578,62 @@ p.downloads-folder {
   outline: none;
   box-shadow: none;
 }
+
+/* --- the user plaque (#339) -------------------------------------------------- */
+
+/* The name has the row: voice buttons are only there when a call could use
+   them, and the second line says how the account is and where it is. */
+.user-footer .user-identity-button {
+  gap: var(--spacing-s);
+  padding: var(--spacing-xxs) var(--spacing-xs);
+}
+
+.user-footer .user-identity {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.user-footer .user-name {
+  color: var(--surface-text);
+  font-weight: var(--weight-medium);
+}
+
+.user-state {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.user-state-dot,
+.user-state > .state-pill-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.user-state-words {
+  color: var(--surface-variant-text);
+}
+
+.user-footer.tone-busy .user-state-words,
+.user-footer.tone-bad .user-state-words {
+  color: var(--tone);
+}
+
+.user-identity-more {
+  flex: none;
+  color: var(--tone);
+}
+
+.user-footer.tone-bad .user-identity-button {
+  background: color-mix(in srgb, var(--state-bad) 10%, transparent);
+}
+
+.status-popout .status-choice-text {
+  min-width: 0;
+}

@@ -8,6 +8,7 @@ import { classes } from '../lib/util'
 import type { Account } from '../../../shared/wire'
 import { statusName, supportsStatus } from '../lib/status'
 import type { Status } from './UserFooter'
+import { askAccountsFor } from './AccountList'
 
 /** The statuses that can be chosen, with the dot each is drawn with. Signing out is separate, below them. */
 const CHOICES: { id: Exclude<Status, 'offline'>; label: string; hint?: string; dot: string }[] = [
@@ -48,6 +49,9 @@ export function StatusPopout({
   const [applyAll, setApplyAll] = usePref<boolean>('status.applyToAll', false)
   const canSay = account.service === 'discord' || account.service === 'matrix' || account.service === 'stoat'
   const [text, setText] = useState(account.statusText ?? '')
+
+  // What the account is called on its service, as distinct from the name it shows: what somebody is given to find it.
+  const address = account.id.replace(/^[a-z]+:/, '')
 
   useEscapeLayer(onClose)
 
@@ -168,18 +172,68 @@ export function StatusPopout({
       <button
         type="button"
         role="menuitem"
-        className={classes('status-choice', 'danger')}
-        disabled={status === 'offline'}
+        className="status-choice"
         onClick={() => {
-          void store.setPresence(account.id, 'offline')
+          askAccountsFor({ accountId: account.id })
+          store.setActivePanel('accounts')
           onClose()
         }}
       >
-        <Icon name="logout" size={16} />
+        <Icon name="manage_accounts" size={16} />
         <span className="status-choice-text">
-          <span>Sign out</span>
+          <span>Account settings</span>
         </span>
       </button>
+      <button
+        type="button"
+        role="menuitem"
+        className="status-choice"
+        onClick={() => {
+          void navigator.clipboard.writeText(address).then(() => store.toast('success', 'Copied'))
+          onClose()
+        }}
+      >
+        <Icon name="content_copy" size={16} />
+        <span className="status-choice-text">
+          <span>Copy my address</span>
+          <span className="small muted ellipsis">{address}</span>
+        </span>
+      </button>
+
+      <div className="status-rule" />
+      {/* What "Sign out" always did: the account stays, and stops being connected. */}
+      {status === 'offline' ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="status-choice"
+          onClick={() => {
+            void store.setAccountConnected(account.id, true)
+            onClose()
+          }}
+        >
+          <Icon name="power_settings_new" size={16} />
+          <span className="status-choice-text">
+            <span>Connect</span>
+          </span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          role="menuitem"
+          className={classes('status-choice', 'danger')}
+          onClick={() => {
+            void store.setPresence(account.id, 'offline')
+            onClose()
+          }}
+        >
+          <Icon name="power_settings_new" size={16} />
+          <span className="status-choice-text">
+            <span>{status === 'connecting' ? 'Stop connecting' : 'Disconnect'}</span>
+            <span className="small muted">The account stays; it goes offline until connected again</span>
+          </span>
+        </button>
+      )}
     </div>,
     document.body
   )
