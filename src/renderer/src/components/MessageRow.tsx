@@ -1,4 +1,5 @@
 import { steamRoomIds } from '../lib/steamchat'
+import { isRoomEvent } from '../lib/searchmarks'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
@@ -1308,6 +1309,13 @@ function MessageRowBody({
             </div>
           ) : kickEvent ? (
             <KickEventCard embed={kickEvent} bufferId={bufferId} />
+          ) : systemCard && isRoomEvent(message) ? (
+            // Somebody coming or going is the least of what a room says: one quiet line, not a plate as
+            // heavy as a message (#339).
+            <span className="room-event-line small">
+              <Icon name={SYSTEM_MARKS[message.kind] ?? 'info'} size={14} />
+              <span>{renderBody()}</span>
+            </span>
           ) : systemCard ? (
             <NotificationCard icon={SYSTEM_MARKS[message.kind] ?? 'info'} warning={isWarning(message.kind, message.id)}>
               {renderBody()}

@@ -321,7 +321,8 @@ export function NickList(): JSX.Element {
         {groups.map((group) => (
           <div key={group.label}>
             <div className="nicklist-group small muted">
-              {group.label} — {group.members.length}
+              {/* The count is in the head already when this is the only group there is. */}
+              {groups.length > 1 ? `${group.label} — ${group.members.length}` : group.label}
             </div>
             {group.members.map((member) => (
               <MemberRow

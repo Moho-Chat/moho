@@ -14301,3 +14301,29 @@ p.downloads-folder {
   font-family: var(--font-mono, monospace);
   font-size: var(--font-size-small);
 }
+
+/* --- smaller things from the second survey (#339) ------------------------------ */
+
+/* Somebody coming or going: one quiet line. */
+.room-event-line {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  color: var(--text-muted, var(--surface-variant-text));
+  font-style: italic;
+}
+
+.room-event-line .icon {
+  flex: none;
+  opacity: 0.8;
+}
+
+/* Toasts under the header, in the middle: they used to land on the header's
+   own tools at the right. The bottom corners stay with what is asked of you. */
+.toasts {
+  top: calc(var(--titlebar-height) + var(--header-height) + var(--spacing-s));
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  align-items: center;
+}
