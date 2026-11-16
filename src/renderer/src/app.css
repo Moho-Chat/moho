@@ -14252,3 +14252,52 @@ p.downloads-folder {
 .search-popover-count {
   padding: var(--spacing-xs) var(--spacing-xxs) 0;
 }
+
+/* --- the export dialog (#339) -------------------------------------------------- */
+
+.export-dialog {
+  width: min(560px, calc(100vw - 2 * var(--spacing-l)));
+}
+
+.export-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-m);
+}
+
+.export-spans {
+  align-self: stretch;
+}
+
+.export-spans button {
+  flex: 1 1 auto;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.export-dialog .export-range {
+  margin: var(--spacing-xs) 0 0;
+}
+
+.export-switch,
+.export-where {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  border: 1px solid var(--outline-light);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container);
+}
+
+.export-switch .switch-text {
+  flex: 1;
+}
+
+.export-where-path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-small);
+}

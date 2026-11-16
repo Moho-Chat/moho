@@ -871,7 +871,8 @@ const SCENES = [
       await sleep(300)
       await p.evaluate(click('.context-menu-item', 'Export'))
       await sleep(500)
-      await p.evaluate(`[...document.querySelectorAll('.reason-prompt label')].find((l) => l.innerText.includes('A range'))?.click()`)
+      // "A range" in the old dialog, "Custom" in the new one.
+      await p.evaluate(`([...document.querySelectorAll('.reason-prompt label')].find((l) => l.innerText.includes('A range')) ?? [...document.querySelectorAll('.export-spans button')].find((b) => b.innerText === 'Custom'))?.click()`)
       await sleep(400)
     }
   },

@@ -2944,15 +2944,16 @@ export class ChatStore {
   async exportConversation(
     bufferId: string,
     range: { since: number; until: number },
-    opts: { media: boolean }
+    opts: { media: boolean; into?: string }
   ): Promise<void> {
     const buffer = this.state.buffers.find((b) => b.id === bufferId)
     if (!buffer) return
     const account = this.accountFor(bufferId)
     try {
       const prefs = await window.moho.prefs.getAll()
+      // The folder chosen in the dialog for this one export, or where downloads go.
       const into =
-        (prefs['downloads.directory'] as string | undefined) || (await window.moho.defaultDownloadDir())
+        opts.into || (prefs['downloads.directory'] as string | undefined) || (await window.moho.defaultDownloadDir())
       const answer = await runExport(
         (method, params) => window.moho.rpc(method, params),
         {
@@ -2963,9 +2964,9 @@ export class ChatStore {
         },
         range,
         into,
-        opts
+        { media: opts.media }
       )
-      this.toast('info', `Exported ${answer.messages.toLocaleString()} messages to ${answer.path}`)
+      this.toast('success', `Exported ${answer.messages.toLocaleString()} messages to ${answer.path}. It is listed in Settings → Downloads.`)
     } catch (e) {
       this.toast('error', `Export failed: ${(e as Error).message}`)
     }

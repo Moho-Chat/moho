@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Modal } from './Modal'
+import { Icon } from './Icon'
+import { classes } from '../lib/util'
 import { canReachBack, type ExportRange } from '../lib/exporter'
 
 /**
@@ -28,6 +30,27 @@ function localNow(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+/** How far back, as the choices most exports are: everything, or the last while. Custom is the two fields. */
+type Span = 'all' | '7d' | '30d' | 'year' | 'custom'
+
+const SPANS: { id: Span; label: string }[] = [
+  { id: 'all', label: 'Everything' },
+  { id: '7d', label: 'Last 7 days' },
+  { id: '30d', label: 'Last 30 days' },
+  { id: 'year', label: 'This year' },
+  { id: 'custom', label: 'Custom' }
+]
+
+/** Where a span starts, in unix seconds; 0 is the beginning. */
+export function spanStart(span: Exclude<Span, 'custom'>, now = new Date()): number {
+  if (span === 'all') return 0
+  if (span === 'year') return Math.floor(new Date(now.getFullYear(), 0, 1).getTime() / 1000)
+  const start = new Date(now)
+  start.setDate(start.getDate() - (span === '7d' ? 7 : 30))
+  start.setHours(0, 0, 0, 0)
+  return Math.floor(start.getTime() / 1000)
+}
+
 export function ExportDialog({
   title,
   service,
@@ -45,10 +68,21 @@ export function ExportDialog({
    * that reaches back will fetch more, so this is the smallest it can be.
    */
   heldCount?: number
-  onConfirm: (range: ExportRange, opts: { media: boolean }) => void
+  onConfirm: (range: ExportRange, opts: { media: boolean; into?: string }) => void
   onCancel: () => void
 }): JSX.Element {
-  const [everything, setEverything] = useState(true)
+  const [span, setSpan] = useState<Span>('all')
+  const everything = span === 'all'
+  const custom = span === 'custom'
+  // Where it will be written: where downloads go, unless another folder is chosen for this one.
+  const [folder, setFolder] = useState('')
+  const [chosen, setChosen] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    void window.moho.prefs
+      .getAll()
+      .then(async (prefs) => setFolder((prefs['downloads.directory'] as string | undefined) || (await window.moho.defaultDownloadDir())))
+      .catch(() => {})
+  }, [])
   const [from, setFrom] = useState('')
   // Local time, not UTC: the fields are read and typed by somebody sitting in
   // their own timezone, and `toISOString` would offer them a "now" that is not
@@ -61,9 +95,9 @@ export function ExportDialog({
   // it means what was typed. Seconds are not offered, so the start is taken at
   // :00 and the end at :59 - an inclusive minute at each edge, which is what
   // somebody choosing "to 14:30" means rather than "up to 14:30:00 exactly".
-  const since = everything || !from ? 0 : Math.floor(new Date(`${from}:00`).getTime() / 1000)
-  const until = everything || !to ? Math.floor(Date.now() / 1000) : Math.floor(new Date(`${to}:59`).getTime() / 1000)
-  const ready = everything || (!!to && (!from || since < until))
+  const since = !custom ? spanStart(span) : !from ? 0 : Math.floor(new Date(`${from}:00`).getTime() / 1000)
+  const until = !custom || !to ? Math.floor(Date.now() / 1000) : Math.floor(new Date(`${to}:59`).getTime() / 1000)
+  const ready = !custom || (!!to && (!from || since < until))
 
   // Only worth saying where it would actually bite: a range that starts after
   // what is already held needs nothing fetched.
@@ -71,50 +105,67 @@ export function ExportDialog({
   const shortfall = wouldReachBack && !canReachBack(service)
 
   return (
-    <Modal title={`Export ${title}`} icon="download" onClose={onCancel} className="reason-prompt">
-        <p className="small muted">
-          Written as a folder of HTML, the way it looks here, into your downloads.
-        </p>
-
-        <label className="export-choice">
-          <input type="radio" checked={everything} onChange={() => setEverything(true)} />
-          <span>Everything</span>
-        </label>
-        <label className="export-choice">
-          <input type="radio" checked={!everything} onChange={() => setEverything(false)} />
-          <span>A range</span>
-        </label>
-
-        {!everything && (
-          <div className="export-range">
-            <label>
-              <span className="small muted">From</span>
-              <input
-                type="datetime-local"
-                value={from}
-                max={to}
-                onChange={(e) => setFrom(e.target.value)}
-              />
-            </label>
-            <label>
-              <span className="small muted">To</span>
-              <input
-                type="datetime-local"
-                value={to}
-                min={from}
-                onChange={(e) => setTo(e.target.value)}
-              />
-            </label>
+    <Modal title={`Export ${title}`} icon="download" onClose={onCancel} className="reason-prompt export-dialog">
+        <div className="export-field">
+          <span className="section-label">How far back</span>
+          <div className="segmented export-spans" role="radiogroup" aria-label="How far back">
+            {SPANS.map((choice) => (
+              <button
+                key={choice.id}
+                type="button"
+                role="radio"
+                aria-checked={span === choice.id}
+                className={span === choice.id ? 'active' : undefined}
+                onClick={() => setSpan(choice.id)}
+              >
+                {choice.label}
+              </button>
+            ))}
           </div>
-        )}
+          {custom && (
+            <div className="export-range">
+              <label>
+                <span className="small muted">From</span>
+                <input type="datetime-local" className="text-field" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
+              </label>
+              <label>
+                <span className="small muted">To</span>
+                <input type="datetime-local" className="text-field" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
+              </label>
+            </div>
+          )}
+        </div>
 
-        <label className="export-choice">
-          <input type="checkbox" checked={media} onChange={(e) => setMedia(e.target.checked)} />
-          <span>
-            Download pictures and video
-            <span className="small muted"> — slower, but the export still reads offline</span>
-          </span>
-        </label>
+        <div className="export-field">
+          <span className="section-label">What goes in</span>
+          <div className="switch-row export-switch">
+            <span className="switch-text">
+              <span>Pictures and video</span>
+              <span className="small muted">Slower, but the export still reads offline</span>
+            </span>
+            <button type="button" role="switch" aria-checked={media} className={classes('switch', media && 'on')} onClick={() => setMedia(!media)}>
+              <span className="switch-knob" />
+            </button>
+          </div>
+        </div>
+
+        <div className="export-field">
+          <span className="section-label">Where</span>
+          <div className="export-where">
+            <Icon name="folder" size={18} />
+            <span className="ellipsis export-where-path" title={chosen ?? folder}>
+              {chosen ?? (folder || 'Your downloads folder')}
+            </span>
+            <button
+              type="button"
+              className="button quiet"
+              onClick={() => void window.moho.pickDirectory().then((dir) => dir && setChosen(dir))}
+            >
+              Change…
+            </button>
+          </div>
+          <span className="small muted">A folder of HTML, the way the conversation looks here. It is listed in Settings → Downloads while it is written and after.</span>
+        </div>
 
         {/* Said before it starts rather than discovered afterwards. There is
             no size limit on what an export downloads - that was asked for
@@ -154,9 +205,9 @@ export function ExportDialog({
           </button>
           <button
             type="button"
-            className="button"
+            className="button primary"
             disabled={!ready}
-            onClick={() => onConfirm({ since, until }, { media })}
+            onClick={() => onConfirm({ since, until }, { media, into: chosen })}
           >
             Export
           </button>
