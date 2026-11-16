@@ -838,6 +838,20 @@ const SCENES = [
       await sleep(700)
     }
   },
+  // A Matrix room's header in a narrow window (#339): closed, the name has the row; open, the room's tools are a strip under it.
+  ...[['header-narrow', false], ['header-narrow-open', true]].map(([name, open]) => ({
+    name,
+    setup: async (p) => {
+      await p.call('Emulation.setDeviceMetricsOverride', { width: 900, height: 800, deviceScaleFactor: 1, mobile: false })
+      await openChannel(p, '#general')
+      await p.evaluate(`(() => { const s = window.__mohoShots.state(); window.__mohoShots.patch({ buffers: s.buffers.map((b) => b.id === s.activeBufferId ? { ...b, accountId: 'matrix:' + b.accountId, name: '#general-discussion-and-planning' } : b), accounts: s.accounts.map((a) => ({ ...a, id: 'matrix:' + a.id, service: 'matrix' })) }); return true })()`)
+      await sleep(500)
+      if (open) await p.evaluate(click('button[title^="Threads, pins"]'))
+      await sleep(400)
+    },
+    after: async (p) => p.call('Emulation.setDeviceMetricsOverride', { ...SIZE, deviceScaleFactor: 1, mobile: false }),
+    clip: { x: 0, y: 0, width: 900, height: 200 }
+  })),
   // The button's title says how many are waiting now, so it is found by where it is.
   { name: 'mentions-inbox', setup: async (p) => { await SCENES.find((x) => x.name === 'mentions-page').setup(p); await p.evaluate(`window.__mohoShots.store.selectBuffer('discord:shots|c3')`); await sleep(500); await p.evaluate(click('.mentions-inbox > button')); await sleep(500) } },
   {

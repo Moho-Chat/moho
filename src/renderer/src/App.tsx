@@ -18,7 +18,7 @@ import { InvitePanel } from './components/InvitePanel'
 import { SteamFriendDialogs } from './components/SteamFriendDialogs'
 import { VerificationDialog } from './components/VerificationDialog'
 import { ProfileCard } from './components/ProfileCard'
-import { ConversationTools } from './components/ConversationTools'
+import { ConversationTools, HEADER_TRAY_HOST } from './components/ConversationTools'
 import { AccountsPanel } from './components/AccountsPanel'
 import { SettingsPanel } from './components/settings/SettingsPanel'
 import { JoinPanel } from './components/JoinPanel'
@@ -317,6 +317,9 @@ export default function App(): JSX.Element {
               />
             )}
           </div>
+
+          {/* Where a narrow header's other tools are laid out when asked for: see ConversationTools. */}
+          <div className="header-tray" id={HEADER_TRAY_HOST} />
 
           <div className="main-body">
             <Body

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Icon, IconButton } from './Icon'
 import { AddToConversation } from './AddToConversation'
 import { DiscordInvite } from './DiscordInvite'
@@ -607,6 +608,12 @@ function describeModes(modes: string): string {
   return described.length ? described.join(', ') : modes
 }
 
+/** The strip under the header that holds a narrow header's other tools; App owns it. */
+export const HEADER_TRAY_HOST = 'header-tray-host'
+
+/** Below this many pixels the room's tools go behind one button. */
+const NARROW_HEADER = 720
+
 /**
  * The call button and search box at the head of a conversation.
  *
@@ -636,6 +643,22 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   /** How many the server found, which is usually far more than it sent. */
   const [total, setTotal] = useState<number | null>(null)
   const box = useRef<HTMLDivElement>(null)
+  /** Whether the header is too narrow for every tool to sit in the row, and whether the rest are showing. */
+  const [narrow, setNarrow] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
+  const [trayHost, setTrayHost] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    const header = box.current?.closest('.main-header')
+    if (!header) return
+    setTrayHost(document.getElementById(HEADER_TRAY_HOST))
+    const measure = (): void => setNarrow(header.clientWidth < NARROW_HEADER)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(header)
+    return () => observer.disconnect()
+  }, [])
+  // Put away when the conversation changes: the strip belongs to the one it was opened on.
+  useEffect(() => setMoreOpen(false), [buffer.id])
   const searchButton = useRef<HTMLSpanElement>(null)
   const searchInput = useRef<HTMLInputElement>(null)
 
@@ -1054,48 +1077,73 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
         />
       )}
 
-      {/* Beside the call button, for the same reason it is here: it acts on
-          the conversation being read rather than on the window. */}
-      {isDiscord && isDm && <AddToConversation buffer={buffer} />}
+      {/* What the room keeps and what can be done to it - invites, threads,
+          pins, its settings, what it has asked before. In a wide header they
+          sit in the row; in a narrow one they go behind one button and are
+          laid out in a strip under the header, so the conversation's name
+          is not what gives way to them (#339). */}
+      {(() => {
+        const more = (
+          <>
+          {/* Beside the call button, for the same reason it is here: it acts on
+              the conversation being read rather than on the window. */}
+          {isDiscord && isDm && <AddToConversation buffer={buffer} />}
 
-      {/* A Discord channel is joined with a link rather than by being asked,
-          so the invite here is a thing to make and paste rather than a person
-          to name. A group message can be invited into as well as a channel,
-          which is why this is not gated on kind - the component hides itself
-          on the one conversation Discord has no link into, a one-to-one. */}
-      {isDiscord && buffer.kind !== 'server' && <DiscordInvite buffer={buffer} />}
+          {/* A Discord channel is joined with a link rather than by being asked,
+              so the invite here is a thing to make and paste rather than a person
+              to name. A group message can be invited into as well as a channel,
+              which is why this is not gated on kind - the component hides itself
+              on the one conversation Discord has no link into, a one-to-one. */}
+          {isDiscord && buffer.kind !== 'server' && <DiscordInvite buffer={buffer} />}
 
-      {/* The same job on Matrix, where it needs no picker: a Matrix address
-          names somebody whether or not this account has ever met them, so
-          there is no friend list to choose from and nothing to look up. */}
-      {buffer.accountId.startsWith('matrix:') && <InviteToRoom buffer={buffer} />}
+          {/* The same job on Matrix, where it needs no picker: a Matrix address
+              names somebody whether or not this account has ever met them, so
+              there is no friend list to choose from and nothing to look up. */}
+          {buffer.accountId.startsWith('matrix:') && <InviteToRoom buffer={buffer} />}
 
-      {isMatrix && buffer.kind !== 'server' && <ThreadList buffer={buffer} />}
-      {isDiscord && buffer.kind === 'channel' && <DiscordThreads buffer={buffer} />}
-      {(isMatrix || isDiscord || buffer.accountId.startsWith('telegram:') || isStoat) && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
+          {isMatrix && buffer.kind !== 'server' && <ThreadList buffer={buffer} />}
+          {isDiscord && buffer.kind === 'channel' && <DiscordThreads buffer={buffer} />}
+          {(isMatrix || isDiscord || buffer.accountId.startsWith('telegram:') || isStoat) && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
 
-      {/* Beside the pins, because it is the same kind of fact about a room:
-          something the room keeps, rather than something said in it. */}
-      {isMatrix && buffer.kind !== 'server' && <RoomWidgets buffer={buffer} />}
+          {/* Beside the pins, because it is the same kind of fact about a room:
+              something the room keeps, rather than something said in it. */}
+          {isMatrix && buffer.kind !== 'server' && <RoomWidgets buffer={buffer} />}
 
-      {/* And the room's own settings, next to them for the same reason.
-          Only on a room: a direct message has no history for anybody to
-          join and read. */}
-      {isMatrix && buffer.kind === 'channel' && <RoomSettings buffer={buffer} />}
-      {/* Signal's, for a group, and for a conversation with one person the timer its messages disappear by. */}
-      {buffer.accountId.startsWith('signal:') && (buffer.kind === 'channel' || buffer.kind === 'dm') && <SignalGroupSettings buffer={buffer} />}
+          {/* And the room's own settings, next to them for the same reason.
+              Only on a room: a direct message has no history for anybody to
+              join and read. */}
+          {isMatrix && buffer.kind === 'channel' && <RoomSettings buffer={buffer} />}
+          {/* Signal's, for a group, and for a conversation with one person the timer its messages disappear by. */}
+          {buffer.accountId.startsWith('signal:') && (buffer.kind === 'channel' || buffer.kind === 'dm') && <SignalGroupSettings buffer={buffer} />}
 
-      {/* What this channel has asked before now. Two buttons rather than one
-          list, because a poll and a prediction are different questions -
-          which one is worth going back to is not a filter you want to apply
-          after opening a list.
+          {/* What this channel has asked before now. Two buttons rather than one
+              list, because a poll and a prediction are different questions -
+              which one is worth going back to is not a filter you want to apply
+              after opening a list.
 
-          Each appears only where the service has the thing: Matrix rooms
-          have polls and no predictions, IRC has neither, and an icon that
-          opens an empty list on a service that could never fill it is an
-          icon that says the feature is missing rather than absent. */}
-      {(isKick || isMatrix || isTwitch || buffer.accountId.startsWith('signal:')) && <CardHistory buffer={buffer} kind="poll" icon="help" label="Past polls" />}
-      {(isKick || isTwitch) && <CardHistory buffer={buffer} kind="prediction" icon="casino" label="Past predictions" />}
+              Each appears only where the service has the thing: Matrix rooms
+              have polls and no predictions, IRC has neither, and an icon that
+              opens an empty list on a service that could never fill it is an
+              icon that says the feature is missing rather than absent. */}
+          {(isKick || isMatrix || isTwitch || buffer.accountId.startsWith('signal:')) && <CardHistory buffer={buffer} kind="poll" icon="help" label="Past polls" />}
+          {(isKick || isTwitch) && <CardHistory buffer={buffer} kind="prediction" icon="casino" label="Past predictions" />}
+          </>
+        )
+        // Only where there is something to put behind it: IRC has none of these.
+        const hasMore = buffer.kind !== 'server' && /^(discord|matrix|signal|telegram|stoat|kick|twitch):/.test(buffer.accountId)
+        if (!narrow || !hasMore) return more
+        return (
+          <>
+            <IconButton
+              name="more_horiz"
+              title={moreOpen ? 'Hide the room\'s tools' : 'Threads, pins, settings and more'}
+              className={moreOpen ? 'active' : undefined}
+              onClick={() => setMoreOpen(!moreOpen)}
+            />
+            {moreOpen && trayHost && createPortal(<div className="header-tray-items">{more}</div>, trayHost)}
+          </>
+        )
+      })()}
 
       {/* An icon until it is being used. A box wide enough to type into is
           the single widest thing in this row, and a header that always

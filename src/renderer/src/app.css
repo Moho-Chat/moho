@@ -14558,3 +14558,24 @@ select.text-field {
 .event-run:focus-visible .event-run-show {
   opacity: 1;
 }
+
+/* A narrow header's other tools, in a strip under it. */
+.header-tray:empty {
+  display: none;
+}
+
+.header-tray {
+  flex: none;
+  border-bottom: 1px solid var(--outline-medium);
+  background: var(--surface-container-low, var(--surface));
+  animation: fade-in var(--motion-fast) var(--ease);
+}
+
+.header-tray-items {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xxs) var(--spacing-s);
+}
