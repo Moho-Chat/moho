@@ -29,6 +29,7 @@ import { CallAudio, CallStage, ScreenPicker } from './components/CallStage'
 import { CallWindowHost } from './components/stage/CallWindowHost'
 import { StreamStage, StreamWindowHost } from './components/StreamStage'
 import { SEARCH_PANE_HOST } from './components/SearchPane'
+import { useAppearance } from './lib/useAppearance'
 import { OPEN_SWITCHER } from './components/QuickSwitcher'
 import { EventCreatePanel, EventsPane } from './components/DiscordEvents'
 import { DiscordModal } from './components/DiscordModal'
@@ -86,6 +87,7 @@ export default function App(): JSX.Element {
   const [sidebarFolded, setSidebarFolded] = usePref<boolean>('ui.sidebarFolded', false)
   // How the window looks, from the appearance settings: how large, how close
   // together, whether things move, how the clock is written.
+  useAppearance()
   const [zoom] = usePref<number>('appearance.zoom', 1)
   const [density] = usePref<string>('appearance.density', 'cozy')
   const [reduceMotion] = usePref<boolean>('appearance.reduceMotion', false)

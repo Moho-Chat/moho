@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ACCENTS } from '../../lib/appearance'
 import { ConfirmButton } from '../ConfirmButton'
 import { Switch } from '../Switch'
 import {
@@ -17,7 +18,7 @@ import { Icon, ServiceMark } from '../Icon'
 import { acceleratorLabel, acceleratorOf } from '../../lib/accelerator'
 import { AccountsPanel } from '../AccountsPanel'
 import { DownloadsPanel } from '../DownloadsPanel'
-import { humanBytes, serviceIcon } from '../../lib/util'
+import { humanBytes, serviceIcon, classes } from '../../lib/util'
 import { DEFAULT_SEARCH_ENGINE, SEARCH_ENGINES, validTemplate } from '../../lib/searchengines'
 import { TunnelAllSwitch, useNetSettings } from './Tunnel'
 import type { Account, DccPrefs } from '../../../../shared/wire'
@@ -787,8 +788,43 @@ function NotificationSettings(): JSX.Element {
 /** How things look and read: the layout, the size, the spacing, motion and the clock. */
 function AppearanceSettings(): JSX.Element {
   const [zoom, setZoom] = usePref<number>('appearance.zoom', 1)
+  const [accent, setAccent] = usePref<string>('appearance.accent', 'blue')
+  const [theme] = usePref<string>('appearance.theme', 'dark')
   return (
     <>
+      <SettingsSection title="Colours">
+        <SelectionSetting
+          settingKey="appearance.theme"
+          label="Theme"
+          description="Dark, light, or whichever the system is set to."
+          defaultValue="dark"
+          options={[
+            { label: 'Dark', value: 'dark' },
+            { label: 'Light', value: 'light' },
+            { label: 'System', value: 'system' }
+          ]}
+        />
+        <div className="setting-row">
+          <div className="setting-text">
+            <div className="setting-label">Accent</div>
+            <div className="small muted">The colour of what is chosen, pressed and pointed at.</div>
+          </div>
+          <div className="accent-swatches" role="radiogroup" aria-label="Accent">
+            {ACCENTS.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                role="radio"
+                aria-checked={accent === a.id}
+                title={a.label}
+                className={classes('accent-swatch', accent === a.id && 'active')}
+                style={{ ['--swatch' as string]: theme === 'light' ? a.light : a.dark }}
+                onClick={() => setAccent(a.id)}
+              />
+            ))}
+          </div>
+        </div>
+      </SettingsSection>
       <SettingsSection title="Messages">
         <SelectionSetting
           settingKey="display.messageMode"

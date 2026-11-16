@@ -1465,6 +1465,24 @@ const SCENES = [
       await sleep(600)
     }
   },
+  // The light theme (#339), on the screens seen most. The theme is put on the root as the setting would put it.
+  ...[
+    ['light-discord', async (p) => { await setMode(p, 'comfy'); await discord(false)(p) }],
+    ['light-irc-classic', async (p) => { await setMode(p, 'classic'); await openChannel(p, '#general') }],
+    ['light-bubbles', async (p) => { await setMode(p, 'bubbles'); await openChannel(p, '#general') }],
+    ['light-settings', async (p) => { await openChannel(p, '#general'); await p.evaluate(`window.__mohoShots.store.setActivePanel('settings')`); await sleep(400); await p.evaluate(`[...document.querySelectorAll('.settings-rail-item')].find((b) => b.innerText.includes('Appearance'))?.click()`) }],
+    ['light-accounts', async (p) => { await many(p); await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`) }],
+    ['light-mentions', async (p) => { await SCENES.find((x) => x.name === 'mentions-page').setup(p) }],
+    ['light-teal', async (p) => { await setMode(p, 'comfy'); await discord(false)(p); await p.evaluate(`['--primary:#00796b'].forEach((d) => document.documentElement.style.setProperty(...d.split(':')))`) }]
+  ].map(([name, setup]) => ({
+    name,
+    setup: async (p) => {
+      await setup(p)
+      await p.evaluate(`document.documentElement.dataset.theme = 'light'`)
+      await sleep(500)
+    },
+    after: async (p) => p.evaluate(`delete document.documentElement.dataset.theme; document.documentElement.style.removeProperty('--primary')`)
+  })),
   {
     // A run of people coming and going, folded to one line (#339).
     name: 'event-run',

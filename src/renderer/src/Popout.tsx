@@ -5,7 +5,10 @@ import { MessageList } from './components/MessageList'
 import { Composer } from './components/Composer'
 import { MembershipGate } from './components/MembershipGate'
 import { NickList } from './components/NickList'
-import { ConversationTools } from './components/ConversationTools'
+import { ConversationTools, HEADER_TRAY_HOST } from './components/ConversationTools'
+import { SEARCH_PANE_HOST } from './components/SearchPane'
+import { accountWhere } from './components/AccountList'
+import { useAppearance } from './lib/useAppearance'
 import { BufferFace } from './components/BufferFace'
 import { FileDrop } from './components/FileDrop'
 import { Toasts } from './components/Toasts'
@@ -38,6 +41,7 @@ import { bufferDisplayName } from './lib/util'
  * differently.
  */
 export function Popout({ bufferId }: { bufferId: string }): JSX.Element {
+  useAppearance()
   const store = useStore()
   const prefsReady = usePrefsReady()
   const [booted, setBooted] = useState(false)
@@ -69,6 +73,8 @@ export function Popout({ bufferId }: { bufferId: string }): JSX.Element {
     if (name) document.title = name
   }, [name])
 
+  const account = useChat((s) => s.accounts.find((a) => a.id === buffer?.accountId))
+  const searching = useChat((s) => s.searchPane) && !!buffer
   const showMembers = !membersFolded && buffer?.kind === 'channel'
 
   return (
@@ -79,7 +85,16 @@ export function Popout({ bufferId }: { bufferId: string }): JSX.Element {
         <div className="main-column">
           <div className="main-header">
             {buffer && <BufferFace buffer={buffer} />}
-            <span className="main-header-title ellipsis">{name}</span>
+            {/* Whose conversation this is: a window on its own has no rail or plaque to say, and two accounts
+                can both be in a room of the same name (#339). */}
+            <span className="popout-heading">
+              <span className="main-header-title ellipsis">{name}</span>
+              {account && (
+                <span className="small muted ellipsis">
+                  {account.displayName || account.id} · {accountWhere(account)}
+                </span>
+              )}
+            </span>
 
             {buffer && <ConversationTools buffer={buffer} />}
 
@@ -100,6 +115,9 @@ export function Popout({ bufferId }: { bufferId: string }): JSX.Element {
               onClick={() => store.dock(bufferId, true)}
             />
           </div>
+
+          {/* Where a narrow header's other tools are laid out, as in the main window. */}
+          <div className="header-tray" id={HEADER_TRAY_HOST} />
 
           <div className="main-body">
             {buffer ? (
@@ -124,7 +142,15 @@ export function Popout({ bufferId }: { bufferId: string }): JSX.Element {
           )}
         </div>
 
-        {showMembers && (
+        {/* What a search found, beside the log, as in the main window. */}
+        {searching && (
+          <>
+            <div className="divider-v" />
+            <div className="search-pane" id={SEARCH_PANE_HOST} />
+          </>
+        )}
+
+        {showMembers && !searching && (
           <>
             <div className="divider-v" />
             <div className="nicklist-pane">
