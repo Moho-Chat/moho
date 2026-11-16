@@ -92,10 +92,11 @@ export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {})
       const account = accounts.find((a) => a.id === ring.accountId)
       return {
         key: `sg:${ring.ringId}`,
-        name: buffer ? bufferDisplayName(buffer.name) : 'A Signal group',
-        avatarUrl: buffer?.avatarUrl,
+        // Who is ringing is the news; which group is where (#339).
+        name: caller ? bufferDisplayName(caller.name) : buffer ? bufferDisplayName(buffer.name) : 'A Signal group',
+        avatarUrl: caller?.avatarUrl ?? buffer?.avatarUrl,
         accountId: ring.accountId,
-        detail: `${caller ? bufferDisplayName(caller.name) : 'Somebody'} is calling the group${account ? ` · ${account.displayName || account.id}` : ''}`,
+        detail: `${caller ? `Calling ${buffer ? bufferDisplayName(buffer.name) : 'the group'}` : 'Somebody is calling the group'}${account ? ` · ${account.displayName || account.id}` : ''}`,
         answer: ring.bufferId ? () => store.answerSignalGroupRing(ring, false) : undefined,
         answerWithVideo: ring.bufferId ? () => store.answerSignalGroupRing(ring, true) : undefined,
         decline: () => store.declineSignalGroupRing(ring)
@@ -108,10 +109,11 @@ export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {})
             const account = accounts.find((a) => a.id === matrix.accountId)
             return {
               key: `m:${matrix.callId}`,
-              name: buffer ? bufferDisplayName(buffer.name) : matrix.from,
-              avatarUrl: buffer?.avatarUrl,
+              // In a room, the caller is the headline and the room is where; a direct call's name is already the caller.
+              name: buffer && buffer.kind !== 'channel' ? bufferDisplayName(buffer.name) : matrix.from,
+              avatarUrl: buffer && buffer.kind !== 'channel' ? buffer.avatarUrl : undefined,
               accountId: buffer?.accountId ?? matrix.accountId,
-              detail: `${matrix.from} is calling${matrix.video ? ' · video' : ''}${account ? ` · ${account.displayName || account.id}` : ''}`,
+              detail: `${buffer?.kind === 'channel' ? `Calling ${bufferDisplayName(buffer.name)}` : 'Incoming call'}${matrix.video ? ' · video' : ''}${account ? ` · ${account.displayName || account.id}` : ''}`,
               answer: () => void store.answerMatrixCall(false),
               answerWithVideo: matrix.video ? () => void store.answerMatrixCall(true) : undefined,
               decline: () => store.declineMatrixCall()

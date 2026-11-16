@@ -1452,6 +1452,16 @@ const SCENES = [
     }
   },
   {
+    // The browser's own checkbox, radio and select, as the app draws them wherever one is left (#339).
+    name: 'native-controls',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await p.evaluate(`document.querySelector('.composer').insertAdjacentHTML('beforebegin', '<div id="nc" style="display:flex;gap:18px;align-items:center;padding:14px 18px"><label><input type="checkbox"> Off</label><label><input type="checkbox" checked> On</label><label><input type="checkbox" checked disabled> Fixed</label><label><input type="radio" name="r"> One</label><label><input type="radio" name="r" checked> Other</label><select><option>Plain select</option></select><select class="text-field"><option>In a form</option></select></div>')`)
+      await sleep(300)
+    },
+    clip: { x: 277, y: 660, width: 823, height: 70 }
+  },
+  {
     name: 'dialog-poll',
     setup: async (p) => {
       await openChannel(p, '#general')

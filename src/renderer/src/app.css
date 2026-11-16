@@ -14327,3 +14327,152 @@ p.downloads-folder {
   transform: translateX(-50%);
   align-items: center;
 }
+
+/* --- the rest of the second survey's list (#339) ------------------------------- */
+
+/* New poll: numbered answers that can be moved and removed, a switch, and a
+   filled button to start it. */
+.poll-composer .poll-answers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.poll-composer .poll-answer {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.poll-composer .poll-answer .text-field {
+  flex: 1;
+  min-width: 0;
+  margin-right: var(--spacing-xxs);
+}
+
+.poll-answer-number {
+  flex: none;
+  width: 18px;
+  text-align: right;
+  margin-right: var(--spacing-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.poll-add {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-left: 22px;
+}
+
+.poll-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  border: 1px solid var(--outline-light);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container);
+}
+
+.poll-switch .switch-text {
+  flex: 1;
+}
+
+/* Every checkbox, radio and select that is still the browser's own is drawn
+   as the app's: one rule for all of them, wherever they are, so a form that
+   was written with a plain input does not look like a different program.
+   :where keeps this weaker than any rule a particular form has of its own. */
+:where(input[type='checkbox'], input[type='radio']) {
+  appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1.5px solid var(--outline-strong);
+  border-radius: 4px;
+  background: var(--surface-container-high);
+  vertical-align: -3px;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
+}
+
+:where(input[type='radio']) {
+  border-radius: 50%;
+}
+
+:where(input[type='checkbox'], input[type='radio']):hover {
+  border-color: var(--primary);
+}
+
+:where(input[type='checkbox'], input[type='radio']):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--primary-hover);
+}
+
+:where(input[type='checkbox']):checked {
+  border-color: var(--primary);
+  background: var(--primary)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.6 8.3l2.8 2.8 6-6.2' fill='none' stroke='%230b0d12' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / 14px no-repeat;
+}
+
+:where(input[type='radio']):checked {
+  border-color: var(--primary);
+  background: radial-gradient(circle, var(--primary) 0 4px, transparent 4.5px), var(--surface-container-high);
+}
+
+:where(input[type='checkbox'], input[type='radio']):disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+:where(select) {
+  appearance: none;
+  min-height: 30px;
+  padding: 4px 28px 4px var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-high)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6.5l4 4 4-4' fill='none' stroke='%239aa3ad' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    right 7px center / 14px no-repeat;
+  color: var(--surface-text);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
+}
+
+:where(select):hover {
+  border-color: var(--outline-strong);
+}
+
+:where(select):focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-hover);
+}
+
+:where(select):disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* The selects that have a look of their own keep it, and gain the same
+   chevron: their own background would otherwise paint over it. */
+.setting-select,
+.component-select,
+.invite-row select,
+select.text-field {
+  appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6.5l4 4 4-4' fill='none' stroke='%239aa3ad' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+  background-size: 14px;
+}
