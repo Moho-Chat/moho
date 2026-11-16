@@ -1497,6 +1497,11 @@ function MessageRowBody({
                   messageId={message.id}
                   from={message.from}
                   onOpenInDiscord={(b, m) => void store.openInDiscord(b, m)}
+                  // A Discord link somebody typed lapses like any other, and
+                  // the daemon signs it again in the text - in a Discord
+                  // conversation, the only place it can ask from.
+                  onRefresh={bufferId.startsWith('discord:') ? (b, m) => store.refreshAttachments(b, m) : undefined}
+                  onStale={bufferId.startsWith('discord:') ? (b, m) => store.resignWhenIdle(b, m) : undefined}
                 />
               ))}
             </div>
