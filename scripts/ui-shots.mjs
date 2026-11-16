@@ -1452,6 +1452,26 @@ const SCENES = [
     }
   },
   {
+    // A run of people coming and going, folded to one line (#339).
+    name: 'event-run',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await p.evaluate(`(() => {
+        const shots = window.__mohoShots
+        const s = shots.state()
+        const id = s.activeBufferId
+        const now = Math.floor(Date.now() / 1000)
+        const ev = (n, kind, body) => ({ id: 'ev' + n, bufferId: id, from: '', body, ts: now - 40 + n, isAction: false, isHighlight: false, kind, isOwn: false, embeds: [] })
+        shots.patch({ messagesByBuffer: { ...s.messagesByBuffer, [id]: [...s.messagesByBuffer[id],
+          ev(1, 'join', 'heidi entered the room'), ev(2, 'join', 'ivan entered the room'), ev(3, 'part', 'heidi left the room'), ev(4, 'join', 'judy entered the room'), ev(5, 'nick', 'ivan is now known as ivan_'),
+          { id: 'evc', bufferId: id, from: 'judy', senderId: 'judy', body: 'evening all', ts: now, isAction: false, isHighlight: false, kind: 'chat', isOwn: false, embeds: [] }
+        ] } })
+        return true
+      })()`)
+      await sleep(600)
+    }
+  },
+  {
     // Nothing open: what there is to do about it (#339).
     name: 'nothing-open',
     setup: async (p) => {

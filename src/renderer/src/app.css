@@ -14528,3 +14528,33 @@ select.text-field {
   font: inherit;
   font-size: var(--font-size-xs);
 }
+
+/* A run of people coming and going, as one line with the way to see them. */
+.event-run {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin: 2px var(--spacing-m);
+  padding: 2px var(--spacing-s);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted, var(--surface-variant-text));
+  font-style: italic;
+  transition: background var(--motion-fast) var(--ease);
+}
+
+.event-run:hover {
+  background: var(--surface-hover);
+  color: var(--surface-text);
+}
+
+.event-run-show {
+  font-style: normal;
+  color: var(--primary);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+
+.event-run:hover .event-run-show,
+.event-run:focus-visible .event-run-show {
+  opacity: 1;
+}
