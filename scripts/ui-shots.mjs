@@ -790,7 +790,20 @@ const SCENES = [
       await sleep(700)
     }
   },
-  { name: 'mentions-inbox', setup: async (p) => { await p.evaluate(click('button[title="Mentions"]')); await sleep(400) } },
+  // The button's title says how many are waiting now, so it is found by where it is.
+  { name: 'mentions-inbox', setup: async (p) => { await SCENES.find((x) => x.name === 'mentions-page').setup(p); await p.evaluate(`window.__mohoShots.store.selectBuffer('discord:shots|c3')`); await sleep(500); await p.evaluate(click('.mentions-inbox > button')); await sleep(500) } },
+  {
+    // The search box in the header, with what it found.
+    name: 'search-popover',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await p.evaluate(click('button[title^="Search"]'))
+      await sleep(400)
+      await p.evaluate(`(() => { const i = document.querySelector('.search-popover input'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, 'the'); i.dispatchEvent(new Event('input', { bubbles: true })); i.focus() })()`)
+      await pressKey(p, 'Enter', 'Enter')
+      await sleep(900)
+    }
+  },
   {
     name: 'modal-export',
     setup: async (p) => {
