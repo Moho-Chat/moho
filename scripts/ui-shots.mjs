@@ -568,6 +568,46 @@ const SCENES = [
     name: 'gif-picker',
     setup: async (p) => { await setMode(p, 'comfy'); await openChannel(p, '#general'); await openGifPicker(p) }
   },
+  // A streaming channel's header, on air and off (#339): the name, whether it is live, the
+  // title, who is watching, what the room is set to, and Watch.
+  ...[['live', true], ['offline', false], ['watching', true]].map(([name, live]) => ({
+    name: `stream-header-${name}`,
+    setup: async (p) => {
+      await p.evaluate(`(() => {
+        const shots = window.__mohoShots
+        const s = shots.state()
+        const acc = 'twitch:shots'
+        const id = acc + '|#caedrel'
+        const now = Math.floor(Date.now() / 1000)
+        const chat = (n, from, body, color) => ({ id: 't' + n, bufferId: id, from, senderId: from, senderColor: color, body, ts: now - 90 + n * 6, isAction: false, isHighlight: false, kind: 'chat', isOwn: false, embeds: [] })
+        shots.patch({
+          accounts: [...s.accounts.filter((a) => a.id !== acc), { id: acc, service: 'twitch', displayName: 'salastil', state: 'connected', autojoin: '', currentNick: 'salastil', status: 'online', useTor: false, ssl: true, hasPassword: true }],
+          groups: [...s.groups.filter((g) => g.accountId !== acc), { id: 'account:' + acc, accountId: acc, service: 'twitch', kind: 'account', name: 'Twitch', position: 9 }],
+          buffers: [...s.buffers.filter((b) => b.accountId !== acc), { id, accountId: acc, kind: 'channel', name: '#caedrel', lastActivityTs: now, groupId: 'account:' + acc, unread: 0, channelModes: 'followers only (1 hour), slow mode 5s, emote only' }],
+          messagesByBuffer: { ...s.messagesByBuffer, [id]: [
+            chat(1, 'riftwatcher', 'that flank was disgusting', '#8a2be2'), chat(2, 'bluebuff', 'KEKW he is so far ahead', '#1e90ff'), chat(3, 'wardbot', 'baron in 30', '#ff7f50'),
+            chat(4, 'midgap', 'worlds player btw', '#2e8b57'), chat(5, 'riftwatcher', 'draft diff honestly', '#8a2be2'), chat(6, 'lanekingdom', 'chat is this a scrim or soloq', '#daa520')
+          ] },
+          kickStreams: { ...s.kickStreams, [id]: ${live}
+            ? { bufferId: id, live: true, title: 'WORLDS PLAYER PLAYING SOLOQ | !youtube !drops', category: 'League of Legends', viewers: 41677, startedTs: now - 8040, followers: 1200000, following: true }
+            : { bufferId: id, live: false, title: null, category: null, viewers: null, following: false } },
+          presenceByBuffer: { ...s.presenceByBuffer, [id]: [] },
+          activeGroupId: 'account:' + acc,
+          activeBufferId: id
+        })
+      })()`)
+      await sleep(600)
+      // The third takes the stage as well.
+      if (name === 'watching') {
+        await p.evaluate(`(() => { const s = window.__mohoShots.state(); window.__mohoShots.patch({ watching: { bufferId: s.activeBufferId, accountId: 'twitch:shots', title: 'caedrel' } }) })()`)
+        await sleep(900)
+        // The pointer over the picture, which is what brings its controls up in a build that hides them.
+        await mouse(p, 'mouseMoved', 640, 300)
+        await mouse(p, 'mouseMoved', 660, 310)
+        await sleep(400)
+      }
+    }
+  })),
   {
     // What somebody did on a Kick stream: KICKs sent, subscriptions gifted. Put
     // on a channel's messages directly - a stream is not here to do it.

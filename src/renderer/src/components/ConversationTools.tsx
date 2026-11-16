@@ -7,6 +7,7 @@ import { SignalGroupSettings } from './SignalGroupSettings'
 import { HeaderPopover } from './HeaderPopover'
 import { useChat, useStore } from '../state/hooks'
 import { bufferDisplayName, classes, formatFullTime } from '../lib/util'
+import { shortCount } from '../lib/streamplayer'
 import { hasQuery, parseSearch, suggestions } from '../lib/searchfilters'
 import type { BufferEntry, LiveCard } from '../state/store'
 import type { Message } from '../../../shared/wire'
@@ -562,6 +563,33 @@ function PinnedMessages({ buffer }: { buffer: BufferEntry }): JSX.Element | null
  * invents its own, and these are the handful that change whether you can say
  * anything. An unknown letter is shown as itself.
  */
+/**
+ * A worded list of modes - Kick's and Twitch's "followers only (1 hour), slow
+ * mode 5s" - as a chip each: a glyph for which, and the number where it has
+ * one. Nothing for mode letters, which are set as they always were.
+ */
+export function wordedModes(modes: string): { full: string; icon: string; short: string }[] | null {
+  if (/^[+-][A-Za-z]/.test(modes) || !/[a-z]{3}/i.test(modes)) return null
+  return modes
+    .split(/,\s*/)
+    .map((full) => full.trim())
+    .filter(Boolean)
+    .map((full) => {
+      const amount = /\(([^)]+)\)/.exec(full)?.[1] ?? /(\d+\s*[a-z]*)\s*$/i.exec(full)?.[1] ?? ''
+      const brief = amount
+        .replace(/\s*minutes?/, 'm')
+        .replace(/\s*hours?/, 'h')
+        .replace(/\s*days?/, 'd')
+        .replace(/\s*seconds?/, 's')
+      if (/follow/i.test(full)) return { full, icon: 'favorite', short: brief || 'Followers' }
+      if (/slow/i.test(full)) return { full, icon: 'hourglass_bottom', short: brief || 'Slow' }
+      if (/sub/i.test(full)) return { full, icon: 'star', short: brief || 'Subs' }
+      if (/emote/i.test(full)) return { full, icon: 'mood', short: 'Emotes' }
+      if (/unique|r9k/i.test(full)) return { full, icon: 'fingerprint', short: 'Unique' }
+      return { full, icon: 'tune', short: full }
+    })
+}
+
 function describeModes(modes: string): string {
   if (/[\s]/.test(modes) || !/^\+?[a-z]+$/i.test(modes)) return modes
   const meanings: Record<string, string> = {
@@ -851,23 +879,53 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           say - an unmodded channel has no modes worth a badge - and titled
           with the long form, since the letters are only obvious to people who
           already knew. */}
-      {buffer.channelModes && (
+      {/* What the stream is, for a channel that is one: whether it is on
+          air, its title - the part that gives way when the header is tight -
+          and how many are watching. What it is a stream *of* is on the
+          picture itself (see StreamStage), not repeated here. */}
+      {stream && (
         <span
-          // Mode letters ("+nt") are set like code; a service that names its
-          // modes in words - Kick's "followers only" - is set like text, or it
-          // wraps into a two-line box in a monospace fallback.
-          className={`channel-modes small${/^[+-][A-Za-z]/.test(buffer.channelModes) ? ' letters' : ''}`}
-          title={describeModes(buffer.channelModes)}
+          className={classes('stream-chip', 'small', stream.live && 'live')}
+          title={
+            stream.live
+              ? [stream.title, stream.category, stream.viewers ? `${stream.viewers.toLocaleString()} watching` : null]
+                  .filter(Boolean)
+                  .join(' · ')
+              : 'Not streaming right now'
+          }
         >
-          {buffer.channelModes}
+          <span className={classes('live-pill', !stream.live && 'off')}>{stream.live ? 'LIVE' : 'OFFLINE'}</span>
+          {stream.live && stream.title && <span className="stream-chip-title ellipsis">{stream.title}</span>}
+          {stream.live && stream.viewers !== null && stream.viewers !== undefined && (
+            <span className="stream-viewers">
+              <Icon name="person" size={14} fill />
+              {shortCount(stream.viewers)}
+            </span>
+          )}
         </span>
       )}
 
-      {/* What the stream is, for a channel that is one. Kick's chat is
-          watched beside a video this client does not show, so the title, the
-          game and the number of people watching are the context the chat is
-          missing - and "offline" is worth saying too, since a quiet channel
-          and an off-air one look identical otherwise. */}
+      {/* What the channel itself is set to. Only where there is something to
+          say - an unmodded channel has no modes worth a badge - and titled
+          with the long form, since the letters are only obvious to people who
+          already knew. A service that words its modes gets a small chip for
+          each, a glyph and the one number that matters. */}
+      {buffer.channelModes &&
+        (wordedModes(buffer.channelModes) ? (
+          <span className="mode-chips" title={`This room: ${buffer.channelModes}`}>
+            {wordedModes(buffer.channelModes)!.map((m) => (
+              <span key={m.full} className="mode-chip small">
+                <Icon name={m.icon} size={13} />
+                {m.short}
+              </span>
+            ))}
+          </span>
+        ) : (
+          <span className="channel-modes small letters" title={describeModes(buffer.channelModes)}>
+            {buffer.channelModes}
+          </span>
+        ))}
+
       {/* Following is the one thing about a Kick channel somebody changes from
           here - subscribing is money and raiding is the broadcaster's own
           gesture, and neither belongs behind a button in a chat client.
@@ -881,49 +939,28 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           onClick={() => store.setFollowing(buffer.id, !stream.following)}
         >
           <Icon name={stream.following ? 'favorite' : 'favorite_border'} size={15} />
-          {stream.following ? 'Following' : 'Follow'}
+          <span className="follow-button-word">{stream.following ? 'Following' : 'Follow'}</span>
         </button>
       )}
 
-      {stream && (
-        <span
-          className={classes('stream-chip', 'small', stream.live && 'live')}
-          title={
-            stream.live
-              ? [stream.title, stream.category, stream.viewers ? `${stream.viewers.toLocaleString()} watching` : null]
-                  .filter(Boolean)
-                  .join(' · ')
-              : 'Not streaming right now'
-          }
-        >
-          {stream.live ? (
-            <>
-              <span className="stream-dot" />
-              <span className="ellipsis">{stream.title || 'Live'}</span>
-              {stream.category && <span className="muted ellipsis">{stream.category}</span>}
-              {stream.viewers !== null && stream.viewers !== undefined && (
-                <span className="muted">{stream.viewers.toLocaleString()}</span>
-              )}
-            </>
-          ) : (
-            <span className="muted">offline</span>
-          )}
-        </span>
-      )}
       {/* Watching, offered where the chat is rather than only on the row in
           the list - a popped-out channel has no list to right-click, and the
           window that has the conversation is the one somebody is looking at
           when they decide to watch it.
 
-          Beside the chip that says the channel is on air, and only while it
-          is: a playlist for an offline channel is a signed URL to nothing. */}
+          The one filled button on the header, and only while the channel is
+          on air: a playlist for an offline channel is a signed URL to
+          nothing. */}
       {stream && (stream.live || watching) && (
-        <IconButton
-          name={watching ? 'stop_circle' : 'live_tv'}
+        <button
+          type="button"
+          className={classes('button', 'watch-button', watching ? 'subtle' : 'primary')}
           title={watching ? 'Stop watching' : 'Watch the stream'}
-          className={watching ? 'calling' : undefined}
           onClick={() => (watching ? store.stopWatching() : store.watchStream(buffer.id))}
-        />
+        >
+          <Icon name={watching ? 'stop_circle' : 'play_arrow'} size={16} fill={!watching} />
+          {watching ? 'Stop' : 'Watch'}
+        </button>
       )}
 
       {/* Matrix's own calls, which this window makes rather than the daemon:

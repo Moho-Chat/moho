@@ -78,6 +78,7 @@ export default function App(): JSX.Element {
   // that is walking away from it too.
   const callElsewhere = !!activeCall && (activeCall.bufferId !== activeBufferId || activePanel !== '')
   const streamPoppedOut = useChat((s) => s.streamPoppedOut)
+  const watchMinimized = useChat((s) => s.watchMinimized)
   const streamElsewhere = !!watching && (watching.bufferId !== activeBufferId || activePanel !== '')
 
   const [sidebarFolded, setSidebarFolded] = usePref<boolean>('ui.sidebarFolded', false)
@@ -201,12 +202,20 @@ export default function App(): JSX.Element {
   // A pane has the window: one that was opened, or - with no account yet -
   // the page for adding the first.
   const paneOpen = activePanel !== '' || accounts.length === 0
-  const sidebarShown = !sidebarFolded && !paneOpen
+  // Theatre: the lists either side fold for a stream being watched in this conversation, and come back when it
+  // stops or the conversation changes. The server rail stays.
+  const [theatre] = usePref<boolean>('ui.theatre', false)
+  const theatreOn = theatre && !!watching && !streamElsewhere && !streamPoppedOut && !watchMinimized
+  const sidebarShown = !sidebarFolded && !paneOpen && !theatreOn
 
   // A stale restored id is harmless: it simply resolves to no buffer and the
   // empty state shows, exactly as it would for "".
+  // A stream's chat has no member list until somebody has spoken: the column would be a heading over nothing.
+  const nobodyListed = useChat((s) => (s.presenceByBuffer[activeBufferId]?.length ?? 0) === 0)
+  const streamService = accounts.find((a) => a.id === buffer?.accountId)?.service
+  const noMemberList = (streamService === 'kick' || streamService === 'twitch') && nobodyListed
   const showNickList =
-    !userListFolded && activePanel === '' && !onMentionsPage && !peeking && buffer?.kind === 'channel'
+    !userListFolded && !theatreOn && !noMemberList && activePanel === '' && !onMentionsPage && !peeking && buffer?.kind === 'channel'
 
   const headerTitle =
     peeking
@@ -283,8 +292,9 @@ export default function App(): JSX.Element {
             {activePanel === '' && !onMentionsPage && !peeking && buffer?.kind === 'channel' && (
               <IconButton
                 name="group"
-                title={userListFolded ? 'Show members' : 'Hide members'}
-                className={userListFolded ? undefined : 'active'}
+                title={noMemberList ? 'Nobody to list yet: it fills as people talk' : userListFolded ? 'Show members' : 'Hide members'}
+                disabled={noMemberList}
+                className={userListFolded || noMemberList ? undefined : 'active'}
                 onClick={() => setUserListFolded(!userListFolded)}
               />
             )}

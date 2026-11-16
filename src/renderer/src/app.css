@@ -13637,3 +13637,286 @@ p.downloads-folder {
 .status-popout .status-choice-text {
   min-width: 0;
 }
+
+/* --- a streaming channel's header (#339) ------------------------------------- */
+
+/* The channel's own name is not what gives way: it keeps its width up to a
+   share of the header, and the stream's title is what stretches and clips. */
+.main-header:has(.stream-chip) .header-nameplate {
+  flex: 0 0 auto;
+  max-width: 34%;
+}
+
+.main-header:has(.stream-chip) .conversation-tools {
+  flex: 1 1 0;
+}
+
+.stream-chip,
+.stream-chip.live {
+  max-width: none;
+  flex: 0 1 auto;
+  margin-right: auto;
+  padding: 0;
+  border: none;
+  gap: var(--spacing-s);
+}
+
+/* On air or not, in one shape: the word, filled when it is. */
+.live-pill {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: var(--corner-radius-small);
+  background: var(--danger);
+  color: var(--on-accent);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  line-height: 1.6;
+}
+
+.live-pill.off {
+  background: var(--surface-container-highest);
+  color: var(--surface-variant-text);
+}
+
+.stream-chip-title {
+  min-width: 0;
+  color: var(--surface-text);
+}
+
+.stream-viewers {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  color: var(--surface-variant-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.mode-chips {
+  display: inline-flex;
+  flex: none;
+  gap: 3px;
+}
+
+.mode-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-container-high);
+  color: var(--surface-variant-text);
+  white-space: nowrap;
+}
+
+.watch-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  padding: 2px var(--spacing-s) 2px var(--spacing-xs);
+  font-size: var(--font-size-small);
+}
+
+/* Tight: the chips and the word on Follow go before anything is cut off. */
+@container main-header (max-width: 760px) {
+  .mode-chips,
+  .follow-button-word {
+    display: none;
+  }
+}
+
+/* --- the stream's picture (#339) ---------------------------------------------- */
+
+/* Edge to edge over the conversation: no card, no margin, black where the
+   picture is narrower than the pane. */
+.call-stage.own-controls {
+  gap: 0;
+  padding: 0;
+}
+
+.call-stage.own-controls:not(.pip, .in-window, .minimized) {
+  margin: 0;
+  border: none;
+  border-bottom: 1px solid var(--outline-light);
+  border-radius: 0;
+  background: #000;
+}
+
+.call-stage.own-controls.minimized {
+  padding: 2px var(--spacing-xs);
+}
+
+.call-stage.own-controls.pip {
+  overflow: hidden;
+}
+
+.call-stage.own-controls.pip .call-stage-title {
+  padding: 3px 6px;
+}
+
+.stream-stage {
+  width: 100%;
+}
+
+.stream-tile {
+  border-radius: 0;
+  background: #000;
+  outline: none;
+}
+
+.stream-tile .video-tile-picture {
+  object-fit: contain;
+}
+
+.stream-tile.full {
+  width: 100vw;
+  height: 100vh;
+  aspect-ratio: auto;
+}
+
+/* The controls: a strip over the top saying what is on, and a bar along the
+   foot. Up while the pointer is about, the picture is focused by the keyboard,
+   or it is not live; gone otherwise, so the picture is a picture. */
+.stream-strip,
+.stream-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  color: #fff;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+
+.stream-tile.controls-up .stream-strip,
+.stream-tile.controls-up .stream-bar,
+.stream-tile:focus-visible .stream-strip,
+.stream-tile:focus-visible .stream-bar,
+.stream-bar:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.stream-tile:not(.controls-up) {
+  cursor: none;
+}
+
+.stream-strip {
+  top: 0;
+  padding: var(--spacing-s) var(--spacing-m) var(--spacing-xl);
+  background: linear-gradient(rgba(0, 0, 0, 0.72), transparent);
+  pointer-events: none !important;
+}
+
+.stream-strip-title {
+  font-weight: var(--weight-medium);
+}
+
+.stream-strip-facts {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.stream-bar {
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--spacing-xl) var(--spacing-s) var(--spacing-xs);
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.78));
+}
+
+.stream-bar .icon-button {
+  color: #fff;
+}
+
+.stream-bar .icon-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.stream-bar .icon-button:disabled {
+  opacity: 0.4;
+}
+
+.stream-bar .icon-button.active {
+  color: var(--primary);
+}
+
+.stream-bar-gap {
+  flex: 1;
+}
+
+.stream-live {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  margin: 0 var(--spacing-xs);
+  padding: 1px 8px;
+  border-radius: var(--corner-radius-small);
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.05em;
+  line-height: 1.7;
+}
+
+.stream-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+/* Not the newest picture: says how far back, and is the way forward. */
+.stream-live.late {
+  background: #fff;
+  color: #000;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.stream-live.late .stream-live-dot {
+  background: var(--state-off);
+}
+
+.stream-tile.small .stream-strip {
+  padding: var(--spacing-xs) var(--spacing-s) var(--spacing-l);
+  font-size: var(--font-size-small);
+}
+
+.stream-tile.small .stream-bar {
+  padding: var(--spacing-l) 2px 2px;
+}
+
+/* Clear of the strip that says what is on, which has the top. */
+.stream-tile .stream-ad {
+  z-index: 2;
+  top: auto;
+  left: var(--spacing-m);
+  bottom: 52px;
+}
+
+/* In the corner and the small window the title bar already says it. */
+.stream-tile.small .stream-strip {
+  display: none;
+}
+
+.context-menu.stream-menu {
+  top: auto;
+  bottom: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-strip,
+  .stream-bar {
+    transition: none;
+  }
+}
+
+.main-header {
+  container: main-header / inline-size;
+}

@@ -7,8 +7,9 @@ import { useEscapeLayer } from '../lib/layers'
 import { VideoStage } from './VideoStage'
 import { fitTiles } from './CallStage'
 import { useChat, usePref, useStore } from '../state/hooks'
-import { bufferDisplayName } from '../lib/util'
-import { StageWindow, STREAM_WINDOW_NAME } from './stage/StageWindow'
+import { bufferDisplayName, classes } from '../lib/util'
+import { clockLength } from '../lib/filekind'
+import { StageWindow, STREAM_TOP_WINDOW_NAME, STREAM_WINDOW_NAME } from './stage/StageWindow'
 
 /**
  * A Kick or a Twitch channel's stream, in the surface a call uses.
@@ -41,6 +42,12 @@ const AUTO_MAX_HEIGHT = 720
  */
 const LIVE_SYNC_SECONDS = 4
 const LIVE_MAX_LATENCY_SECONDS = 10
+
+/** How long the controls stay over the picture once the pointer has stopped moving. */
+const CONTROLS_LINGER_MS = 3000
+
+/** How far past where the player means to sit counts as behind, in seconds: less than this is ordinary drift. */
+const BEHIND_SLACK_SECONDS = 6
 
 /** Where the numbers of captions carried inside the video start, clear of the playlist's own. */
 const IN_VIDEO = 1000
@@ -127,6 +134,19 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
   /** What automatic choice is playing now, for the menu to say. */
   const [playing, setPlaying] = useState('')
   const [menu, setMenu] = useState<'quality' | 'captions' | null>(null)
+  /** Stopped by hand. A live picture that is stopped falls behind, which the pill then says. */
+  const [paused, setPaused] = useState(false)
+  /** Seconds behind the newest picture there is, when that is more than the player means to be. */
+  const [behind, setBehind] = useState<number | null>(null)
+  /** Whether the controls are over the picture now: the pointer moved lately, or something of theirs is open. */
+  const [shown, setShown] = useState(false)
+  const linger = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const tile = useRef<HTMLDivElement>(null)
+  const [full, setFull] = useState(false)
+  // The lists beside the conversation folded for the picture; see App.tsx.
+  const [theatre, setTheatre] = usePref<boolean>('ui.theatre', false)
+  const onTop = useChat((s) => s.streamOnTop)
+  const [now, setNow] = useState(() => Date.now())
   // Remembered between streams, apart for each service because their ladders differ: 0 is automatic, and an
   // empty language is captions off.
   const service = useChat((s) => s.accounts.find((a) => a.id === (watching?.accountId ?? ''))?.service)
@@ -161,7 +181,9 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
               ? // The corner: as tall as its width makes the picture, so
                 // resizing the panel resizes the picture.
                 (el.clientWidth * 9) / 16
-              : (inlineHeight ?? Math.min(view.innerHeight * 0.45, 460))
+              : // As tall as its width makes the picture, so it runs edge to edge - up to a share of the
+                // window, more of it in theatre.
+                (inlineHeight ?? Math.min((el.clientWidth * 9) / 16, view.innerHeight * (theatre ? 0.7 : 0.56)))
       })
     measure()
     const observer = new ResizeObserver(measure)
@@ -171,7 +193,7 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
       observer.disconnect()
       view.removeEventListener('resize', measure)
     }
-  }, [mode, minimized, watching, inlineHeight])
+  }, [mode, minimized, watching, inlineHeight, theatre])
 
   // The player itself, torn down and rebuilt only when the picture changes - not when the viewer count ticks over,
   // and not when the address is renewed, which it is every few minutes.
@@ -249,8 +271,13 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
       store.stopWatching()
     })
 
-    // Whether the playhead is inside an ad, and how long it has left, said once a second.
+    // Whether the playhead is inside an ad, and how long it has left, said once a second - and how far behind
+    // the newest picture this one is, where that is more than the player means it to be.
     const adTimer = setInterval(() => {
+      const late = player.latency
+      const meant = player.targetLatency ?? LIVE_SYNC_SECONDS
+      setBehind(Number.isFinite(late) && late > meant + BEHIND_SLACK_SECONDS ? Math.round(late) : null)
+      setNow(Date.now())
       const at = player.playingDate?.getTime()
       const inside = at === undefined ? undefined : adRanges.current.find((r) => at >= r.start && at < r.end)
       setAd(inside && at !== undefined ? Math.max(1, Math.ceil((inside.end - at) / 1000)) : null)
@@ -262,6 +289,8 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
       hls.current = null
       adRanges.current = []
       setAd(null)
+      setBehind(null)
+      setPaused(false)
       setChoices([])
       setListed([])
       setInVideo([])
@@ -358,7 +387,64 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
     }
   }, [watching, stream, store])
 
+  // Whether the picture has the screen, in whichever window it is drawn in.
+  useEffect(() => {
+    const doc = tile.current?.ownerDocument
+    if (!doc) return
+    const changed = (): void => setFull(doc.fullscreenElement === tile.current)
+    doc.addEventListener('fullscreenchange', changed)
+    return () => doc.removeEventListener('fullscreenchange', changed)
+  }, [mode, minimized, watching])
+  useEffect(() => () => void (linger.current && clearTimeout(linger.current)), [])
+
   if (!watching) return null
+
+  /** The controls come up, and go again a few seconds after the last sign of anybody. */
+  const wake = (): void => {
+    setShown(true)
+    if (linger.current) clearTimeout(linger.current)
+    linger.current = setTimeout(() => setShown(false), CONTROLS_LINGER_MS)
+  }
+  const togglePause = (): void => {
+    const el = video.current
+    if (!el) return
+    if (el.paused) {
+      void el.play().catch(() => {})
+      setPaused(false)
+    } else {
+      el.pause()
+      setPaused(true)
+    }
+  }
+  /** Back to the newest picture: where the player would have been had it never been stopped. */
+  const goLive = (): void => {
+    const el = video.current
+    const player = hls.current
+    if (!el || !player) return
+    const edge = player.liveSyncPosition
+    if (edge !== null && Number.isFinite(edge)) el.currentTime = edge
+    void el.play().catch(() => {})
+    setPaused(false)
+    setBehind(null)
+  }
+  const toggleFull = (): void => {
+    const el = tile.current
+    if (!el) return
+    if (el.ownerDocument.fullscreenElement) void el.ownerDocument.exitFullscreen()
+    else void el.requestFullscreen().catch(() => store.toast('error', 'Full screen is not available here'))
+  }
+  const nudgeVolume = (by: number): void => {
+    const next = Math.min(1, Math.max(0, Math.round(((muted ? 0 : volume) + by) * 20) / 20))
+    setVolume(next)
+    setMuted(next === 0)
+  }
+  const toggleCaptions = (): void => {
+    if (captions.length === 0) return
+    if (captions.length === 1 || captionsOn) setCaptionLanguage(captionsOn ? '' : captions[0].lang || captions[0].name)
+    else setMenu(menu === 'captions' ? null : 'captions')
+  }
+  /** Into the small window kept over everything else, or out of it. */
+  const toggleOnTop = (): void => store.setStreamPoppedOut(!(mode === 'window' && onTop), true)
 
   const where = buffers.find((b) => b.id === watching.bufferId)?.name ?? ''
   const fit = fitTiles(1, room.width, room.height, Infinity)
@@ -367,6 +453,11 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
   const subtitle = `Live${watchers ? ` · ${watchers.toLocaleString()} watching` : ''}${
     where ? ` · ${bufferDisplayName(where)}` : ''
   }`
+  const uptime = stream?.startedTs ? clockLength(Math.max(0, now / 1000 - stream.startedTs)) : ''
+  const late = paused || behind !== null
+  // Up while there is a reason to look at them: the pointer, a menu of theirs, or a picture that is not live.
+  const controlsUp = shown || menu !== null || late
+  const small = mode === 'pip' || (mode === 'window' && onTop)
 
   return (
     <VideoStage
@@ -386,50 +477,43 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
         setLiveHeight(commit ? undefined : h)
         if (commit) setSavedHeight(h)
       }}
-      controls={
-        <>
-          <IconButton
-            name={captionsOn ? 'closed_caption' : 'closed_caption_disabled'}
-            title={captions.length === 0 ? 'No captions for this stream' : captionsOn ? 'Captions on' : 'Captions off'}
-            className={captionsOn ? 'active' : undefined}
-            disabled={captions.length === 0}
-            onClick={() => {
-              if (captions.length === 1) setCaptionLanguage(captionsOn ? '' : captions[0].lang || captions[0].name)
-              else setMenu(menu === 'captions' ? null : 'captions')
-            }}
-          />
-          <IconButton
-            name="high_quality"
-            title={quality > 0 ? `Resolution: ${quality}p` : 'Resolution: automatic'}
-            disabled={choices.length === 0}
-            onClick={() => setMenu(menu === 'quality' ? null : 'quality')}
-          />
-          <IconButton
-            name={muted ? 'volume_off' : 'volume_up'}
-            title={muted ? 'Unmute' : 'Mute'}
-            className={muted ? 'calling' : undefined}
-            onClick={() => setMuted(!muted)}
-          />
-          <input
-            type="range"
-            className="stream-volume"
-            min={0}
-            max={1}
-            step={0.05}
-            value={muted ? 0 : volume}
-            aria-label="Volume"
-            title="Volume"
-            onChange={(e) => {
-              const next = Number(e.target.value)
-              setVolume(next)
-              setMuted(next === 0)
-            }}
-          />
-        </>
-      }
+      ownControls
     >
-      <div className={mode === 'window' ? 'video-stage in-window' : 'video-stage'} ref={frame}>
-        <div className="video-tile" style={{ width: `${Math.floor(fit.tileWidth)}px` }}>
+      <div className={classes('video-stage', 'stream-stage', mode === 'window' && 'in-window')} ref={frame}>
+        <div
+          ref={tile}
+          className={classes('video-tile', 'stream-tile', controlsUp && 'controls-up', full && 'full', small && 'small')}
+          style={full ? undefined : { width: `${Math.floor(fit.tileWidth)}px` }}
+          // Focused by a click, and then the keys are the picture's: nothing typed anywhere else reaches them.
+          tabIndex={0}
+          onMouseMove={wake}
+          onMouseLeave={() => setShown(false)}
+          onFocus={wake}
+          onDoubleClick={(e) => {
+            if (!(e.target as HTMLElement).closest('button, input, .stream-menu')) toggleFull()
+          }}
+          onKeyDown={(e) => {
+            if (e.ctrlKey || e.metaKey || e.altKey || (e.target as HTMLElement).closest('input')) return
+            const key = e.key.length === 1 ? e.key.toLowerCase() : e.key
+            const does: Record<string, () => void> = {
+              ' ': togglePause,
+              k: togglePause,
+              f: toggleFull,
+              m: () => setMuted(!muted),
+              c: toggleCaptions,
+              p: toggleOnTop,
+              l: goLive,
+              ArrowUp: () => nudgeVolume(0.05),
+              ArrowDown: () => nudgeVolume(-0.05),
+              ...(mode === 'inline' ? { t: () => setTheatre(!theatre) } : {})
+            }
+            if (!does[key]) return
+            e.preventDefault()
+            e.stopPropagation()
+            does[key]()
+            wake()
+          }}
+        >
           <video ref={video} className="video-tile-picture" autoPlay playsInline />
           {ad !== null && (
             <div className="stream-ad small" role="status" title="Twitch plays ads in a stream for an account without Turbo or a subscription to the channel">
@@ -437,6 +521,97 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
               <span>Ad break · {ad} s</span>
             </div>
           )}
+
+          {/* What is on, over the top of the picture: said here once, so the header need not carry it. */}
+          <div className="stream-strip">
+            <div className="stream-strip-title ellipsis" title={stream?.title || watching.title}>
+              {stream?.title || watching.title}
+            </div>
+            {!small && (
+              <div className="stream-strip-facts small ellipsis">
+                {[
+                  where ? bufferDisplayName(where) : '',
+                  stream?.category ?? '',
+                  watchers ? `${watchers.toLocaleString()} watching` : '',
+                  uptime ? `live for ${uptime}` : ''
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </div>
+            )}
+          </div>
+
+          <div className="stream-bar">
+            <IconButton name={paused ? 'play_arrow' : 'pause'} title={paused ? 'Play (Space)' : 'Pause (Space)'} onClick={togglePause} />
+            {/* Whether this is the newest picture there is, and the way back to it when it is not. */}
+            <button
+              type="button"
+              className={classes('stream-live', late && 'late')}
+              title={late ? 'Go back to live (L)' : 'This is live'}
+              disabled={!late}
+              onClick={goLive}
+            >
+              <span className="stream-live-dot" />
+              {late ? (behind !== null ? `${clockLength(behind)} behind` : 'Paused') : 'LIVE'}
+            </button>
+            <IconButton
+              name={muted ? 'volume_off' : volume < 0.5 ? 'volume_down' : 'volume_up'}
+              title={muted ? 'Unmute (M)' : 'Mute (M)'}
+              className={muted ? 'calling' : undefined}
+              onClick={() => setMuted(!muted)}
+            />
+            {!small && (
+              <input
+                type="range"
+                className="stream-volume"
+                min={0}
+                max={1}
+                step={0.05}
+                value={muted ? 0 : volume}
+                aria-label="Volume"
+                title="Volume (↑ ↓)"
+                onChange={(e) => {
+                  const next = Number(e.target.value)
+                  setVolume(next)
+                  setMuted(next === 0)
+                }}
+              />
+            )}
+            <span className="stream-bar-gap" />
+            {!small && (
+              <IconButton
+                name={captionsOn ? 'closed_caption' : 'closed_caption_disabled'}
+                title={captions.length === 0 ? 'No captions for this stream' : captionsOn ? 'Captions on (C)' : 'Captions off (C)'}
+                className={captionsOn ? 'active' : undefined}
+                disabled={captions.length === 0}
+                onClick={toggleCaptions}
+              />
+            )}
+            <IconButton
+              name="high_quality"
+              title={quality > 0 ? `Resolution: ${quality}p` : 'Resolution: automatic'}
+              disabled={choices.length === 0}
+              onClick={() => setMenu(menu === 'quality' ? null : 'quality')}
+            />
+            {mode === 'inline' && (
+              <IconButton
+                name={theatre ? 'width_normal' : 'width_wide'}
+                title={theatre ? 'Leave theatre mode (T)' : 'Theatre mode: fold the lists for the picture (T)'}
+                className={theatre ? 'active' : undefined}
+                onClick={() => setTheatre(!theatre)}
+              />
+            )}
+            <IconButton
+              name={mode === 'window' && onTop ? 'pip_exit' : 'picture_in_picture_alt'}
+              title={mode === 'window' && onTop ? 'Back into moho (P)' : 'Picture-in-picture: a small window over everything else (P)'}
+              onClick={toggleOnTop}
+            />
+            {mode === 'inline' && <IconButton name="open_in_new" title="Pop out into its own window" onClick={() => store.setStreamPoppedOut(true)} />}
+            {mode === 'inline' && <IconButton name="expand_more" title="Minimise: keep listening" onClick={() => store.setWatchMinimized(true)} />}
+            <IconButton name={full ? 'fullscreen_exit' : 'fullscreen'} title={full ? 'Leave full screen (F)' : 'Full screen (F)'} onClick={toggleFull} />
+            <IconButton name="stop_circle" title="Stop watching" className="calling" onClick={() => store.stopWatching()} />
+          </div>
+
           {menu === 'quality' && (
             <StreamMenu
               title="Resolution"
@@ -473,13 +648,16 @@ export function StreamStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wi
 export function StreamWindowHost(): JSX.Element | null {
   const store = useStore()
   const poppedOut = useChat((s) => s.streamPoppedOut)
+  const onTop = useChat((s) => s.streamOnTop)
   const watching = useChat((s) => s.watching)
   if (!poppedOut || !watching) return null
   return (
     <StageWindow
-      name={STREAM_WINDOW_NAME}
-      title={`${watching.title} — moho`}
-      size="width=960,height=600"
+      // A different window, not the same one changed: staying on top is decided when a window is made.
+      key={onTop ? 'top' : 'window'}
+      name={onTop ? STREAM_TOP_WINDOW_NAME : STREAM_WINDOW_NAME}
+      title={onTop ? 'moho — picture-in-picture' : `${watching.title} — moho`}
+      size={onTop ? 'width=480,height=298' : 'width=960,height=600'}
       onClosed={() => store.setStreamPoppedOut(false)}
     >
       <StreamStage mode="window" />

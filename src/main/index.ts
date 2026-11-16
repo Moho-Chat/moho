@@ -425,15 +425,19 @@ function createWindow(): void {
     // conversation. The page draws into it directly - see StageWindow - so it
     // is blank, frameless like this one, and black before anything arrives.
     // A Kick stream popped out of moho is the same kind of window.
-    if ((frameName === 'moho-call' || frameName === 'moho-stream') && (url === '' || url === 'about:blank')) {
+    // And a stream kept over everything else: the same window, small, and asked to stay on top.
+    const onTop = frameName === 'moho-stream-top'
+    if ((frameName === 'moho-call' || frameName === 'moho-stream' || onTop) && (url === '' || url === 'about:blank')) {
       return {
         action: 'allow',
         overrideBrowserWindowOptions: {
-          title: frameName === 'moho-stream' ? 'moho — stream' : 'moho — call',
+          title: onTop ? 'moho — picture-in-picture' : frameName === 'moho-stream' ? 'moho — stream' : 'moho — call',
           frame: false,
           backgroundColor: '#000000',
-          minWidth: 360,
-          minHeight: 240,
+          minWidth: onTop ? 240 : 360,
+          minHeight: onTop ? 135 : 240,
+          alwaysOnTop: onTop,
+          skipTaskbar: onTop,
           autoHideMenuBar: true
         }
       }

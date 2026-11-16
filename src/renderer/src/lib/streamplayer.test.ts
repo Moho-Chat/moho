@@ -75,3 +75,13 @@ describe('a stream that also offers audio alone', () => {
     expect(autoCeiling(renditions, 100)).toBe(2)
   })
 })
+
+import { shortCount } from './streamplayer'
+describe('shortCount', () => {
+  it('reads a count at a glance', () => {
+    expect(shortCount(812)).toBe('812')
+    expect(shortCount(41677)).toBe('41.6K')
+    expect(shortCount(240500)).toBe('240K')
+    expect(shortCount(1250000)).toBe('1.2M')
+  })
+})

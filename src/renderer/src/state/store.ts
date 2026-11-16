@@ -664,6 +664,8 @@ export interface ChatState {
   callPoppedOut: boolean
   /** The stream being watched is in a window of its own. */
   streamPoppedOut: boolean
+  /** Whether that window is the small one kept over everything else. */
+  streamOnTop: boolean
   /**
    * Who is in each room's call, by buffer.
    *
@@ -896,6 +898,7 @@ const INITIAL: ChatState = {
   callMinimized: false,
   callPoppedOut: false,
   streamPoppedOut: false,
+  streamOnTop: false,
   callMembers: {},
   watching: null,
   watchMinimized: false,
@@ -3599,8 +3602,8 @@ export class ChatStore {
   /** Puts the call away, or brings it back. It keeps running either way. */
   /** Moves the call into a window of its own, or back over the conversation. */
   /** Puts the stream being watched in a window of its own, or back. */
-  setStreamPoppedOut(poppedOut: boolean): void {
-    this.set({ streamPoppedOut: poppedOut, watchMinimized: false })
+  setStreamPoppedOut(poppedOut: boolean, onTop = false): void {
+    this.set({ streamPoppedOut: poppedOut, streamOnTop: poppedOut && onTop, watchMinimized: false })
   }
 
   setCallPoppedOut(poppedOut: boolean): void {
@@ -3648,7 +3651,7 @@ export class ChatStore {
   }
 
   stopWatching(): void {
-    this.set({ watching: null, watchMinimized: false, streamPoppedOut: false })
+    this.set({ watching: null, watchMinimized: false, streamPoppedOut: false, streamOnTop: false })
   }
 
   setWatchMinimized(minimized: boolean): void {
