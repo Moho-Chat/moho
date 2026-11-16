@@ -1452,6 +1452,15 @@ const SCENES = [
     }
   },
   {
+    // Nothing open: what there is to do about it (#339).
+    name: 'nothing-open',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await p.evaluate(`window.__mohoShots.patch({ activeBufferId: '' }), true`)
+      await sleep(400)
+    }
+  },
+  {
     // The browser's own checkbox, radio and select, as the app draws them wherever one is left (#339).
     name: 'native-controls',
     setup: async (p) => {

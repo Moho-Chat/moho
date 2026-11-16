@@ -29,6 +29,7 @@ import { CallAudio, CallStage, ScreenPicker } from './components/CallStage'
 import { CallWindowHost } from './components/stage/CallWindowHost'
 import { StreamStage, StreamWindowHost } from './components/StreamStage'
 import { SEARCH_PANE_HOST } from './components/SearchPane'
+import { OPEN_SWITCHER } from './components/QuickSwitcher'
 import { EventCreatePanel, EventsPane } from './components/DiscordEvents'
 import { DiscordModal } from './components/DiscordModal'
 import { FileDrop } from './components/FileDrop'
@@ -476,14 +477,31 @@ function Body({
   // A forum is a list of posts, not a log.
   if (hasBuffer && activeBuffer?.forum) return <ForumPane buffer={activeBuffer} />
   if (hasBuffer) return <MessageList />
-  return <Placeholder icon="forum" text="Select or join a channel" />
+  return <NothingOpen />
 }
 
-function Placeholder({ icon, text }: { icon: string; text: string }): JSX.Element {
+/**
+ * Nothing is open: the two things there are to do about that, offered, rather than a sentence saying so.
+ */
+function NothingOpen(): JSX.Element {
+  const store = useStore()
   return (
-    <div className="placeholder muted">
-      <Icon name={icon} size={32} />
-      <span>{text}</span>
+    <div className="placeholder nothing-open">
+      <span className="nothing-open-mark">
+        <Icon name="forum" size={30} />
+      </span>
+      <span className="nothing-open-title">Nothing is open</span>
+      <span className="small muted">Pick a conversation from the list, or:</span>
+      <div className="nothing-open-actions">
+        <button type="button" className="button primary" onClick={() => window.dispatchEvent(new CustomEvent(OPEN_SWITCHER))}>
+          <Icon name="search" size={16} /> Go to a conversation
+          <kbd>Ctrl K</kbd>
+        </button>
+        <button type="button" className="button" onClick={() => store.setActivePanel('join')}>
+          <Icon name="add" size={16} /> Add or join
+        </button>
+      </div>
     </div>
   )
 }
+

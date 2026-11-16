@@ -168,3 +168,15 @@ describe('readableColor', () => {
     expect(readableColor('')).toBe('')
   })
 })
+
+import { spreadColor } from './util'
+describe('spreadColor', () => {
+  it('puts neighbouring ids far apart, and the same id in the same place', () => {
+    const hue = (key: string): number => Number(/hsl\((\d+)/.exec(spreadColor(key))![1])
+    expect(spreadColor('guild:x1')).toBe(spreadColor('guild:x1'))
+    const hues = ['guild:x1', 'guild:x2', 'guild:x3', 'guild:x4'].map(hue)
+    const gaps = hues.slice(1).map((h, i) => Math.min(Math.abs(h - hues[i]), 360 - Math.abs(h - hues[i])))
+    expect(Math.max(...gaps)).toBeGreaterThan(40)
+    expect(new Set(hues).size).toBe(4)
+  })
+})

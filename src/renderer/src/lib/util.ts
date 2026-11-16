@@ -237,6 +237,23 @@ export function nickColor(nick: string): string {
 }
 
 /**
+ * A colour for a key, spread: two keys that differ by one character land far
+ * apart on the wheel. `nickColor` does not do that - its hash moves a degree
+ * for a last character one higher - which is fine for names and useless for
+ * ids, where neighbours are what has to be told apart.
+ */
+export function spreadColor(key: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 0x01000193)
+  h ^= h >>> 15
+  h = Math.imul(h, 0x2c1b3c6d)
+  h ^= h >>> 12
+  h = Math.imul(h, 0x297a2d39)
+  h ^= h >>> 15
+  return `hsl(${(h >>> 0) % 360}, 62%, 68%)`
+}
+
+/**
  * A name's colour as the service sent it, lightened where it would be hard to read on the dark surface.
  *
  * Twitch lets everybody choose theirs and offers pure blue, and a name in #0000FF on near-black is a

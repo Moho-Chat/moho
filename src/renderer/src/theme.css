@@ -121,8 +121,10 @@
    */
   --bubble-me: #1f7a3a;
   --bubble-me-text: #ffffff;
-  --bubble-them: #0b6fd8;
-  --bubble-them-text: #ffffff;
+  /* What somebody else said sits on the surface, quietly; only your own is filled. Every other
+     bubble in a saturated blue made a long conversation a wall of it. */
+  --bubble-them: var(--surface-container-high);
+  --bubble-them-text: var(--surface-text);
 
   --spacing-xxs: 2px;
   --spacing-xs: 4px;

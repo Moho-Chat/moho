@@ -10,7 +10,7 @@ import { LeaveConfirm } from './LeaveConfirm'
 import { ircNetworkFor } from '../lib/networks'
 import { useChat, useInvitations, usePref, useStore } from '../state/hooks'
 import { RAIL_TIP, hideRailTip, showRailTip, type RailTipDetail } from '../lib/railtip'
-import { bufferDisplayName, classes, nickColor, resolveMediaUrl, serviceIcon } from '../lib/util'
+import { bufferDisplayName, classes, resolveMediaUrl, serviceIcon, spreadColor } from '../lib/util'
 import { SpaceRooms } from './SpaceRooms'
 import { SteamGroupSettings } from './SteamGroupSettings'
 import { StoatServerSettings } from './StoatServerSettings'
@@ -155,7 +155,9 @@ function GroupFace({ group, customIcon }: { group: RailGroup; customIcon?: strin
     return service.mark ? <MaskIcon src={service.mark} size={22} /> : <Icon name={service.glyph!} size={22} />
   }
   return (
-    <span className="rail-initials" style={{ color: nickColor(group.name) }}>
+    // Coloured by which tile it is, not by what it is called: three accounts with the same name had the same
+    // two letters in the same colour, and nothing to tell them apart but their order (#339).
+    <span className="rail-initials rail-initials-tinted" style={{ ['--tile' as string]: spreadColor(group.id) }}>
       {initials(group.name)}
     </span>
   )
