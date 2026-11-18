@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ net: {}, protocol: {} }))
 vi.mock('./log', () => ({ log: { warn: () => {}, info: () => {} } }))
 
-const { isAllowed, isMediaBytes } = await import('./media-protocol')
+const { attachmentName, isAllowed, isCachedFile, isMediaBytes } = await import('./media-protocol')
 
 describe('the media scheme boundary', () => {
   let home: string
@@ -49,10 +49,40 @@ describe('the media scheme boundary', () => {
     expect(isAllowed(path.join(cache, 'a.png'))).toBe(true)
   })
 
+  // Each service's own caches: one missing here is every picture of that service drawn as a broken box (XMPP's were).
+  it.each(['xmpp-media', 'xmpp-avatars', 'xmpp-files', 'stoat-media', 'telegram-avatars'])('serves a picture in %s', (dir) => {
+    const other = path.join(home, 'cache', 'nobilis', dir)
+    fs.mkdirSync(other, { recursive: true })
+    fs.writeFileSync(path.join(other, 'p.png'), PNG)
+    expect(isAllowed(path.join(other, 'p.png'))).toBe(true)
+  })
+
   it('refuses anything outside it, however it is spelled', () => {
     expect(isAllowed(outside)).toBe(false)
     expect(isAllowed(path.join(cache, '..', '..', '..', 'secret.png'))).toBe(false)
     expect(isAllowed('/etc/passwd')).toBe(false)
+  })
+
+  // Saving an attachment: any file the daemon keeps, not only pictures, and still nowhere else.
+  it('hands out any file kept in a cache for saving, and nothing nested, linked out or outside', () => {
+    expect(isCachedFile(path.join(cache, 'accounts.png'))).toBe(true) // text, which isAllowed refuses to draw
+    expect(isAllowed(path.join(cache, 'accounts.png'))).toBe(false)
+    expect(isCachedFile(path.join(cache, 'a.png'))).toBe(true)
+    expect(isCachedFile(path.join(cache, 'nested', 'b.png'))).toBe(false)
+    expect(isCachedFile(path.join(cache, 'link.png'))).toBe(false)
+    expect(isCachedFile(path.join(cache, 'nested'))).toBe(false)
+    expect(isCachedFile(outside)).toBe(false)
+    expect(isCachedFile(path.join(home, 'config', 'nobilis', 'scrollback.png'))).toBe(false)
+    expect(isCachedFile(path.join(cache, 'gone.txt'))).toBe(false)
+  })
+
+  it('offers a sent file under its own name, never a place or a hidden file', () => {
+    expect(attachmentName('report.txt')).toBe('report.txt')
+    expect(attachmentName('../../.bashrc')).toBe('bashrc')
+    expect(attachmentName('C:\\Windows\\evil.exe')).toBe('evil.exe')
+    expect(attachmentName('a<b>:c?.txt')).toBe('a_b__c_.txt')
+    expect(attachmentName('...')).toBe('attachment')
+    expect(attachmentName(undefined)).toBe('attachment')
   })
 
   it('refuses a link planted inside that points out', () => {

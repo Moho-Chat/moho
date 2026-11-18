@@ -38,7 +38,8 @@
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
-    "@electron-toolkit/utils": "^3.0.0"
+    "@electron-toolkit/utils": "^3.0.0",
+    "@signalapp/ringrtc": "2.75.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
@@ -62,7 +63,10 @@
     "appId": "com.salastil.moho",
     "productName": "moho",
     "files": [
-      "out/**/*"
+      "out/**/*",
+      "!node_modules/@signalapp/ringrtc/scripts/**",
+      "!node_modules/@signalapp/ringrtc/build/darwin/**",
+      "!node_modules/@signalapp/ringrtc/build/*/libringrtc-arm64.node"
     ],
     "extraResources": [
       {
@@ -95,6 +99,13 @@
           "from": "nobilis/target/release/nobilis",
           "to": "nobilis"
         }
+      ],
+      "files": [
+        "out/**/*",
+        "!node_modules/@signalapp/ringrtc/scripts/**",
+        "!node_modules/@signalapp/ringrtc/build/darwin/**",
+        "!node_modules/@signalapp/ringrtc/build/*/libringrtc-arm64.node",
+        "!node_modules/@signalapp/ringrtc/build/win32/**"
       ]
     },
     "win": {
@@ -112,6 +123,13 @@
           "from": "nobilis/target/release/nobilis.exe",
           "to": "nobilis.exe"
         }
+      ],
+      "files": [
+        "out/**/*",
+        "!node_modules/@signalapp/ringrtc/scripts/**",
+        "!node_modules/@signalapp/ringrtc/build/darwin/**",
+        "!node_modules/@signalapp/ringrtc/build/*/libringrtc-arm64.node",
+        "!node_modules/@signalapp/ringrtc/build/linux/**"
       ]
     },
     "nsis": {
@@ -126,6 +144,7 @@
   },
   "allowScripts": {
     "electron@44.4.4": true,
-    "esbuild@0.21.5": true
+    "esbuild@0.21.5": true,
+    "@signalapp/ringrtc@2.75.0": true
   }
 }

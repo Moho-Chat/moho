@@ -7,30 +7,38 @@ const buf = (over: Partial<BufferEntry>): BufferEntry =>
 
 describe('the number on the tray', () => {
   it('is nothing when nothing is waiting', () => {
-    expect(trayCount([buf({}), buf({ id: 'a|#y', unread: 40 })], [], [], [])).toEqual({ dms: 0, mentions: 0, latest: null })
+    expect(trayCount([buf({}), buf({ id: 'a|#y', unread: 40 })], [], [], [])).toMatchObject({ dms: 0, mentions: 0, latest: null })
   })
 
   it('counts a channel by its mentions and not by its messages', () => {
-    expect(trayCount([buf({ unread: 33, mentions: 2, highlight: true })], [], [], [])).toEqual({ dms: 0, mentions: 2, latest: 'a|#x' })
+    expect(trayCount([buf({ unread: 33, mentions: 2, highlight: true })], [], [], [])).toMatchObject({ dms: 0, mentions: 2, latest: 'a|#x' })
   })
 
   it('counts a direct message by each unread message in it', () => {
-    expect(trayCount([buf({ id: 'a|bob', kind: 'dm', unread: 3 })], [], [], [])).toEqual({ dms: 3, mentions: 0, latest: 'a|bob' })
+    expect(trayCount([buf({ id: 'a|bob', kind: 'dm', unread: 3 })], [], [], [])).toMatchObject({ dms: 3, mentions: 0, latest: 'a|bob' })
   })
 
   it('does not count what is hidden', () => {
-    expect(trayCount([buf({ id: 'a|#h', mentions: 5 })], [], ['a|#h'], [])).toEqual({ dms: 0, mentions: 0, latest: null })
+    expect(trayCount([buf({ id: 'a|#h', mentions: 5 })], [], ['a|#h'], [])).toMatchObject({ dms: 0, mentions: 0, latest: null })
   })
 
   it('counts the mentions in what is muted, and nothing else there', () => {
     const rows = [buf({ id: 'a|#m', mentions: 4, unread: 90 }), buf({ id: 'a|gm', mentions: 6, groupId: 'muted-group' })]
-    expect(trayCount(rows, ['a|#m'], [], ['muted-group'])).toEqual({ dms: 0, mentions: 10, latest: 'a|#m' })
+    expect(trayCount(rows, ['a|#m'], [], ['muted-group'])).toMatchObject({ dms: 0, mentions: 10, latest: 'a|#m' })
     expect(trayCount([buf({ mentions: 2, notify: 'mute' })], [], [], [])).toMatchObject({ mentions: 2 })
     expect(trayCount([buf({ unread: 50, notify: 'mute' })], [], [], [])).toMatchObject({ mentions: 0 })
   })
 
   it('counts a muted direct message for nothing', () => {
-    expect(trayCount([buf({ id: 'a|bob', kind: 'dm', unread: 3 })], ['a|bob'], [], [])).toEqual({ dms: 0, mentions: 0, latest: null })
+    expect(trayCount([buf({ id: 'a|bob', kind: 'dm', unread: 3 })], ['a|bob'], [], [])).toMatchObject({ dms: 0, mentions: 0, latest: null })
+  })
+
+  it('lists what is waiting by name, most recent first, for the tray to name', () => {
+    const rows = [buf({ id: 'a|#old', name: '#old', mentions: 1, lastActivityTs: 10 }), buf({ id: 'a|bob', name: 'bob', kind: 'dm', unread: 2, lastActivityTs: 20 })]
+    expect(trayCount(rows, [], [], []).waiting).toEqual([
+      { id: 'a|bob', name: 'bob', count: 2, direct: true },
+      { id: 'a|#old', name: '#old', count: 1, direct: false }
+    ])
   })
 
   it('names the most recently active conversation that has something, for the tray to open', () => {

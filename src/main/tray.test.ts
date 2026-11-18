@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
-import { trayIconFile, trayMenu, trayTooltip, waitingSummary, NOTHING_WAITING, type TrayActions } from './tray'
+import { isPaused, pauseEnd, trayIconFile, trayMenu, trayTooltip, waitingSummary, NOTHING_WAITING, PAUSED_FOREVER, type TrayActions } from './tray'
 
 const acts = (): TrayActions => ({
   toggleWindow: vi.fn(),
   openLatest: vi.fn(),
+  openConversation: vi.fn(),
+  openMentions: vi.fn(),
+  markAllRead: vi.fn(),
+  pause: vi.fn(),
+  resume: vi.fn(),
   openSettings: vi.fn(),
   setStatus: vi.fn(),
   restart: vi.fn(),
@@ -63,10 +68,46 @@ describe('the menu', () => {
     expect(a.openLatest).toHaveBeenCalled()
   })
 
-  it('has no notifications switch of its own: Do not disturb is that', () => {
-    expect(labels(trayMenu(model, acts())).join('|')).not.toMatch(/notification/i)
-    const status = trayMenu(model, acts()).find((i) => i.label === 'Status')
+  it('names what is waiting, each opening its own conversation, and offers to mark it all read', () => {
+    const a = acts()
+    const waiting = [
+      { id: 'd|gk', name: 'Gaunt King', count: 2, direct: true },
+      { id: 'd|#shots', name: '#screenshots', count: 1, direct: false }
+    ]
+    const menu = trayMenu({ ...model, state: { unread: 3, dms: 2, mentions: 1, waiting } }, a)
+    expect(labels(menu).slice(0, 4)).toEqual(['2 direct messages, 1 mention', 'Gaunt King - 2', '#screenshots - 1 mention', 'Mark everything read'])
+    expect(menu[0].enabled).toBe(false)
+    menu[2].click?.({} as never, undefined, {} as never)
+    expect(a.openConversation).toHaveBeenCalledWith('d|#shots')
+    menu[3].click?.({} as never, undefined, {} as never)
+    expect(a.markAllRead).toHaveBeenCalled()
+  })
+
+  it('names five and says how many more', () => {
+    const a = acts()
+    const waiting = Array.from({ length: 8 }, (_, i) => ({ id: `c${i}`, name: `#room${i}`, count: 1, direct: false }))
+    const menu = trayMenu({ ...model, state: { unread: 8, dms: 0, mentions: 8, waiting } }, a)
+    expect(labels(menu)[6]).toBe('and 3 more…')
+    menu[6].click?.({} as never, undefined, {} as never)
+    expect(a.openMentions).toHaveBeenCalled()
+  })
+
+  it('keeps Do not disturb under Status, and pauses notifications apart from it', () => {
+    const a = acts()
+    const status = trayMenu(model, a).find((i) => i.label === 'Status')
     expect((status?.submenu as { label: string }[]).map((s) => s.label)).toContain('Do not disturb')
+    const pause = trayMenu(model, a).find((i) => i.label === 'Pause notifications')
+    const choices = pause?.submenu as { label: string; click: () => void }[]
+    expect(choices.map((c) => c.label)).toEqual(['For 30 minutes', 'For 1 hour', 'Until tomorrow morning', 'Until I turn them back on'])
+    choices[1].click()
+    expect(a.pause).toHaveBeenCalledWith('1h')
+    const paused = trayMenu({ ...model, paused: 'until 14:30' }, a)
+    expect(labels(paused)).toContain('Resume notifications (paused until 14:30)')
+    expect(labels(paused)).not.toContain('Pause notifications')
+  })
+
+  it('says its version last, where told it', () => {
+    expect(labels(trayMenu({ ...model, version: '1.5.1' }, acts())).at(-1)).toBe('moho 1.5.1')
   })
 
   it('offers only what the connected accounts can be set to', () => {
@@ -93,5 +134,37 @@ describe('the menu', () => {
     expect(sub.filter((s) => s.checked).map((s) => s.label)).toEqual(['Idle'])
     const none = trayMenu({ ...model, status: null }, acts()).find((i) => i.label === 'Status')?.submenu as { checked: boolean }[]
     expect(none.some((s) => s.checked)).toBe(false)
+  })
+})
+
+describe('the icon and tooltip when it is not business as usual', () => {
+  it('has an icon of its own for offline and for quiet, without a count', () => {
+    expect(trayIconFile(true, 4, 'offline')).toBe('tray-light-offline.png')
+    expect(trayIconFile(false, 4, 'quiet')).toBe('tray-dark-quiet.png')
+    expect(trayIconFile(false, 4, 'normal')).toBe('tray-dark-4.png')
+  })
+
+  it('says which in the tooltip', () => {
+    const waiting = { unread: 3, dms: 3, mentions: 0 }
+    expect(trayTooltip(waiting, true, 'offline')).toBe('moho - offline')
+    expect(trayTooltip(waiting, true, 'quiet')).toBe('moho - do not disturb, 3 direct messages waiting')
+    expect(trayTooltip(NOTHING_WAITING, true, 'quiet', 'notifications paused')).toBe('moho - notifications paused')
+  })
+})
+
+describe('pausing notifications', () => {
+  const noon = new Date(2026, 10, 16, 12, 0, 0).getTime()
+  it('ends when it was said to', () => {
+    expect(pauseEnd('30m', noon)).toBe(noon + 30 * 60_000)
+    expect(pauseEnd('1h', noon)).toBe(noon + 3_600_000)
+    expect(new Date(pauseEnd('morning', noon)).getHours()).toBe(8)
+    expect(new Date(pauseEnd('morning', noon)).getDate()).toBe(17)
+    expect(pauseEnd('forever', noon)).toBe(PAUSED_FOREVER)
+  })
+  it('is over once its end has passed, and never when there is none', () => {
+    expect(isPaused(noon + 1, noon)).toBe(true)
+    expect(isPaused(noon - 1, noon)).toBe(false)
+    expect(isPaused(0, noon)).toBe(false)
+    expect(isPaused(PAUSED_FOREVER, noon)).toBe(true)
   })
 })

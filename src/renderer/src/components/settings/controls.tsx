@@ -46,11 +46,13 @@ export function SettingsSection({
   description?: string
   children?: React.ReactNode
 }): JSX.Element {
+  // Its rows in a card under a small label: a long page reads as groups
+  // rather than as one list with bold lines in it (#339).
   return (
     <div className="settings-section">
-      <h4 className="settings-section-title">{title}</h4>
+      <h4 className="settings-section-title section-label">{title}</h4>
       {description && <p className="small muted settings-section-desc">{description}</p>}
-      {children}
+      {children && <div className="card settings-card">{children}</div>}
     </div>
   )
 }

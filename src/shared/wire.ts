@@ -3,7 +3,7 @@
 
 export interface Account {
   id: string
-  service: 'irc' | 'discord' | 'sneedchat' | 'matrix' | 'kick' | 'steam' | 'twitch' | 'telegram' | 'stoat' | 'xmpp' | 'jabber' | 'slack'
+  service: 'irc' | 'discord' | 'sneedchat' | 'matrix' | 'kick' | 'steam' | 'twitch' | 'telegram' | 'stoat' | 'xmpp' | 'signal' | 'jabber' | 'slack'
   displayName: string
   /**
    * How the user is presenting: "online" | "idle". Distinct from
@@ -159,13 +159,13 @@ export interface Buffer {
    * The window draws and offers it the same either way - it is the daemon's
    * to decide what a level means for a message, and this is only its answer.
    */
-  notify?: 'all' | 'mentions' | 'mute'
+  notify?: 'all' | 'mentions' | 'direct' | 'mute'
   /**
    * What actually applies, where that is not what was set on this
    * conversation: a channel left on its default inside a server somebody muted
    * is silent. Absent when it is the same as `notify`.
    */
-  notifyApplied?: 'default' | 'all' | 'mentions' | 'mute'
+  notifyApplied?: 'default' | 'all' | 'mentions' | 'direct' | 'mute'
   /**
    * Starred on the account itself - Matrix's `m.favourite` tag today.
    *
@@ -358,6 +358,8 @@ export interface DccTransfer {
   path?: string | null
   /** Why it failed, or why it was turned down. */
   error?: string | null
+  /** When it started, in seconds. Absent from a daemon older than the history being cleared by age. */
+  startedAt?: number
 }
 
 /** What receiving files is allowed to do. Lives with the daemon, which is what writes them. */
@@ -402,11 +404,75 @@ export interface VoiceChannel {
  * Deliberately no name or picture: which conversation it is, is the answer,
  * and the buffer already carries how to draw the person it is with.
  */
+/** A Signal call as RingRTC (in main) has it - see main/signal-calls.ts. */
+export interface SignalCallState {
+  accountId: string
+  bufferId: string | null
+  remote: string
+  callId: string
+  incoming: boolean
+  video: boolean
+  state: 'ringing' | 'connecting' | 'connected' | 'reconnecting' | 'ended'
+  remoteAudio: boolean
+  remoteVideo: boolean
+  audioMuted: boolean
+  videoMuted: boolean
+  sharing?: boolean
+  ended?: string
+}
+
+/** A Signal group call as RingRTC (in main) has it. */
+export interface SignalGroupCallState {
+  accountId: string
+  bufferId: string
+  joinState: 'idle' | 'joining' | 'pending' | 'joined' | 'ended'
+  connected: boolean
+  participants: { demuxId: number; userId: string; audioMuted: boolean; videoMuted: boolean }[]
+  audioMuted: boolean
+  videoMuted: boolean
+  sharing: boolean
+  raisedHands: number[]
+  ownDemuxId?: number
+  pending: string[]
+  ended?: string
+  /** A call link's call (no group): its name and address. */
+  callLink?: { name: string; link: string }
+}
+
+/** A Signal call link, as RingRTC reads it from the calling server. */
+export interface SignalCallLink {
+  link: string
+  /** Its root key, base64: how the account's list names it. */
+  rootKey: string
+  name: string
+  /** Whether people ask to be let in. */
+  approval: boolean
+  revoked: boolean
+  expires: number
+  /** Whether this account made it (and can change it or take it down). */
+  admin: boolean
+}
+
+/** Somebody ringing a Signal group's call. */
+export interface SignalGroupRing {
+  accountId: string
+  groupId: string
+  ringId: string
+  sender: string
+  bufferId: string | null
+}
+
 export interface IncomingCall {
   accountId: string
   bufferId: string
   channelId: string
   ringing: boolean
+  /** The offer carries a camera (Signal says so). */
+  video?: boolean
+  /** Nothing in moho can take this call (Signal): it is answered on the phone, and can only be silenced here. */
+  answerElsewhere?: boolean
+  /** Signal: the call's id, as RingRTC knows it. */
+  callId?: string
 }
 
 /** Where an account is currently connected in voice. */
@@ -645,6 +711,8 @@ export interface Message {
   components?: MessageComponent[]
   /** Present once the service has removed the message. */
   moderated?: Moderated
+  /** How far one of the account's own messages got, where the service says (Signal). Only moves forward. */
+  delivery?: 'sent' | 'delivered' | 'read'
   /** Matrix only - the sender's full MXID, for targeting moderation actions. */
   senderId?: string
   /**
@@ -704,6 +772,11 @@ export interface Profile {
   nameHistory?: { name: string; when: string }[]
   /** Set while the service is still being asked; the card fills in. */
   pending?: boolean
+  /** Signal: whether this account marked their safety number verified, and whether it blocks them. */
+  signalVerified?: boolean
+  /** Their safety number changed after it was verified: sends wait until it is looked at. */
+  signalUnconfirmed?: boolean
+  signalBlocked?: boolean
 }
 
 /** What somebody is doing, as a line under their name. */

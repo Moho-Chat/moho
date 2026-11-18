@@ -2,6 +2,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import os from 'node:os'
+import { fileURLToPath } from 'node:url'
 import {
   app,
   BrowserWindow,
@@ -27,7 +28,7 @@ import { NobilisProcess } from './nobilis-process'
 import { Prefs } from './prefs'
 import { Notifier } from './notifications'
 import { IdleWatcher } from './idle'
-import { NOTHING_WAITING, trayIconFile, trayMenu, trayTooltip, type TrayState, type TrayStatus } from './tray'
+import { NOTHING_WAITING, PAUSED_FOREVER, isPaused, pauseEnd, trayIconFile, trayMenu, trayTooltip, type TrayMode, type TrayState, type TrayStatus, type TrayWaiting } from './tray'
 import { browserLogin, LOGIN_FLOWS } from './browser-login'
 import { feedTwitchSignIn, twitchSignIn } from './twitch-signin'
 import { answerIntegrity, mintIntegrity } from './twitch-integrity'
@@ -35,11 +36,12 @@ import { EDIT_ACTIONS, IPC, POPOUT_FLAG, UI_SHOTS_FLAG, type EditAction, type Ed
 import { clearnetLinks } from '../shared/clearnet'
 import { readCapped, pictureNamedIn } from './imagepage'
 import { DEEP_LINK_SCHEMES, isDeepLink } from '../shared/deeplink'
-import { allowPickedFile, allowRoot, installMediaHandler, registerMediaScheme } from './media-protocol'
+import { allowPickedFile, allowRoot, attachmentName, installMediaHandler, isCachedFile, registerMediaScheme } from './media-protocol'
 import { installScreenShare } from './screenshare'
 import { defaultDownloadDir, readMedia, saveMedia } from './downloads'
 import type { Buffer as ChatBuffer } from '../shared/wire'
 import { log } from './log'
+import { SignalCalls } from './signal-calls'
 import { applyPolicy, applyTunnel } from './tunnel'
 import { installRoutedHandler, resetRoute } from './routed'
 
@@ -137,6 +139,7 @@ let tray: Tray | null = null
 let prefs: Prefs
 let nobilis: NobilisProcess
 let client: NobilisClient
+let signalCalls: SignalCalls
 let notifier: Notifier
 let idleWatcher: IdleWatcher
 let registeredHotkey: string | null = null
@@ -422,15 +425,19 @@ function createWindow(): void {
     // conversation. The page draws into it directly - see StageWindow - so it
     // is blank, frameless like this one, and black before anything arrives.
     // A Kick stream popped out of moho is the same kind of window.
-    if ((frameName === 'moho-call' || frameName === 'moho-stream') && (url === '' || url === 'about:blank')) {
+    // And a stream kept over everything else: the same window, small, and asked to stay on top.
+    const onTop = frameName === 'moho-stream-top'
+    if ((frameName === 'moho-call' || frameName === 'moho-stream' || onTop) && (url === '' || url === 'about:blank')) {
       return {
         action: 'allow',
         overrideBrowserWindowOptions: {
-          title: frameName === 'moho-stream' ? 'moho — stream' : 'moho — call',
+          title: onTop ? 'moho — picture-in-picture' : frameName === 'moho-stream' ? 'moho — stream' : 'moho — call',
           frame: false,
           backgroundColor: '#000000',
-          minWidth: 360,
-          minHeight: 240,
+          minWidth: onTop ? 240 : 360,
+          minHeight: onTop ? 135 : 240,
+          alwaysOnTop: onTop,
+          skipTaskbar: onTop,
           autoHideMenuBar: true
         }
       }
@@ -642,8 +649,44 @@ function toggleFromTray(): void {
   mainWindow.focus()
 }
 
+/** When notifications were paused until, in milliseconds: 0 for not, PAUSED_FOREVER for no end. */
+const pausedUntil = (): number => prefs.get<number>('notifications.pausedUntil', 0)
+const notificationsPaused = (): boolean => isPaused(pausedUntil(), Date.now())
+let pauseTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Pauses notifications until then, or ends a pause with 0, and redraws the tray when the pause runs out. */
+function setPausedUntil(until: number): void {
+  prefs.set('notifications.pausedUntil', until)
+  if (pauseTimer) clearTimeout(pauseTimer)
+  pauseTimer = null
+  const left = until - Date.now()
+  // A timer cannot be set further out than about 24 days; a pause never is.
+  if (until > 0 && left > 0) pauseTimer = setTimeout(() => updateTray(lastTray), Math.min(left + 500, 2 ** 31 - 1))
+  updateTray(lastTray)
+}
+
+/** "until 14:30", by the clock the system uses. */
+function pausedWords(): string | null {
+  const until = pausedUntil()
+  if (!isPaused(until, Date.now())) return null
+  if (until === PAUSED_FOREVER) return 'until turned back on'
+  const end = new Date(until)
+  const time = end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return end.toDateString() === new Date().toDateString() ? `until ${time}` : `until tomorrow, ${time}`
+}
+
+/**
+ * What the icon says besides the count: that nothing can arrive, or that what arrives will not be announced.
+ * Offline is the daemon not answering or no account connected - the window says which accounts are.
+ */
+function trayMode(): TrayMode {
+  if (!client.linkUp || Object.keys(accountStatus).length === 0) return 'offline'
+  if (trayStatus === 'dnd' || notificationsPaused()) return 'quiet'
+  return 'normal'
+}
+
 function trayIcon(unread: number): Electron.NativeImage {
-  lastTrayIcon = trayIconFile(nativeTheme.shouldUseDarkColors, unread)
+  lastTrayIcon = trayIconFile(nativeTheme.shouldUseDarkColors, unread, trayMode())
   const img = nativeImage.createFromPath(resourcePath('icons', lastTrayIcon))
   // A missing icon file would otherwise produce an invisible tray entry the
   // user can never click; fall back to the app icon so the entry still exists.
@@ -663,9 +706,9 @@ const isTrayStatus = (v: unknown): v is TrayStatus => v === 'online' || v === 'i
  * are about moho itself - settings, and a status set across every account -
  * are the window's to carry out, since it is what holds the accounts.
  */
-function tellWindow(command: 'settings' | 'status', arg?: string): void {
+function tellWindow(command: 'settings' | 'status' | 'mentions' | 'markAllRead', arg?: string): void {
   if (!mainWindow) createWindow()
-  if (command === 'settings') {
+  if (command === 'settings' || command === 'mentions') {
     mainWindow?.show()
     mainWindow?.focus()
   }
@@ -699,7 +742,9 @@ function refreshTrayMenu(): void {
       windowVisible: !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible(),
       status: trayStatus,
       offered: trayOffered,
-      invisibleName: trayInvisibleName
+      invisibleName: trayInvisibleName,
+      paused: pausedWords(),
+      version: app.getVersion()
     },
     {
       toggleWindow,
@@ -707,6 +752,11 @@ function refreshTrayMenu(): void {
         const id = lastTray.latest ?? notifier.latestUnread()
         if (id) openConversation(id)
       },
+      openConversation,
+      openMentions: () => tellWindow('mentions'),
+      markAllRead: () => tellWindow('markAllRead'),
+      pause: (choice) => setPausedUntil(pauseEnd(choice, Date.now())),
+      resume: () => setPausedUntil(0),
       openSettings: () => tellWindow('settings'),
       setStatus: (status) => {
         trayStatus = status
@@ -741,12 +791,12 @@ function updateTray(state: TrayState): void {
   // The taskbar flash: asking for attention while the window is not in front.
   const flash = prefs.get<boolean>('notifications.flash', true)
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.flashFrame(flash && state.unread > 0 && trayStatus !== 'dnd' && !mainWindow.isFocused())
+    mainWindow.flashFrame(flash && state.unread > 0 && trayStatus !== 'dnd' && !notificationsPaused() && !mainWindow.isFocused())
   }
   refreshTrayMenu()
   if (!tray) return
   tray.setImage(trayIcon(badge ? state.unread : 0))
-  lastTrayTooltip = trayTooltip(state, badge)
+  lastTrayTooltip = trayTooltip(state, badge, trayMode(), notificationsPaused() ? 'notifications paused' : 'do not disturb')
   tray.setToolTip(lastTrayTooltip)
   send(IPC.link, client.linkUp)
 }
@@ -786,6 +836,84 @@ app.on('child-process-gone', (_e, details) => {
 })
 
 function wireIpc(): void {
+  // Signal calls (RingRTC, in this process). Answered as a value, like rpc, so the window sees the words.
+  ipcMain.handle(IPC.signalCall, async (_e, action: string, params: Record<string, unknown> = {}) => {
+    try {
+      switch (action) {
+        case 'available':
+          return { ok: true, result: signalCalls.available() }
+        case 'current':
+          return { ok: true, result: signalCalls.current() }
+        case 'start':
+          await signalCalls.start(String(params.accountId), String(params.bufferId), String(params.remote), !!params.video)
+          return { ok: true, result: null }
+        case 'accept':
+          signalCalls.accept(!!params.video)
+          return { ok: true, result: null }
+        case 'decline':
+          signalCalls.decline()
+          return { ok: true, result: null }
+        case 'hangup':
+          signalCalls.hangup()
+          return { ok: true, result: null }
+        case 'mute':
+          signalCalls.mute(params.audio as boolean | undefined, params.video as boolean | undefined)
+          return { ok: true, result: null }
+        case 'share':
+          signalCalls.share(!!params.on)
+          return { ok: true, result: null }
+        case 'currentGroup':
+          return { ok: true, result: signalCalls.currentGroup() }
+        case 'readCallLink':
+          return { ok: true, result: await signalCalls.readCallLink(String(params.accountId), String(params.link)) }
+        case 'createCallLink':
+          return { ok: true, result: await signalCalls.createCallLink(String(params.accountId), String(params.name ?? ''), !!params.approval) }
+        case 'updateCallLink':
+          return {
+            ok: true,
+            result: await signalCalls.updateCallLink(String(params.accountId), String(params.link), {
+              name: params.name === undefined ? undefined : String(params.name),
+              approval: params.approval === undefined ? undefined : !!params.approval
+            })
+          }
+        case 'deleteCallLink':
+          await signalCalls.deleteCallLink(String(params.accountId), String(params.link))
+          return { ok: true }
+        case 'joinCallLink':
+          await signalCalls.joinCallLink(String(params.accountId), String(params.link), !!params.video)
+          return { ok: true }
+        case 'joinGroup':
+          await signalCalls.joinGroup(String(params.bufferId), !!params.video, !!params.ring)
+          return { ok: true, result: null }
+        case 'leaveGroup':
+          signalCalls.leaveGroup()
+          return { ok: true, result: null }
+        case 'muteGroup':
+          signalCalls.muteGroup(params.audio as boolean | undefined, params.video as boolean | undefined)
+          return { ok: true, result: null }
+        case 'shareGroup':
+          signalCalls.shareGroup(!!params.on)
+          return { ok: true, result: null }
+        case 'reactInGroup':
+          signalCalls.reactInGroup(String(params.value))
+          return { ok: true, result: null }
+        case 'raiseHand':
+          signalCalls.raiseHand(!!params.up)
+          return { ok: true, result: null }
+        case 'answerJoinRequest':
+          signalCalls.answerJoinRequest(String(params.userId), !!params.letIn)
+          return { ok: true, result: null }
+        case 'declineGroupRing':
+          signalCalls.declineGroupRing(String(params.groupId), String(params.ringId))
+          return { ok: true, result: null }
+        default:
+          return { ok: false, error: `no Signal call action "${action}"` }
+      }
+    } catch (err) {
+      return { ok: false, error: (err as Error).message }
+    }
+  })
+  ipcMain.on(IPC.signalCallFrame, (_e, width: number, height: number, rgba: Uint8Array) => signalCalls.sendFrame(width, height, rgba))
   ipcMain.handle(IPC.rpc, async (_e, method: string, params: Record<string, unknown>) => {
     try {
       return { ok: true, result: await client.request(method, params) }
@@ -794,6 +922,43 @@ function wireIpc(): void {
       // nobilis's own error text (which is often the actionable part - "account
       // not connected", "no such buffer") instead of a generic IPC failure.
       return { ok: false, error: (err as Error).message }
+    }
+  })
+
+  // A downloaded file, opened or shown where it is. The window says which
+  // transfer and what to do; where that is on disk is the daemon's to say,
+  // asked here. A path from the page is never opened: it is the one process
+  // that renders what strangers send, and "open this file" is not something
+  // it should be able to ask of an arbitrary path.
+  ipcMain.handle(IPC.transferFile, async (_e, action: string, id: string): Promise<{ error?: string }> => {
+    try {
+      if (action === 'folder') {
+        const dcc = (await client.request('getDccPrefs', {})) as { resolvedDirectory?: string }
+        const dir = dcc.resolvedDirectory
+        if (!dir || !fs.existsSync(dir)) return { error: 'The downloads folder does not exist yet. It is made when the first file arrives.' }
+        const failed = await shell.openPath(dir)
+        return failed ? { error: failed } : {}
+      }
+      const all = (await client.request('listTransfers', {})) as { id: string; path?: string | null }[]
+      const file = all.find((t) => t.id === id)?.path
+      if (!file) return { error: 'moho has no record of where that file went.' }
+      if (!fs.existsSync(file)) {
+        // Moved, renamed or deleted since. Its folder is the next best thing to show, if that is still there.
+        const dir = path.dirname(file)
+        if (action === 'reveal' && fs.existsSync(dir)) {
+          const failed = await shell.openPath(dir)
+          return failed ? { error: failed } : { error: 'The file is no longer there. This is the folder it was saved to.' }
+        }
+        return { error: 'The file is no longer where it was saved.' }
+      }
+      if (action === 'reveal') {
+        shell.showItemInFolder(file)
+        return {}
+      }
+      const failed = await shell.openPath(file)
+      return failed ? { error: failed } : {}
+    } catch (err) {
+      return { error: (err as Error).message }
     }
   })
 
@@ -815,10 +980,15 @@ function wireIpc(): void {
 
   // What is waiting, as the window counts it. The tray's number is the window's
   // own: counted here from notifications it drifted from what the window showed.
-  ipcMain.on(IPC.trayUnread, (_e, count: { dms: number; mentions: number; latest: string | null }) => {
+  ipcMain.on(IPC.trayUnread, (_e, count: { dms: number; mentions: number; latest: string | null; waiting?: unknown }) => {
     const dms = Math.max(0, Number(count?.dms) || 0)
     const mentions = Math.max(0, Number(count?.mentions) || 0)
-    updateTray({ unread: dms + mentions, dms, mentions, latest: typeof count?.latest === 'string' ? count.latest : null })
+    // Names come from the services, so they are taken as text and nothing else, and not many of them.
+    const waiting: TrayWaiting[] = (Array.isArray(count?.waiting) ? count.waiting : [])
+      .filter((w): w is TrayWaiting => !!w && typeof w.id === 'string' && typeof w.name === 'string')
+      .slice(0, 20)
+      .map((w) => ({ id: w.id, name: w.name.replace(/[\r\n]+/g, ' ').slice(0, 80), count: Math.max(1, Number(w.count) || 1), direct: !!w.direct }))
+    updateTray({ unread: dms + mentions, dms, mentions, latest: typeof count?.latest === 'string' ? count.latest : null, waiting })
   })
 
   ipcMain.handle(IPC.markBufferRead, (_e, bufferId: string) => notifier.clear(bufferId))
@@ -957,6 +1127,28 @@ function wireIpc(): void {
     if (!parent) return null
     const res = await dialog.showSaveDialog(parent, { defaultPath: suggested })
     return res.canceled || !res.filePath ? null : res.filePath
+  })
+
+  // A file someone sent - a document, an archive, anything that is not drawn - saved where the person chooses. Saved,
+  // never opened: the file is whatever its sender made it, and handing it to the system to open could run it. Only a
+  // file the daemon keeps in its caches (see isCachedFile); 'missing' tells the window to have the daemon fetch it
+  // first, as a file that was never downloaded or that the cache let go is not there yet.
+  ipcMain.handle(IPC.saveAttachment, async (e, raw: unknown, name: unknown) => {
+    if (typeof raw !== 'string') return 'refused'
+    let cached: string
+    try {
+      cached = raw.startsWith('file:') ? fileURLToPath(raw) : raw
+    } catch {
+      return 'refused'
+    }
+    if (!fs.existsSync(cached)) return 'missing'
+    if (!isCachedFile(cached)) return 'refused'
+    const parent = callerWindow(e) ?? mainWindow
+    if (!parent) return 'cancelled'
+    const res = await dialog.showSaveDialog(parent, { defaultPath: path.join(app.getPath('downloads'), attachmentName(name)) })
+    if (res.canceled || !res.filePath) return 'cancelled'
+    await fsp.copyFile(fs.realpathSync(cached), res.filePath)
+    return 'saved'
   })
 
   // Only for the check scripts, which cannot press a native dialog: files named in the environment are handed out in turn.
@@ -1355,11 +1547,20 @@ app.whenReady().then(() => {
     openConversation,
     () => mainWindow?.webContents ?? null,
     (bufferId) => popoutState().watched.includes(bufferId),
-    (accountId) => accountStatus[accountId] === 'dnd'
+    // Paused from the tray counts as every account asking for quiet: nothing pops up, and it all still counts.
+    (accountId) => accountStatus[accountId] === 'dnd' || notificationsPaused()
   )
+
+  signalCalls = new SignalCalls({
+    request: (method, params) => client.request(method, params),
+    emit: (event, data) => send(IPC.event, { event, data }),
+    frame: (width, height, rgba, demuxId) => send(IPC.signalCallFrame, width, height, rgba, demuxId)
+  })
 
   client.on('link', (up) => {
     send(IPC.link, up)
+    // The tray says when the daemon is not answering.
+    updateTray(lastTray)
     if (!up) return
     // A daemon that has just started knows nothing of this.
     if (idleWatcher.isIdle()) void client.request('setUserIdle', { idle: true }).catch(() => {})
@@ -1393,6 +1594,10 @@ app.whenReady().then(() => {
     } else if (frame.event === 'netSettings') {
       void applyTunnel((method, params) => client.request(method, params))
       resetRoute()
+    } else if (frame.event === 'signalCallMessage') {
+      // RingRTC's, here; the windows hear what becomes of the call as signalCall events.
+      signalCalls.arrived(frame.data as Parameters<SignalCalls['arrived']>[0])
+      return
     } else if (frame.event.startsWith('twitchLogin')) {
       feedTwitchSignIn(frame as { event: string; data?: Record<string, unknown> })
     } else if (frame.event === 'twitchIntegrityNeeded') {

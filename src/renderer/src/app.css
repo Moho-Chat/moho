@@ -2092,6 +2092,24 @@ button.video-tile {
 
 .edited-tag {
   font-size: var(--font-size-xs);
+  /* A button, drawn as the words it always was. */
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+.edited-tag:hover {
+  text-decoration: underline;
+}
+.edit-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding-left: 1.2em;
+}
+.edit-history-now {
+  font-weight: 600;
 }
 
 .reply-preview {
@@ -2309,22 +2327,63 @@ button.video-tile {
   flex: 1;
 }
 
+/* What is about to be sent: one row of small cards that scrolls sideways,
+   under a line saying how much there is (#339). */
+.staged-tray {
+  padding: var(--spacing-xs) var(--spacing-s) 0;
+}
+
+.staged-summary {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 2px var(--spacing-xs);
+  white-space: pre;
+}
+
+.staged-clear {
+  margin-left: auto;
+  color: var(--surface-variant-text);
+  font-size: inherit;
+}
+
+.staged-clear:hover {
+  color: var(--danger);
+}
+
 .composer-attachments {
   display: flex;
-  flex-wrap: wrap;
   gap: var(--spacing-xs);
-  padding: var(--spacing-xs) var(--spacing-s) 0;
+  overflow-x: auto;
+  padding-bottom: var(--spacing-xs);
+  scrollbar-width: thin;
 }
 
 .staged-card {
   position: relative;
   display: flex;
+  flex: none;
   flex-direction: column;
-  width: 140px;
+  width: 112px;
   border-radius: var(--corner-radius);
   background: var(--surface-container-high);
   overflow: hidden;
-  transition: background var(--motion-fast) var(--ease);
+  transition:
+    background var(--motion-fast) var(--ease),
+    opacity var(--motion-fast) var(--ease),
+    box-shadow var(--motion-fast) var(--ease);
+}
+
+.staged-card[draggable='true'] {
+  cursor: grab;
+}
+
+.staged-card.dragging {
+  opacity: 0.4;
+}
+
+.staged-card.drop-target {
+  box-shadow: 0 0 0 2px var(--primary);
 }
 
 .staged-preview {
@@ -2332,20 +2391,33 @@ button.video-tile {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 96px;
+  width: 100%;
+  height: 72px;
+  padding: 0;
   background: var(--surface-container-lowest, rgba(0, 0, 0, 0.25));
   color: var(--surface-variant-text);
   overflow: hidden;
 }
 
-.staged-preview img {
+.staged-preview:not(:disabled) {
+  cursor: zoom-in;
+}
+
+.staged-preview img,
+.staged-preview video {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  pointer-events: none;
+}
+
+.staged-preview audio {
+  display: none;
 }
 
 /* Hidden behind a spoiler: blurred until it is sent, as it will be seen. */
-.staged-card.is-spoiler .staged-preview img {
+.staged-card.is-spoiler .staged-preview img,
+.staged-card.is-spoiler .staged-preview video {
   filter: blur(14px);
   transform: scale(1.2);
 }
@@ -2361,11 +2433,50 @@ button.video-tile {
   letter-spacing: 0.06em;
 }
 
+/* Says it is a video, over the frame of it. */
+.staged-play {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--scrim-strong);
+  color: var(--on-accent);
+}
+
+.staged-card.is-spoiler .staged-play {
+  display: none;
+}
+
+.staged-length,
+.staged-ext {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: 0 5px;
+  border-radius: var(--corner-radius-small);
+  background: var(--scrim-strong);
+  color: var(--on-accent);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium, 500);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+
+.staged-ext {
+  background: var(--surface-container-highest);
+  color: var(--surface-variant-text);
+  letter-spacing: 0.04em;
+}
+
 .staged-meta {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: var(--spacing-xs) var(--spacing-s);
+  padding: 3px var(--spacing-xs) 4px;
+  line-height: 1.3;
 }
 
 .staged-name {
@@ -2374,15 +2485,15 @@ button.video-tile {
 
 .staged-actions {
   position: absolute;
-  top: var(--spacing-xs);
-  right: var(--spacing-xs);
+  top: 3px;
+  right: 3px;
   display: flex;
   gap: 2px;
 }
 
-/* Each one fades, rather than the pair: a spoiler mark stays in view while
-   the rest wait for the pointer. */
-.staged-action:not(.on) {
+/* Each one fades, rather than the lot: removing is always in reach, a mark
+   that is on stays in view, and the rest wait for the pointer. */
+.staged-action:not(.on, .always) {
   opacity: 0;
   transition: opacity var(--motion-fast) var(--ease);
 }
@@ -2396,9 +2507,9 @@ button.video-tile {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--corner-radius-small);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
   background: var(--scrim-strong);
   color: var(--on-accent);
 }
@@ -2671,58 +2782,11 @@ img.custom-emoji.steam-sticker {
   padding: var(--spacing-m);
 }
 
-.panel-section {
-  margin-bottom: var(--spacing-xl);
-  max-width: 720px;
-}
-
-.panel-heading {
-  margin: 0 0 var(--spacing-s);
-  font-size: var(--font-size-medium);
-  font-weight: var(--weight-semibold);
-  color: var(--surface-variant-text);
-}
-
-.account-card {
-  border: 1px solid var(--outline-medium);
-  border-radius: var(--corner-radius);
-  margin-bottom: var(--spacing-s);
-  background: var(--surface-container-low);
-}
-
-.account-card-head {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-s);
-  padding: var(--spacing-s) var(--spacing-m);
-}
-
-.account-card-title {
-  flex: 1;
-  min-width: 0;
-}
-
 .account-avatar {
   width: 28px;
   height: 28px;
   border-radius: 50%;
   object-fit: cover;
-}
-
-.account-card-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-s);
-  padding: 0 var(--spacing-m) var(--spacing-m);
-  border-top: 1px solid var(--outline-medium);
-  padding-top: var(--spacing-m);
-}
-
-.service-picker {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-xs);
-  margin-bottom: var(--spacing-m);
 }
 
 .service-chip {
@@ -2801,17 +2865,6 @@ img.custom-emoji.steam-sticker {
   display: flex;
   align-items: center;
   gap: var(--spacing-s);
-}
-
-/* The bar that appears while picking people for a group message. */
-.group-dm-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-s);
-  padding: var(--spacing-xs) var(--spacing-s);
-  background: var(--surface-container-high);
-  border-radius: var(--corner-radius-small);
 }
 
 .friend-row.picked {
@@ -4397,13 +4450,6 @@ img.smilie {
 
 /* --- join panels ------------------------------------------------------- */
 
-.join-panel {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-m);
-  max-width: 560px;
-}
-
 /* Pending Matrix invitations, above the join field.
    A row is "what it is" against "what you can do about it", with the name
    allowed to shrink: a room id is long, and the two buttons must stay
@@ -4571,44 +4617,11 @@ img.smilie {
   flex: none;
 }
 
-/* The actions that have to happen on Discord's own page, each with the
-   reason beside it: a button that leaves the app should say why it does. */
-.join-elsewhere-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-s);
-}
-
-.join-elsewhere-item {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xxs);
-  min-width: 0;
-}
-
 .join-elsewhere {
   display: flex;
   align-items: center;
   gap: var(--spacing-xxs);
   align-self: flex-start;
-}
-
-.join-elsewhere-why {
-  margin: 0;
-  max-width: 60ch;
-}
-
-.join-friends-header {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-s);
-  margin-top: var(--spacing-s);
-  padding-bottom: var(--spacing-xxs);
-  border-bottom: 1px solid var(--outline-medium);
-}
-
-.join-friends-header .setting-text {
-  font-weight: var(--weight-semibold);
 }
 
 .tab {
@@ -4809,13 +4822,6 @@ img.smilie {
   font-family: var(--font-mono);
   font-size: var(--font-size-small);
   word-break: break-all;
-}
-
-/* .field grows to fill its row in the account forms; inside the column-flex
-   join panel that same rule stretches every field to an equal share of the
-   panel's full height instead. */
-.join-panel .field {
-  flex: none;
 }
 
 /* An attachment knows its intrinsic size, so its box can be reserved before
@@ -5289,6 +5295,33 @@ img.smilie {
   display: flex;
   justify-content: flex-end;
   gap: var(--spacing-s);
+}
+
+/* A secret chat's key, as rows of hex both people read aloud. */
+.secret-key {
+  margin: 0;
+  padding: var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-low, var(--surface-container));
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.05em;
+  line-height: 1.6;
+}
+
+/* Telegram's reasons for a report: its own list, one button each, read top to bottom. */
+.report-reasons {
+  width: min(400px, 90vw);
+}
+
+.report-reasons-list .report-reason {
+  width: 100%;
+  text-align: left;
+  color: var(--surface-text);
+  cursor: pointer;
+}
+
+.report-reasons-list .report-reason:hover {
+  background: var(--surface-container-highest);
 }
 
 /* Expanded media viewer. Sits above everything including the title bar, so
@@ -6941,6 +6974,20 @@ video.lightbox-media {
   font-weight: var(--weight-semibold);
 }
 
+/* A button that ends something (leaving a group): said in the error colour so it is not pressed for another. */
+.button.danger {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+/* A row's name, taking the room its buttons leave (a member beside their admin buttons). */
+.field-row > .grow {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* --- rail folders ------------------------------------------------------ */
 
 /* A lifted icon leaves the space it occupied rather than collapsing the
@@ -8340,37 +8387,6 @@ video.lightbox-media {
   height: 100%;
   object-fit: contain;
   padding: 2px;
-}
-
-/* --- accounts, by service ------------------------------------------------
-   A dozen accounts across five services was one long column, so each service
-   folds. Open by default: somebody with one account of a kind should not have
-   to open anything to see it. */
-.account-group {
-  display: flex;
-  flex-direction: column;
-}
-
-.account-group-head {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-s);
-  padding: var(--spacing-xs) var(--spacing-xs);
-  background: none;
-  border: none;
-  border-radius: var(--corner-radius-small);
-  color: var(--surface-variant-text);
-  text-align: left;
-}
-
-.account-group-head:hover {
-  background: var(--surface-container-high);
-  color: var(--surface-text);
-}
-
-.account-group-name {
-  flex: 1;
-  font-weight: var(--weight-semibold);
 }
 
 /* --- tagging someone -----------------------------------------------------
@@ -10884,21 +10900,6 @@ html[data-reduce-motion] *::after {
   text-transform: uppercase;
 }
 
-.join-frame {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
-
-.join-picker {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-m) var(--spacing-m) 0;
-}
-
 
 /* --- the mentions page: filters, days, two lines, put away ------------------- */
 .mentions-filters {
@@ -11774,4 +11775,2997 @@ html[data-reduce-motion] *::after {
 .omemo-qr .mono {
   user-select: text;
   word-break: break-all;
+}
+
+/* The emoji beside a Signal profile's about line: one character wide, not a whole field. */
+.text-field.emoji-field {
+  flex: 0 0 3.2em;
+  text-align: center;
+}
+
+/* A Signal person whose verified safety number changed: said above their actions, in the warning colour. */
+.profile-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0;
+  color: var(--warning);
+}
+
+/* One of your own messages: sent, delivered, read (Signal). Quiet, like the edited tag; read takes the accent. */
+.delivery-tick {
+  opacity: 0.6;
+  vertical-align: -2px;
+}
+.delivery-tick.delivery-read {
+  opacity: 1;
+  color: var(--primary);
+}
+
+/* A Signal call that is on (RingRTC, in main): their picture, yours small in its corner, and the buttons under. */
+.signal-call {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  border-radius: var(--corner-radius);
+  overflow: hidden;
+  background: var(--surface-container-highest);
+  border: 1px solid var(--outline-medium);
+  box-shadow: var(--shadow-2);
+}
+.signal-call-stage {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+.signal-call-theirs {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.signal-call-theirs.hidden {
+  display: none;
+}
+.signal-call-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.5);
+}
+.signal-call-mine {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 30%;
+  border-radius: 6px;
+  transform: scaleX(-1);
+}
+.signal-call-mine.sharing {
+  /* A screen is shown as it is, not as a mirror. */
+  transform: none;
+}
+.signal-call-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+}
+.signal-call-who {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.signal-call .call-toggle {
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background: rgba(127, 127, 127, 0.2);
+  color: inherit;
+}
+.signal-call .call-toggle.on {
+  background: var(--primary);
+  color: var(--primary-text, #fff);
+}
+
+/* Scanning the other side's safety-number code with the camera. */
+.safety-scan {
+  width: 100%;
+  max-height: 320px;
+  border-radius: var(--corner-radius);
+  background: #000;
+}
+
+/* A Signal group call: a tile for each person, in a grid, with a name in its corner. */
+.signal-group-call {
+  width: 480px;
+}
+.signal-group-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 4px;
+  padding: 4px;
+  background: #000;
+}
+.signal-group-tile {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #111;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.signal-group-tile .mirrored {
+  transform: scaleX(-1);
+}
+.signal-group-name {
+  position: absolute;
+  left: 6px;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.signal-group-reaction {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 28px;
+}
+.signal-group-pending {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--outline-medium);
+}
+.signal-group-reacts {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px;
+}
+.signal-group-reacts button {
+  border: none;
+  background: none;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+
+/* ==========================================================================
+   The rework (#339): the parts Settings → Accounts and the "+" pane share,
+   and the type, colour and motion they are drawn in.
+   ========================================================================== */
+
+/* --- type: a page's title, a section's label, a field's label and help ----- */
+
+.page-title {
+  margin: 0;
+  font-size: var(--font-size-xlarge);
+  font-weight: var(--weight-semibold);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+.page-sub {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  margin: 2px 0 0;
+  min-width: 0;
+  font-size: var(--font-size-compact);
+  color: var(--text-muted);
+}
+
+/* Small capitals over a group of rows: says what the group is without being
+   the same size as the rows it heads. */
+.section-label {
+  margin: 0 0 var(--spacing-xs) var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.section-label.danger {
+  color: var(--danger-text);
+}
+
+.field-label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-height: 18px;
+  font-size: var(--font-size-compact);
+  font-weight: var(--weight-medium);
+  color: var(--surface-text);
+}
+
+.field-help {
+  font-size: var(--font-size-small);
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+/* The small grey line over a field, wherever a form still writes one: a
+   label, so it reads as one rather than as more help text. */
+.field > .small.muted:first-child,
+.add-form .field > .small.muted:first-child {
+  font-weight: var(--weight-medium);
+  color: var(--surface-variant-text);
+}
+
+/* --- colour: how an account is doing ---------------------------------------- */
+
+.tone-ok {
+  --tone: var(--state-ok);
+}
+
+.tone-busy {
+  --tone: var(--state-busy);
+}
+
+.tone-bad {
+  --tone: var(--state-bad);
+}
+
+.tone-off {
+  --tone: var(--state-off);
+}
+
+span.tone-bad {
+  color: var(--state-bad);
+}
+
+.state-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  font-size: var(--font-size-small);
+  font-weight: var(--weight-medium);
+  color: var(--tone);
+}
+
+.state-pill-dot,
+.account-row-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tone);
+}
+
+/* Switched off is a ring, not a dot: nothing is there. */
+.tone-off > .state-pill-dot,
+.tone-off > .account-row-dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--tone);
+}
+
+/* On its way: the dot breathes. */
+.tone-busy > .state-pill-dot,
+.tone-busy > .account-row-dot {
+  animation: state-busy 1.4s ease-in-out infinite;
+}
+
+@keyframes state-busy {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* --- buttons: the quiet ones, and what disabled looks like ----------------- */
+
+/* Beside a main action, or alone where nothing is being committed to: an
+   outline, so a page is not a row of filled buttons of equal weight. */
+.button.quiet {
+  background: transparent;
+  color: var(--surface-text);
+  box-shadow: inset 0 0 0 1px var(--outline-strong);
+}
+
+.button.quiet:hover {
+  filter: none;
+  background: var(--surface-hover);
+  box-shadow: inset 0 0 0 1px var(--outline-hover);
+}
+
+.button.quiet:active {
+  background: var(--surface-pressed);
+}
+
+/* Something destructive that has not been confirmed yet: red in outline. */
+.button.danger-quiet {
+  background: transparent;
+  color: var(--danger-text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 55%, transparent);
+}
+
+.button.danger-quiet:hover {
+  filter: none;
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+.button.danger {
+  background: var(--danger);
+  color: var(--on-accent);
+}
+
+/* Cannot be pressed: grey, whatever it would have been. Fading the accent
+   left dark text on a dark blue, which read as broken rather than as off. */
+.button[disabled],
+.button.primary[disabled] {
+  opacity: 1;
+  background: var(--surface-container-highest);
+  color: var(--text-muted);
+  box-shadow: none;
+  filter: none;
+}
+
+.button {
+  white-space: nowrap;
+  flex: none;
+  transition:
+    background-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease,
+    filter var(--motion-fast) ease,
+    color var(--motion-fast) ease;
+}
+
+.button.primary {
+  padding: 6px var(--spacing-m);
+}
+
+.text-field {
+  transition:
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
+}
+
+.text-field:focus {
+  box-shadow: 0 0 0 3px var(--primary-hover);
+}
+
+.text-field:disabled {
+  color: var(--text-muted);
+  background: var(--surface-container);
+}
+
+/* --- motion: a page arriving -------------------------------------------------- */
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.master-detail-body,
+.page-tab,
+.settings-content > [data-page] {
+  animation: page-in var(--motion) var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .master-detail-body,
+  .page-tab,
+  .settings-content > [data-page],
+  .tone-busy > .state-pill-dot,
+  .tone-busy > .account-row-dot {
+    animation: none;
+  }
+}
+
+/* --- a card: rows that belong together ---------------------------------------- */
+
+.card {
+  padding: 0 var(--spacing-l);
+  border: 1px solid var(--outline-light);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-low);
+}
+
+.card > .setting-row,
+.card > .switch-row,
+.card .account-tools > .setting-row {
+  padding: var(--spacing-m) 0;
+}
+
+/* Fields rather than rows: stacked, with air between. */
+.card.card-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-l);
+  padding: var(--spacing-l);
+}
+
+.card > :first-child {
+  margin-top: 0;
+}
+
+/* What a card holds was written for a bordered box of its own, in places. */
+.card > .tor-switch,
+.card > .group-icons,
+.card > .recover-list,
+.card > .matrix-tools,
+.card > .account-tools,
+.card > .sasl-block {
+  padding-top: var(--spacing-m);
+  padding-bottom: var(--spacing-m);
+}
+
+.card .sasl-block {
+  padding: 0;
+  border: 0;
+}
+
+.card .sasl-block .field {
+  margin-left: 0;
+}
+
+/* --- the list beside the page ----------------------------------------------- */
+
+.master-detail {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  container: master-detail / inline-size;
+}
+
+.master-detail-list {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  width: var(--master-list-width);
+  min-height: 0;
+  border-right: 1px solid var(--outline-medium);
+}
+
+.master-detail-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.master-detail-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--spacing-l) var(--spacing-xl) var(--spacing-xl);
+}
+
+.master-detail-back {
+  display: none;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex: none;
+  align-self: flex-start;
+  margin: var(--spacing-s) var(--spacing-m) 0;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  font-weight: var(--weight-medium);
+  color: var(--surface-variant-text);
+}
+
+.master-detail-back:hover {
+  background: var(--surface-hover);
+  color: var(--surface-text);
+}
+
+/* Too narrow for both: the list, then - once something is chosen - its page. */
+@container master-detail (max-width: 620px) {
+  .master-detail-list {
+    flex: 1;
+    width: auto;
+    border-right: 0;
+  }
+
+  .master-detail-page {
+    display: none;
+  }
+
+  .master-detail.chosen > .master-detail-list {
+    display: none;
+  }
+
+  .master-detail.chosen > .master-detail-page {
+    display: flex;
+  }
+
+  .master-detail-back {
+    display: inline-flex;
+  }
+
+  .master-detail-body {
+    padding: var(--spacing-m) var(--spacing-l) var(--spacing-xl);
+  }
+}
+
+/* --- the accounts, one row each -------------------------------------------- */
+
+.account-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.account-list-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex: none;
+  height: 32px;
+  margin: var(--spacing-s) var(--spacing-s) 0;
+  padding: 0 var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-lowest);
+  color: var(--surface-variant-text);
+  transition: border-color var(--motion-fast) var(--ease);
+}
+
+.account-list-filter:focus-within {
+  border-color: var(--primary);
+}
+
+.account-list-filter input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--surface-text);
+}
+
+.account-list-filter .icon-button {
+  width: 22px;
+  height: 22px;
+}
+
+.account-list-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--spacing-s);
+}
+
+.account-list-none {
+  margin: var(--spacing-s);
+}
+
+.account-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  padding: 6px var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  text-align: left;
+  transition: background-color var(--motion-fast) ease;
+}
+
+.account-row:hover {
+  background: var(--surface-hover);
+}
+
+.account-row.active {
+  background: var(--surface-selected);
+}
+
+/* The one chosen: a bar of the accent on its edge, the way the rail marks
+   the server being looked at. */
+.account-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 0;
+  border-radius: 0 3px 3px 0;
+  background: var(--primary);
+  transform: translateY(-50%);
+  transition: height var(--motion) var(--ease);
+}
+
+.account-row.active::before {
+  height: 20px;
+}
+
+.account-row-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.account-row-name {
+  font-weight: var(--weight-medium);
+  line-height: 1.3;
+}
+
+.account-row-where {
+  font-size: var(--font-size-small);
+  line-height: 1.3;
+  color: var(--text-muted);
+}
+
+.account-row-state {
+  font-weight: var(--weight-medium);
+  color: var(--tone);
+}
+
+.account-list-foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  flex: none;
+  padding: var(--spacing-s);
+  border-top: 1px solid var(--outline-medium);
+}
+
+.account-list-count {
+  padding: 0 var(--spacing-s);
+}
+
+.account-list-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  font-weight: var(--weight-medium);
+  text-align: left;
+  color: var(--surface-text);
+  transition: background-color var(--motion-fast) ease;
+}
+
+.account-list-add:hover {
+  background: var(--surface-hover);
+}
+
+.account-list-add.active {
+  background: var(--surface-selected);
+}
+
+.account-list-add-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 1px dashed var(--outline-hover);
+  border-radius: 10px;
+  color: var(--primary);
+}
+
+.account-list-add.active .account-list-add-mark,
+.account-list-add:hover .account-list-add-mark {
+  border-style: solid;
+  border-color: var(--primary);
+}
+
+/* An account's face: its picture and its service's mark, or the mark alone. */
+.account-face {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.account-face-picture {
+  width: 100%;
+  height: 100%;
+  border-radius: 30%;
+  object-fit: cover;
+}
+
+.account-face-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 30%;
+  background: var(--surface-container-highest);
+}
+
+.account-face-badge {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 50%;
+  background: var(--surface-container-high);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+/* --- a page: head, banner, tabs, sections ------------------------------------- */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  max-width: 720px;
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-m);
+  margin-bottom: var(--spacing-l);
+}
+
+.page-head-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.page-head-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 30%;
+  background: var(--surface-container-highest);
+}
+
+.page-foot {
+  display: flex;
+  gap: var(--spacing-s);
+  margin-top: var(--spacing-m);
+}
+
+.page-section {
+  margin-bottom: var(--spacing-xl);
+}
+
+.page-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-m);
+  margin-bottom: var(--spacing-l);
+  padding: var(--spacing-m) var(--spacing-l);
+  border: 1px solid color-mix(in srgb, var(--tone) 38%, transparent);
+  border-radius: var(--corner-radius);
+  background: color-mix(in srgb, var(--tone) 10%, transparent);
+  animation: page-in var(--motion) var(--ease);
+}
+
+.page-banner > .icon {
+  color: var(--tone);
+}
+
+.page-banner-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.page-banner-title {
+  font-weight: var(--weight-semibold);
+}
+
+.page-banner-detail {
+  margin-top: 2px;
+  font-size: var(--font-size-small);
+  line-height: 1.4;
+  color: var(--surface-variant-text);
+  overflow-wrap: anywhere;
+}
+
+.tabs {
+  display: flex;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-l);
+  border-bottom: 1px solid var(--outline-medium);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tabs-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: var(--spacing-s) var(--spacing-m);
+  border-radius: var(--corner-radius-small) var(--corner-radius-small) 0 0;
+  font-size: var(--font-size-compact);
+  font-weight: var(--weight-medium);
+  color: var(--text-muted);
+  transition:
+    color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease;
+}
+
+.tabs-tab:hover {
+  background: var(--surface-hover);
+  color: var(--surface-text);
+}
+
+.tabs-tab.active {
+  color: var(--surface-text);
+}
+
+.tabs-tab.active .icon {
+  color: var(--primary);
+}
+
+/* The line under the one showing grows out from its middle. */
+.tabs-tab::after {
+  content: '';
+  position: absolute;
+  left: var(--spacing-s);
+  right: var(--spacing-s);
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--primary);
+  transform: scaleX(0);
+  transition: transform var(--motion) var(--ease);
+}
+
+.tabs-tab.active::after {
+  transform: scaleX(1);
+}
+
+.tabs-badge {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--state-bad);
+}
+
+/* --- adding an account: the services, a tile each ---------------------------- */
+
+.service-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
+  gap: var(--spacing-s);
+  margin-bottom: var(--spacing-xl);
+}
+
+.service-tile {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-m);
+  padding: var(--spacing-m);
+  border: 1px solid var(--outline-light);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container-low);
+  text-align: left;
+  transition:
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    transform var(--motion-fast) ease;
+}
+
+.service-tile:hover {
+  border-color: var(--outline-hover);
+  background: var(--surface-container);
+}
+
+.service-tile:active {
+  transform: scale(0.985);
+}
+
+.service-tile-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 30%;
+  background: var(--surface-container-highest);
+}
+
+.service-tile-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.service-tile-name {
+  font-weight: var(--weight-semibold);
+}
+
+.service-tile-blurb {
+  font-size: var(--font-size-small);
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.service-tile-go {
+  color: var(--text-muted);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    opacity var(--motion-fast) ease,
+    transform var(--motion-fast) ease;
+}
+
+.service-tile:hover .service-tile-go,
+.service-tile:focus-visible .service-tile-go {
+  opacity: 1;
+  transform: none;
+}
+
+/* A service's own form, on the page rather than in a box under some chips. */
+.add-account-form > .add-form {
+  padding: var(--spacing-l);
+  gap: var(--spacing-m);
+}
+
+/* --- removing: red, but not shouting until asked ----------------------------- */
+
+.card.danger-zone {
+  display: block;
+  margin-top: 0;
+  padding: 0 var(--spacing-l);
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  background: color-mix(in srgb, var(--danger) 5%, var(--surface-container-low));
+}
+
+.card.danger-zone .remove-confirm {
+  padding: var(--spacing-m) 0;
+}
+
+.card.danger-zone .remove-confirm {
+  border: 0;
+  border-radius: 0;
+}
+
+/* --- the "+" pane: the same parts on every service ---------------------------- */
+
+.button.small {
+  padding: 3px 10px;
+  font-size: var(--font-size-small);
+}
+
+.join-card {
+  padding: 0;
+}
+
+/* One thing that can be done: its icon, its words, its control. */
+.join-action {
+  display: flex;
+  gap: var(--spacing-m);
+  padding: var(--spacing-m) var(--spacing-l);
+}
+
+.join-card > * + .join-action,
+.join-card > .join-action + * {
+  border-top: 1px solid var(--outline-light);
+}
+
+.join-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--surface-container-highest);
+  color: var(--surface-variant-text);
+}
+
+.join-action-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  flex: 1;
+  min-width: 0;
+}
+
+.join-action-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-m);
+  min-height: 32px;
+}
+
+.join-action-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.join-action-title {
+  font-weight: var(--weight-medium);
+  line-height: 1.3;
+}
+
+.join-action-help {
+  margin-top: 1px;
+  font-size: var(--font-size-small);
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+/* A field and its button on one line; the field takes what the button leaves. */
+.action-field {
+  display: flex;
+  gap: var(--spacing-s);
+}
+
+.action-field > .text-field {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+}
+
+.action-field > .action-field-minor {
+  flex: 0 1 34%;
+}
+
+.join-buttons,
+.join-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+.join-tools {
+  flex: none;
+  justify-content: flex-end;
+}
+
+.join-tools .segmented {
+  align-self: center;
+}
+
+.join-note {
+  margin: 0;
+}
+
+.join-empty {
+  margin: 0;
+  padding: var(--spacing-m) var(--spacing-l);
+}
+
+.join-action .switch-row {
+  padding: var(--spacing-xs) 0;
+}
+
+.join-card > .switch-row {
+  padding: var(--spacing-s) var(--spacing-l);
+}
+
+.join-card > .switch-row + .switch-row {
+  border-top: 1px solid var(--outline-light);
+}
+
+.join-action .channel-browser {
+  background: var(--surface-container-lowest);
+  border-color: var(--outline-light);
+}
+
+/* A small heading over a list inside a card. */
+.join-list-head {
+  padding: var(--spacing-s) var(--spacing-l) var(--spacing-xxs);
+  border-top: 1px solid var(--outline-light);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* A person or a place, one row each. */
+.join-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px var(--spacing-l);
+  text-align: left;
+  transition: background-color var(--motion-fast) ease;
+}
+
+.join-row.pressable:hover {
+  background: var(--surface-hover);
+}
+
+.join-row.picked {
+  background: var(--primary-hover);
+}
+
+.join-row.picked > .icon {
+  color: var(--primary);
+}
+
+.join-row:last-child {
+  padding-bottom: var(--spacing-s);
+}
+
+.join-row-text {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-s);
+  flex: 1;
+  min-width: 0;
+}
+
+.join-row-name {
+  flex: 0 1 auto;
+  font-weight: var(--weight-medium);
+}
+
+.join-row-sub {
+  flex: 1 1 0;
+  font-size: var(--font-size-small);
+  color: var(--text-muted);
+}
+
+.join-row .friend-avatar {
+  width: 28px;
+  height: 28px;
+}
+
+/* --- forms: a row of buttons wraps rather than running off the card ----------- */
+
+.field-row:not(:has(> input, > .field, > .text-field, > select)) {
+  flex-wrap: wrap;
+}
+
+/* --- settings: the rail, a page's title, sections as cards -------------------- */
+
+.settings-rail {
+  padding: var(--spacing-m) var(--spacing-s);
+}
+
+.settings-rail-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px var(--spacing-s);
+  color: var(--surface-variant-text);
+}
+
+.settings-rail-item:hover {
+  color: var(--surface-text);
+}
+
+/* The page being shown: the quiet selection every other list uses, with the
+   accent on its icon and a bar at its edge. The saturated block it used to be
+   was the loudest thing in the window. */
+.settings-rail-item.active {
+  background: var(--surface-selected);
+  color: var(--surface-text);
+}
+
+.settings-rail-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 0;
+  border-radius: 0 3px 3px 0;
+  background: var(--primary);
+  transform: translateY(-50%);
+  transition: height var(--motion) var(--ease);
+}
+
+.settings-rail-item.active::before {
+  height: 16px;
+}
+
+.settings-rail-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
+.settings-rail-item.active .settings-rail-icon .icon {
+  color: var(--primary);
+}
+
+.settings-rail-heading {
+  margin-bottom: 0;
+  border-bottom: 0;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+
+.settings-rail-group {
+  margin-bottom: var(--spacing-m);
+}
+
+.settings-content {
+  padding: var(--spacing-l) var(--spacing-xl) var(--spacing-xl);
+}
+
+.settings-title {
+  max-width: 680px;
+  margin: 0 0 var(--spacing-l);
+}
+
+.settings-page-title {
+  margin: var(--spacing-l) 0 var(--spacing-m);
+  font-size: var(--font-size-xlarge);
+  letter-spacing: -0.01em;
+}
+
+.settings-section {
+  max-width: 680px;
+}
+
+.settings-section-title.section-label {
+  margin: 0 0 var(--spacing-xs) var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  color: var(--text-muted);
+}
+
+.settings-section-desc {
+  margin: 0 var(--spacing-xs) var(--spacing-s);
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.settings-card > .setting-row,
+.settings-card > .switch-row {
+  padding: var(--spacing-m) 0;
+}
+
+.settings-card > .switch-row + .switch-row,
+.settings-card > .switch-row + .setting-row,
+.settings-card > .setting-row + .switch-row {
+  border-top: 1px solid var(--outline-medium);
+}
+
+.settings-card > :not(.setting-row):not(.switch-row):first-child {
+  margin-top: var(--spacing-m);
+}
+
+.settings-card > :not(.setting-row):not(.switch-row):last-child {
+  margin-bottom: var(--spacing-m);
+}
+
+/* What a row is called, a step heavier than what is said about it. */
+.setting-row .setting-text > :first-child:not(.small),
+.switch-text > :first-child {
+  font-weight: var(--weight-medium);
+}
+
+.setting-row .setting-text > .small.muted,
+.switch-text > .small.muted {
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.setting-segmented button,
+.setting-select {
+  transition:
+    background-color var(--motion-fast) ease,
+    color var(--motion-fast) ease;
+}
+
+/* Settings and the "+" pane arrive, as a dialog or a menu does. */
+.settings,
+.main-body > .master-detail {
+  animation: fade-in var(--motion) ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings,
+  .main-body > .master-detail,
+  .page-banner {
+    animation: none;
+  }
+}
+
+/* The page keeps its width whether or not it is long enough to scroll, so
+   going from one tab to another does not move the head. */
+.master-detail-body,
+.settings-content {
+  scrollbar-gutter: stable;
+}
+
+/* A switch in a wrapper of its own brings its own room. */
+.settings-card > :has(> .switch-row):first-child,
+.settings-card > :has(> .switch-row):last-child {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+/* Nothing to list: no list, and nothing to go back to. */
+.master-detail.solo .master-detail-back {
+  display: none;
+}
+
+.master-detail.solo .master-detail-body {
+  padding-left: max(var(--spacing-xl), calc((100% - 720px) / 2));
+}
+
+/* --- a list as long as an account has friends: searched, and in a box ------- */
+
+.join-search {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  height: 32px;
+  margin: 0 var(--spacing-l) var(--spacing-s);
+  padding: 0 var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-lowest);
+  color: var(--surface-variant-text);
+  transition:
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
+}
+
+.join-search:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-hover);
+}
+
+.join-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--surface-text);
+}
+
+.join-search .icon-button {
+  width: 22px;
+  height: 22px;
+}
+
+/* A defined height: about eight people, then it scrolls. */
+.join-scroll {
+  max-height: 328px;
+  overflow-y: auto;
+  border-top: 1px solid var(--outline-light);
+}
+
+.join-scroll:empty {
+  display: none;
+}
+
+.join-scroll > .join-row:last-child {
+  padding-bottom: 6px;
+}
+
+.join-card > .join-search + .join-empty {
+  padding-top: 0;
+}
+
+/* The header's name, where the fold arrow in front of it is away. */
+.main-header > .main-header-title:first-child {
+  padding-left: var(--spacing-s);
+}
+
+/* --- sections down the side of a page (XMPP's own tab) ------------------------ */
+
+.page.account-page {
+  max-width: 880px;
+  container: account-page / inline-size;
+}
+
+.side-tabs {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-xl);
+}
+
+.side-tabs-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+  flex: none;
+  width: 184px;
+}
+
+.side-tabs-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.side-tabs-heading {
+  padding: 0 var(--spacing-s) var(--spacing-xxs);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.side-tabs-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  text-align: left;
+  color: var(--surface-variant-text);
+  transition:
+    background-color var(--motion-fast) ease,
+    color var(--motion-fast) ease;
+}
+
+.side-tabs-item:hover {
+  background: var(--surface-hover);
+  color: var(--surface-text);
+}
+
+.side-tabs-item.active {
+  background: var(--surface-selected);
+  color: var(--surface-text);
+  font-weight: var(--weight-medium);
+}
+
+.side-tabs-item.active .icon {
+  color: var(--primary);
+}
+
+.side-tabs-item.danger,
+.side-tabs-item.danger.active .icon {
+  color: var(--danger-text);
+}
+
+.side-tabs-page {
+  flex: 1;
+  min-width: 0;
+  animation: page-in var(--motion) var(--ease);
+}
+
+/* Too narrow for the list beside the page: it lies across the top. */
+@container account-page (max-width: 600px) {
+  .side-tabs {
+    flex-direction: column;
+    gap: var(--spacing-l);
+  }
+
+  .side-tabs-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+    width: auto;
+  }
+
+  .side-tabs-group {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+  }
+
+  .side-tabs-heading {
+    display: none;
+  }
+
+  .side-tabs-item {
+    box-shadow: inset 0 0 0 1px var(--outline-medium);
+  }
+}
+
+/* One section: its title, a line on what it is, then its cards. */
+.tool-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+}
+
+.tool-title {
+  margin: 0;
+  font-size: var(--font-size-large);
+  font-weight: var(--weight-semibold);
+}
+
+.tool-desc {
+  margin: calc(var(--spacing-s) * -1) 0 0;
+  font-size: var(--font-size-compact);
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-l);
+}
+
+.tool-actions {
+  display: flex;
+  gap: var(--spacing-s);
+}
+
+.tool-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+  padding: var(--spacing-l) 0;
+}
+
+.tool-fields p {
+  margin: 0;
+}
+
+.tool-list > .setting-row {
+  padding: var(--spacing-s) 0;
+}
+
+.tool-none {
+  margin: 0;
+  padding: var(--spacing-m) 0;
+}
+
+.tool-pick {
+  text-align: left;
+  border-radius: var(--corner-radius-small);
+}
+
+.setting-row.chosen .tool-pick > :first-child {
+  color: var(--primary);
+}
+
+.tool-rule {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-m);
+}
+
+.tool-rule-new {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+}
+
+.tool-rule-new > .text-field {
+  flex: 1 1 130px;
+  width: auto;
+}
+
+.tool-details {
+  padding: var(--spacing-m) 0;
+}
+
+.tool-details > summary {
+  cursor: pointer;
+  font-weight: var(--weight-medium);
+}
+
+.tool-details .plain-list {
+  margin-top: var(--spacing-s);
+  color: var(--text-muted);
+}
+
+.tool-pane .card > .switch-row {
+  padding: var(--spacing-m) 0;
+}
+
+.tool-pane .card > .setting-row + .switch-row {
+  border-top: 1px solid var(--outline-medium);
+}
+
+.tool-pane .card.card-fields > .switch-row {
+  padding: 0;
+}
+
+.tool-pane .card.card-fields.danger-zone {
+  display: flex;
+  padding: var(--spacing-l);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .side-tabs-page {
+    animation: none;
+  }
+}
+
+/* --- downloads: where they go, what to do with one, clearing the list -------- */
+
+.downloads {
+  max-width: 760px;
+}
+
+.downloads-head {
+  margin-bottom: var(--spacing-m);
+}
+
+p.downloads-folder {
+  margin-top: 2px;
+}
+
+.downloads-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-s) var(--spacing-m);
+  margin-bottom: var(--spacing-l);
+}
+
+.downloads-count {
+  margin-left: 6px;
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.downloads-none {
+  margin: var(--spacing-l) var(--spacing-xs);
+}
+
+.downloads .settings-section {
+  max-width: none;
+}
+
+.download-row {
+  border: 1px solid var(--outline-light);
+  border-radius: var(--corner-radius);
+  transition:
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease;
+}
+
+.download-row:hover {
+  border-color: var(--outline-strong);
+  background: var(--surface-container);
+}
+
+.download-name {
+  font-weight: var(--weight-medium);
+}
+
+.download-mark.declined {
+  color: var(--state-off);
+}
+
+.download-mark.failed {
+  color: var(--state-bad);
+}
+
+.download-mark.done {
+  color: var(--state-ok);
+}
+
+.download-when {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-muted);
+}
+
+/* What can be done with a finished one: there, and quiet until the row is looked at. */
+.download-row .download-actions .icon-button {
+  color: var(--text-muted);
+}
+
+.download-row:hover .download-actions .icon-button,
+.download-row .download-actions .icon-button:focus-visible {
+  color: var(--surface-text);
+}
+
+/* --- the spinner, where it stands in a line of words --------------------------- */
+
+/* A span has no width of its own: beside words, not in a flex row, it was a
+   sliver. Sized as a box, and set on the line rather than under it. */
+.spinner {
+  display: inline-block;
+  vertical-align: -2px;
+}
+
+.tool-none > .spinner,
+.join-note > .spinner {
+  margin-right: 6px;
+}
+
+/* --- buttons: what a button with no rank of its own looks like ----------------- */
+
+/* A button that was given no rank used to be the filled accent, so a page of
+   them was a page of equally loud buttons. It is tinted now - plainly a
+   button, and plainly not the one thing the page is for. `primary` is the
+   filled one. */
+.button:not(.primary, .subtle, .quiet, .danger, .danger-quiet, .hotkey-recorder) {
+  background: var(--primary-pressed);
+  color: var(--secondary);
+}
+
+.button:not(.primary, .subtle, .quiet, .danger, .danger-quiet, .hotkey-recorder):hover {
+  filter: none;
+  background: var(--primary-selected);
+  color: var(--surface-text);
+}
+
+/* Beside a quiet one - Save next to Cancel - it is the main action of the
+   pair, whatever it was called, and is drawn as one. */
+.button:not(.primary, .subtle, .quiet, .danger, .danger-quiet, .hotkey-recorder):is(:has(~ .button.subtle), :has(~ .button.quiet), .button.subtle ~ *, .button.quiet ~ *) {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+
+.button:not(.primary, .subtle, .quiet, .danger, .danger-quiet, .hotkey-recorder):is(:has(~ .button.subtle), :has(~ .button.quiet), .button.subtle ~ *, .button.quiet ~ *):hover {
+  filter: brightness(1.1);
+  background: var(--primary);
+  color: var(--primary-text);
+}
+
+.button[disabled]:not(.primary, .subtle, .quiet, .danger, .danger-quiet, .hotkey-recorder),
+.button[disabled]:not(.primary, .subtle, .quiet, .danger, .danger-quiet, .hotkey-recorder):is(:has(~ .button.subtle), :has(~ .button.quiet), .button.subtle ~ *, .button.quiet ~ *) {
+  background: var(--surface-container-highest);
+  color: var(--text-muted);
+}
+
+/* --- a service's own sections: what the older tools bring with them ------------- */
+
+.tool-avatar {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.tool-avatar.placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-container-highest);
+  color: var(--text-muted);
+}
+
+/* Tools written for the fold-down, in a card: room top and bottom, and their own rows as rows. */
+.card.tool-own,
+.card.matrix-tools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding-top: var(--spacing-m);
+  padding-bottom: var(--spacing-m);
+}
+
+.card.tool-own:empty {
+  display: none;
+}
+
+.card.tool-own > .setting-row,
+.card.matrix-tools > .setting-row {
+  padding: var(--spacing-xs) 0;
+  border-bottom: 0;
+}
+
+.card.matrix-tools .device-row {
+  background: var(--surface-container);
+  border-color: var(--outline-light);
+}
+
+.card.matrix-tools.danger-zone {
+  display: flex;
+}
+
+.section-label.section-label-next {
+  margin-top: var(--spacing-xl);
+}
+
+.card > .device-row {
+  margin-bottom: var(--spacing-s);
+}
+
+/* --- sign-in forms: what a form says about itself is quieter than what it asks -- */
+
+.add-account-form > .add-form > p,
+.add-account-form > .add-form > .small.muted {
+  max-width: 76ch;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.add-account-form > .add-form > p strong,
+.add-account-form > .add-form > p b {
+  color: var(--surface-variant-text);
+}
+
+/* The box's own border says it is focused; the text inside it does not draw
+   a second ring, which showed as a rule either side of what was typed (#339). */
+.composer-box .composer-input:focus,
+.composer-box .composer-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* --- the user plaque (#339) -------------------------------------------------- */
+
+/* The name has the row: voice buttons are only there when a call could use
+   them, and the second line says how the account is and where it is. */
+.user-footer .user-identity-button {
+  gap: var(--spacing-s);
+  padding: var(--spacing-xxs) var(--spacing-xs);
+}
+
+.user-footer .user-identity {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.user-footer .user-name {
+  color: var(--surface-text);
+  font-weight: var(--weight-medium);
+}
+
+.user-state {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.user-state-dot,
+.user-state > .state-pill-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.user-state-words {
+  color: var(--surface-variant-text);
+}
+
+.user-footer.tone-busy .user-state-words,
+.user-footer.tone-bad .user-state-words {
+  color: var(--tone);
+}
+
+.user-identity-more {
+  flex: none;
+  color: var(--tone);
+}
+
+.user-footer.tone-bad .user-identity-button {
+  background: color-mix(in srgb, var(--state-bad) 10%, transparent);
+}
+
+.status-popout .status-choice-text {
+  min-width: 0;
+}
+
+/* --- a streaming channel's header (#339) ------------------------------------- */
+
+/* The channel's own name is not what gives way: it keeps its width up to a
+   share of the header, and the stream's title is what stretches and clips. */
+.main-header:has(.stream-chip) .header-nameplate {
+  flex: 0 0 auto;
+  max-width: 34%;
+}
+
+.main-header:has(.stream-chip) .conversation-tools {
+  flex: 1 1 0;
+}
+
+.stream-chip,
+.stream-chip.live {
+  max-width: none;
+  flex: 0 1 auto;
+  margin-right: auto;
+  padding: 0;
+  border: none;
+  gap: var(--spacing-s);
+}
+
+/* On air or not, in one shape: the word, filled when it is. */
+.live-pill {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: var(--corner-radius-small);
+  background: var(--danger);
+  color: var(--on-accent);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  line-height: 1.6;
+}
+
+.live-pill.off {
+  background: var(--surface-container-highest);
+  color: var(--surface-variant-text);
+}
+
+.stream-chip-title {
+  min-width: 0;
+  color: var(--surface-text);
+}
+
+.stream-viewers {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  color: var(--surface-variant-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.mode-chips {
+  display: inline-flex;
+  flex: none;
+  gap: 3px;
+}
+
+.mode-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-container-high);
+  color: var(--surface-variant-text);
+  white-space: nowrap;
+}
+
+.watch-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  padding: 2px var(--spacing-s) 2px var(--spacing-xs);
+  font-size: var(--font-size-small);
+}
+
+/* Tight: the chips and the word on Follow go before anything is cut off. */
+@container main-header (max-width: 760px) {
+  .mode-chips,
+  .follow-button-word {
+    display: none;
+  }
+}
+
+/* --- the stream's picture (#339) ---------------------------------------------- */
+
+/* Edge to edge over the conversation: no card, no margin, black where the
+   picture is narrower than the pane. */
+.call-stage.own-controls {
+  gap: 0;
+  padding: 0;
+}
+
+.call-stage.own-controls:not(.pip, .in-window, .minimized) {
+  margin: 0;
+  border: none;
+  border-bottom: 1px solid var(--outline-light);
+  border-radius: 0;
+  background: #000;
+}
+
+.call-stage.own-controls.minimized {
+  padding: 2px var(--spacing-xs);
+}
+
+.call-stage.own-controls.pip {
+  overflow: hidden;
+}
+
+.call-stage.own-controls.pip .call-stage-title {
+  padding: 3px 6px;
+}
+
+.stream-stage {
+  width: 100%;
+}
+
+.stream-tile {
+  border-radius: 0;
+  background: #000;
+  outline: none;
+}
+
+.stream-tile .video-tile-picture {
+  object-fit: contain;
+}
+
+.stream-tile.full {
+  width: 100vw;
+  height: 100vh;
+  aspect-ratio: auto;
+}
+
+/* The controls: a strip over the top saying what is on, and a bar along the
+   foot. Up while the pointer is about, the picture is focused by the keyboard,
+   or it is not live; gone otherwise, so the picture is a picture. */
+.stream-strip,
+.stream-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  color: #fff;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+
+.stream-tile.controls-up .stream-strip,
+.stream-tile.controls-up .stream-bar,
+.stream-tile:focus-visible .stream-strip,
+.stream-tile:focus-visible .stream-bar,
+.stream-bar:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.stream-tile:not(.controls-up) {
+  cursor: none;
+}
+
+.stream-strip {
+  top: 0;
+  padding: var(--spacing-s) var(--spacing-m) var(--spacing-xl);
+  background: linear-gradient(rgba(0, 0, 0, 0.72), transparent);
+  pointer-events: none !important;
+}
+
+.stream-strip-title {
+  font-weight: var(--weight-medium);
+}
+
+.stream-strip-facts {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.stream-bar {
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--spacing-xl) var(--spacing-s) var(--spacing-xs);
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.78));
+}
+
+.stream-bar .icon-button {
+  color: #fff;
+}
+
+.stream-bar .icon-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.stream-bar .icon-button:disabled {
+  opacity: 0.4;
+}
+
+.stream-bar .icon-button.active {
+  color: var(--primary);
+}
+
+.stream-bar-gap {
+  flex: 1;
+}
+
+.stream-live {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  margin: 0 var(--spacing-xs);
+  padding: 1px 8px;
+  border-radius: var(--corner-radius-small);
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.05em;
+  line-height: 1.7;
+}
+
+.stream-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+/* Not the newest picture: says how far back, and is the way forward. */
+.stream-live.late {
+  background: #fff;
+  color: #000;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.stream-live.late .stream-live-dot {
+  background: var(--state-off);
+}
+
+.stream-tile.small .stream-strip {
+  padding: var(--spacing-xs) var(--spacing-s) var(--spacing-l);
+  font-size: var(--font-size-small);
+}
+
+.stream-tile.small .stream-bar {
+  padding: var(--spacing-l) 2px 2px;
+}
+
+/* Clear of the strip that says what is on, which has the top. */
+.stream-tile .stream-ad {
+  z-index: 2;
+  top: auto;
+  left: var(--spacing-m);
+  bottom: 52px;
+}
+
+/* In the corner and the small window the title bar already says it. */
+.stream-tile.small .stream-strip {
+  display: none;
+}
+
+.context-menu.stream-menu {
+  top: auto;
+  bottom: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-strip,
+  .stream-bar {
+    transition: none;
+  }
+}
+
+.main-header {
+  container: main-header / inline-size;
+}
+
+/* --- mentions: the page and the popover (#339) -------------------------------- */
+
+/* The places that mentioned you down the left, the mentions on the right:
+   the frame every other pane has, in the column the channel list left. */
+.mentions-page:not(.empty) {
+  display: flex;
+  padding: 0;
+  overflow: hidden;
+  container: mentions / inline-size;
+}
+
+.mentions-places {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 1px;
+  width: var(--master-list-width);
+  padding: var(--spacing-s);
+  border-right: 1px solid var(--outline-light);
+  overflow-y: auto;
+}
+
+.mentions-places .side-tabs-heading {
+  padding: var(--spacing-s) var(--spacing-s) var(--spacing-xxs);
+}
+
+.mentions-place-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.mentions-place-icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.mentions-place-icon.mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-container-highest);
+}
+
+.mentions-place-count {
+  flex: none;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--mention);
+  color: var(--on-accent);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  line-height: 18px;
+  text-align: center;
+}
+
+.mentions-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mentions-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  border-bottom: 1px solid var(--outline-light);
+}
+
+.mentions-head .button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+}
+
+.mentions-rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: var(--spacing-m);
+}
+
+/* Read is dimmed, not gone: the page is everything, and what is waiting
+   stands out of it. */
+.mention-entry.read .mention-open {
+  opacity: 0.62;
+}
+
+.mention-entry.read:hover .mention-open {
+  opacity: 1;
+}
+
+.mention-reply {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mention-reply-from {
+  font-weight: var(--weight-medium);
+}
+
+.mention-thumb {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--corner-radius-small);
+  object-fit: cover;
+}
+
+/* What can be done with one, on its row while it is pointed at. */
+.mention-actions {
+  position: absolute;
+  top: var(--spacing-xs);
+  right: var(--spacing-s);
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-high);
+  box-shadow: var(--shadow-1, 0 1px 3px rgba(0, 0, 0, 0.3));
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+
+.mention-entry:hover .mention-actions,
+.mention-actions:focus-within {
+  opacity: 1;
+}
+
+/* Narrow: the places lie across the top. */
+@container mentions (max-width: 620px) {
+  .mentions-page:not(.empty) {
+    flex-direction: column;
+  }
+
+  .mentions-places {
+    flex-direction: row;
+    width: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--outline-light);
+    overflow-x: auto;
+  }
+
+  .mentions-places .side-tabs-heading {
+    display: none;
+  }
+
+  .mentions-places .side-tabs-item {
+    flex: none;
+    max-width: 180px;
+  }
+}
+
+/* The popover: the same row, smaller, under a heading for each place when
+   more than one is waiting. */
+.mentions-panel-rows {
+  max-height: min(60vh, 460px);
+  overflow-y: auto;
+}
+
+.mentions-run-head {
+  padding: var(--spacing-xs) var(--spacing-s) 2px;
+  color: var(--surface-variant-text);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.mention-entry.compact {
+  border-left: none;
+  border-radius: var(--radius-xs);
+}
+
+.mention-entry.compact .mention-open {
+  padding: var(--spacing-xs) var(--spacing-s);
+}
+
+/* Where the arrow keys are. */
+.mention-entry.compact.at {
+  background: var(--surface-selected);
+}
+
+.mention-entry.compact .mention-actions {
+  top: 2px;
+  right: 2px;
+}
+
+.mentions-mark-all {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xxs);
+  padding: 1px var(--spacing-xs);
+  font-size: var(--font-size-small);
+}
+
+/* --- what a search found, beside the conversation (#339) ----------------------- */
+
+.search-pane {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 340px;
+  min-width: 0;
+  background: var(--surface-container-low, var(--surface));
+  animation: fade-in var(--motion) var(--ease);
+}
+
+.search-pane-head {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--spacing-s) var(--spacing-s) var(--spacing-s) var(--spacing-m);
+  border-bottom: 1px solid var(--outline-light);
+}
+
+.search-pane-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-weight: var(--weight-medium);
+}
+
+.search-pane-title .ellipsis {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-pane-note {
+  margin-top: var(--spacing-xxs);
+}
+
+.search-pane-rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--spacing-xs) var(--spacing-s);
+}
+
+.search-pane-rows .date-divider {
+  margin: var(--spacing-s) var(--spacing-xs) var(--spacing-xxs);
+}
+
+.search-pane-empty {
+  padding: var(--spacing-l) var(--spacing-m);
+  text-align: center;
+}
+
+/* A result is the message it is: who, when, and the words. */
+.search-hit {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-s);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  text-align: left;
+  transition: background var(--motion-fast) var(--ease);
+}
+
+.search-hit:hover {
+  background: var(--surface-hover);
+}
+
+.search-hit.event {
+  opacity: 0.7;
+}
+
+.search-hit-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.search-hit-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-s);
+}
+
+.search-hit-from {
+  min-width: 0;
+  font-weight: var(--weight-semibold);
+}
+
+.search-hit-when {
+  flex: none;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.search-hit-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: var(--surface-variant-text);
+}
+
+.search-hit-text mark {
+  padding: 0 1px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--primary) 32%, transparent);
+  color: var(--surface-text);
+}
+
+.search-pane-foot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-m);
+  border-top: 1px solid var(--outline-light);
+}
+
+.search-popover-count {
+  padding: var(--spacing-xs) var(--spacing-xxs) 0;
+}
+
+/* --- the export dialog (#339) -------------------------------------------------- */
+
+.export-dialog {
+  width: min(560px, calc(100vw - 2 * var(--spacing-l)));
+}
+
+.export-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-m);
+}
+
+.export-spans {
+  align-self: stretch;
+}
+
+.export-spans button {
+  flex: 1 1 auto;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.export-dialog .export-range {
+  margin: var(--spacing-xs) 0 0;
+}
+
+.export-switch,
+.export-where {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  border: 1px solid var(--outline-light);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container);
+}
+
+.export-switch .switch-text {
+  flex: 1;
+}
+
+.export-where-path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-small);
+}
+
+/* --- smaller things from the second survey (#339) ------------------------------ */
+
+/* Somebody coming or going: one quiet line. */
+.room-event-line {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  color: var(--text-muted, var(--surface-variant-text));
+  font-style: italic;
+}
+
+.room-event-line .icon {
+  flex: none;
+  opacity: 0.8;
+}
+
+/* Toasts under the header, in the middle: they used to land on the header's
+   own tools at the right. The bottom corners stay with what is asked of you. */
+.toasts {
+  top: calc(var(--titlebar-height) + var(--header-height) + var(--spacing-s));
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  align-items: center;
+}
+
+/* --- the rest of the second survey's list (#339) ------------------------------- */
+
+/* New poll: numbered answers that can be moved and removed, a switch, and a
+   filled button to start it. */
+.poll-composer .poll-answers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.poll-composer .poll-answer {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.poll-composer .poll-answer .text-field {
+  flex: 1;
+  min-width: 0;
+  margin-right: var(--spacing-xxs);
+}
+
+.poll-answer-number {
+  flex: none;
+  width: 18px;
+  text-align: right;
+  margin-right: var(--spacing-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.poll-add {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-left: 22px;
+}
+
+.poll-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  border: 1px solid var(--outline-light);
+  border-radius: var(--corner-radius);
+  background: var(--surface-container);
+}
+
+.poll-switch .switch-text {
+  flex: 1;
+}
+
+/* Every checkbox, radio and select that is still the browser's own is drawn
+   as the app's: one rule for all of them, wherever they are, so a form that
+   was written with a plain input does not look like a different program.
+   :where keeps this weaker than any rule a particular form has of its own. */
+:where(input[type='checkbox'], input[type='radio']) {
+  appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1.5px solid var(--outline-strong);
+  border-radius: 4px;
+  background: var(--surface-container-high);
+  vertical-align: -3px;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
+}
+
+:where(input[type='radio']) {
+  border-radius: 50%;
+}
+
+:where(input[type='checkbox'], input[type='radio']):hover {
+  border-color: var(--primary);
+}
+
+:where(input[type='checkbox'], input[type='radio']):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--primary-hover);
+}
+
+:where(input[type='checkbox']):checked {
+  border-color: var(--primary);
+  background: var(--primary)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.6 8.3l2.8 2.8 6-6.2' fill='none' stroke='%230b0d12' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / 14px no-repeat;
+}
+
+:where(input[type='radio']):checked {
+  border-color: var(--primary);
+  background: radial-gradient(circle, var(--primary) 0 4px, transparent 4.5px), var(--surface-container-high);
+}
+
+:where(input[type='checkbox'], input[type='radio']):disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+:where(select) {
+  appearance: none;
+  min-height: 30px;
+  padding: 4px 28px 4px var(--spacing-s);
+  border: 1px solid var(--outline-medium);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-high)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6.5l4 4 4-4' fill='none' stroke='%239aa3ad' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    right 7px center / 14px no-repeat;
+  color: var(--surface-text);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
+}
+
+:where(select):hover {
+  border-color: var(--outline-strong);
+}
+
+:where(select):focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-hover);
+}
+
+:where(select):disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* The selects that have a look of their own keep it, and gain the same
+   chevron: their own background would otherwise paint over it. */
+.setting-select,
+.component-select,
+.invite-row select,
+select.text-field {
+  appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6.5l4 4 4-4' fill='none' stroke='%239aa3ad' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+  background-size: 14px;
+}
+
+/* A tile with no picture: its letters in a colour of its own, on a wash of it. */
+.rail-initials-tinted {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--tile, var(--primary)) 20%, var(--surface-container-high));
+  color: color-mix(in srgb, var(--tile, var(--primary)) 78%, #fff);
+}
+
+/* Nothing open: what there is to do about it. */
+.nothing-open-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  background: var(--surface-container-high);
+  color: var(--surface-variant-text);
+}
+
+.nothing-open-title {
+  font-size: var(--font-size-large, 1.15rem);
+  font-weight: var(--weight-semibold);
+}
+
+.nothing-open-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--spacing-s);
+  margin-top: var(--spacing-s);
+}
+
+.nothing-open-actions .button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.nothing-open-actions kbd {
+  margin-left: var(--spacing-xs);
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.22);
+  font: inherit;
+  font-size: var(--font-size-xs);
+}
+
+/* A run of people coming and going, as one line with the way to see them. */
+.event-run {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin: 2px var(--spacing-m);
+  padding: 2px var(--spacing-s);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted, var(--surface-variant-text));
+  font-style: italic;
+  transition: background var(--motion-fast) var(--ease);
+}
+
+.event-run:hover {
+  background: var(--surface-hover);
+  color: var(--surface-text);
+}
+
+.event-run-show {
+  font-style: normal;
+  color: var(--primary);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+
+.event-run:hover .event-run-show,
+.event-run:focus-visible .event-run-show {
+  opacity: 1;
+}
+
+/* A narrow header's other tools, in a strip under it. */
+.header-tray:empty {
+  display: none;
+}
+
+.header-tray {
+  flex: none;
+  border-bottom: 1px solid var(--outline-medium);
+  background: var(--surface-container-low, var(--surface));
+  animation: fade-in var(--motion-fast) var(--ease);
+}
+
+.header-tray-items {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xxs) var(--spacing-s);
+}
+
+.context-menu-icon-gap {
+  flex: none;
+  width: 16px;
+}
+
+/* A thread's head: what it is, and under that what it hangs from. */
+.thread-heading {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+/* Forum cards: the title leads; tags and counts are quiet, and the picture
+   keeps a picture's shape instead of a fixed square. */
+.forum-tag {
+  background: var(--surface-container-high);
+  color: var(--surface-variant-text);
+  font-size: var(--font-size-xs);
+}
+
+.forum-post-meta {
+  color: var(--surface-variant-text);
+  font-size: var(--font-size-small);
+}
+
+.forum-post-thumb {
+  width: 116px;
+  height: 76px;
+}
+
+/* The viewer: a bar that is a bar, the picture clear of it, and the pictures
+   either side along the foot. */
+.lightbox-bar {
+  background: rgba(0, 0, 0, 0.72);
+  padding: var(--spacing-xs) var(--spacing-m);
+}
+
+.lightbox-actions .icon-button {
+  width: 34px;
+  height: 34px;
+}
+
+.lightbox-stage {
+  box-sizing: border-box;
+  padding: 56px 0 var(--spacing-m);
+}
+
+.lightbox-stage.with-strip {
+  padding-bottom: 84px;
+}
+
+.lightbox-media {
+  max-height: 100%;
+}
+
+.lightbox-strip {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  bottom: var(--spacing-s);
+  display: flex;
+  gap: 6px;
+  max-width: 92%;
+  padding: 6px;
+  border-radius: var(--corner-radius);
+  background: rgba(0, 0, 0, 0.72);
+  transform: translateX(-50%);
+}
+
+.lightbox-thumb {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container-high);
+  color: var(--surface-variant-text);
+  overflow: hidden;
+  opacity: 0.55;
+  transition:
+    opacity var(--motion-fast) var(--ease),
+    box-shadow var(--motion-fast) var(--ease);
+}
+
+.lightbox-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.lightbox-thumb:hover {
+  opacity: 0.9;
+}
+
+.lightbox-thumb.current {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
+/* A popped-out conversation's name, with whose it is under it. */
+.popout-heading {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.popout .search-pane {
+  width: min(340px, 45%);
+}
+
+/* --- the light theme's few exceptions (#339) ----------------------------------- */
+
+/* Names are coloured for a dark surface - a light pastel each. On white they
+   are deepened where they are drawn, rather than every name having two colours. */
+:root[data-theme='light'] .message-from,
+:root[data-theme='light'] .nicklist-pane span.ellipsis[style*='color'],
+:root[data-theme='light'] .reply-preview [style*='color'],
+:root[data-theme='light'] .message-reply [style*='color'],
+:root[data-theme='light'] .search-hit-from,
+:root[data-theme='light'] .mention-from {
+  filter: brightness(0.58) saturate(1.5);
+}
+
+:root[data-theme='light'] .rail-initials-tinted {
+  background: color-mix(in srgb, var(--tile, var(--primary)) 26%, #fff);
+  color: color-mix(in srgb, var(--tile, var(--primary)) 60%, #000);
+}
+
+/* A choice of accent: a row of the colours themselves. */
+.accent-swatches {
+  display: flex;
+  gap: var(--spacing-s);
+}
+
+.accent-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--swatch, var(--primary));
+  box-shadow: inset 0 0 0 1px var(--outline-medium);
+  transition: box-shadow var(--motion-fast) var(--ease);
+}
+
+.accent-swatch:hover {
+  box-shadow: 0 0 0 2px var(--surface-container), 0 0 0 4px var(--outline-strong);
+}
+
+.accent-swatch.active {
+  box-shadow: 0 0 0 2px var(--surface-container), 0 0 0 4px var(--swatch, var(--primary));
+}
+
+/* The tick is drawn in the colour that reads on the accent: white on the light theme's deeper one. */
+:root[data-theme='light'] :where(input[type='checkbox']):checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.6 8.3l2.8 2.8 6-6.2' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }

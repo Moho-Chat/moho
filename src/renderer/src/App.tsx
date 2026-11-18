@@ -18,7 +18,7 @@ import { InvitePanel } from './components/InvitePanel'
 import { SteamFriendDialogs } from './components/SteamFriendDialogs'
 import { VerificationDialog } from './components/VerificationDialog'
 import { ProfileCard } from './components/ProfileCard'
-import { ConversationTools } from './components/ConversationTools'
+import { ConversationTools, HEADER_TRAY_HOST } from './components/ConversationTools'
 import { AccountsPanel } from './components/AccountsPanel'
 import { SettingsPanel } from './components/settings/SettingsPanel'
 import { JoinPanel } from './components/JoinPanel'
@@ -28,6 +28,9 @@ import { IncomingCallPanel } from './components/IncomingCallPanel'
 import { CallAudio, CallStage, ScreenPicker } from './components/CallStage'
 import { CallWindowHost } from './components/stage/CallWindowHost'
 import { StreamStage, StreamWindowHost } from './components/StreamStage'
+import { SEARCH_PANE_HOST } from './components/SearchPane'
+import { useAppearance } from './lib/useAppearance'
+import { OPEN_SWITCHER } from './components/QuickSwitcher'
 import { EventCreatePanel, EventsPane } from './components/DiscordEvents'
 import { DiscordModal } from './components/DiscordModal'
 import { FileDrop } from './components/FileDrop'
@@ -45,6 +48,8 @@ import { useShortcuts } from './lib/shortcuts'
 import { useEscapeLayer } from './lib/layers'
 import { installDialogFocus } from './lib/dialogs'
 import { QuickSwitcher } from './components/QuickSwitcher'
+import { ViewOnceViewer } from './components/ViewOnceViewer'
+import { SignalCallPanel, SignalGroupCallPanel } from './components/SignalCallPanel'
 
 export default function App(): JSX.Element {
   useShortcuts()
@@ -70,19 +75,19 @@ export default function App(): JSX.Element {
   const activeGroupId = useChat((s) => s.activeGroupId)
   // A stream being watched, which walks away the same way a call does.
   const watching = useChat((s) => s.watching)
-  const joinPanelAccountId = useChat((s) => s.joinPanelAccountId)
   const buffer = useActiveBuffer()
-  const joinAccount = accounts.find((a) => a.id === joinPanelAccountId)
   // Shown in the corner only when the conversation it belongs to is not the
   // one being read - and not while a panel is covering the log either, since
   // that is walking away from it too.
   const callElsewhere = !!activeCall && (activeCall.bufferId !== activeBufferId || activePanel !== '')
   const streamPoppedOut = useChat((s) => s.streamPoppedOut)
+  const watchMinimized = useChat((s) => s.watchMinimized)
   const streamElsewhere = !!watching && (watching.bufferId !== activeBufferId || activePanel !== '')
 
   const [sidebarFolded, setSidebarFolded] = usePref<boolean>('ui.sidebarFolded', false)
   // How the window looks, from the appearance settings: how large, how close
   // together, whether things move, how the clock is written.
+  useAppearance()
   const [zoom] = usePref<number>('appearance.zoom', 1)
   const [density] = usePref<string>('appearance.density', 'cozy')
   const [reduceMotion] = usePref<boolean>('appearance.reduceMotion', false)
@@ -198,10 +203,26 @@ export default function App(): JSX.Element {
 
   const openThread = useChat((s) => s.openThread)
 
+  // A pane has the window: one that was opened, or - with no account yet -
+  // the page for adding the first.
+  const paneOpen = activePanel !== '' || accounts.length === 0
+  // Theatre: the lists either side fold for a stream being watched in this conversation, and come back when it
+  // stops or the conversation changes. The server rail stays.
+  const [theatre] = usePref<boolean>('ui.theatre', false)
+  const theatreOn = theatre && !!watching && !streamElsewhere && !streamPoppedOut && !watchMinimized
+  // Nor on the mentions page, which has no channels to list: it brings its own list of places.
+  const sidebarShown = !sidebarFolded && !paneOpen && !theatreOn && !onMentionsPage
+
   // A stale restored id is harmless: it simply resolves to no buffer and the
   // empty state shows, exactly as it would for "".
+  // A stream's chat has no member list until somebody has spoken: the column would be a heading over nothing.
+  const nobodyListed = useChat((s) => (s.presenceByBuffer[activeBufferId]?.length ?? 0) === 0)
+  const streamService = accounts.find((a) => a.id === buffer?.accountId)?.service
+  const noMemberList = (streamService === 'kick' || streamService === 'twitch') && nobodyListed
   const showNickList =
-    !userListFolded && activePanel === '' && !onMentionsPage && !peeking && buffer?.kind === 'channel'
+    !userListFolded && !theatreOn && !noMemberList && activePanel === '' && !onMentionsPage && !peeking && buffer?.kind === 'channel'
+
+  const searchShown = useChat((s) => s.searchPane) && activePanel === '' && !onMentionsPage && !peeking && !!buffer
 
   const headerTitle =
     peeking
@@ -209,7 +230,7 @@ export default function App(): JSX.Element {
       : activePanel === 'accounts' || activePanel === 'settings' || activePanel === 'downloads'
         ? 'Settings'
         : activePanel === 'join'
-        ? `Join · ${joinAccount?.displayName ?? ''}`
+        ? 'Add or join'
         : onMentionsPage
           ? 'Mentions'
           : buffer
@@ -221,13 +242,15 @@ export default function App(): JSX.Element {
       <TitleBar />
 
       <div className="app-body">
-        {!sidebarFolded && (
+        {/* The servers are always here (#339): they are how the window is got
+            around, and a pane that hid them left only its own close button as
+            the way out. */}
+        <ServerRail />
+        {/* The channel list is not: it folds away by hand, and gives its room
+            up whenever a pane - Settings, Accounts, Downloads, "+" - has the
+            window, since nothing in it belongs to what the pane is showing. */}
+        {sidebarShown && (
           <>
-            {/* The rail folds away with the channel list: they are one
-                navigation surface, and leaving a strip of server icons beside
-                a collapsed sidebar would be a column that selects something
-                you cannot see. */}
-            <ServerRail />
             <div className="sidebar">
               <BufferList />
             </div>
@@ -237,11 +260,14 @@ export default function App(): JSX.Element {
 
         <div className="main-column">
           <div className="main-header">
-            <IconButton
-              name={sidebarFolded ? 'chevron_right' : 'chevron_left'}
-              title={sidebarFolded ? 'Show sidebar' : 'Hide sidebar'}
-              onClick={() => setSidebarFolded(!sidebarFolded)}
-            />
+            {/* Not while a pane has folded the list for itself: there is nothing for it to fold. */}
+            {!paneOpen && !onMentionsPage && (
+              <IconButton
+                name={sidebarFolded ? 'chevron_right' : 'chevron_left'}
+                title={sidebarFolded ? 'Show channel list' : 'Hide channel list'}
+                onClick={() => setSidebarFolded(!sidebarFolded)}
+              />
+            )}
             {/* A conversation is headed by whoever it is with, the same way
                 its row in the list is - the picture and the name together,
                 and both are the way into its menu. The row in the list is
@@ -273,8 +299,9 @@ export default function App(): JSX.Element {
             {activePanel === '' && !onMentionsPage && !peeking && buffer?.kind === 'channel' && (
               <IconButton
                 name="group"
-                title={userListFolded ? 'Show members' : 'Hide members'}
-                className={userListFolded ? undefined : 'active'}
+                title={noMemberList ? 'Nobody to list yet: it fills as people talk' : userListFolded ? 'Show members' : 'Hide members'}
+                disabled={noMemberList}
+                className={userListFolded || noMemberList ? undefined : 'active'}
                 onClick={() => setUserListFolded(!userListFolded)}
               />
             )}
@@ -292,6 +319,9 @@ export default function App(): JSX.Element {
               />
             )}
           </div>
+
+          {/* Where a narrow header's other tools are laid out when asked for: see ConversationTools. */}
+          <div className="header-tray" id={HEADER_TRAY_HOST} />
 
           <div className="main-body">
             <Body
@@ -327,7 +357,16 @@ export default function App(): JSX.Element {
           </>
         )}
 
-        {!openThread && showNickList && (
+        {/* What a search found stands there too, for as long as it has anything: beside the log it is
+            about, so a result can be gone to and the next one tried. */}
+        {!openThread && searchShown && (
+          <>
+            <div className="divider-v" />
+            <div className="search-pane" id={SEARCH_PANE_HOST} />
+          </>
+        )}
+
+        {!openThread && !searchShown && showNickList && (
           <>
             <ColumnResizer width={nicklistWidth} onWidth={setNicklistWidth} min={140} max={420} grows="left" label="Member list width" />
             <div className="nicklist-pane">
@@ -377,6 +416,9 @@ export default function App(): JSX.Element {
           reading something else, and often in a conversation you are not. */}
       <TransferPanel />
       <FileDrop />
+      <ViewOnceViewer />
+      <SignalCallPanel />
+      <SignalGroupCallPanel />
       <Toasts />
       <QuickSwitcher />
       <EditMenu />
@@ -440,14 +482,31 @@ function Body({
   // A forum is a list of posts, not a log.
   if (hasBuffer && activeBuffer?.forum) return <ForumPane buffer={activeBuffer} />
   if (hasBuffer) return <MessageList />
-  return <Placeholder icon="forum" text="Select or join a channel" />
+  return <NothingOpen />
 }
 
-function Placeholder({ icon, text }: { icon: string; text: string }): JSX.Element {
+/**
+ * Nothing is open: the two things there are to do about that, offered, rather than a sentence saying so.
+ */
+function NothingOpen(): JSX.Element {
+  const store = useStore()
   return (
-    <div className="placeholder muted">
-      <Icon name={icon} size={32} />
-      <span>{text}</span>
+    <div className="placeholder nothing-open">
+      <span className="nothing-open-mark">
+        <Icon name="forum" size={30} />
+      </span>
+      <span className="nothing-open-title">Nothing is open</span>
+      <span className="small muted">Pick a conversation from the list, or:</span>
+      <div className="nothing-open-actions">
+        <button type="button" className="button primary" onClick={() => window.dispatchEvent(new CustomEvent(OPEN_SWITCHER))}>
+          <Icon name="search" size={16} /> Go to a conversation
+          <kbd>Ctrl K</kbd>
+        </button>
+        <button type="button" className="button" onClick={() => store.setActivePanel('join')}>
+          <Icon name="add" size={16} /> Add or join
+        </button>
+      </div>
     </div>
   )
 }
+

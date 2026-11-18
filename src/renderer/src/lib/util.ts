@@ -5,6 +5,7 @@ import kickSvg from '../assets/kick.svg'
 import steamSvg from '../assets/steam-mark.svg'
 import twitchSvg from '../assets/twitch-mark.svg'
 import telegramSvg from '../assets/telegram-mark.svg'
+import signalSvg from '../assets/signal-mark.svg'
 import stoatSvg from '../assets/stoat-mark.svg'
 import xmppSvg from '../assets/xmpp-mark.svg'
 
@@ -65,7 +66,7 @@ export interface ServiceIcon {
  * the same menus, as "Whisper".
  */
 export function hasDirectMessages(service: string | undefined): boolean {
-  return service === 'irc' || service === 'discord' || service === 'matrix' || service === 'twitch' || service === 'telegram' || service === 'stoat' || service === 'xmpp'
+  return service === 'irc' || service === 'discord' || service === 'matrix' || service === 'twitch' || service === 'telegram' || service === 'stoat' || service === 'xmpp' || service === 'signal'
 }
 
 export function serviceIcon(service: string): ServiceIcon {
@@ -82,6 +83,8 @@ export function serviceIcon(service: string): ServiceIcon {
       return { mark: telegramSvg }
     case 'stoat':
       return { mark: stoatSvg }
+    case 'signal':
+      return { mark: signalSvg }
     case 'irc':
       return { glyph: 'tag' }
     case 'slack':
@@ -122,6 +125,8 @@ export function serviceLabel(service: string): string {
       return 'Telegram'
     case 'stoat':
       return 'Stoat'
+    case 'signal':
+      return 'Signal'
     case 'slack':
       return 'Slack'
     case 'jabber':
@@ -229,6 +234,23 @@ export function nickColor(nick: string): string {
   let hash = 0
   for (let i = 0; i < nick.length; i++) hash = (hash * 31 + nick.charCodeAt(i)) | 0
   return `hsl(${Math.abs(hash) % 360}, 62%, 68%)`
+}
+
+/**
+ * A colour for a key, spread: two keys that differ by one character land far
+ * apart on the wheel. `nickColor` does not do that - its hash moves a degree
+ * for a last character one higher - which is fine for names and useless for
+ * ids, where neighbours are what has to be told apart.
+ */
+export function spreadColor(key: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 0x01000193)
+  h ^= h >>> 15
+  h = Math.imul(h, 0x2c1b3c6d)
+  h ^= h >>> 12
+  h = Math.imul(h, 0x297a2d39)
+  h ^= h >>> 15
+  return `hsl(${(h >>> 0) % 360}, 62%, 68%)`
 }
 
 /**
@@ -383,7 +405,9 @@ export function formatFullTime(ts: number): string {
     month: 'long',
     day: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    // By the clock chosen in Appearance, as every other time is.
+    ...hour12Option()
   })
 }
 

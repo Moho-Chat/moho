@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
 import { MatrixAddresses } from './MatrixAddresses'
 import { MatrixDeactivate } from './MatrixDeactivate'
+import { SideTabs, ToolPane } from './AccountList'
 import { useChat, usePref, useStore } from '../state/hooks'
 import { resolveMediaUrl } from '../lib/util'
 import type { Account, MatrixDevice } from '../../../shared/wire'
@@ -74,6 +75,7 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
   const [keyBusy, setKeyBusy] = useState(false)
   const [bootstrapPassword, setBootstrapPassword] = useState('')
   const [bootstrapping, setBootstrapping] = useState(false)
+  const [section, setSection] = useState<'profile' | 'sessions' | 'keys' | 'server' | 'close'>('profile')
 
   const active = verification && verification.accountId === account.id ? verification : null
 
@@ -115,169 +117,28 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
 
   const rtcFocusChanged = rtcFocus.trim() !== (account.rtcFocusUrl ?? '')
 
+  // A section each, down the side (#339): what was one column of everything a homeserver keeps for an account.
   return (
-    <div className="matrix-tools">
-      <div className="setting-row">
-        <div className="setting-text">
-          <div>Keep a spare device for room keys</div>
-          <div className="small muted">
-            Leaves an encrypted, unused device on the homeserver so keys sent while you are
-            signed out are not lost. A new sign-in collects them with your recovery code.
-            Element calls this a dehydrated device.
-          </div>
-        </div>
-        {account.dehydration ? (
-          <span className="small muted">On</span>
-        ) : (
-          <button
-            type="button"
-            className="button subtle"
-            disabled={dehydrating}
-            onClick={() => {
-              setDehydrating(true)
-              void rpc('enableMatrixDehydration', {
-                accountId: account.id,
-                unlockWith: storageSecret.trim() || undefined
-              })
-                .then((a: { recoveryCode?: string }) => {
-                  setStorageSecret('')
-                  if (a.recoveryCode) setNewCode(a.recoveryCode)
-                  else store.toast('info', 'Spare device set up')
-                })
-                .then(() => void store.refreshAccounts())
-                .finally(() => setDehydrating(false))
-            }}
-          >
-            Set up
-          </button>
-        )}
-      </div>
-      {!account.dehydration && (
-        <div className="device-row">
-          <Icon name="key" size={18} />
-          <div className="field-row setting-text">
-            <input
-              className="text-field"
-              type="password"
-              placeholder="Recovery code or passphrase, if this account already has one"
-              value={storageSecret}
-              onChange={(e) => setStorageSecret(e.target.value)}
-            />
-          </div>
-        </div>
-      )}
-      {/* Shown once and never again: it is not kept anywhere this daemon can
-          read it back, which is the point of it. */}
-      {newCode && (
-        <div className="device-row">
-          <Icon name="lock" size={18} />
-          <div className="setting-text">
-            <div className="small warn-text">
-              Write this down. It is the only way to collect those keys on a new sign-in, and
-              it is not stored anywhere.
-            </div>
-            <code className="recovery-code">{newCode}</code>
-          </div>
-          <button type="button" className="button subtle" onClick={() => setNewCode('')}>
-            Done
-          </button>
-        </div>
-      )}
-      {/* Hidden unless asked for in Settings → Matrix → Advanced, where what
-          it costs is explained. Shown regardless while it is on, so an account
-          using it can always be turned back - a switch that disappears leaving
-          its setting applied is a trap. */}
-      {(showSlidingSync || account.slidingSync) && (
-        <div className="setting-row">
-          <div className="setting-text">
-            <div>Sliding sync</div>
-            <div className="small muted">
-              Reconnect the account to apply. No presence while it is on.
-            </div>
-          </div>
-          <button
-            type="button"
-            className={account.slidingSync ? 'button' : 'button subtle'}
-            onClick={() =>
-              void rpc('setMatrixSlidingSync', { accountId: account.id, enabled: !account.slidingSync })
-                .then(() =>
-                  store.toast(
-                    'info',
-                    account.slidingSync
-                      ? 'Sliding sync off — reconnect this account to go back to the old sync'
-                      : 'Sliding sync on — reconnect this account to start using it'
-                  )
-                )
-                .then(() => void store.refreshAccounts())
-            }
-          >
-            {account.slidingSync ? 'On' : 'Off'}
-          </button>
-        </div>
-      )}
-      <div className="setting-row">
-        <div className="setting-text">
-          <div>Call server</div>
-          <div className="small muted">
-            Where this account&rsquo;s room calls go. Most homeservers name one and this can stay
-            empty; a server that does not leaves calls with nowhere to go until one is given
-            here.
-          </div>
-        </div>
-      </div>
-      <div className="device-row">
-        <Icon name="cell_tower" size={18} />
-        <div className="field-row setting-text">
-          <input
-            className="text-field"
-            placeholder="https://livekit.example.org"
-            value={rtcFocus}
-            onChange={(e) => setRtcFocus(e.target.value)}
-          />
-        </div>
-        <button
-          type="button"
-          className="button subtle"
-          disabled={!rtcFocusChanged}
-          onClick={() =>
-            void rpc('setMatrixRtcFocus', { accountId: account.id, url: rtcFocus.trim() })
-              .then(() =>
-                store.toast(
-                  'info',
-                  rtcFocus.trim() ? 'Call server set' : 'Call server cleared - the homeserver decides again'
-                )
-              )
-              .then(() => void store.refreshAccounts())
-          }
-        >
-          {rtcFocus.trim() ? 'Save' : 'Clear'}
-        </button>
-      </div>
-      <div className="setting-row">
-        <div className="setting-text">
-          <div>Sessions</div>
-          <div className="small muted">
-            Your other logged-in devices. Verify one to let encrypted history decrypt across both.
-          </div>
-          {/* What a verification here is actually worth, which depends on
-              whether this account has a cross-signing identity: with one, the
-              agreement is published and every client sees it; without one, it
-              is a private note between these two sessions. Saying which is
-              the difference between a tick that means something and a tick
-              somebody reasonably reads as a broken client. */}
-          <div className="small muted">
-            {crossSigning?.thisDeviceSigned
-              ? 'Verifying publishes the result, so other clients see it too.'
-              : crossSigning?.hasIdentity
-                ? 'This session is not signed by your identity yet. Verify it against another session to publish it.'
-                : 'Without cross-signing, verifying is a private note between two sessions.'}
-          </div>
-        </div>
-        <button type="button" className="icon-button" title="Refresh" onClick={refresh}>
-          <Icon name="refresh" size={16} />
-        </button>
-      </div>
-
+    <SideTabs
+      label="Matrix"
+      value={section}
+      onChange={setSection}
+      groups={[
+        { label: 'You', items: [{ id: 'profile', label: 'Profile', icon: 'badge' }] },
+        {
+          label: 'Encryption',
+          items: [
+            { id: 'sessions', label: 'Sessions', icon: 'devices' },
+            { id: 'keys', label: 'Keys and recovery', icon: 'key' }
+          ]
+        },
+        { label: 'Homeserver', items: [{ id: 'server', label: 'Calls and sync', icon: 'cell_tower' }] },
+        { label: '', items: [{ id: 'close', label: 'Close the account', icon: 'delete_forever', danger: true }] }
+      ]}
+    >
+      {section === 'profile' && (
+        <ToolPane title="Profile" desc="Who everybody else sees, in every room you are in, and how the account is reached and recovered.">
+          <div className="card matrix-tools">
       {/* Who everybody else sees. Separate from the display name in the
           account card above it, and the difference is worth stating: that
           one is what moho calls this account, this one is what every room
@@ -336,6 +197,43 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
           }
         >
           Change picture
+        </button>
+      </div>
+
+      {/* How this account is reached and recovered. Above the sessions and
+          keys because it is the plainer fact about an account, and because
+          an account with no address on it is one nobody can get back into. */}
+      <MatrixAddresses account={account} />
+
+          </div>
+        </ToolPane>
+      )}
+
+      {section === 'sessions' && (
+        <ToolPane title="Sessions" desc="Everywhere this account is signed in, and whether each has been verified as yours.">
+          <div className="card matrix-tools">
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Sessions</div>
+          <div className="small muted">
+            Your other logged-in devices. Verify one to let encrypted history decrypt across both.
+          </div>
+          {/* What a verification here is actually worth, which depends on
+              whether this account has a cross-signing identity: with one, the
+              agreement is published and every client sees it; without one, it
+              is a private note between these two sessions. Saying which is
+              the difference between a tick that means something and a tick
+              somebody reasonably reads as a broken client. */}
+          <div className="small muted">
+            {crossSigning?.thisDeviceSigned
+              ? 'Verifying publishes the result, so other clients see it too.'
+              : crossSigning?.hasIdentity
+                ? 'This session is not signed by your identity yet. Verify it against another session to publish it.'
+                : 'Without cross-signing, verifying is a private note between two sessions.'}
+          </div>
+        </div>
+        <button type="button" className="icon-button" title="Refresh" onClick={refresh}>
+          <Icon name="refresh" size={16} />
         </button>
       </div>
 
@@ -411,78 +309,6 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
         </p>
       )}
 
-      {/* A copy of the room keys that does not depend on the homeserver.
-          Beside the server-side backup rather than instead of it: one
-          survives losing every device, the other survives losing the
-          server. */}
-      <div className="setting-row">
-        <div className="setting-text">
-          <div>Key file</div>
-          <div className="small muted">
-            The encrypted export Element writes, for moving history to a client that cannot reach
-            the backup - or for keeping a copy of your own.
-          </div>
-        </div>
-      </div>
-      <div className="device-row">
-        <Icon name="vpn_key" size={18} />
-        <div className="field-row setting-text">
-          <input
-            className="text-field"
-            type="password"
-            placeholder="Passphrase for the file"
-            value={keyPassphrase}
-            onChange={(e) => setKeyPassphrase(e.target.value)}
-          />
-        </div>
-        <button
-          type="button"
-          className="button subtle"
-          disabled={!keyPassphrase || keyBusy}
-          onClick={() =>
-            void window.moho.pickSavePath('element-keys.txt').then((path) => {
-              if (!path) return
-              setKeyBusy(true)
-              return rpc('exportMatrixKeys', {
-                accountId: account.id,
-                path,
-                passphrase: keyPassphrase
-              })
-                .then((answer: { keys: number }) =>
-                  store.toast('info', `Wrote ${answer.keys} room keys`)
-                )
-                .finally(() => setKeyBusy(false))
-            })
-          }
-        >
-          Export
-        </button>
-        <button
-          type="button"
-          className="button subtle"
-          disabled={!keyPassphrase || keyBusy}
-          onClick={() =>
-            void window.moho.pickFile().then((path) => {
-              if (!path) return
-              setKeyBusy(true)
-              return rpc('importMatrixKeys', {
-                accountId: account.id,
-                path,
-                passphrase: keyPassphrase
-              })
-                .then((answer: { imported: number; total: number }) =>
-                  // Both numbers, because they differ and only the first
-                  // answers "did that do anything".
-                  store.toast('info', `Imported ${answer.imported} of ${answer.total} keys`)
-                )
-                .finally(() => setKeyBusy(false))
-            })
-          }
-        >
-          Import
-        </button>
-      </div>
-
       {loading && <p className="small muted">Loading sessions…</p>}
       {devices?.length === 0 && <p className="small muted">No other sessions signed in.</p>}
 
@@ -556,11 +382,6 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
         </div>
       ))}
 
-      {/* How this account is reached and recovered. Above the sessions and
-          keys because it is the plainer fact about an account, and because
-          an account with no address on it is one nobody can get back into. */}
-      <MatrixAddresses account={account} />
-
       {/* The emoji comparison is drawn over the whole window now rather
           than in here: a verification can arrive from another session, or
           from another person through a room you share, and this panel is
@@ -571,8 +392,13 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
         </p>
       )}
 
-      <div className="divider-h" />
+          </div>
+        </ToolPane>
+      )}
 
+      {section === 'keys' && (
+        <ToolPane title="Keys and recovery" desc="What lets encrypted history be read again after a session is lost: a backup on the homeserver, a file of your own, a spare device.">
+          <div className="card matrix-tools">
       <div className="setting-row">
         <div className="setting-text">
           <div>Recovery key</div>
@@ -640,6 +466,232 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
         </button>
       </div>
 
+          </div>
+          <div className="card matrix-tools">
+      {/* A copy of the room keys that does not depend on the homeserver.
+          Beside the server-side backup rather than instead of it: one
+          survives losing every device, the other survives losing the
+          server. */}
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Key file</div>
+          <div className="small muted">
+            The encrypted export Element writes, for moving history to a client that cannot reach
+            the backup - or for keeping a copy of your own.
+          </div>
+        </div>
+      </div>
+      <div className="device-row">
+        <Icon name="vpn_key" size={18} />
+        <div className="field-row setting-text">
+          <input
+            className="text-field"
+            type="password"
+            placeholder="Passphrase for the file"
+            value={keyPassphrase}
+            onChange={(e) => setKeyPassphrase(e.target.value)}
+          />
+        </div>
+        <button
+          type="button"
+          className="button subtle"
+          disabled={!keyPassphrase || keyBusy}
+          onClick={() =>
+            void window.moho.pickSavePath('element-keys.txt').then((path) => {
+              if (!path) return
+              setKeyBusy(true)
+              return rpc('exportMatrixKeys', {
+                accountId: account.id,
+                path,
+                passphrase: keyPassphrase
+              })
+                .then((answer: { keys: number }) =>
+                  store.toast('info', `Wrote ${answer.keys} room keys`)
+                )
+                .finally(() => setKeyBusy(false))
+            })
+          }
+        >
+          Export
+        </button>
+        <button
+          type="button"
+          className="button subtle"
+          disabled={!keyPassphrase || keyBusy}
+          onClick={() =>
+            void window.moho.pickFile().then((path) => {
+              if (!path) return
+              setKeyBusy(true)
+              return rpc('importMatrixKeys', {
+                accountId: account.id,
+                path,
+                passphrase: keyPassphrase
+              })
+                .then((answer: { imported: number; total: number }) =>
+                  // Both numbers, because they differ and only the first
+                  // answers "did that do anything".
+                  store.toast('info', `Imported ${answer.imported} of ${answer.total} keys`)
+                )
+                .finally(() => setKeyBusy(false))
+            })
+          }
+        >
+          Import
+        </button>
+      </div>
+
+          </div>
+          <div className="card matrix-tools">
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Keep a spare device for room keys</div>
+          <div className="small muted">
+            Leaves an encrypted, unused device on the homeserver so keys sent while you are
+            signed out are not lost. A new sign-in collects them with your recovery code.
+            Element calls this a dehydrated device.
+          </div>
+        </div>
+        {account.dehydration ? (
+          <span className="small muted">On</span>
+        ) : (
+          <button
+            type="button"
+            className="button subtle"
+            disabled={dehydrating}
+            onClick={() => {
+              setDehydrating(true)
+              void rpc('enableMatrixDehydration', {
+                accountId: account.id,
+                unlockWith: storageSecret.trim() || undefined
+              })
+                .then((a: { recoveryCode?: string }) => {
+                  setStorageSecret('')
+                  if (a.recoveryCode) setNewCode(a.recoveryCode)
+                  else store.toast('info', 'Spare device set up')
+                })
+                .then(() => void store.refreshAccounts())
+                .finally(() => setDehydrating(false))
+            }}
+          >
+            Set up
+          </button>
+        )}
+      </div>
+      {!account.dehydration && (
+        <div className="device-row">
+          <Icon name="key" size={18} />
+          <div className="field-row setting-text">
+            <input
+              className="text-field"
+              type="password"
+              placeholder="Recovery code or passphrase, if this account already has one"
+              value={storageSecret}
+              onChange={(e) => setStorageSecret(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
+      {/* Shown once and never again: it is not kept anywhere this daemon can
+          read it back, which is the point of it. */}
+      {newCode && (
+        <div className="device-row">
+          <Icon name="lock" size={18} />
+          <div className="setting-text">
+            <div className="small warn-text">
+              Write this down. It is the only way to collect those keys on a new sign-in, and
+              it is not stored anywhere.
+            </div>
+            <code className="recovery-code">{newCode}</code>
+          </div>
+          <button type="button" className="button subtle" onClick={() => setNewCode('')}>
+            Done
+          </button>
+        </div>
+      )}
+          </div>
+        </ToolPane>
+      )}
+
+      {section === 'server' && (
+        <ToolPane title="Calls and sync" desc="How this account uses its homeserver, where the homeserver leaves a choice.">
+          <div className="card matrix-tools">
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Call server</div>
+          <div className="small muted">
+            Where this account&rsquo;s room calls go. Most homeservers name one and this can stay
+            empty; a server that does not leaves calls with nowhere to go until one is given
+            here.
+          </div>
+        </div>
+      </div>
+      <div className="device-row">
+        <Icon name="cell_tower" size={18} />
+        <div className="field-row setting-text">
+          <input
+            className="text-field"
+            placeholder="https://livekit.example.org"
+            value={rtcFocus}
+            onChange={(e) => setRtcFocus(e.target.value)}
+          />
+        </div>
+        <button
+          type="button"
+          className="button subtle"
+          disabled={!rtcFocusChanged}
+          onClick={() =>
+            void rpc('setMatrixRtcFocus', { accountId: account.id, url: rtcFocus.trim() })
+              .then(() =>
+                store.toast(
+                  'info',
+                  rtcFocus.trim() ? 'Call server set' : 'Call server cleared - the homeserver decides again'
+                )
+              )
+              .then(() => void store.refreshAccounts())
+          }
+        >
+          {rtcFocus.trim() ? 'Save' : 'Clear'}
+        </button>
+      </div>
+      {/* Hidden unless asked for in Settings → Matrix → Advanced, where what
+          it costs is explained. Shown regardless while it is on, so an account
+          using it can always be turned back - a switch that disappears leaving
+          its setting applied is a trap. */}
+      {(showSlidingSync || account.slidingSync) && (
+        <div className="setting-row">
+          <div className="setting-text">
+            <div>Sliding sync</div>
+            <div className="small muted">
+              Reconnect the account to apply. No presence while it is on.
+            </div>
+          </div>
+          <button
+            type="button"
+            className={account.slidingSync ? 'button' : 'button subtle'}
+            onClick={() =>
+              void rpc('setMatrixSlidingSync', { accountId: account.id, enabled: !account.slidingSync })
+                .then(() =>
+                  store.toast(
+                    'info',
+                    account.slidingSync
+                      ? 'Sliding sync off — reconnect this account to go back to the old sync'
+                      : 'Sliding sync on — reconnect this account to start using it'
+                  )
+                )
+                .then(() => void store.refreshAccounts())
+            }
+          >
+            {account.slidingSync ? 'On' : 'Off'}
+          </button>
+        </div>
+      )}
+          </div>
+        </ToolPane>
+      )}
+
+      {section === 'close' && (
+        <ToolPane title="Close the account" desc="Closes it on the homeserver itself, which removing it from moho does not.">
+          <div className="card matrix-tools danger-zone">
       {/* Last, and separated from everything above it by being last: nothing
           else on this panel is irreversible. */}
       <div className="setting-row">
@@ -651,6 +703,9 @@ export function MatrixAccountTools({ account }: { account: Account }): JSX.Eleme
         </div>
       </div>
       <MatrixDeactivate account={account} />
-    </div>
+          </div>
+        </ToolPane>
+      )}
+    </SideTabs>
   )
 }

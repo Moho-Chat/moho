@@ -168,23 +168,28 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
             type="button"
             className={classes(
               'poll-option',
-              card.votedOptionId === option.id && 'voted',
+              (card.votedOptionId === option.id || card.votedOptionIds?.some((id) => String(id) === String(option.id))) && 'voted',
               picked === option.id && 'picked',
               option.winner && 'winner',
               !open && 'closed'
             )}
             // A poll row is the vote; a prediction row only chooses what the
             // points go on, because the amount is the other half of a bet.
-            disabled={reviewing || !open || card.readOnly || (!isPrediction && card.hasVoted)}
-            onClick={() =>
-              isPrediction ? setPicked(option.id) : store.votePoll(card.bufferId, option.id)
-            }
+            disabled={reviewing || !open || card.readOnly || (!isPrediction && card.hasVoted && !card.changeable)}
+            onClick={() => {
+              if (isPrediction) return setPicked(option.id)
+              if (!card.multiple) return store.votePoll(card.bufferId, option.id)
+              // Several answers: this one in or out of what is already picked, and the vote is the lot.
+              const picked = (card.votedOptionIds ?? []).map(String)
+              const id = String(option.id)
+              store.votePollAnswers(card.bufferId, picked.includes(id) ? picked.filter((p) => p !== id) : [...picked, id])
+            }}
             title={
               reviewing || !open
                 ? option.label
                 : isPrediction
                   ? `Put points on ${option.label}`
-                  : card.hasVoted
+                  : card.hasVoted && !card.changeable
                     ? option.label
                     : `Vote for ${option.label}`
             }

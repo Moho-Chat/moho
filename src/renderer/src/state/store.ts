@@ -1,4 +1,7 @@
 import type {
+  SignalCallState,
+  SignalGroupCallState,
+  SignalGroupRing,
   Account,
   AudioDevice,
   Buffer as WireBuffer,
@@ -31,7 +34,7 @@ import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../
 import { heldOnAccount, type NotifyLevel } from '../lib/notifylevels'
 import { runExport } from '../lib/exporter'
 import type { ForumPost } from '../lib/forum'
-import { DM_GROUP_ID, INVITATIONS_GROUP_ID, isDirectMessage } from '../lib/groups'
+import { DM_GROUP_ID, INVITATIONS_GROUP_ID, MENTIONS_GROUP_ID, isDirectMessage } from '../lib/groups'
 import { listInvitations, type Invitation, type FileOffer } from '../lib/invitations'
 import { ircNetworkFor } from '../lib/networks'
 import { parseDeepLink, type DeepLink, type IrcLink } from '../../../shared/deeplink'
@@ -46,6 +49,7 @@ import type { PopoutState } from '../../../shared/ipc'
 import { isNewerVersion } from '../lib/version'
 import { steamRoomIds, type SteamChatGroup } from '../lib/steamchat'
 import { SteamVoice, type SteamRing, type SteamVoicePhase, type SteamVoiceTarget } from '../lib/steamvoice'
+import { TelegramVoice, type TelegramVoiceParticipant, type TelegramVoicePhase } from '../lib/telegramvoice'
 
 /**
  * The whole client-side model, held in one immutable object that is replaced
@@ -163,6 +167,13 @@ export function sameIrcNetwork(a: string, b: string): boolean {
   return !!na && !!nb && na.id === nb.id
 }
 
+/** A Signal notification profile that is on. */
+export interface SignalProfileOn {
+  id: string
+  name: string
+  emoji?: string | null
+}
+
 /** A thread, as it is being read: what was fetched, and whether it still is. */
 export interface OpenThread {
   bufferId: string
@@ -255,6 +266,12 @@ export interface LiveCard {
   resultDisplayDuration: number
   hasVoted: boolean
   votedOptionId: string | number | null
+  /** Signal's: a poll that takes several answers - a click adds or takes one away, and the vote is all of them. */
+  multiple?: boolean
+  /** Every answer this account has picked, where there can be more than one. */
+  votedOptionIds?: (string | number)[]
+  /** A vote can be changed after it is cast (Signal), so the answers stay clickable. */
+  changeable?: boolean
   /** What this account has riding on it, in points. */
   stake?: number | null
   /** Points left to bet with, where the service says. */
@@ -475,6 +492,18 @@ export interface ChatState {
   steamRings: SteamRing[]
   /** The Steam voice this window holds, if any: where, and how far it has got. */
   steamVoiceNow: { accountId: string; target: SteamVoiceTarget; phase: SteamVoicePhase } | null
+  /** The Telegram voice chat this window is in, if any: where, how far it has got, who is in it and who is speaking. */
+  telegramVoiceNow: {
+    accountId: string
+    bufferId: string
+    name: string
+    phase: TelegramVoicePhase
+    people: TelegramVoiceParticipant[]
+    speakers: string[]
+    forcedMute: boolean
+  } | null
+  /** Whether each Telegram conversation has a voice chat going, as Telegram last said, by buffer. */
+  telegramVoiceCalls: Record<string, boolean>
   /** A group somebody has asked to leave, waiting on the confirmation. */
   leaveRequest: { id: string; name: string; kind: string } | null
   /**
@@ -604,6 +633,8 @@ export interface ChatState {
   /** Cards the reader has folded away, by card id. */
   /** An old poll or prediction being read back, over the conversation. */
   reviewCard: LiveCard | null
+  /** A Signal view-once picture or video being looked at: shown over everything, and gone when closed. */
+  viewOnce: { path: string; kind: 'image' | 'video'; from: string; width?: number; height?: number } | null
   /** Which messages each Matrix room has pinned, newest last. */
   /** Which messages a conversation has pinned, where the service says so. */
   pinnedMessages: Record<string, string[]>
@@ -631,12 +662,25 @@ export interface ChatState {
    * the panel that shows it has to be able to find it again.
    */
   ringingCall: RingingCall | null
+  /** The Signal call RingRTC is on (in main), and whether RingRTC is there at all. */
+  signalCall: SignalCallState | null
+  signalCallsAvailable: boolean
+  signalGroupCall: SignalGroupCallState | null
+  /** The notification profile on for each Signal account, if one is. */
+  signalProfiles: Record<string, SignalProfileOn | null>
+  /** Reactions in the group call, shown for a moment over whoever sent them (by demux id). */
+  signalCallReactions: { demuxId: number; value: string; at: number }[]
+  signalGroupRings: SignalGroupRing[]
   /** The call put away without being hung up. */
   callMinimized: boolean
   /** The call is drawn in a window of its own rather than over the conversation. */
   callPoppedOut: boolean
   /** The stream being watched is in a window of its own. */
   streamPoppedOut: boolean
+  /** Whether a search has results to show in the column beside the conversation. */
+  searchPane: boolean
+  /** Whether that window is the small one kept over everything else. */
+  streamOnTop: boolean
   /**
    * Who is in each room's call, by buffer.
    *
@@ -733,6 +777,8 @@ export interface ChatState {
   matrixInvites: Record<string, MatrixInvite[]>
   /** Who has asked each account to be their friend, by account. */
   friendRequests: Record<string, FriendRequest[]>
+  /** A Signal group link that was opened, waiting in the Join panel to be looked at. */
+  signalGroupLink: string
   /** Which invitation the invitations page is showing. */
   activeInvitationKey: string
   /** A question asked about a Steam friend, waiting on an answer in a dialog. */
@@ -815,6 +861,8 @@ const INITIAL: ChatState = {
   steamVoiceRooms: {},
   steamRings: [],
   steamVoiceNow: null,
+  telegramVoiceNow: null,
+  telegramVoiceCalls: {},
   leaveRequest: null,
   incomingCalls: [],
   transfers: [],
@@ -851,15 +899,24 @@ const INITIAL: ChatState = {
   livePolls: {},
   pinnedByBuffer: {},
   reviewCard: null,
+  viewOnce: null,
   pinnedMessages: {},
   threadCounts: {},
   pinnedRows: {},
   forumPages: {},
   discordFriends: {},
   ringingCall: null,
+  signalCall: null,
+  signalCallsAvailable: false,
+  signalGroupCall: null,
+  signalProfiles: {},
+  signalCallReactions: [],
+  signalGroupRings: [],
   callMinimized: false,
   callPoppedOut: false,
   streamPoppedOut: false,
+  searchPane: false,
+  streamOnTop: false,
   callMembers: {},
   watching: null,
   watchMinimized: false,
@@ -882,6 +939,7 @@ const INITIAL: ChatState = {
   matrixWidgets: {},
   matrixInvites: {},
   friendRequests: {},
+  signalGroupLink: '',
   activeInvitationKey: '',
   steamDialog: null,
   profile: null,
@@ -1342,7 +1400,7 @@ export class ChatStore {
     const offered = ALL_STATUSES.filter((s) => connected.some((a) => supportsStatus(a.service, s)))
     const widest = [...connected].sort((a, b) => statusesFor(b.service).length - statusesFor(a.service).length)[0]
     // Invisible is what Discord calls it; where only Matrix has it, it is offline.
-    const invisibleName = connected.some((a) => supportsStatus(a.service, 'invisible') && a.service !== 'matrix') ? 'Invisible' : 'Offline'
+    const invisibleName = connected.some((a) => supportsStatus(a.service, 'invisible') && a.service !== 'matrix' && a.service !== 'telegram') ? 'Invisible' : 'Offline'
     const report = JSON.stringify([statuses, offered, (widest?.autoIdle ? 'online' : widest?.status) ?? null, invisibleName])
     if (report === this.lastTrayReport) return
     this.lastTrayReport = report
@@ -1446,7 +1504,13 @@ export class ChatStore {
       // The tray's menu: Settings, and a status for every account.
       window.moho.onTrayCommand((command, arg) => {
         if (command === 'settings') this.setActivePanel('settings')
-        else if (arg === 'online' || arg === 'idle' || arg === 'dnd' || arg === 'invisible') void this.setStatusEverywhere(arg)
+        else if (command === 'mentions') {
+          this.setActivePanel('')
+          this.selectGroup(MENTIONS_GROUP_ID)
+        } else if (command === 'markAllRead') {
+          // Everything the tray was counting: each conversation with something unread in it.
+          void this.markBuffersRead(this.state.buffers.filter((b) => b.unread > 0 || b.mentions > 0).map((b) => b.id))
+        } else if (arg === 'online' || arg === 'idle' || arg === 'dnd' || arg === 'invisible') void this.setStatusEverywhere(arg)
       })
       window.moho.onDeepLink((url) => this.followDeepLink(url))
     }
@@ -1560,6 +1624,17 @@ export class ChatStore {
   async refreshAccounts(): Promise<void> {
     try {
       this.set({ accounts: await window.moho.rpc<Account[]>('listAccounts') })
+      // RingRTC is loaded only once there is a Signal account to call from.
+      for (const a of this.state.accounts.filter((x) => x.service === 'signal')) {
+        void window.moho
+          .rpc<TelegramFolder[]>('signalFolders', { accountId: a.id })
+          .then((folders) => this.set({ telegramFolders: { ...this.state.telegramFolders, [a.id]: folders } }))
+          .catch(() => {})
+      }
+      if (!this.signalCallsProbed && this.state.accounts.some((a) => a.service === 'signal')) {
+        this.signalCallsProbed = true
+        void this.probeSignalCalls()
+      }
       void this.refreshInvites()
       void this.refreshFriendRequests()
     } catch (e) {
@@ -1609,6 +1684,25 @@ export class ChatStore {
       try {
         const r = await window.moho.rpc<{ incoming: FriendRequest[] }>('stoatFriendRequests', { accountId: account.id })
         next[account.id] = r.incoming
+      } catch {
+        // Not connected yet: the daemon's own push fills it in.
+      }
+    }
+    // Signal's are message requests: people, and groups, the account has not accepted and whose messages are held back.
+    for (const account of this.state.accounts.filter((a) => a.service === 'signal' && a.state === 'connected')) {
+      try {
+        const r = await window.moho.rpc<{ people: FriendRequest[]; groups: MatrixInvite[] }>('signalRequests', { accountId: account.id })
+        next[account.id] = r.people
+        this.set({ matrixInvites: { ...this.state.matrixInvites, [account.id]: r.groups } })
+      } catch {
+        // Not connected yet: the daemon's own push fills it in.
+      }
+    }
+    // Telegram's are asks for a secret chat, offered as a conversation to accept.
+    for (const account of this.state.accounts.filter((a) => a.service === 'telegram' && a.state === 'connected')) {
+      try {
+        const rooms = await window.moho.rpc<MatrixInvite[]>('telegramSecretRequests', { accountId: account.id })
+        this.set({ matrixInvites: { ...this.state.matrixInvites, [account.id]: rooms } })
       } catch {
         // Not connected yet: the daemon's own push fills it in.
       }
@@ -1715,11 +1809,17 @@ export class ChatStore {
           await window.moho.rpc('answerStoatFriendRequest', { accountId, userId: id, accept })
         } else if (invitation.service === 'xmpp') {
           await window.moho.rpc('xmppAnswerRequest', { accountId, jid: id, accept })
+        } else if (invitation.service === 'signal') {
+          await window.moho.rpc('signalAnswerRequest', { accountId, id, answer: accept ? 'accept' : 'delete' })
         } else {
           await window.moho.rpc('steamAnswerFriendRequest', { accountId, steamid: id, accept })
         }
       } else if (invitation.service === 'xmpp') {
         await window.moho.rpc('xmppAnswerInvite', { accountId, roomId: id, accept })
+      } else if (invitation.service === 'telegram') {
+        await window.moho.rpc('answerTelegramSecretChat', { accountId, chatId: id, accept })
+      } else if (invitation.service === 'signal') {
+        await window.moho.rpc('signalAnswerRequest', { accountId, id, answer: accept ? 'accept' : 'delete' })
       } else if (invitation.service === 'steam') {
         const r = await window.moho.rpc<{ groupId?: string }>('steamChatGroupAction', { accountId, groupId: id, action: accept ? 'acceptInvite' : 'dismissInvite' })
         if (accept && r.groupId) steamGroupJoined = r.groupId
@@ -1974,6 +2074,7 @@ export class ChatStore {
     this.set({ voicePrefs: { ...this.state.voicePrefs, ...next } })
     // And onto the Steam voice this window holds, which obeys the same buttons.
     this.steamVoice.applyMute()
+    this.telegramVoice.applyMute()
     try {
       this.set({ voicePrefs: await window.moho.rpc<VoicePrefs>('setVoiceMuted', next) })
     } catch (e) {
@@ -2113,7 +2214,7 @@ export class ChatStore {
   async refreshVoiceSessions(): Promise<void> {
     // Steam's voice is held in this window and not by the daemon, so it is
     // added to what the daemon says rather than lost when that is asked for.
-    const steam = this.steamVoiceSession()
+    const steam = [...this.steamVoiceSession(), ...this.telegramVoiceSession()]
     try {
       this.set({ voiceSessions: [...(await window.moho.rpc<VoiceSession[]>('getVoiceSession')), ...steam] })
     } catch {
@@ -2159,6 +2260,67 @@ export class ChatStore {
       return friend && account?.status !== 'invisible' && account?.status !== 'dnd'
     }
   })
+
+  /** The Telegram voice chat of this window, as a voice session every voice surface lists. */
+  private telegramVoiceSession(): VoiceSession[] {
+    const v = this.telegramVoice
+    const t = v.target
+    if (!v.active || !t) return []
+    return [{ accountId: t.accountId, channelId: t.call, channelName: t.name, isDirect: false, bufferId: t.bufferId }]
+  }
+
+  private syncTelegramVoice(): void {
+    const v = this.telegramVoice
+    const others = this.state.voiceSessions.filter((s) => !s.accountId.startsWith('telegram:'))
+    this.set({
+      voiceSessions: [...others, ...this.telegramVoiceSession()],
+      telegramVoiceNow:
+        v.active && v.target
+          ? {
+              accountId: v.target.accountId,
+              bufferId: v.target.bufferId,
+              name: v.target.name,
+              phase: v.phase,
+              people: [...v.people.values()],
+              speakers: [...v.speakers],
+              forcedMute: v.forcedMute
+            }
+          : null
+    })
+  }
+
+  private telegramVoice: TelegramVoice = new TelegramVoice({
+    rpc: (params) => window.moho.rpc('telegramVoice', params),
+    onChange: () => this.syncTelegramVoice(),
+    toast: (kind, message) => this.toast(kind, message),
+    muted: () => ({ micMuted: this.state.voicePrefs.micMuted, deafened: this.state.voicePrefs.deafened })
+  })
+
+  /** Joins a Telegram group's or channel's voice chat, as it is now. */
+  async joinTelegramVoice(bufferId: string): Promise<void> {
+    const buffer = this.state.buffers.find((b) => b.id === bufferId)
+    if (!buffer) return
+    try {
+      const info = await window.moho.rpc<{ active: boolean; call?: string; title?: string; participants?: TelegramVoiceParticipant[] }>('telegramVoice', { op: 'info', bufferId })
+      if (!info.active || !info.call) {
+        this.toast('info', 'There is no voice chat here now')
+        return
+      }
+      await this.telegramVoice.join(
+        { accountId: buffer.accountId, bufferId, call: info.call, name: info.title || bufferDisplayName(buffer.name) },
+        info.participants ?? []
+      )
+    } catch (e) {
+      this.toast('error', `Couldn't join the voice chat: ${(e as Error).message}`)
+    }
+  }
+
+  /** Mutes somebody else in the voice chat (an administrator's), or lets them speak. */
+  async muteInTelegramVoice(userId: string, muted: boolean): Promise<void> {
+    const t = this.telegramVoice.target
+    if (!t) return
+    await window.moho.rpc('telegramVoice', { op: 'mute', bufferId: t.bufferId, call: t.call, userId, muted }).catch((e: Error) => this.toast('error', e.message))
+  }
 
   /** Joins the voice of a room of a Steam group. */
   async joinSteamVoice(accountId: string, groupId: string, roomId: string): Promise<void> {
@@ -2277,12 +2439,140 @@ export class ChatStore {
   }
 
   async declineCall(bufferId: string): Promise<void> {
-    this.setRinging({ ...this.callFor(bufferId), ringing: false })
+    const call = this.callFor(bufferId)
+    this.setRinging({ ...call, ringing: false })
+    // A Signal call: turned down with RingRTC where it has the call, else only silenced here (answered on the phone).
+    if (call.answerElsewhere) {
+      if (this.state.signalCall?.callId === call.callId) void window.moho.signalCall('decline').catch(() => {})
+      void window.moho.rpc('silenceSignalCall', { bufferId }).catch(() => {})
+      return
+    }
     try {
       await window.moho.rpc(this.state.buffers.find((b) => b.id === bufferId)?.accountId.startsWith('stoat:') ? 'declineStoatCall' : 'declineCall', { bufferId })
     } catch (e) {
       this.toast('error', `Couldn't decline: ${(e as Error).message}`)
     }
+  }
+
+  private signalCallsProbed = false
+
+  /** Whether RingRTC is in this build: asked once, when there is a Signal account. */
+  async probeSignalCalls(): Promise<void> {
+    try {
+      const available = await window.moho.signalCall<boolean>('available')
+      const current = available ? await window.moho.signalCall<SignalCallState | null>('current') : null
+      const group = available ? await window.moho.signalCall<SignalGroupCallState | null>('currentGroup') : null
+      this.set({ signalCallsAvailable: available, signalCall: current, signalGroupCall: group })
+    } catch {
+      this.set({ signalCallsAvailable: false })
+    }
+  }
+
+  /** Answers the Signal call RingRTC is ringing with, with the camera or without. */
+  async answerSignalCall(bufferId: string, video: boolean): Promise<void> {
+    this.setRinging({ ...this.callFor(bufferId), ringing: false })
+    void window.moho.rpc('silenceSignalCall', { bufferId }).catch(() => {})
+    try {
+      await window.moho.signalCall('accept', { video })
+      await this.selectBuffer(bufferId, true)
+    } catch (e) {
+      this.toast('error', `Couldn't answer: ${(e as Error).message}`)
+    }
+  }
+
+  /** Calls the person a Signal conversation is with. */
+  async startSignalCall(bufferId: string, video: boolean): Promise<void> {
+    const buffer = this.state.buffers.find((b) => b.id === bufferId)
+    const remote = buffer?.remoteId?.startsWith('p:') ? buffer.remoteId.slice(2) : null
+    if (!buffer || !remote) return
+    try {
+      await window.moho.signalCall('start', { accountId: buffer.accountId, bufferId, remote, video })
+    } catch (e) {
+      this.toast('error', `Couldn't call: ${(e as Error).message}`)
+    }
+  }
+
+  /** Shares this screen in the Signal call (as the picture), or stops. */
+  shareSignalCallScreen(on: boolean): void {
+    void window.moho.signalCall('share', { on }).catch((e: Error) => this.toast('error', e.message))
+  }
+
+  /** Joins a Signal group's call, ringing its members when `ring` (as starting one does). */
+  async joinSignalGroupCall(bufferId: string, video: boolean, ring: boolean): Promise<void> {
+    try {
+      await window.moho.signalCall('joinGroup', { bufferId, video, ring })
+      await this.selectBuffer(bufferId, true)
+    } catch (e) {
+      this.toast('error', `Couldn't join the call: ${(e as Error).message}`)
+    }
+  }
+
+  /** A call link someone sent: what it is called, then joining it if the person says so. */
+  async openSignalCallLink(accountId: string, link: string): Promise<void> {
+    try {
+      const found = await window.moho.signalCall<{ name: string; revoked: boolean; approval: boolean }>('readCallLink', { accountId, link })
+      if (found.revoked) {
+        this.toast('error', 'That call link was taken down')
+        return
+      }
+      const name = found.name || 'a Signal call'
+      if (!window.confirm(`Join ${name}?${found.approval ? ' Whoever made it lets people in.' : ''}`)) return
+      await this.joinSignalCallLink(accountId, link, false)
+    } catch (e) {
+      this.toast('error', `Couldn't open the call link: ${(e as Error).message}`)
+    }
+  }
+
+  /** Joins a call link's call. */
+  async joinSignalCallLink(accountId: string, link: string, video: boolean): Promise<void> {
+    try {
+      await window.moho.signalCall('joinCallLink', { accountId, link, video })
+    } catch (e) {
+      this.toast('error', `Couldn't join the call: ${(e as Error).message}`)
+    }
+  }
+
+  leaveSignalGroupCall(): void {
+    void window.moho.signalCall('leaveGroup').catch(() => {})
+  }
+
+  muteSignalGroupCall(change: { audio?: boolean; video?: boolean }): void {
+    void window.moho.signalCall('muteGroup', change).catch((e: Error) => this.toast('error', e.message))
+  }
+
+  shareSignalGroupCallScreen(on: boolean): void {
+    void window.moho.signalCall('shareGroup', { on }).catch((e: Error) => this.toast('error', e.message))
+  }
+
+  reactInSignalGroupCall(value: string): void {
+    void window.moho.signalCall('reactInGroup', { value }).catch(() => {})
+  }
+
+  raiseSignalHand(up: boolean): void {
+    void window.moho.signalCall('raiseHand', { up }).catch(() => {})
+  }
+
+  answerSignalJoinRequest(userId: string, letIn: boolean): void {
+    void window.moho.signalCall('answerJoinRequest', { userId, letIn }).catch((e: Error) => this.toast('error', e.message))
+  }
+
+  /** Answers a group ring by joining the call. */
+  answerSignalGroupRing(ring: SignalGroupRing, video: boolean): void {
+    this.set({ signalGroupRings: this.state.signalGroupRings.filter((r) => r.ringId !== ring.ringId) })
+    if (ring.bufferId) void this.joinSignalGroupCall(ring.bufferId, video, false)
+  }
+
+  declineSignalGroupRing(ring: SignalGroupRing): void {
+    this.set({ signalGroupRings: this.state.signalGroupRings.filter((r) => r.ringId !== ring.ringId) })
+    void window.moho.signalCall('declineGroupRing', { groupId: ring.groupId, ringId: ring.ringId }).catch(() => {})
+  }
+
+  hangUpSignalCall(): void {
+    void window.moho.signalCall('hangup').catch(() => {})
+  }
+
+  muteSignalCall(change: { audio?: boolean; video?: boolean }): void {
+    void window.moho.signalCall('mute', change).catch((e: Error) => this.toast('error', e.message))
   }
 
   private callFor(bufferId: string): IncomingCall {
@@ -2333,6 +2623,11 @@ export class ChatStore {
    * keeps running, and cancelling stops it. Getting those two confused costs
    * somebody a download they were most of the way through.
    */
+  /** The Signal group link the Join panel has taken, so it is not offered again. */
+  takeSignalGroupLink(): void {
+    if (this.state.signalGroupLink) this.set({ signalGroupLink: '' })
+  }
+
   minimiseTransfer(id: string): void {
     if (this.state.minimisedTransfers.includes(id)) return
     this.set({ minimisedTransfers: [...this.state.minimisedTransfers, id] })
@@ -2346,6 +2641,17 @@ export class ChatStore {
    * passed because IRC has only a nick to go on while Discord and Matrix have
    * real ids, and a display name is not something to look somebody up by.
    */
+  /** Asks somebody on Telegram for a secret chat, and opens it to wait for their answer. */
+  async startTelegramSecretChat(accountId: string, userId: string): Promise<void> {
+    try {
+      const r = await window.moho.rpc<{ bufferId: string }>('startTelegramSecretChat', { accountId, userId })
+      await this.refreshBuffers()
+      await this.selectBuffer(r.bufferId)
+    } catch (e) {
+      this.toast('error', `Couldn't start a secret chat: ${(e as Error).message}`)
+    }
+  }
+
   async openDirectMessage(accountId: string, userId: string, nick: string): Promise<void> {
     try {
       const r = await window.moho.rpc<{ bufferId: string }>('openDirectMessage', { accountId, userId, nick })
@@ -2381,6 +2687,23 @@ export class ChatStore {
       }
       this.set({ activePanel: '' })
       void this.joinAndOpen(account.id, link.url)
+      return
+    }
+
+    // A Signal group link opens the Join panel of a Signal account with the link in it, to be looked at before joining;
+    // with no Signal account it is a web page.
+    if (link.service === 'signal') {
+      const account = this.state.accounts.find((a) => a.service === 'signal' && a.state === 'connected') ?? this.state.accounts.find((a) => a.service === 'signal')
+      if (!account) {
+        void window.moho.openExternal(link.url)
+        return
+      }
+      if (link.call) {
+        void this.openSignalCallLink(account.id, link.url)
+        return
+      }
+      this.set({ signalGroupLink: link.url })
+      this.setActivePanel('join', account.id)
       return
     }
 
@@ -2603,6 +2926,21 @@ export class ChatStore {
    * row that still says what it was, rather than a menu that claims one thing
    * while the account holds another.
    */
+  /**
+   * Takes transfers out of the history: the ones named, or a kind of them,
+   * optionally only those older than so many days. The files stay where they
+   * are. Answers with how many went.
+   */
+  async forgetTransfers(what: { ids: string[] } | { which: 'failed' | 'finished' | 'missing' | 'all'; olderThanDays?: number }): Promise<number> {
+    try {
+      const r = await window.moho.rpc<{ removed: number }>('forgetTransfers', what)
+      return r.removed
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+      return 0
+    }
+  }
+
   async setNotifyLevel(bufferId: string, level: NotifyLevel): Promise<void> {
     try {
       await window.moho.rpc('setNotifyLevel', { bufferId, level })
@@ -2705,15 +3043,16 @@ export class ChatStore {
   async exportConversation(
     bufferId: string,
     range: { since: number; until: number },
-    opts: { media: boolean }
+    opts: { media: boolean; into?: string }
   ): Promise<void> {
     const buffer = this.state.buffers.find((b) => b.id === bufferId)
     if (!buffer) return
     const account = this.accountFor(bufferId)
     try {
       const prefs = await window.moho.prefs.getAll()
+      // The folder chosen in the dialog for this one export, or where downloads go.
       const into =
-        (prefs['downloads.directory'] as string | undefined) || (await window.moho.defaultDownloadDir())
+        opts.into || (prefs['downloads.directory'] as string | undefined) || (await window.moho.defaultDownloadDir())
       const answer = await runExport(
         (method, params) => window.moho.rpc(method, params),
         {
@@ -2724,9 +3063,9 @@ export class ChatStore {
         },
         range,
         into,
-        opts
+        { media: opts.media }
       )
-      this.toast('info', `Exported ${answer.messages.toLocaleString()} messages to ${answer.path}`)
+      this.toast('success', `Exported ${answer.messages.toLocaleString()} messages to ${answer.path}. It is listed in Settings → Downloads.`)
     } catch (e) {
       this.toast('error', `Export failed: ${(e as Error).message}`)
     }
@@ -2735,6 +3074,10 @@ export class ChatStore {
   async leaveVoice(accountId: string): Promise<void> {
     if (accountId.startsWith('steam:')) {
       await this.steamVoice.stop()
+      return
+    }
+    if (accountId.startsWith('telegram:')) {
+      await this.telegramVoice.leave()
       return
     }
     // What this end was sending goes with it. Left running, the camera light
@@ -3006,6 +3349,11 @@ export class ChatStore {
     this.set({ profile: null })
   }
 
+  /** Changes what the open card says, after something done from it (a block, a verification). */
+  patchProfile(change: Partial<Profile>): void {
+    if (this.state.profile) this.set({ profile: { ...this.state.profile, ...change } })
+  }
+
   /** Asks what groups a Steam account has, for when it has just connected. */
   loadSteamGroups(accountId: string): void {
     void window.moho
@@ -3150,6 +3498,13 @@ export class ChatStore {
    * this vote already in it - so the bars move on the click rather than when
    * Kick's broadcast catches up.
    */
+  /** A vote that is several answers at once (an empty list takes the vote back). */
+  votePollAnswers(bufferId: string, optionIds: (string | number)[]): void {
+    void window.moho
+      .rpc('votePoll', { bufferId, optionIds: optionIds.map(Number) })
+      .catch((e: Error) => this.toast('error', e.message))
+  }
+
   votePoll(bufferId: string, optionId: string | number): void {
     // Both spellings of the same answer: Kick numbers its options and Matrix
     // gives them ids of their own, and which one the daemon reads follows
@@ -3294,6 +3649,23 @@ export class ChatStore {
    * and guessing at it would mean showing an answer that never came.
    */
   useComponent(bufferId: string, messageId: string, customId: string, select: boolean, values: string[]): void {
+    // A Signal view-once picture: opened here once, and gone from the message as soon as it is.
+    // A sticker from a pack the account does not have: the pack added, on every device.
+    if (this.accountFor(bufferId)?.service === 'signal' && customId === 'signal:stickerpack') {
+      void window.moho
+        .rpc('signalStickerPackFromMessage', { bufferId, messageId })
+        .then(() => this.toast('info', 'The sticker pack was added, here and on your phone'))
+        .catch((e: Error) => this.toast('error', e.message))
+      return
+    }
+    if (this.accountFor(bufferId)?.service === 'signal' && customId === 'signal:viewonce') {
+      const from = this.state.messagesByBuffer[bufferId]?.find((m) => m.id === messageId)?.from ?? ''
+      void window.moho
+        .rpc<{ path: string; kind: 'image' | 'video'; width?: number; height?: number }>('openSignalViewOnce', { bufferId, messageId })
+        .then((shown) => this.set({ viewOnce: { ...shown, from } }))
+        .catch((e: Error) => this.toast('error', e.message))
+      return
+    }
     // A Telegram bot answers a press with a notice, or an address to open, and no more: whatever else it does arrives
     // as an edit to the message or a new one.
     if (this.accountFor(bufferId)?.service === 'telegram') {
@@ -3309,6 +3681,14 @@ export class ChatStore {
     void window.moho
       .rpc('useDiscordComponent', { bufferId, messageId, customId, select, values })
       .catch((e: Error) => this.toast('error', e.message))
+  }
+
+  /** Closes a view-once picture, and has its file taken away. */
+  closeViewOnce(): void {
+    const shown = this.state.viewOnce
+    if (!shown) return
+    this.set({ viewOnce: null })
+    void window.moho.rpc('closeSignalViewOnce', { path: shown.path }).catch(() => {})
   }
 
   /**
@@ -3335,8 +3715,12 @@ export class ChatStore {
   /** Puts the call away, or brings it back. It keeps running either way. */
   /** Moves the call into a window of its own, or back over the conversation. */
   /** Puts the stream being watched in a window of its own, or back. */
-  setStreamPoppedOut(poppedOut: boolean): void {
-    this.set({ streamPoppedOut: poppedOut, watchMinimized: false })
+  setSearchPane(open: boolean): void {
+    if (this.state.searchPane !== open) this.set({ searchPane: open })
+  }
+
+  setStreamPoppedOut(poppedOut: boolean, onTop = false): void {
+    this.set({ streamPoppedOut: poppedOut, streamOnTop: poppedOut && onTop, watchMinimized: false })
   }
 
   setCallPoppedOut(poppedOut: boolean): void {
@@ -3384,7 +3768,7 @@ export class ChatStore {
   }
 
   stopWatching(): void {
-    this.set({ watching: null, watchMinimized: false, streamPoppedOut: false })
+    this.set({ watching: null, watchMinimized: false, streamPoppedOut: false, streamOnTop: false })
   }
 
   setWatchMinimized(minimized: boolean): void {
@@ -4059,6 +4443,11 @@ export class ChatStore {
       case 'steamVoice':
         this.steamVoice.handle(data as never)
         break
+      case 'telegramVoice':
+        this.telegramVoice.handle(data as never)
+        // A voice chat starting or ending where nobody here is in one: the header's button reads it again.
+        if ((data as { kind?: string }).kind === 'call') this.set({ telegramVoiceCalls: { ...this.state.telegramVoiceCalls, [String((data as { data: { bufferId?: string } }).data.bufferId ?? '')]: !!(data as { data: { active?: boolean } }).data.active } })
+        break
       // Removed from a Steam group by somebody else.
       case 'steamGroupRemoved':
         this.toast('error', `You were ${data.how} ${data.name}`)
@@ -4081,6 +4470,13 @@ export class ChatStore {
 
       // Buttons and menus, which arrive a moment after the message they are
       // on: the row has to exist before they can be written onto it.
+      case 'messageDelivery':
+        this.mapMessage(data.bufferId as string, data.messageId as string, (m) => ({
+          ...m,
+          delivery: data.delivery as ChatMessage['delivery']
+        }))
+        break
+
       case 'messageComponents':
         this.mapMessage(data.bufferId as string, data.messageId as string, (m) => ({
           ...m,
@@ -4340,6 +4736,53 @@ export class ChatStore {
         this.setRinging(data as IncomingCall)
         break
 
+      case 'signalGroupCallReactions': {
+        const now = Date.now()
+        const fresh = ((data.reactions ?? []) as { demuxId: number; value: string }[]).map((r) => ({ ...r, at: now }))
+        // Kept a few seconds: a reaction is a moment, not a record.
+        this.set({ signalCallReactions: [...this.state.signalCallReactions.filter((r) => now - r.at < 4000), ...fresh] })
+        setTimeout(() => this.set({ signalCallReactions: this.state.signalCallReactions.filter((r) => Date.now() - r.at < 4000) }), 4100)
+        break
+      }
+      case 'signalGroupCall': {
+        const call = data as unknown as SignalGroupCallState
+        if (call.joinState === 'ended') {
+          if (call.ended && call.ended !== 'You left the call') this.toast('info', `Group call: ${call.ended}`)
+          this.set({ signalGroupCall: null })
+        } else {
+          this.set({ signalGroupCall: call })
+        }
+        break
+      }
+
+      // Somebody rang a group (update 0), or the ring ended: given up, taken or turned down on another device.
+      case 'signalGroupRing': {
+        const ring = data as unknown as SignalGroupRing & { update: number }
+        const others = this.state.signalGroupRings.filter((r) => r.ringId !== ring.ringId)
+        if (ring.update !== 0) {
+          this.set({ signalGroupRings: others })
+          break
+        }
+        void window.moho
+          .rpc<{ bufferId: string | null }>('signalGroupCallBuffer', { accountId: ring.accountId, groupId: ring.groupId })
+          .then((r) => this.set({ signalGroupRings: [...this.state.signalGroupRings.filter((x) => x.ringId !== ring.ringId), { ...ring, bufferId: r.bufferId }] }))
+          .catch(() => {})
+        break
+      }
+
+      // The Signal call RingRTC is on. Ended is said once, and the call let go.
+      case 'signalCall': {
+        const call = data as unknown as SignalCallState
+        if (call.state === 'ended') {
+          if (call.ended && call.ended !== 'You hung up') this.toast('info', `Signal call: ${call.ended}`)
+          this.set({ signalCall: null })
+          this.setRinging({ accountId: call.accountId, bufferId: call.bufferId ?? '', channelId: call.callId, ringing: false })
+        } else {
+          this.set({ signalCall: call })
+        }
+        break
+      }
+
       // One event carries every state a transfer passes through, so the list
       // is updated in place rather than re-fetched on each step of a progress
       // bar that ticks several times a second.
@@ -4347,6 +4790,13 @@ export class ChatStore {
         const t = data as unknown as DccTransfer
         const rest = this.state.transfers.filter((x) => x.id !== t.id)
         this.set({ transfers: [t, ...rest] })
+        break
+      }
+
+      // Taken out of the history, here or in another window.
+      case 'transfersForgotten': {
+        const gone = new Set((data as unknown as { ids: string[] }).ids)
+        this.set({ transfers: this.state.transfers.filter((t) => !gone.has(t.id)) })
         break
       }
 
@@ -4392,6 +4842,15 @@ export class ChatStore {
       }
 
       // Telegram says what folders an account has, or that they changed.
+      // A Signal account's chat folders, drawn as Telegram's are.
+      case 'signalFolders': {
+        this.set({ telegramFolders: { ...this.state.telegramFolders, [data.accountId as string]: (data.folders ?? []) as TelegramFolder[] } })
+        break
+      }
+      case 'signalProfile': {
+        this.set({ signalProfiles: { ...this.state.signalProfiles, [data.accountId as string]: (data.profile ?? null) as SignalProfileOn | null } })
+        break
+      }
       case 'telegramFolders': {
         this.set({ telegramFolders: { ...this.state.telegramFolders, [data.accountId as string]: (data.folders ?? []) as TelegramFolder[] } })
         break
@@ -4630,6 +5089,16 @@ export class ChatStore {
       // Stoat says who has asked an account to be their friend, whenever that changes.
       case 'stoatFriendRequests': {
         this.set({ friendRequests: { ...this.state.friendRequests, [data.accountId as string]: (data.incoming ?? []) as FriendRequest[] } })
+        break
+      }
+
+      // Signal's message requests, whenever one arrives or is answered (here or on the phone).
+      case 'signalRequests': {
+        const accountId = data.accountId as string
+        this.set({
+          friendRequests: { ...this.state.friendRequests, [accountId]: (data.people ?? []) as FriendRequest[] },
+          matrixInvites: { ...this.state.matrixInvites, [accountId]: (data.groups ?? []) as MatrixInvite[] }
+        })
         break
       }
 

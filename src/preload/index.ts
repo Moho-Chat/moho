@@ -49,6 +49,25 @@ const api = {
     return ipcRenderer.invoke(IPC.twitchSignIn, options)
   },
 
+  /** A Signal call action (RingRTC, in main): available, current, start, accept, decline, hangup, mute. */
+  async signalCall<T = unknown>(action: string, params: Record<string, unknown> = {}): Promise<T> {
+    const res = await ipcRenderer.invoke(IPC.signalCall, action, params)
+    if (!res.ok) throw new Error(res.error)
+    return res.result as T
+  },
+
+  /** The other side's picture in a Signal call, frame by frame (RGBA). */
+  onSignalCallFrame(cb: (width: number, height: number, rgba: Uint8Array, demuxId?: number) => void): () => void {
+    const handler = (_e: unknown, width: number, height: number, rgba: Uint8Array, demuxId?: number): void => cb(width, height, rgba, demuxId)
+    ipcRenderer.on(IPC.signalCallFrame, handler)
+    return () => ipcRenderer.off(IPC.signalCallFrame, handler)
+  },
+
+  /** A frame of this side's camera for a Signal call (RGBA). */
+  sendSignalCallFrame(width: number, height: number, rgba: Uint8Array): void {
+    ipcRenderer.send(IPC.signalCallFrame, width, height, rgba)
+  },
+
   onEvent(cb: (frame: NobilisEvent) => void): () => void {
     const handler = (_e: unknown, frame: NobilisEvent): void => cb(frame)
     ipcRenderer.on(IPC.event, handler)
@@ -89,8 +108,8 @@ const api = {
   },
 
   /** The tray menu asking this window to open Settings, or to set a status on every account. */
-  onTrayCommand(cb: (command: 'settings' | 'status', arg?: string) => void): () => void {
-    const handler = (_e: unknown, command: 'settings' | 'status', arg?: string): void => cb(command, arg)
+  onTrayCommand(cb: (command: 'settings' | 'status' | 'mentions' | 'markAllRead', arg?: string) => void): () => void {
+    const handler = (_e: unknown, command: 'settings' | 'status' | 'mentions' | 'markAllRead', arg?: string): void => cb(command, arg)
     ipcRenderer.on(IPC.trayCommand, handler)
     return () => ipcRenderer.off(IPC.trayCommand, handler)
   },
@@ -105,7 +124,7 @@ const api = {
   },
 
   /** Says what is waiting, counted the way the rail counts it, for the tray's number. */
-  setTrayUnread(count: { dms: number; mentions: number; latest: string | null }): void {
+  setTrayUnread(count: { dms: number; mentions: number; latest: string | null; waiting?: { id: string; name: string; count: number; direct: boolean }[] }): void {
     ipcRenderer.send(IPC.trayUnread, count)
   },
 
@@ -134,6 +153,16 @@ const api = {
   },
 
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke(IPC.openExternal, url),
+
+  /**
+   * A finished transfer's file: opened with whatever the system opens it with
+   * ('open'), or shown selected in the file manager ('reveal'). With no id,
+   * 'folder' opens the folder downloads are saved to. The window names the
+   * transfer and main finds where it landed from the daemon, so nothing here
+   * can be made to open a path of somebody else's choosing.
+   */
+  transferFile: (action: 'open' | 'reveal' | 'folder', id = ''): Promise<{ error?: string }> =>
+    ipcRenderer.invoke(IPC.transferFile, action, id),
 
   /** A finished document (a Telegram Instant View) in a window of its own. */
   openArticle: (title: string, html: string): Promise<void> => ipcRenderer.invoke(IPC.openArticle, title, html),
@@ -183,6 +212,9 @@ const api = {
   },
   pickSavePath: (suggested?: string): Promise<string | null> =>
     ipcRenderer.invoke(IPC.pickSavePath, suggested),
+  /** Saves an attachment the daemon keeps in its cache where the person chooses (see main's saveAttachment). */
+  saveAttachment: (cachedPath: string, name: string): Promise<'saved' | 'cancelled' | 'missing' | 'refused'> =>
+    ipcRenderer.invoke(IPC.saveAttachment, cachedPath, name),
   pickDirectory: (): Promise<string | null> => ipcRenderer.invoke(IPC.pickDirectory),
   importGroupIcon: (groupId: string): Promise<{ path?: string; error?: string }> =>
     ipcRenderer.invoke(IPC.importGroupIcon, groupId),

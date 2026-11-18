@@ -335,6 +335,222 @@ const setMode = async (page, mode) => {
   await sleep(600)
 }
 
+// --- the rework's own scenes (#339) -------------------------------------------
+
+/**
+ * A dozen accounts across every service, some of them in trouble: what the
+ * accounts page and the "+" pane have to stand up to. Put straight into the
+ * store - the daemon knows none of them, so whatever a card asks it about
+ * them comes back an error, and the toasts are cleared before the picture.
+ */
+const MANY = `(() => {
+  const shots = window.__mohoShots
+  const s = shots.state()
+  const base = { autojoin: '', hasNickservPassword: false, saslEnabled: false, saslUsername: '', allowPlaintextSasl: false,
+    reconnectForSasl: false, saslMechanism: '', hasSaslCertificate: false, currentNick: '', ssl: true, hasPassword: true,
+    useTor: false, hasKeyBackup: false, status: 'online', state: 'connected' }
+  const acc = (id, service, displayName, extra = {}) => ({ ...base, id, service, displayName, currentNick: displayName, ...extra })
+  const made = [
+    acc('salastil@irc.libera.chat', 'irc', 'salastil', { autojoin: '#moho,#rust', saslEnabled: true, saslUsername: 'salastil' }),
+    acc('sal@irc.rizon.net', 'irc', 'sal', { state: 'connecting' }),
+    acc('salastil@irc.oftc.net', 'irc', 'salastil', { state: 'disconnected' }),
+    acc('discord:shots', 'discord', 'Salastil'),
+    acc('discord:alt', 'discord', 'An Person', { state: 'auth_failed' }),
+    acc('@salastil:poa.st', 'matrix', 'salastil', { hasKeyBackup: true, routeLevel: 'service', useTor: true }),
+    acc('@work:matrix.org', 'matrix', 'J. Farrow', { status: 'idle' }),
+    acc('sneedchat:1', 'sneedchat', 'Salastil'),
+    acc('kick:salastil', 'kick', 'salastil'),
+    acc('steam:76561198000000001', 'steam', 'Salastil'),
+    acc('twitch:salastil', 'twitch', 'salastil', { moderation: true }),
+    acc('telegram:1', 'telegram', 'Salastil'),
+    acc('stoat:01J', 'stoat', 'salastil', { state: 'error' }),
+    acc('xmpp:salastil@chatterboxtown.us', 'xmpp', 'salastil@chatterboxtown.us', { routeLevel: 'strict', useTor: true }),
+    acc('signal:+15550100', 'signal', 'Salastil')
+  ]
+  const local = s.accounts.filter((a) => a.id.includes('localhost') || a.id.includes('127.0.0.1'))
+  const groups = [...s.groups.filter((g) => local.some((a) => a.id === g.accountId))]
+  let pos = 10
+  for (const a of made) groups.push({ id: a.id + '|home', accountId: a.id, service: a.service, kind: a.service === 'discord' ? 'guild' : 'network', name: a.service === 'discord' ? 'Button Eye Crochet' : a.displayName, position: pos++ })
+  shots.patch({ accounts: [...local, ...made], groups })
+  return true
+})()`
+
+const many = async (page) => {
+  await page.evaluate(MANY)
+  await sleep(500)
+}
+const clearToasts = async (page) => {
+  await sleep(700)
+  await page.evaluate(`window.__mohoShots.patch({ toasts: [] }), true`)
+  await sleep(150)
+}
+/** Opens the Join pane for one of the staged accounts. */
+const joinOn = (accountId) => async (page) => {
+  await many(page)
+  await page.evaluate(`window.__mohoShots.store.setActivePanel('join', ${JSON.stringify(accountId)})`)
+  await clearToasts(page)
+}
+/** The accounts page with one staged account opened, by whatever this build calls opening one. */
+const accountOpen = (accountId, nth) => async (page) => {
+  await many(page)
+  await page.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`)
+  await sleep(400)
+  await page.evaluate(`(() => {
+    const id = ${JSON.stringify(accountId)}
+    // The reworked page: a row per account, chosen by its id.
+    const row = document.querySelector('[data-account-id="' + CSS.escape(id) + '"]')
+    if (row) { row.click(); return 'row' }
+    // The page as it was: fold every service open, then the card's own chevron.
+    return 'old'
+  })()`)
+  // The page as it was: every service folded open, one at a time, then the card's own chevron.
+  for (let i = 0; i < 12; i++) {
+    const more = await page.evaluate(`(() => { const head = document.querySelector('.account-group-head[aria-expanded="false"]'); head?.click(); return !!head })()`)
+    if (!more) break
+    await sleep(120)
+  }
+  await sleep(300)
+  // As it was, the cards are in the page's own order: the nth of them.
+  await page.evaluate(`(() => {
+    const card = document.querySelectorAll('.account-card')[${nth}]
+    card?.querySelector('.icon-button[title="Settings"]')?.click()
+    setTimeout(() => card?.scrollIntoView({ block: 'start' }), 150)
+  })()`)
+  await clearToasts(page)
+}
+
+/** A history of transfers, as a busy XDCC channel leaves one. */
+const downloads = async (page) => {
+  await page.evaluate(`(() => {
+    const now = Math.floor(Date.now() / 1000)
+    const row = (id, fileName, state, ago, extra = {}) => ({ id, accountId: 'irc:x', kind: 'dcc', outgoing: false, from: 'Gattsu', fileName, rawName: fileName, size: 1397541964, received: 1397541964, rate: 0, state, startedAt: now - ago, path: state === 'done' ? '/home/you/Downloads/' + fileName : null, error: null, ...extra })
+    const ep = (n, title) => 'Mushoku.Tensei.S02E0' + n + '.' + title + '.1080p.WEB-DL.mkv'
+    window.__mohoShots.patch({ transfers: [
+      row('t1', ep(6, 'I.Do.Not.Want.to.Die'), 'receiving', 40, { received: 612000000, rate: 4200000 }),
+      row('t2', ep(5, 'Ranoa.University.of.Magic'), 'done', 1800),
+      row('t3', ep(4, 'Letter.of.Recommendation'), 'done', 5400),
+      row('t4', ep(1, 'The.Depressed.Magician'), 'failed', 9000, { received: 528027476, error: 'connection ended after 528027476 of 1397541964 bytes' }),
+      row('t5', ep(3, 'Fast.Approach'), 'declined', 86400 * 2, { error: 'declined' }),
+      row('t6', ep(2, 'The.Midnight.Forest'), 'failed', 86400 * 9, { received: 381159136, error: 'connection ended after 381159136 of 1580231143 bytes' }),
+      row('t7', '[SubsPlease] Mushoku Tensei - 01v2 (1080p) [F76E4E71].mkv', 'done', 86400 * 12),
+      row('t8', 'Alexcellence-2026-09-12', 'done', 86400 * 40, { kind: 'export', from: 'Alexcellence', received: 46, size: 46 })
+    ] })
+    window.__mohoShots.store.setActivePanel('downloads')
+    return true
+  })()`)
+  await sleep(500)
+}
+
+const REWORK = [
+  { name: 'rework-accounts', setup: async (p) => { await many(p); await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`); await clearToasts(p) } },
+  { name: 'rework-account-irc', setup: accountOpen('salastil@irc.libera.chat', 1) },
+  { name: 'rework-account-matrix', setup: accountOpen('@salastil:poa.st', 4) },
+  { name: 'rework-account-discord-failed', setup: accountOpen('discord:alt', 7) },
+  {
+    name: 'rework-account-add',
+    setup: async (p) => {
+      await many(p)
+      await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`)
+      await sleep(400)
+      await p.evaluate(`(document.querySelector('[data-add-account]') || [...document.querySelectorAll('.service-chip')].find((c) => c.innerText.includes('Matrix')))?.click()`)
+      await sleep(300)
+      await p.evaluate(`[...document.querySelectorAll('[data-add-service], .service-chip')].find((c) => c.innerText.includes('Matrix'))?.click()`)
+      await clearToasts(p)
+    }
+  },
+  // What only the reworked page has: an account's other tabs, the services to choose from, a narrow window.
+  { name: 'rework-tab-connection', setup: async (p) => { await accountOpen('salastil@irc.libera.chat', 1)(p); await p.evaluate(`document.querySelector('[data-tab=connection]')?.click()`); await sleep(400) } },
+  { name: 'rework-tab-service', setup: async (p) => { await accountOpen('@salastil:poa.st', 4)(p); await p.evaluate(`document.querySelector('[data-tab=service]')?.click()`); await clearToasts(p) } },
+  { name: 'rework-tab-servers', setup: async (p) => { await accountOpen('discord:shots', 6)(p); await p.evaluate(`document.querySelector('[data-tab=servers]')?.click()`); await sleep(400) } },
+  // XMPP's own tab: its sections down the side (#339, comment 579).
+  { name: 'rework-xmpp-tools', setup: async (p) => { await accountOpen('xmpp:salastil@chatterboxtown.us', 13)(p); await p.evaluate(`document.querySelector('[data-tab=service]')?.click()`); await clearToasts(p) } },
+  {
+    name: 'rework-xmpp-tools-privacy',
+    setup: async (p) => {
+      await accountOpen('xmpp:salastil@chatterboxtown.us', 13)(p)
+      await p.evaluate(`document.querySelector('[data-tab=service]')?.click()`)
+      await sleep(300)
+      await p.evaluate(`[...document.querySelectorAll('.side-tabs-item')].find((b) => b.innerText.includes('Contacts'))?.click()`)
+      await clearToasts(p)
+    }
+  },
+  // A long friends list: searched, and in a box of its own (comment 582).
+  {
+    name: 'rework-join-discord-friends',
+    setup: async (p) => {
+      await joinOn('discord:shots')(p)
+      await p.evaluate(`(() => {
+        const s = window.__mohoShots.state()
+        const names = ['Gaunt King', 'Clarence', 'Wren', 'Old Friend', 'Quiet One', 'Ada', 'Brook', 'Cass', 'Dmitri', 'Esme', 'Finch', 'Greta', 'Hollis', 'Ines', 'Jun', 'Kit', 'Lark', 'Milo', 'Nell', 'Orin', 'Pia', 'Quill', 'Rhea', 'Sol', 'Tamsin', 'Uri', 'Vale', 'Wynn', 'Xan', 'Yara']
+        const friends = names.map((n, i) => ({ userId: String(1000 + i), username: n.toLowerCase().replace(/ /g, '_') + (i % 3 ? '' : '.' + i), globalName: n, status: ['online', 'idle', 'dnd', 'online', 'offline'][i % 5] }))
+        window.__mohoShots.patch({ discordFriends: { ...s.discordFriends, 'discord:shots': friends } })
+        return true
+      })()`)
+      await sleep(500)
+    }
+  },
+  // Each service's sign-in form, on its page.
+  ...['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram', 'stoat', 'signal', 'xmpp'].map((service) => ({
+    name: 'rework-form-' + service,
+    setup: async (p) => {
+      await many(p)
+      await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`)
+      await sleep(300)
+      await p.evaluate(`document.querySelector('[data-add-account]')?.click()`)
+      await sleep(250)
+      await p.evaluate(`document.querySelector('[data-add-service="${service}"]')?.click()`)
+      await clearToasts(p)
+    }
+  })),
+  { name: 'rework-tab-ignored-steam', setup: async (p) => { await accountOpen('steam:76561198000000001', 9)(p); await p.evaluate(`document.querySelector('[data-tab=ignored]')?.click()`); await clearToasts(p) } },
+  { name: 'rework-tab-matrix-keys', setup: async (p) => { await accountOpen('@salastil:poa.st', 4)(p); await p.evaluate(`document.querySelector('[data-tab=service]')?.click()`); await sleep(300); await p.evaluate(`[...document.querySelectorAll('.side-tabs-item')].find((b) => b.innerText.includes('Keys'))?.click()`); await clearToasts(p) } },
+  { name: 'rework-add-grid', setup: async (p) => { await many(p); await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`); await sleep(400); await p.evaluate(`document.querySelector('[data-add-account]')?.click()`); await clearToasts(p) } },
+  {
+    name: 'rework-narrow-list',
+    setup: async (p) => { await p.call('Emulation.setDeviceMetricsOverride', { width: 860, height: 800, deviceScaleFactor: 1, mobile: false }); await many(p); await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`); await clearToasts(p) },
+    after: async (p) => p.call('Emulation.setDeviceMetricsOverride', { ...SIZE, deviceScaleFactor: 1, mobile: false })
+  },
+  {
+    name: 'rework-narrow-page',
+    setup: async (p) => { await p.call('Emulation.setDeviceMetricsOverride', { width: 860, height: 800, deviceScaleFactor: 1, mobile: false }); await joinOn('@salastil:poa.st')(p) },
+    after: async (p) => p.call('Emulation.setDeviceMetricsOverride', { ...SIZE, deviceScaleFactor: 1, mobile: false })
+  },
+  // Nothing signed in yet: the page a new person meets first.
+  {
+    name: 'rework-first-run',
+    setup: async (p) => { await p.evaluate(`window.__mohoShots.patch({ accounts: [], groups: [], buffers: [], activeBufferId: '', activeGroupId: '' }), true`); await clearToasts(p) },
+    after: async (p) => { await p.call('Page.reload'); await until(p, 'window.__mohoShots && document.querySelector(".buffer-row")', 'the window after a reload'); await p.call('Emulation.setDeviceMetricsOverride', { ...SIZE, deviceScaleFactor: 1, mobile: false }) }
+  },
+  // Downloads with a history in it (comment 581): the folder first, what can be done with a row, clearing.
+  { name: 'rework-downloads', setup: async (p) => { await downloads(p) } },
+  {
+    name: 'rework-downloads-clear',
+    setup: async (p) => { await downloads(p); await p.evaluate(`[...document.querySelectorAll('.downloads-head .button')].find((b) => b.innerText.includes('Clear'))?.click()`); await sleep(300) }
+  },
+  // The notification levels on a channel, with direct mentions only among them (comment 583).
+  {
+    name: 'rework-notify-menu',
+    setup: async (p) => {
+      await discord(false)(p)
+      const c = await centre(p, '.buffer-row', 'general')
+      if (c) {
+        await mouse(p, 'mousePressed', c.x, c.y, 'right')
+        await mouse(p, 'mouseReleased', c.x, c.y, 'right')
+      }
+      await sleep(300)
+    },
+    clip: { x: 0, y: 44, width: 520, height: 520 }
+  },
+  { name: 'rework-join-irc', setup: joinOn('salastil@irc.libera.chat') },
+  { name: 'rework-join-discord', setup: joinOn('discord:shots') },
+  { name: 'rework-join-matrix', setup: joinOn('@salastil:poa.st') },
+  { name: 'rework-join-steam', setup: joinOn('steam:76561198000000001') },
+  { name: 'rework-join-signal', setup: joinOn('signal:+15550100') },
+  { name: 'rework-join-xmpp', setup: joinOn('xmpp:salastil@chatterboxtown.us') },
+  { name: 'rework-settings-general', setup: async (p) => { await many(p); await p.evaluate(`window.__mohoShots.store.setActivePanel('settings')`); await clearToasts(p) } },
+  { name: 'rework-chat', setup: async (p) => { await setMode(p, 'comfy'); await openChannel(p, '#general') } }
+]
+
 /**
  * Each scene puts the window into a state and is photographed there.
  * `video` scenes are recorded instead, while `act` runs.
@@ -352,6 +568,46 @@ const SCENES = [
     name: 'gif-picker',
     setup: async (p) => { await setMode(p, 'comfy'); await openChannel(p, '#general'); await openGifPicker(p) }
   },
+  // A streaming channel's header, on air and off (#339): the name, whether it is live, the
+  // title, who is watching, what the room is set to, and Watch.
+  ...[['live', true], ['offline', false], ['watching', true]].map(([name, live]) => ({
+    name: `stream-header-${name}`,
+    setup: async (p) => {
+      await p.evaluate(`(() => {
+        const shots = window.__mohoShots
+        const s = shots.state()
+        const acc = 'twitch:shots'
+        const id = acc + '|#caedrel'
+        const now = Math.floor(Date.now() / 1000)
+        const chat = (n, from, body, color) => ({ id: 't' + n, bufferId: id, from, senderId: from, senderColor: color, body, ts: now - 90 + n * 6, isAction: false, isHighlight: false, kind: 'chat', isOwn: false, embeds: [] })
+        shots.patch({
+          accounts: [...s.accounts.filter((a) => a.id !== acc), { id: acc, service: 'twitch', displayName: 'salastil', state: 'connected', autojoin: '', currentNick: 'salastil', status: 'online', useTor: false, ssl: true, hasPassword: true }],
+          groups: [...s.groups.filter((g) => g.accountId !== acc), { id: 'account:' + acc, accountId: acc, service: 'twitch', kind: 'account', name: 'Twitch', position: 9 }],
+          buffers: [...s.buffers.filter((b) => b.accountId !== acc), { id, accountId: acc, kind: 'channel', name: '#caedrel', lastActivityTs: now, groupId: 'account:' + acc, unread: 0, channelModes: 'followers only (1 hour), slow mode 5s, emote only' }],
+          messagesByBuffer: { ...s.messagesByBuffer, [id]: [
+            chat(1, 'riftwatcher', 'that flank was disgusting', '#8a2be2'), chat(2, 'bluebuff', 'KEKW he is so far ahead', '#1e90ff'), chat(3, 'wardbot', 'baron in 30', '#ff7f50'),
+            chat(4, 'midgap', 'worlds player btw', '#2e8b57'), chat(5, 'riftwatcher', 'draft diff honestly', '#8a2be2'), chat(6, 'lanekingdom', 'chat is this a scrim or soloq', '#daa520')
+          ] },
+          kickStreams: { ...s.kickStreams, [id]: ${live}
+            ? { bufferId: id, live: true, title: 'WORLDS PLAYER PLAYING SOLOQ | !youtube !drops', category: 'League of Legends', viewers: 41677, startedTs: now - 8040, followers: 1200000, following: true }
+            : { bufferId: id, live: false, title: null, category: null, viewers: null, following: false } },
+          presenceByBuffer: { ...s.presenceByBuffer, [id]: [] },
+          activeGroupId: 'account:' + acc,
+          activeBufferId: id
+        })
+      })()`)
+      await sleep(600)
+      // The third takes the stage as well.
+      if (name === 'watching') {
+        await p.evaluate(`(() => { const s = window.__mohoShots.state(); window.__mohoShots.patch({ watching: { bufferId: s.activeBufferId, accountId: 'twitch:shots', title: 'caedrel' } }) })()`)
+        await sleep(900)
+        // The pointer over the picture, which is what brings its controls up in a build that hides them.
+        await mouse(p, 'mouseMoved', 640, 300)
+        await mouse(p, 'mouseMoved', 660, 310)
+        await sleep(400)
+      }
+    }
+  })),
   {
     // What somebody did on a Kick stream: KICKs sent, subscriptions gifted. Put
     // on a channel's messages directly - a stream is not here to do it.
@@ -443,7 +699,12 @@ const SCENES = [
       await discord(false)(p)
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'moho-tray-'))
       const make = (name, bytes) => { const f = path.join(dir, name); fs.writeFileSync(f, Buffer.alloc(bytes, 1)); return f }
-      const files = [make('finished-amigurumi-owl.png', 482_000), make('pattern-notes.pdf', 1_900_000), make('workshop-clip.mp4', 12_400_000), make('granny-square-closeup.jpg', 233_000)]
+      // A video that is one, so its card has a frame to show and a length to say.
+      const clip = path.join(dir, 'workshop-clip.mp4')
+      execFileSync('ffmpeg', ['-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=10', '-t', '83', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-crf', '38', clip])
+      const voice = path.join(dir, 'voice-memo.ogg')
+      execFileSync('ffmpeg', ['-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440', '-t', '47', '-c:a', 'libopus', '-b:a', '12k', voice])
+      const files = [make('finished-amigurumi-owl.png', 482_000), make('pattern-notes.pdf', 1_900_000), clip, make('granny-square-closeup.jpg', 233_000), voice, make('yarn-stash.zip', 5_300_000)]
       await p.evaluate(`(async () => {
         const art = (a, b, label) => new Promise((resolve) => {
           const c = document.createElement('canvas'); c.width = 320; c.height = 200
@@ -454,11 +715,14 @@ const SCENES = [
         const owl = await art('#e0a43a', '#b0457a', 'owl')
         const squares = await art('#3a8fe0', '#4a2f9a', 'squares')
         const mk = (blob, name) => new File([blob], name, { type: 'image/png' })
+        const bytes = (b64, name, type) => new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], name, { type })
         window.dispatchEvent(new CustomEvent('moho:stage-files', { detail: [
           { path: ${JSON.stringify(files[0])}, file: mk(owl, 'owl.png') },
           { path: ${JSON.stringify(files[1])} },
-          { path: ${JSON.stringify(files[2])} },
-          { path: ${JSON.stringify(files[3])}, file: mk(squares, 'squares.png') }
+          { path: ${JSON.stringify(files[2])}, file: bytes(${JSON.stringify(fs.readFileSync(files[2]).toString('base64'))}, 'workshop-clip.mp4', 'video/mp4') },
+          { path: ${JSON.stringify(files[3])}, file: mk(squares, 'squares.png') },
+          { path: ${JSON.stringify(files[4])}, file: bytes(${JSON.stringify(fs.readFileSync(files[4]).toString('base64'))}, 'voice-memo.ogg', 'audio/ogg') },
+          { path: ${JSON.stringify(files[5])} }
         ] }))
       })()`)
       await sleep(700)
@@ -574,7 +838,34 @@ const SCENES = [
       await sleep(700)
     }
   },
-  { name: 'mentions-inbox', setup: async (p) => { await p.evaluate(click('button[title="Mentions"]')); await sleep(400) } },
+  // A Matrix room's header in a narrow window (#339): closed, the name has the row; open, the room's tools are a strip under it.
+  ...[['header-narrow', false], ['header-narrow-open', true]].map(([name, open]) => ({
+    name,
+    setup: async (p) => {
+      await p.call('Emulation.setDeviceMetricsOverride', { width: 900, height: 800, deviceScaleFactor: 1, mobile: false })
+      await openChannel(p, '#general')
+      await p.evaluate(`(() => { const s = window.__mohoShots.state(); window.__mohoShots.patch({ buffers: s.buffers.map((b) => b.id === s.activeBufferId ? { ...b, accountId: 'matrix:' + b.accountId, name: '#general-discussion-and-planning' } : b), accounts: s.accounts.map((a) => ({ ...a, id: 'matrix:' + a.id, service: 'matrix' })) }); return true })()`)
+      await sleep(500)
+      if (open) await p.evaluate(click('button[title^="Threads, pins"]'))
+      await sleep(400)
+    },
+    after: async (p) => p.call('Emulation.setDeviceMetricsOverride', { ...SIZE, deviceScaleFactor: 1, mobile: false }),
+    clip: { x: 0, y: 0, width: 900, height: 200 }
+  })),
+  // The button's title says how many are waiting now, so it is found by where it is.
+  { name: 'mentions-inbox', setup: async (p) => { await SCENES.find((x) => x.name === 'mentions-page').setup(p); await p.evaluate(`window.__mohoShots.store.selectBuffer('discord:shots|c3')`); await sleep(500); await p.evaluate(click('.mentions-inbox > button')); await sleep(500) } },
+  {
+    // The search box in the header, with what it found.
+    name: 'search-popover',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await p.evaluate(click('button[title^="Search"]'))
+      await sleep(400)
+      await p.evaluate(`(() => { const i = document.querySelector('.search-popover input'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, 'the'); i.dispatchEvent(new Event('input', { bubbles: true })); i.focus() })()`)
+      await pressKey(p, 'Enter', 'Enter')
+      await sleep(900)
+    }
+  },
   {
     name: 'modal-export',
     setup: async (p) => {
@@ -594,7 +885,8 @@ const SCENES = [
       await sleep(300)
       await p.evaluate(click('.context-menu-item', 'Export'))
       await sleep(500)
-      await p.evaluate(`[...document.querySelectorAll('.reason-prompt label')].find((l) => l.innerText.includes('A range'))?.click()`)
+      // "A range" in the old dialog, "Custom" in the new one.
+      await p.evaluate(`([...document.querySelectorAll('.reason-prompt label')].find((l) => l.innerText.includes('A range')) ?? [...document.querySelectorAll('.export-spans button')].find((b) => b.innerText === 'Custom'))?.click()`)
       await sleep(400)
     }
   },
@@ -720,10 +1012,9 @@ const SCENES = [
       await openChannel(p, '#general')
       await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`)
       await sleep(500)
-      await p.evaluate(`document.querySelector('.account-card .icon-button[title="Settings"]')?.click()`)
+      // An account's page is always open now (#339); Remove is at the foot of its General tab.
+      await p.evaluate(`document.querySelector('.account-row')?.click()`)
       await sleep(500)
-      await p.evaluate(`(document.querySelector('.settings .panel') || document.querySelector('.panel')).scrollTop = 1e6`)
-      await sleep(300)
     }
   },
   { name: 'settings-accounts', setup: async (p) => { await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`); await sleep(400) } },
@@ -894,7 +1185,8 @@ const SCENES = [
     ['dnd', 'connected', 'dnd'],
     ['idle', 'connected', 'idle'],
     ['connecting', 'connecting', 'online'],
-    ['offline', 'disconnected', 'online']
+    ['offline', 'disconnected', 'online'],
+    ['refused', 'auth_failed', 'online']
   ].flatMap(([name, state, status]) => [
     {
       name: `presence-${name}-footer`,
@@ -1172,6 +1464,63 @@ const SCENES = [
       })()`)
       await sleep(600)
     }
+  },
+  // The light theme (#339), on the screens seen most. The theme is put on the root as the setting would put it.
+  ...[
+    ['light-discord', async (p) => { await setMode(p, 'comfy'); await discord(false)(p) }],
+    ['light-irc-classic', async (p) => { await setMode(p, 'classic'); await openChannel(p, '#general') }],
+    ['light-bubbles', async (p) => { await setMode(p, 'bubbles'); await openChannel(p, '#general') }],
+    ['light-settings', async (p) => { await openChannel(p, '#general'); await p.evaluate(`window.__mohoShots.store.setActivePanel('settings')`); await sleep(400); await p.evaluate(`[...document.querySelectorAll('.settings-rail-item')].find((b) => b.innerText.includes('Appearance'))?.click()`) }],
+    ['light-accounts', async (p) => { await many(p); await p.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`) }],
+    ['light-mentions', async (p) => { await SCENES.find((x) => x.name === 'mentions-page').setup(p) }],
+    ['light-teal', async (p) => { await setMode(p, 'comfy'); await discord(false)(p); await p.evaluate(`['--primary:#00796b'].forEach((d) => document.documentElement.style.setProperty(...d.split(':')))`) }]
+  ].map(([name, setup]) => ({
+    name,
+    setup: async (p) => {
+      await setup(p)
+      await p.evaluate(`document.documentElement.dataset.theme = 'light'`)
+      await sleep(500)
+    },
+    after: async (p) => p.evaluate(`delete document.documentElement.dataset.theme; document.documentElement.style.removeProperty('--primary')`)
+  })),
+  {
+    // A run of people coming and going, folded to one line (#339).
+    name: 'event-run',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await p.evaluate(`(() => {
+        const shots = window.__mohoShots
+        const s = shots.state()
+        const id = s.activeBufferId
+        const now = Math.floor(Date.now() / 1000)
+        const ev = (n, kind, body) => ({ id: 'ev' + n, bufferId: id, from: '', body, ts: now - 40 + n, isAction: false, isHighlight: false, kind, isOwn: false, embeds: [] })
+        shots.patch({ messagesByBuffer: { ...s.messagesByBuffer, [id]: [...s.messagesByBuffer[id],
+          ev(1, 'join', 'heidi entered the room'), ev(2, 'join', 'ivan entered the room'), ev(3, 'part', 'heidi left the room'), ev(4, 'join', 'judy entered the room'), ev(5, 'nick', 'ivan is now known as ivan_'),
+          { id: 'evc', bufferId: id, from: 'judy', senderId: 'judy', body: 'evening all', ts: now, isAction: false, isHighlight: false, kind: 'chat', isOwn: false, embeds: [] }
+        ] } })
+        return true
+      })()`)
+      await sleep(600)
+    }
+  },
+  {
+    // Nothing open: what there is to do about it (#339).
+    name: 'nothing-open',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await p.evaluate(`window.__mohoShots.patch({ activeBufferId: '' }), true`)
+      await sleep(400)
+    }
+  },
+  {
+    // The browser's own checkbox, radio and select, as the app draws them wherever one is left (#339).
+    name: 'native-controls',
+    setup: async (p) => {
+      await openChannel(p, '#general')
+      await p.evaluate(`document.querySelector('.composer').insertAdjacentHTML('beforebegin', '<div id="nc" style="display:flex;gap:18px;align-items:center;padding:14px 18px"><label><input type="checkbox"> Off</label><label><input type="checkbox" checked> On</label><label><input type="checkbox" checked disabled> Fixed</label><label><input type="radio" name="r"> One</label><label><input type="radio" name="r" checked> Other</label><select><option>Plain select</option></select><select class="text-field"><option>In a form</option></select></div>')`)
+      await sleep(300)
+    },
+    clip: { x: 277, y: 660, width: 823, height: 70 }
   },
   {
     name: 'dialog-poll',
@@ -1516,7 +1865,7 @@ async function main() {
   const out = path.join(DIR, flag('--out') ?? 'shots')
   const only = flag('--only')
   fs.mkdirSync(out, { recursive: true })
-  const scenes = SCENES.filter((s) => !only || s.name.includes(only))
+  const scenes = [...SCENES, ...REWORK].filter((s) => !only || s.name.includes(only))
 
   const irc = await fakeIrc({ people: PEOPLE, caps: ['server-time'], onJoin })
   const { page, stop } = await launchApp({ env: { MOHO_UI_SHOTS: '1' } })
@@ -1531,7 +1880,7 @@ async function main() {
         // Every scene starts from the same place: nothing open, the IRC
         // network showing, the mouse out of the way.
         await escape(page)
-        await page.evaluate(`window.__mohoShots.store.setActivePanel(''), window.__mohoShots.patch({ toasts: [], typingByBuffer: {}, replyingTo: null })`)
+        await page.evaluate(`window.__mohoShots.store.setActivePanel(''), window.__mohoShots.patch({ toasts: [], typingByBuffer: {}, replyingTo: null, transfers: [] })`)
         await mouse(page, 'mouseMoved', SIZE.width - 1, SIZE.height - 1)
         await scene.setup(page)
         if (scene.video) {
@@ -1542,6 +1891,7 @@ async function main() {
           await photograph(page, path.join(out, `${scene.name}.png`), scene.clip)
           console.log(`  shot  ${scene.name}`)
         }
+        await scene.after?.(page)
       } catch (e) {
         failed.push(`${scene.name}: ${e.message}`)
         console.log(`  FAIL  ${scene.name}: ${e.message}`)

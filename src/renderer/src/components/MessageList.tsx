@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { eventRuns, runSummary } from '../lib/searchmarks'
 import { Icon } from './Icon'
 import { MessageRow, useRowContext, type MessageMode } from './MessageRow'
 import { LiveCards } from './LiveCards'
@@ -10,7 +11,7 @@ import { ServiceBanner } from './ServiceBanner'
 import { ConversationNotice } from './ConversationNotice'
 import { RouteAccount, useStrictRoute } from '../lib/route'
 import { useChat, usePref, useStore } from '../state/hooks'
-import { bufferDisplayName, dayLabel, isChatKind, startsNewDay } from '../lib/util'
+import { bufferDisplayName, dayLabel, isChatKind, startsNewDay, dayOf } from '../lib/util'
 import type { ChannelIndex } from '../lib/format'
 import { applyRemoved, type RemovedMessages } from '../lib/moderation'
 import type { ChatMessage } from '../state/store'
@@ -340,6 +341,10 @@ export function MessageList(): JSX.Element {
   // and not built; everything from here is on the page.
   const start = Math.max(0, messages.length - shown)
   const view = useMemo(() => (start === 0 ? messages : messages.slice(start)), [messages, start])
+  // Three or more people coming and going in a row are one line until asked for (#339).
+  const runs = useMemo(() => eventRuns(messages, (a, b) => dayOf(a) === dayOf(b)), [messages])
+  const [openRuns, setOpenRuns] = useState<Set<string>>(new Set())
+  useEffect(() => setOpenRuns(new Set()), [bufferId])
 
   const lastBufferRef = useRef(bufferId)
   /** The newest message already accounted for, so growth is told from a prepend. */
@@ -858,6 +863,49 @@ export function MessageList(): JSX.Element {
             // grouping, the new-message divider and the history gap are all
             // about where a message sits in the conversation.
             const i = start + offset
+            const run = runs.get(i)
+            // Folded unless it was opened, or something in it has to be seen: the place a jump is going,
+            // the line where the new messages begin, a break in the log.
+            const holds = (id: string | undefined | null): boolean =>
+              !!run && !!id && messages.slice(run.first, run.last + 1).some((m) => m.id === id)
+            const folded =
+              !!run &&
+              !openRuns.has(messages[run.first].id) &&
+              !(dividerIndex > run.first && dividerIndex <= run.last) &&
+              !holds(jumpTarget) &&
+              !holds(gapAfterId)
+            if (run && folded && i !== Math.max(run.first, start)) return <div key={msg.id} />
+            if (run && folded) {
+              return (
+                <div key={msg.id}>
+                  {(startsNewDay(messages, i) || (offset === 0 && msg.ts > 0)) && (
+                    <div className="date-divider" role="separator">
+                      <span>{dayLabel(msg.ts)}</span>
+                    </div>
+                  )}
+                  {i === dividerIndex && (
+                    <div className="new-divider">
+                      <span>New</span>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="event-run small"
+                    title={messages
+                      .slice(run.first, run.last + 1)
+                      .map((m) => m.body)
+                      .filter(Boolean)
+                      .slice(0, 12)
+                      .join('\n')}
+                    onClick={() => setOpenRuns(new Set([...openRuns, messages[run.first].id]))}
+                  >
+                    <Icon name="group" size={14} />
+                    <span>{runSummary(run)}</span>
+                    <span className="event-run-show">Show</span>
+                  </button>
+                </div>
+              )
+            }
             return (
             <div key={msg.id}>
               {/* A new day, said once, where it begins - and on the first

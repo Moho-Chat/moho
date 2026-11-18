@@ -1,0 +1,781 @@
+/**
+ * Signal calls, run by RingRTC - Signal's own call engine (its WebRTC, its key exchange, the audio devices) - in this
+ * process, as Signal Desktop runs it. The daemon is what is connected to Signal: it hands over every call message as it
+ * arrived (`signalCallMessage`, with the identity keys RingRTC binds a call to), sends what RingRTC asks to send
+ * (`signalSendCallMessage`), and fetches Signal's relays (`signalCallSettings`). This file is the glue, and what the
+ * windows are told: a call's state as `signalCall` events, the other side's picture as frames.
+ *
+ * RingRTC is loaded the first time it is wanted. Without it (a build that lacks its native library) nothing here is
+ * offered, and a Signal call rings as one answered on the phone, as before.
+ *
+ * One call at a time, as RingRTC has it.
+ */
+import https from 'node:https'
+import { log } from './log'
+
+type RingrtcModule = typeof import('@signalapp/ringrtc')
+type Call = import('@signalapp/ringrtc').Call
+type GroupCall = import('@signalapp/ringrtc').GroupCall
+type GroupCallObserver = import('@signalapp/ringrtc').GroupCallObserver
+type CallingMessage = import('@signalapp/ringrtc').CallingMessage
+
+/** What the daemon says about a call message (see nobilis `signal::calls::hand_to_app`). */
+interface Arrived {
+  accountId: string
+  ownAci: string
+  localDeviceId: number
+  sender: string
+  senderDeviceId: number
+  ageSec: number
+  receivedAtMs: number
+  senderIdentityKey: string
+  receiverIdentityKey: string
+  bufferId?: string | null
+  message: WireMessage
+}
+
+/** A call message as the daemon writes it: ids as text (they are 64-bit), bytes as base64. */
+export interface WireMessage {
+  offer?: { callId: string; type: number; opaque?: string }
+  answer?: { callId: string; opaque?: string }
+  iceCandidates?: { callId: string; opaque?: string }[]
+  busy?: { callId: string }
+  hangup?: { callId: string; type: number; deviceId: number }
+  opaque?: { data?: string; urgency?: number }
+  destinationDeviceId?: number
+}
+
+/** What the windows are told about the call. */
+export interface SignalCallState {
+  accountId: string
+  bufferId: string | null
+  remote: string
+  callId: string
+  incoming: boolean
+  video: boolean
+  state: 'ringing' | 'connecting' | 'connected' | 'reconnecting' | 'ended'
+  remoteAudio: boolean
+  remoteVideo: boolean
+  audioMuted: boolean
+  videoMuted: boolean
+  /** This side's screen is what is being sent as the picture. */
+  sharing?: boolean
+  /** Why it ended, in words, once it has. */
+  ended?: string
+}
+
+/** A group call, as the windows are told it. */
+export interface SignalGroupCallState {
+  accountId: string
+  bufferId: string
+  /** not joined, joining, waiting to be let in, joined */
+  joinState: 'idle' | 'joining' | 'pending' | 'joined' | 'ended'
+  connected: boolean
+  participants: { demuxId: number; userId: string; audioMuted: boolean; videoMuted: boolean }[]
+  audioMuted: boolean
+  videoMuted: boolean
+  sharing: boolean
+  /** Who has a hand up (demux ids, this side's own among them), in the order raised. */
+  raisedHands: number[]
+  /** This side's demux id once joined, to tell its own hand. */
+  ownDemuxId?: number
+  /** People asking to be let in (a call that asks), by ACI. */
+  pending: string[]
+  ended?: string
+  /** A call link's call (no group): its name and address. */
+  callLink?: { name: string; link: string }
+}
+
+/** A call link as RingRTC reads it from the calling server. */
+export interface SignalCallLink {
+  link: string
+  rootKey: string
+  name: string
+  /** Whether people ask to be let in (an admin approves them). */
+  approval: boolean
+  revoked: boolean
+  expires: number
+  /** Whether this account made it (and may rename it, change who gets in, or take it down). */
+  admin: boolean
+}
+
+/** What the daemon gives for a call link (nobilis `signal::call_links::join_info`). */
+interface CallLinkInfo {
+  accountId: string
+  presentation: string
+  endorsementPublicKey: string
+  adminPasskey?: string | null
+  sfuUrl: string
+  sfuCa?: string
+  ownAci: string
+}
+
+const LINK_PREFIX = 'https://signal.link/call/#key='
+
+/**
+ * An HTTPS request for RingRTC (the calling server's), trusting only `ca` when one is given. Node's fetch cannot be
+ * given a certificate authority, so this is https.request.
+ */
+export function httpsRequest(url: string, method: string, headers: Record<string, string>, body: Uint8Array | undefined, ca: string | undefined): Promise<{ status: number; body: Uint8Array<ArrayBuffer> }> {
+  return new Promise((resolve, reject) => {
+    // The calling server turns away a request with no User-Agent (400), and reads a DELETE's body only when its length
+    // is given (node would send it chunked).
+    const sized = { 'User-Agent': 'moho', ...headers, ...(body ? { 'Content-Length': String(body.length) } : {}) }
+    const req = https.request(url, { method, headers: sized, ...(ca ? { ca } : {}), timeout: 30_000 }, (res) => {
+      const chunks: Buffer[] = []
+      res.on('data', (c: Buffer) => chunks.push(c))
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, body: new Uint8Array(Buffer.concat(chunks)) as Uint8Array<ArrayBuffer> }))
+      res.on('error', reject)
+    })
+    req.on('timeout', () => req.destroy(new Error('the calling server did not answer in time')))
+    req.on('error', reject)
+    if (body) req.write(Buffer.from(body))
+    req.end()
+  })
+}
+
+/** The key text of a call link address, or undefined when it is not one. */
+export function callLinkKey(link: string): string | undefined {
+  const m = /^(?:https?:\/\/)?signal\.link\/call\/?#key=([a-z-]+)/i.exec(link.trim())
+  return m ? m[1].toLowerCase() : undefined
+}
+
+/** What the daemon gives for joining a group's call (nobilis `signal::calls::group_info`). */
+interface GroupInfo {
+  accountId: string
+  bufferId: string
+  groupId: string
+  proof: string
+  members: { userId: string; cipher: string }[]
+  sfuUrl: string
+  sfuCa?: string
+  ownAci: string
+}
+
+/** Sixteen bytes as a UUID's text. */
+export function uuidText(bytes: Uint8Array): string {
+  const hex = Buffer.from(bytes).toString('hex')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`
+}
+
+export interface SignalCallsDeps {
+  request: (method: string, params: Record<string, unknown>) => Promise<unknown>
+  /** To every window, as a daemon event would be. */
+  emit: (event: string, data: unknown) => void
+  /** The other side's picture (a group call's: one participant's, by demux id), to every window. */
+  frame: (width: number, height: number, rgba: Uint8Array, demuxId?: number) => void
+  /** Loads RingRTC; replaced in tests. */
+  load?: () => RingrtcModule
+}
+
+const bytes = (b64: string | undefined): Uint8Array<ArrayBuffer> => new Uint8Array(Buffer.from(b64 ?? '', 'base64'))
+const b64 = (data: Uint8Array | undefined): string | undefined => (data ? Buffer.from(data).toString('base64') : undefined)
+
+/** A UUID's sixteen bytes. */
+export function uuidBytes(uuid: string): Uint8Array<ArrayBuffer> {
+  const hex = uuid.replace(/-/g, '')
+  if (!/^[0-9a-fA-F]{32}$/.test(hex)) throw new Error(`not a UUID: ${uuid}`)
+  return new Uint8Array(Buffer.from(hex, 'hex'))
+}
+
+/** The daemon's message as RingRTC's. */
+export function toRingrtc(rtc: RingrtcModule, wire: WireMessage): CallingMessage {
+  const m = new rtc.CallingMessage()
+  if (wire.offer) m.offer = new rtc.OfferMessage(BigInt(wire.offer.callId), wire.offer.type, bytes(wire.offer.opaque))
+  if (wire.answer) m.answer = new rtc.AnswerMessage(BigInt(wire.answer.callId), bytes(wire.answer.opaque))
+  if (wire.iceCandidates?.length) m.iceCandidates = wire.iceCandidates.map((c) => new rtc.IceCandidateMessage(BigInt(c.callId), bytes(c.opaque)))
+  if (wire.busy) m.busy = new rtc.BusyMessage(BigInt(wire.busy.callId))
+  if (wire.hangup) m.hangup = new rtc.HangupMessage(BigInt(wire.hangup.callId), wire.hangup.type, wire.hangup.deviceId)
+  if (wire.opaque) {
+    m.opaque = new rtc.OpaqueMessage()
+    m.opaque.data = bytes(wire.opaque.data)
+  }
+  if (wire.destinationDeviceId) m.destinationDeviceId = wire.destinationDeviceId
+  return m
+}
+
+/** RingRTC's message as the daemon takes it. */
+export function fromRingrtc(m: CallingMessage, urgency?: number): WireMessage {
+  const wire: WireMessage = {}
+  if (m.offer) wire.offer = { callId: m.offer.callId.toString(), type: m.offer.type, opaque: b64(m.offer.opaque) }
+  if (m.answer) wire.answer = { callId: m.answer.callId.toString(), opaque: b64(m.answer.opaque) }
+  if (m.iceCandidates?.length) wire.iceCandidates = m.iceCandidates.map((c) => ({ callId: c.callId.toString(), opaque: b64(c.opaque) }))
+  if (m.busy) wire.busy = { callId: m.busy.callId.toString() }
+  if (m.hangup) wire.hangup = { callId: m.hangup.callId.toString(), type: m.hangup.type, deviceId: m.hangup.deviceId }
+  if (m.opaque) wire.opaque = { data: b64(m.opaque.data), urgency }
+  if (m.destinationDeviceId) wire.destinationDeviceId = m.destinationDeviceId
+  return wire
+}
+
+/** Why a call ended, in words. */
+function endedWords(rtc: RingrtcModule, reason: number | undefined): string {
+  const R = rtc.CallEndReason
+  switch (reason) {
+    case R.LocalHangup:
+      return 'You hung up'
+    case R.RemoteHangup:
+      return 'They hung up'
+    case R.RemoteHangupAccepted:
+      return 'Answered on another device'
+    case R.RemoteHangupDeclined:
+      return 'Declined on another device'
+    case R.RemoteHangupBusy:
+    case R.RemoteBusy:
+      return 'They are busy'
+    case R.Timeout:
+      return 'Nobody answered'
+    case R.RemoteHangupNeedPermission:
+      return 'They have to accept your message request first'
+    case R.ConnectionFailure:
+    case R.IceFailedWhileConnecting:
+    case R.IceFailedAfterConnected:
+      return 'The connection failed'
+    case R.SignalingFailure:
+      return 'Signal did not take the call'
+    default:
+      return 'The call ended'
+  }
+}
+
+export class SignalCalls {
+  private rtc: RingrtcModule | null | undefined
+  private call: Call | null = null
+  private info: SignalCallState | null = null
+  private frames: NodeJS.Timeout | null = null
+  private frameBuffer = new Uint8Array(1280 * 720 * 4)
+  /** Whether the call that is on ever connected: what the call logs are told when it ends. */
+  private connected = false
+  /** The account last heard from or called on: who sends a group call's messages when nothing else says. */
+  private account: string | null = null
+  private group: { info: GroupInfo; call: GroupCall; state: SignalGroupCallState } | null = null
+  private groupFrames: NodeJS.Timeout | null = null
+  /** Signal's certificate authority, which the calling server's certificate chains to (from the daemon). */
+  private sfuCa: string | undefined
+
+  constructor(private readonly deps: SignalCallsDeps) {}
+
+  /** RingRTC, loaded and wired the first time; null when this build cannot load it. */
+  private ringrtc(): RingrtcModule | null {
+    if (this.rtc !== undefined) return this.rtc
+    try {
+      const rtc = this.deps.load ? this.deps.load() : (require('@signalapp/ringrtc') as RingrtcModule)
+      this.wire(rtc)
+      this.rtc = rtc
+      // RingRTC queues what it has to say (HTTP answers, call events) until asked: nothing reaches its handlers or
+      // promises without this.
+      if (!this.deps.load) setInterval(() => (rtc.RingRTC as unknown as { callManager: { processEvents: () => void } }).callManager.processEvents(), 20).unref()
+      log.info('[signal-calls] RingRTC loaded')
+    } catch (e) {
+      log.warn('[signal-calls] RingRTC is not available, Signal calls are answered on the phone:', (e as Error).message)
+      this.rtc = null
+    }
+    return this.rtc
+  }
+
+  /** Whether calls can be made and taken here. */
+  available(): boolean {
+    return this.ringrtc() !== null
+  }
+
+  current(): SignalCallState | null {
+    return this.info
+  }
+
+  private wire(rtc: RingrtcModule): void {
+    const R = rtc.RingRTC
+    R.handleOutgoingSignaling = async (remoteUserId, message) => {
+      if (!this.info) return false
+      try {
+        await this.deps.request('signalSendCallMessage', { accountId: this.info.accountId, to: remoteUserId, message: fromRingrtc(message) })
+        return true
+      } catch (e) {
+        log.warn('[signal-calls] a call message was not sent:', (e as Error).message)
+        return false
+      }
+    }
+    R.handleIncomingCall = async (call) => {
+      if (!this.info || this.info.remote !== call.remoteUserId) return false
+      this.track(call)
+      this.update({ callId: call.callId.toString(), video: call.isVideoCall, state: 'ringing', incoming: true })
+      return true
+    }
+    R.handleStartCall = async (call) => {
+      if (!this.info) return false
+      try {
+        const settings = (await this.deps.request('signalCallSettings', { accountId: this.info.accountId })) as { iceServers: { username?: string; password?: string; urls: string[]; hostname?: string }[] }
+        R.proceed(call.callId, { iceServers: settings.iceServers, hideIp: false, dataMode: rtc.DataMode.Normal, audioLevelsIntervalMillis: 200 })
+        return true
+      } catch (e) {
+        this.update({ state: 'ended', ended: (e as Error).message })
+        return false
+      }
+    }
+    // An offer RingRTC turned away (too old, or while busy): no call is coming from it.
+    R.handleRejectedIncomingCallRequest = (callId) => {
+      if (this.info && !this.call && this.info.callId === callId.toString()) this.info = null
+    }
+    // Group calls: their rings go to the group's members, and the call server is reached over HTTP done here.
+    R.handleSendCallMessageToGroup = (groupId, message, urgency, overrideRecipients) => {
+      const accountId = this.group?.info.accountId ?? this.account
+      if (!accountId) return
+      void this.deps
+        .request('signalSendGroupCallMessage', {
+          accountId,
+          groupId: Buffer.from(groupId).toString('base64'),
+          message: { opaque: { data: Buffer.from(message).toString('base64'), urgency } },
+          recipients: overrideRecipients.map(uuidText)
+        })
+        .catch((e: Error) => log.warn('[signal-calls] a group call message was not sent:', e.message))
+    }
+    R.handleSendCallMessage = (recipientUuid, message, urgency) => {
+      const accountId = this.group?.info.accountId ?? this.info?.accountId ?? this.account
+      if (!accountId) return
+      void this.deps
+        .request('signalSendCallMessage', { accountId, to: uuidText(recipientUuid), message: { opaque: { data: Buffer.from(message).toString('base64'), urgency } } })
+        .catch((e: Error) => log.warn('[signal-calls] a call message was not sent:', e.message))
+    }
+    // The calling server's certificate is from Signal's own authority, which the daemon gives with the call's
+    // details: its requests trust that alone.
+    R.handleSendHttpRequest = (requestId, url, method, headers, body) => {
+      const verb = ['GET', 'PUT', 'POST', 'DELETE'][method] ?? 'GET'
+      void httpsRequest(url, verb, headers, body, this.sfuCa)
+        .then((res) => R.receivedHttpResponse(requestId, res.status, res.body))
+        .catch((e: Error) => R.httpRequestFailed(requestId, e.message))
+    }
+    R.handleGroupCallRingUpdate = (groupId, ringId, sender, update) => {
+      const accountId = this.account
+      if (!accountId) return
+      this.deps.emit('signalGroupRing', { accountId, groupId: Buffer.from(groupId).toString('base64'), ringId: ringId.toString(), sender: uuidText(sender), update })
+    }
+    R.handleLogMessage = (level, fileName, line, message) => {
+      if (level <= rtc.CallLogLevel.Warn) log.warn(`[ringrtc] ${fileName}:${line} ${message}`)
+    }
+  }
+
+  private track(call: Call): void {
+    const rtc = this.rtc
+    if (!rtc) return
+    this.call = call
+    call.handleStateChanged = () => {
+      const S = rtc.CallState
+      const state = call.state
+      if (state === S.Ended) {
+        const info = this.info
+        if (info) {
+          // The phone and the account's other devices put it in their call logs, and the conversation says it.
+          void this.deps
+            .request('signalCallEnded', { accountId: info.accountId, remote: info.remote, callId: call.callId.toString(), video: info.video, incoming: info.incoming, accepted: this.connected })
+            .catch((e: Error) => log.warn('[signal-calls] the call log was not shared:', e.message))
+        }
+        this.update({ state: 'ended', ended: endedWords(rtc, call.endedReason) })
+        this.stopFrames()
+        this.call = null
+        this.connected = false
+        return
+      }
+      if (state === S.Accepted) this.connected = true
+      this.update({ state: state === S.Ringing ? 'ringing' : state === S.Accepted ? 'connected' : state === S.Reconnecting ? 'reconnecting' : 'connecting' })
+      if (state === S.Accepted) this.startFrames()
+    }
+    call.handleRemoteAudioEnabled = () => this.update({ remoteAudio: call.remoteAudioEnabled })
+    call.handleRemoteVideoEnabled = () => this.update({ remoteVideo: call.remoteVideoEnabled })
+  }
+
+  private update(change: Partial<SignalCallState>): void {
+    if (!this.info) return
+    this.info = { ...this.info, ...change }
+    this.deps.emit('signalCall', this.info)
+    if (this.info.state === 'ended') this.info = null
+  }
+
+  /** The other side's picture, while there is a call: polled, as RingRTC hands frames to whoever asks. */
+  private startFrames(): void {
+    if (this.frames) return
+    this.frames = setInterval(() => {
+      const call = this.call
+      if (!call || !this.info?.remoteVideo) return
+      const size = call.receiveVideoFrame(this.frameBuffer, 1280, 720)
+      if (!size) return
+      const [width, height] = size
+      this.deps.frame(width, height, this.frameBuffer.slice(0, width * height * 4))
+    }, 66)
+  }
+
+  private stopFrames(): void {
+    if (this.frames) clearInterval(this.frames)
+    this.frames = null
+  }
+
+  /** A call message the daemon handed over. */
+  arrived(a: Arrived): void {
+    const rtc = this.ringrtc()
+    if (!rtc) return
+    // Somebody new calling while a call is on is RingRTC's to answer as busy; it needs to know who this is.
+    if (!this.info && a.message.offer) {
+      this.info = {
+        accountId: a.accountId,
+        bufferId: a.bufferId ?? null,
+        remote: a.sender,
+        callId: a.message.offer.callId,
+        incoming: true,
+        video: a.message.offer.type === 1,
+        state: 'ringing',
+        remoteAudio: true,
+        remoteVideo: false,
+        audioMuted: false,
+        videoMuted: a.message.offer.type !== 1
+      }
+      // An offer that never became a call (not for this device, say) is not left standing in the way of the next.
+      const id = a.message.offer.callId
+      setTimeout(() => {
+        if (this.info && !this.call && this.info.callId === id) this.info = null
+      }, 10_000).unref?.()
+    }
+    this.account = a.accountId
+    rtc.RingRTC.setSelfUuid(uuidBytes(a.ownAci))
+    rtc.RingRTC.handleCallingMessage(toRingrtc(rtc, a.message), {
+      remoteUserId: a.sender,
+      remoteUuid: uuidBytes(a.sender),
+      remoteDeviceId: a.senderDeviceId,
+      localDeviceId: a.localDeviceId,
+      ageSec: a.ageSec,
+      receivedAtCounter: 0,
+      receivedAtDate: a.receivedAtMs,
+      senderIdentityKey: bytes(a.senderIdentityKey),
+      receiverIdentityKey: bytes(a.receiverIdentityKey)
+    })
+  }
+
+  /** Calls somebody (their ACI) from an account. */
+  async start(accountId: string, bufferId: string, remote: string, video: boolean): Promise<void> {
+    const rtc = this.ringrtc()
+    if (!rtc) throw new Error('Signal calls are not available in this build')
+    if (this.info) throw new Error('There is a call already')
+    const settings = (await this.deps.request('signalCallSettings', { accountId })) as { ownAci: string; deviceId: number }
+    this.info = { accountId, bufferId, remote, callId: '', incoming: false, video, state: 'connecting', remoteAudio: true, remoteVideo: false, audioMuted: false, videoMuted: !video }
+    rtc.RingRTC.setSelfUuid(uuidBytes(settings.ownAci))
+    const call = rtc.RingRTC.startOutgoingCall(remote, video, settings.deviceId)
+    this.track(call)
+    this.update({ callId: call.callId.toString() })
+  }
+
+  accept(video: boolean): void {
+    const call = this.call
+    if (!call || !this.info) return
+    call.accept()
+    call.setOutgoingAudioMuted(false)
+    call.setOutgoingVideoMuted(!video)
+    this.update({ state: 'connecting', videoMuted: !video })
+  }
+
+  decline(): void {
+    this.call?.decline()
+  }
+
+  hangup(): void {
+    this.call?.hangup()
+  }
+
+  mute(audio: boolean | undefined, video: boolean | undefined): void {
+    const call = this.call
+    if (!call) return
+    if (audio !== undefined) call.setOutgoingAudioMuted(audio)
+    if (video !== undefined) call.setOutgoingVideoMuted(video)
+    this.update({ ...(audio !== undefined ? { audioMuted: audio } : {}), ...(video !== undefined ? { videoMuted: video } : {}) })
+  }
+
+  /** Sends this side's screen as the picture instead of the camera, or stops. */
+  share(on: boolean): void {
+    const call = this.call
+    if (!call || !this.info) return
+    call.setOutgoingVideoIsScreenShare(on)
+    // The picture is on while the screen is shared, whatever the camera was.
+    call.setOutgoingVideoMuted(!on && this.info.videoMuted)
+    this.update({ sharing: on })
+  }
+
+  // -- group calls --------------------------------------------------------------------------------------------------
+
+  currentGroup(): SignalGroupCallState | null {
+    return this.group?.state ?? null
+  }
+
+  private updateGroup(change: Partial<SignalGroupCallState>): void {
+    if (!this.group) return
+    this.group.state = { ...this.group.state, ...change }
+    this.deps.emit('signalGroupCall', this.group.state)
+  }
+
+  /** Joins (or starts) a group's call; `ring` rings its members, as starting one from the phone does. */
+  async joinGroup(bufferId: string, video: boolean, ring: boolean): Promise<void> {
+    const rtc = this.ringrtc()
+    if (!rtc) throw new Error('Signal calls are not available in this build')
+    if (this.group || this.info) throw new Error('There is a call already')
+    const info = (await this.deps.request('signalGroupCallInfo', { bufferId })) as GroupInfo
+    this.sfuCa = info.sfuCa ?? this.sfuCa
+    this.account = info.accountId
+    rtc.RingRTC.setSelfUuid(uuidBytes(info.ownAci))
+    const members = info.members.map((m) => new rtc.GroupMemberInfo(bytes(m.userId), bytes(m.cipher)))
+    const call = rtc.RingRTC.getGroupCall(bytes(info.groupId), info.sfuUrl, new Uint8Array(0), 200, undefined, undefined, this.observer(rtc, {
+      requestMembershipProof: (g) => g.setMembershipProof(bytes(info.proof)),
+      requestGroupMembers: (g) => g.setGroupMembers(members)
+    }))
+    if (!call) throw new Error('The group call could not be started')
+    this.group = {
+      info,
+      call,
+      state: { accountId: info.accountId, bufferId, joinState: 'joining', connected: false, participants: [], audioMuted: false, videoMuted: !video, sharing: false, raisedHands: [], pending: [] }
+    }
+    this.updateGroup({})
+    call.connect()
+    call.setOutgoingAudioMuted(false)
+    call.setOutgoingVideoMuted(!video)
+    call.join()
+    if (ring) call.ringAll()
+    this.startGroupFrames()
+  }
+
+  /** What RingRTC tells of a group or call link call, said to the windows. */
+  private observer(rtc: RingrtcModule, membership: Pick<GroupCallObserver, 'requestMembershipProof' | 'requestGroupMembers'>): GroupCallObserver {
+    return {
+      ...membership,
+      onLocalDeviceStateChanged: (g) => {
+        const local = g.getLocalDeviceState()
+        const J = rtc.JoinState
+        this.updateGroup({
+          ownDemuxId: local.demuxId,
+          joinState: local.joinState === J.Joined ? 'joined' : local.joinState === J.Pending ? 'pending' : local.joinState === J.Joining ? 'joining' : 'idle',
+          connected: local.connectionState === rtc.ConnectionState.Connected,
+          audioMuted: local.audioMuted,
+          videoMuted: local.videoMuted
+        })
+      },
+      onRemoteDeviceStatesChanged: (g) => {
+        const remote = g.getRemoteDeviceStates() ?? []
+        this.updateGroup({
+          participants: remote.map((d) => ({ demuxId: d.demuxId, userId: uuidText(d.userId), audioMuted: !!d.audioMuted, videoMuted: d.videoMuted !== false }))
+        })
+        g.requestVideo(remote.map((d) => new rtc.VideoRequest(d.demuxId, 640, 360, 30)), 0)
+      },
+      onAudioLevels: () => {},
+      onLowBandwidthForVideo: () => {},
+      // Reactions pass by: said to the windows as they come, not kept.
+      onReactions: (_g, reactions) => this.deps.emit('signalGroupCallReactions', { reactions }),
+      onRaisedHands: (_g, raised) => this.updateGroup({ raisedHands: [...raised] }),
+      onPeekChanged: (g) => this.updateGroup({ pending: (g.getPeekInfo()?.pendingUsers ?? []).map(uuidText) }),
+      onEnded: (_g, reason) => this.groupEnded(endedWords(rtc, reason)),
+      onSpeechEvent: () => {},
+      onRemoteMute: (g) => {
+        g.setOutgoingAudioMuted(true)
+        this.updateGroup({ audioMuted: true })
+      },
+      onObservedRemoteMute: () => {}
+    }
+  }
+
+  // -- call links -------------------------------------------------------------------------------------------------
+
+  /** RingRTC and a link's root key, from its address or its key's base64 (as the account's list gives it). */
+  private linkKey(link: string): { rtc: RingrtcModule; key: InstanceType<RingrtcModule['CallLinkRootKey']> } {
+    const rtc = this.ringrtc()
+    if (!rtc) throw new Error('Signal calls are not available in this build')
+    const text = callLinkKey(link)
+    const key = text ? rtc.CallLinkRootKey.parse(text) : rtc.CallLinkRootKey.fromBytes(bytes(link))
+    return { rtc, key }
+  }
+
+  private async linkInfo(accountId: string, key: InstanceType<RingrtcModule['CallLinkRootKey']>): Promise<CallLinkInfo> {
+    const info = (await this.deps.request('signalCallLinkJoinInfo', { accountId, rootKey: b64(key.bytes) })) as CallLinkInfo
+    this.sfuCa = info.sfuCa ?? this.sfuCa
+    return info
+  }
+
+  private describe(rtc: RingrtcModule, key: InstanceType<RingrtcModule['CallLinkRootKey']>, state: import('@signalapp/ringrtc').CallLinkState, admin: boolean): SignalCallLink {
+    return {
+      link: LINK_PREFIX + key.toString(),
+      rootKey: b64(key.bytes) ?? '',
+      name: state.name,
+      approval: state.restrictions === rtc.CallLinkRestrictions.AdminApproval,
+      revoked: state.revoked,
+      expires: state.expiration.getTime(),
+      admin
+    }
+  }
+
+  private static failed(what: string, status: number): Error {
+    if (status === 404) return new Error('That call link does not exist any more')
+    return new Error(`The calling server did not ${what} (${status})`)
+  }
+
+  /** Reads a call link: its name, whether people ask to join, and whether it still works. */
+  async readCallLink(accountId: string, link: string): Promise<SignalCallLink> {
+    const { rtc, key } = this.linkKey(link)
+    const info = await this.linkInfo(accountId, key)
+    const result = await rtc.RingRTC.readCallLink(info.sfuUrl, bytes(info.presentation), key)
+    if (!result.success) throw SignalCalls.failed('find the call link', result.errorStatusCode)
+    return this.describe(rtc, key, result.value, !!info.adminPasskey)
+  }
+
+  /** Makes a new call link (named, if a name is given), kept in the account's shared records for its other devices. */
+  async createCallLink(accountId: string, name: string, approval: boolean): Promise<SignalCallLink> {
+    const rtc = this.ringrtc()
+    if (!rtc) throw new Error('Signal calls are not available in this build')
+    const key = rtc.CallLinkRootKey.generate()
+    const admin = rtc.CallLinkRootKey.generateAdminPassKey()
+    const join = await this.linkInfo(accountId, key)
+    const made = (await this.deps.request('signalCallLinkCreateInfo', { accountId, rootKey: b64(key.bytes), roomId: b64(key.deriveRoomId()) })) as { presentation: string; publicParams: string }
+    const restrictions = approval ? rtc.CallLinkRestrictions.AdminApproval : rtc.CallLinkRestrictions.None
+    const created = await rtc.RingRTC.createCallLink(join.sfuUrl, bytes(made.presentation), key, admin, bytes(made.publicParams), restrictions)
+    if (!created.success) throw SignalCalls.failed('make the call link', created.errorStatusCode)
+    let state = created.value
+    // The key as the server settled it (with its epoch, where it gave one): the one the link and the records carry.
+    const madeKey = state.rootKey
+    // Kept before it is named: a link made and lost to a failed rename would be one nobody can take down.
+    await this.deps.request('signalCallLinkSave', { accountId, rootKey: b64(madeKey.bytes), adminPasskey: b64(admin) })
+    if (name.trim()) {
+      const named = await rtc.RingRTC.updateCallLinkName(join.sfuUrl, bytes(join.presentation), madeKey, admin, name.trim())
+      if (named.success) state = named.value
+    }
+    return this.describe(rtc, madeKey, state, true)
+  }
+
+  /** Renames a call link this account made, or changes whether people ask to join. */
+  async updateCallLink(accountId: string, link: string, change: { name?: string; approval?: boolean }): Promise<SignalCallLink> {
+    const { rtc, key } = this.linkKey(link)
+    const info = await this.linkInfo(accountId, key)
+    if (!info.adminPasskey) throw new Error('Only whoever made a call link can change it')
+    const admin = bytes(info.adminPasskey)
+    const result =
+      change.name !== undefined
+        ? await rtc.RingRTC.updateCallLinkName(info.sfuUrl, bytes(info.presentation), key, admin, change.name.trim())
+        : await rtc.RingRTC.updateCallLinkRestrictions(info.sfuUrl, bytes(info.presentation), key, admin, change.approval ? rtc.CallLinkRestrictions.AdminApproval : rtc.CallLinkRestrictions.None)
+    if (!result.success) throw SignalCalls.failed('change the call link', result.errorStatusCode)
+    return this.describe(rtc, key, result.value, true)
+  }
+
+  /** Takes a call link off the account's list; one this account made is taken down for everybody first. */
+  async deleteCallLink(accountId: string, link: string): Promise<void> {
+    const { rtc, key } = this.linkKey(link)
+    const info = await this.linkInfo(accountId, key)
+    if (info.adminPasskey) {
+      const result = await rtc.RingRTC.deleteCallLink(info.sfuUrl, bytes(info.presentation), key, bytes(info.adminPasskey))
+      // Already gone (404) is what was wanted.
+      if (!result.success && result.errorStatusCode !== 404) throw SignalCalls.failed('take the call link down', result.errorStatusCode)
+    }
+    await this.deps.request('signalCallLinkForget', { accountId, rootKey: b64(key.bytes) })
+  }
+
+  /** Joins a call link's call (asking to be let in, where it asks). */
+  async joinCallLink(accountId: string, link: string, video: boolean): Promise<void> {
+    const { rtc, key } = this.linkKey(link)
+    if (this.group || this.info) throw new Error('There is a call already')
+    const info = await this.linkInfo(accountId, key)
+    const read = await rtc.RingRTC.readCallLink(info.sfuUrl, bytes(info.presentation), key)
+    if (!read.success) throw SignalCalls.failed('find the call link', read.errorStatusCode)
+    if (read.value.revoked) throw new Error('That call link was taken down')
+    this.account = accountId
+    rtc.RingRTC.setSelfUuid(uuidBytes(info.ownAci))
+    const admin = info.adminPasskey ? bytes(info.adminPasskey) : undefined
+    const none = { requestMembershipProof: () => {}, requestGroupMembers: () => {} }
+    const call = rtc.RingRTC.getCallLinkCall(info.sfuUrl, bytes(info.endorsementPublicKey), bytes(info.presentation), key, admin, new Uint8Array(0), 200, undefined, undefined, this.observer(rtc, none))
+    if (!call) throw new Error('The call could not be started')
+    const name = read.value.name || 'Signal call'
+    this.group = {
+      info: { accountId, bufferId: '', groupId: '', proof: '', members: [], sfuUrl: info.sfuUrl, ownAci: info.ownAci },
+      call,
+      state: { accountId, bufferId: '', joinState: 'joining', connected: false, participants: [], audioMuted: false, videoMuted: !video, sharing: false, raisedHands: [], pending: [], callLink: { name, link: LINK_PREFIX + key.toString() } }
+    }
+    this.updateGroup({})
+    call.connect()
+    call.setOutgoingAudioMuted(false)
+    call.setOutgoingVideoMuted(!video)
+    call.join()
+    this.startGroupFrames()
+  }
+
+  private groupEnded(words: string): void {
+    if (!this.group) return
+    if (this.groupFrames) clearInterval(this.groupFrames)
+    this.groupFrames = null
+    this.updateGroup({ joinState: 'ended', ended: words })
+    this.group = null
+  }
+
+  leaveGroup(): void {
+    const g = this.group
+    if (!g) return
+    g.call.leave()
+    g.call.disconnect()
+    this.groupEnded('You left the call')
+  }
+
+  muteGroup(audio: boolean | undefined, video: boolean | undefined): void {
+    const g = this.group
+    if (!g) return
+    if (audio !== undefined) g.call.setOutgoingAudioMuted(audio)
+    if (video !== undefined) g.call.setOutgoingVideoMuted(video)
+    this.updateGroup({ ...(audio !== undefined ? { audioMuted: audio } : {}), ...(video !== undefined ? { videoMuted: video } : {}) })
+  }
+
+  shareGroup(on: boolean): void {
+    const g = this.group
+    if (!g) return
+    g.call.setOutgoingVideoIsScreenShare(on)
+    g.call.setPresenting(on)
+    g.call.setOutgoingVideoMuted(!on && g.state.videoMuted)
+    this.updateGroup({ sharing: on })
+  }
+
+  /** An emoji to everybody in the call. */
+  reactInGroup(value: string): void {
+    this.group?.call.react(value)
+  }
+
+  raiseHand(up: boolean): void {
+    this.group?.call.raiseHand(up)
+  }
+
+  /** Lets in (or turns away) somebody asking to join, by ACI. */
+  answerJoinRequest(userId: string, letIn: boolean): void {
+    const g = this.group
+    if (!g) return
+    if (letIn) g.call.approveUser(uuidBytes(userId))
+    else g.call.denyUser(uuidBytes(userId))
+  }
+
+  /** Turns down a group's ring here (and on the account's other devices, which RingRTC tells). */
+  declineGroupRing(groupId: string, ringId: string): void {
+    const rtc = this.ringrtc()
+    if (!rtc) return
+    rtc.RingRTC.cancelGroupRing(bytes(groupId), BigInt(ringId), rtc.RingCancelReason.DeclinedByUser)
+  }
+
+  /** Each participant's picture, polled as RingRTC hands frames to whoever asks. */
+  private startGroupFrames(): void {
+    if (this.groupFrames) return
+    this.groupFrames = setInterval(() => {
+      const g = this.group
+      if (!g) return
+      for (const p of g.state.participants) {
+        if (p.videoMuted) continue
+        const size = g.call.getVideoSource(p.demuxId).receiveVideoFrame(this.frameBuffer, 640, 360)
+        if (!size) continue
+        const [width, height] = size
+        this.deps.frame(width, height, this.frameBuffer.slice(0, width * height * 4), p.demuxId)
+      }
+    }, 100)
+  }
+
+  /** A frame of this side's camera or screen, from the window. */
+  sendFrame(width: number, height: number, rgba: Uint8Array): void {
+    const rtc = this.rtc
+    const g = this.group
+    if (rtc && g) {
+      if (!g.state.videoMuted || g.state.sharing) g.call.sendVideoFrame(width, height, rtc.VideoPixelFormatEnum.Rgba, new Uint8Array(rgba))
+      return
+    }
+    const call = this.call
+    if (!rtc || !call || (this.info?.videoMuted && !this.info.sharing)) return
+    call.sendVideoFrame(width, height, rtc.VideoPixelFormatEnum.Rgba, new Uint8Array(rgba))
+  }
+}

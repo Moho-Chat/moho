@@ -28,10 +28,13 @@ interface Ring {
   accountId?: string
   /** Who is ringing and on which account, said under the name. */
   detail: string
-  answer: () => void
+  /** Absent where moho cannot take the call (Signal's are answered on the phone). */
+  answer?: () => void
   /** Only where the offer carries a camera: answering with it is its own choice. */
   answerWithVideo?: () => void
   decline: () => void
+  /** The decline button only silences the ring here: nothing is sent. */
+  silenceOnly?: boolean
 }
 export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {}): JSX.Element | null {
   const store = useStore()
@@ -40,6 +43,8 @@ export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {})
   const steamRings = useChat((s) => s.steamRings)
   const buffers = useChat((s) => s.buffers)
   const accounts = useChat((s) => s.accounts)
+  const signalCall = useChat((s) => s.signalCall)
+  const groupRings = useChat((s) => s.signalGroupRings)
   const ringtone = useRef<Ringtone>()
 
   const rings: Ring[] = [
@@ -58,6 +63,8 @@ export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {})
     }),
     ...calls.map((call): Ring => {
       const buffer = buffers.find((b) => b.id === call.bufferId)
+      // A Signal call RingRTC is ringing with here can be answered here.
+      const takenHere = !!call.answerElsewhere && signalCall?.state === 'ringing' && signalCall.callId === call.callId
       const account = accounts.find((a) => a.id === call.accountId)
       return {
         key: `d:${call.bufferId}`,
@@ -66,9 +73,33 @@ export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {})
         name: buffer ? bufferDisplayName(buffer.name) : 'Someone',
         avatarUrl: buffer?.avatarUrl,
         accountId: buffer?.accountId,
-        detail: `Incoming call${account ? ` · ${account.displayName || account.id}` : ''}`,
-        answer: () => void store.acceptCall(call.bufferId),
-        decline: () => void store.declineCall(call.bufferId)
+        detail: call.answerElsewhere
+          ? `${call.video ? 'Video' : 'Voice'} call${takenHere ? '' : ' · answer it on your phone'}${account ? ` · ${account.displayName || account.id}` : ''}`
+          : `Incoming call${account ? ` · ${account.displayName || account.id}` : ''}`,
+        answer: !call.answerElsewhere
+          ? () => void store.acceptCall(call.bufferId)
+          : takenHere
+            ? () => void store.answerSignalCall(call.bufferId, false)
+            : undefined,
+        answerWithVideo: takenHere && call.video ? () => void store.answerSignalCall(call.bufferId, true) : undefined,
+        decline: () => void store.declineCall(call.bufferId),
+        silenceOnly: call.answerElsewhere && !takenHere
+      }
+    }),
+    ...groupRings.map((ring): Ring => {
+      const buffer = buffers.find((b) => b.id === ring.bufferId)
+      const caller = buffers.find((b) => b.accountId === ring.accountId && b.remoteId === `p:${ring.sender}`)
+      const account = accounts.find((a) => a.id === ring.accountId)
+      return {
+        key: `sg:${ring.ringId}`,
+        // Who is ringing is the news; which group is where (#339).
+        name: caller ? bufferDisplayName(caller.name) : buffer ? bufferDisplayName(buffer.name) : 'A Signal group',
+        avatarUrl: caller?.avatarUrl ?? buffer?.avatarUrl,
+        accountId: ring.accountId,
+        detail: `${caller ? `Calling ${buffer ? bufferDisplayName(buffer.name) : 'the group'}` : 'Somebody is calling the group'}${account ? ` · ${account.displayName || account.id}` : ''}`,
+        answer: ring.bufferId ? () => store.answerSignalGroupRing(ring, false) : undefined,
+        answerWithVideo: ring.bufferId ? () => store.answerSignalGroupRing(ring, true) : undefined,
+        decline: () => store.declineSignalGroupRing(ring)
       }
     }),
     ...(matrix
@@ -78,10 +109,11 @@ export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {})
             const account = accounts.find((a) => a.id === matrix.accountId)
             return {
               key: `m:${matrix.callId}`,
-              name: buffer ? bufferDisplayName(buffer.name) : matrix.from,
-              avatarUrl: buffer?.avatarUrl,
+              // In a room, the caller is the headline and the room is where; a direct call's name is already the caller.
+              name: buffer && buffer.kind !== 'channel' ? bufferDisplayName(buffer.name) : matrix.from,
+              avatarUrl: buffer && buffer.kind !== 'channel' ? buffer.avatarUrl : undefined,
               accountId: buffer?.accountId ?? matrix.accountId,
-              detail: `${matrix.from} is calling${matrix.video ? ' · video' : ''}${account ? ` · ${account.displayName || account.id}` : ''}`,
+              detail: `${buffer?.kind === 'channel' ? `Calling ${bufferDisplayName(buffer.name)}` : 'Incoming call'}${matrix.video ? ' · video' : ''}${account ? ` · ${account.displayName || account.id}` : ''}`,
               answer: () => void store.answerMatrixCall(false),
               answerWithVideo: matrix.video ? () => void store.answerMatrixCall(true) : undefined,
               decline: () => store.declineMatrixCall()
@@ -116,9 +148,11 @@ export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {})
             <span className="ellipsis incoming-call-name">{ring.name}</span>
             <span className="small muted ellipsis">{ring.detail}</span>
           </div>
-          <button type="button" className="call-answer" title={`Answer ${ring.name}`} onClick={ring.answer}>
-            <Icon name="call" size={20} />
-          </button>
+          {ring.answer && (
+            <button type="button" className="call-answer" title={`Answer ${ring.name}`} onClick={ring.answer}>
+              <Icon name="call" size={20} />
+            </button>
+          )}
           {ring.answerWithVideo && (
             <button
               type="button"
@@ -129,8 +163,13 @@ export function IncomingCallPanel({ silent = false }: { silent?: boolean } = {})
               <Icon name="videocam" size={20} />
             </button>
           )}
-          <button type="button" className="call-decline" title={`Decline ${ring.name}`} onClick={ring.decline}>
-            <Icon name="call_end" size={20} />
+          <button
+            type="button"
+            className="call-decline"
+            title={ring.silenceOnly ? `Silence ${ring.name}'s call here (it still rings on your phone)` : `Decline ${ring.name}`}
+            onClick={ring.decline}
+          >
+            <Icon name={ring.silenceOnly ? 'notifications_off' : 'call_end'} size={20} />
           </button>
         </div>
       ))}

@@ -4,6 +4,8 @@ import { createPortal } from 'react-dom'
 /** The names the main process recognises and lets open - see main/index.ts. */
 export const STAGE_WINDOW_NAME = 'moho-call'
 export const STREAM_WINDOW_NAME = 'moho-stream'
+/** The stream again, small and kept over every other window. */
+export const STREAM_TOP_WINDOW_NAME = 'moho-stream-top'
 
 /**
  * A call in a window of its own.

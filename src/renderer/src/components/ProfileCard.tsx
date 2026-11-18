@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Modal } from './Modal'
+import { SafetyNumberCompare } from './SafetyNumberCompare'
 import { Avatar } from './Avatar'
 import { Icon, IconButton } from './Icon'
 import { useChat, useStore } from '../state/hooks'
@@ -25,6 +27,8 @@ export function ProfileCard(): JSX.Element | null {
   const presence = useChat((s) => s.presenceByBuffer)
   const buffers = useChat((s) => s.buffers)
   const store = useStore()
+  /** Comparing the safety number by QR code (Signal). */
+  const [comparing, setComparing] = useState(false)
 
   if (!profile) return null
 
@@ -155,6 +159,94 @@ export function ProfileCard(): JSX.Element | null {
               <Icon name="person_check" size={15} /> Verify {profile.name}
             </button>
           </div>
+        )}
+
+        {/* Signal: marking the safety number verified once it has been compared (in person, or in Signal on both
+            phones), and blocking. Both are told to the account's other devices. */}
+        {profile.service === 'signal' && profile.id && !profile.pending && profile.signalUnconfirmed && (
+          <div className="profile-warning small">
+            <Icon name="gpp_maybe" size={15} /> Their safety number changed after you verified it, so nothing is sent to them
+            until you compare it again (and mark them verified) or choose to send anyway.{' '}
+            <button
+              type="button"
+              className="button subtle small"
+              onClick={() => {
+                void window.moho
+                  .rpc('signalSendAnyway', { accountId: profile.accountId, userId: profile.id })
+                  .then(() => {
+                    store.patchProfile({ signalUnconfirmed: false })
+                    store.toast('info', `Messages to ${profile.name} go again`)
+                  })
+                  .catch((e: Error) => store.toast('error', e.message))
+              }}
+            >
+              Send anyway
+            </button>
+          </div>
+        )}
+        {profile.service === 'signal' && profile.id && !profile.pending && profile.signalVerified !== undefined && (
+          <div className="button-row profile-actions">
+            <button
+              type="button"
+              className="button subtle"
+              onClick={() => {
+                const verified = !profile.signalVerified
+                void window.moho
+                  .rpc('signalVerify', { accountId: profile.accountId, userId: profile.id, verified })
+                  .then(() => {
+                    store.patchProfile({ signalVerified: verified, signalUnconfirmed: false })
+                    store.toast('info', verified ? `${profile.name} is marked verified` : `${profile.name} is no longer marked verified`)
+                  })
+                  .catch((e: Error) => store.toast('error', e.message))
+              }}
+            >
+              <Icon name={profile.signalVerified ? 'remove_moderator' : 'verified_user'} size={15} />{' '}
+              {profile.signalVerified ? 'Clear verification' : 'Mark as verified'}
+            </button>
+            <button
+              type="button"
+              className="button subtle"
+              onClick={() => {
+                const blocked = !profile.signalBlocked
+                void window.moho
+                  .rpc('signalBlock', { accountId: profile.accountId, id: `p:${profile.id}`, blocked })
+                  .then(() => {
+                    store.patchProfile({ signalBlocked: blocked })
+                    store.toast('info', blocked ? `${profile.name} is blocked: nothing from them is shown` : `${profile.name} is unblocked`)
+                  })
+                  .catch((e: Error) => store.toast('error', e.message))
+              }}
+            >
+              <Icon name={profile.signalBlocked ? 'lock_open' : 'block'} size={15} /> {profile.signalBlocked ? 'Unblock' : 'Block'}
+            </button>
+            <button type="button" className="button subtle" title="Show your code and scan theirs" onClick={() => setComparing(true)}>
+              <Icon name="qr_code_2" size={15} /> Compare by code
+            </button>
+            <button
+              type="button"
+              className="button subtle"
+              title="For a conversation whose messages stopped arriving or can't be read: forgets the session with them and starts a new one"
+              onClick={() => {
+                if (!window.confirm(`Start a fresh secure session with ${profile.name}? Use this when messages with them stopped working.`)) return
+                void window.moho
+                  .rpc('signalResetSession', { accountId: profile.accountId, userId: profile.id })
+                  .then(() => store.toast('info', `A fresh session with ${profile.name} was started`))
+                  .catch((e: Error) => store.toast('error', e.message))
+              }}
+            >
+              <Icon name="sync_lock" size={15} /> Fresh session
+            </button>
+          </div>
+        )}
+
+        {comparing && profile.service === 'signal' && profile.id && (
+          <SafetyNumberCompare
+            accountId={profile.accountId}
+            userId={profile.id}
+            name={profile.name}
+            onClose={() => setComparing(false)}
+            onVerified={() => store.patchProfile({ signalVerified: true, signalUnconfirmed: false })}
+          />
         )}
 
         {profile.pending && (

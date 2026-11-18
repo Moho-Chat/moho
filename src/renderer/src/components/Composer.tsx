@@ -7,6 +7,8 @@ import { Icon, IconButton, MaskIcon } from './Icon'
 import { ContextMenu, type MenuEntry } from './ContextMenu'
 import torMark from '../assets/tor.svg'
 import { PollComposer } from './PollComposer'
+import { StoryComposer } from './StoryComposer'
+import { ContactCardComposer } from './ContactCardComposer'
 import { Avatar } from './Avatar'
 import { COMMON_EMOJI, emojiToken, EmojiPicker, type StickerEntry } from './EmojiPicker'
 import { GifPicker } from './GifPicker'
@@ -15,7 +17,9 @@ import { PlaceField } from './PlaceField'
 import { VoiceRecorder } from './VoiceRecorder'
 import { useActiveBuffer, useChat, useStore } from '../state/hooks'
 import { emojiPreview } from '../lib/format'
-import { bufferDisplayName, classes, fileNameOf, humanSize, isImageFile, resolveMediaUrl } from '../lib/util'
+import { StagedTray, type StagedAttachment } from './StagedTray'
+import { fileKind } from '../lib/filekind'
+import { bufferDisplayName, classes, fileNameOf, isImageFile } from '../lib/util'
 import { completeNick, cyclePrefix, type Completion } from '../lib/completion'
 import {
   mentionInsert,
@@ -29,19 +33,6 @@ import { withTone } from '../lib/skintone'
 import { STEAM_FILE_TYPES, steamFileRefusal } from '../lib/steamfiles'
 import { usePref } from '../state/hooks'
 import { rankShortcodes, shortcodeQuery, unicodeTargets, type ShortcodeTarget } from '../lib/shortcodes'
-
-interface StagedAttachment {
-  id: number
-  path: string
-  name: string
-  isImage: boolean
-  /** A picture of it where the path cannot be shown: made from the dropped file. */
-  preview?: string
-  /** In bytes, once it has been asked. */
-  size?: number | null
-  /** Sent hidden behind a spoiler: Discord, Steam, Telegram and Stoat. */
-  spoiler: boolean
-}
 
 /**
  * How often to repeat a typing notice while somebody keeps writing.
@@ -135,6 +126,8 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const [staged, setStaged] = useState<StagedAttachment[]>([])
   /** Whether the poll dialog is up. */
   const [polling, setPolling] = useState(false)
+  const [storying, setStorying] = useState(false)
+  const [sharingContact, setSharingContact] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   /** The account's sticker packs, fetched when the picker is first opened. */
   const [stickers, setStickers] = useState<StickerEntry[]>([])
@@ -248,7 +241,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const route = useChat((s) => s.route)
   const routed = tunnelAll || !!account?.useTor
   const media = useMediaUrl(account?.id)
-  const hasStickers = service === 'matrix' || service === 'discord' || service === 'steam' || service === 'telegram'
+  const hasStickers = service === 'matrix' || service === 'discord' || service === 'steam' || service === 'telegram' || service === 'signal'
   const formats = formatsFor(service)
   /**
    * The account's stickers, asked for when the picker opens - from either
@@ -265,7 +258,9 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
             ? 'listSteamStickers'
             : service === 'telegram'
               ? 'listTelegramStickers'
-              : 'listMatrixStickers',
+              : service === 'signal'
+                ? 'listSignalStickers'
+                : 'listMatrixStickers',
         { bufferId: buffer.id }
       )
       .then(setStickers)
@@ -277,7 +272,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   // here rather than left as the one service where the button is dead.
   // Steam takes a picture or a short video, and says which and how big.
   const supportsAttachments =
-    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'xmpp'
+    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'xmpp' || service === 'signal'
 
   // Starting a reply puts the cursor in the box: the next thing anybody does
   // is write the answer.
@@ -483,7 +478,9 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
     }
     const id = ++seqRef.current
     const isImage = isImageFile(name)
-    const preview = file && isImage ? URL.createObjectURL(file) : undefined
+    // A picture or a video shows itself on its card, and a sound says how long it is; the dropped file is what
+    // those are read from.
+    const preview = file && ['image', 'video', 'audio'].includes(fileKind(name)) ? URL.createObjectURL(file) : undefined
     setStaged((s) => [...s, { id, path, name, isImage, spoiler: false, preview }])
     // Its size is the main process's to read; the card says it when it comes.
     void window.moho.fileSize(path).then((size) => {
@@ -521,8 +518,28 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
       disabled: !supportsAttachments,
       onClick: pickAndStage
     },
-    ...(service === 'telegram' && !thread
+    ...((service === 'telegram' || service === 'signal') && !thread
       ? ([{ label: 'Start a poll', icon: 'ballot', onClick: () => setPolling(true) }] as MenuEntry[])
+      : []),
+    ...(service === 'signal' && !thread && buffer.remoteId?.startsWith('g:')
+      ? ([{ label: "Post to the group's story", icon: 'auto_stories', onClick: () => setStorying(true) }] as MenuEntry[])
+      : []),
+    ...(service === 'signal' && !thread && buffer.remoteId !== 'stories'
+      ? ([
+          {
+            label: 'Send a location',
+            icon: 'location_on',
+            onClick: () => {
+              setPickerOpen(false)
+              setStickerPicker(false)
+              setPlaceOpen(true)
+            }
+          },
+          { label: 'Share a contact', icon: 'contact_page', onClick: () => setSharingContact(true) }
+        ] as MenuEntry[])
+      : []),
+    ...(service === 'signal' && !thread && buffer.remoteId === 'stories'
+      ? ([{ label: 'Post a story', icon: 'auto_stories', onClick: () => setStorying(true) }] as MenuEntry[])
       : []),
     ...(service === 'matrix' && !thread
       ? ([
@@ -606,6 +623,19 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
             batch.filter((att) => att.spoiler).map((att) => att.path)
           )
         }
+      } else if (service === 'signal') {
+        // Signal carries up to 32 files in one message, as a gallery with the words under it. A file marked view-once
+        // goes alone and without words, as Signal's clients send one.
+        const together = staged.filter((att) => !att.spoiler)
+        const once = staged.filter((att) => att.spoiler)
+        if (together.length === 0 && body.trim()) void post(body)
+        for (let i = 0; i < together.length; i += 32) {
+          void post(
+            i === 0 ? body : '',
+            together.slice(i, i + 32).map((att) => att.path)
+          )
+        }
+        once.forEach((att) => void post('', att.path, [att.path]))
       } else {
         staged.forEach((att, i) => {
           void post(i === 0 ? body : '', att.path, att.spoiler ? [att.path] : undefined)
@@ -1095,51 +1125,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
         </div>
       )}
 
-      {staged.length > 0 && (
-        <div className="composer-attachments">
-          {staged.map((att) => (
-            <div key={att.id} className={classes('staged-card', att.spoiler && 'is-spoiler')}>
-              <div className="staged-preview">
-                {att.isImage ? (
-                  <img src={att.preview ?? resolveMediaUrl(att.path)} alt="" />
-                ) : (
-                  <Icon name="description" size={32} />
-                )}
-                {att.spoiler && <span className="staged-spoiler-pill">SPOILER</span>}
-              </div>
-              <div className="staged-meta">
-                <span className="staged-name ellipsis" title={att.name}>
-                  {att.name}
-                </span>
-                {typeof att.size === 'number' && <span className="small muted">{humanSize(att.size)}</span>}
-              </div>
-              {/* On the card's corner, and there only while it is pointed at
-                  or focused - they would be a dozen buttons otherwise. */}
-              <div className="staged-actions">
-                {(service === 'discord' || service === 'steam' || service === 'telegram' || service === 'stoat') && (
-                  <button
-                    type="button"
-                    className={classes('staged-action', att.spoiler && 'on')}
-                    title={att.spoiler ? 'Not a spoiler' : 'Mark as spoiler'}
-                    aria-pressed={att.spoiler}
-                    onClick={() => setStaged((s) => s.map((x) => (x.id === att.id ? { ...x, spoiler: !x.spoiler } : x)))}
-                  >
-                    <Icon name={att.spoiler ? 'visibility_off' : 'visibility'} size={16} />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="staged-action danger"
-                  title="Remove"
-                  onClick={() => setStaged((s) => s.filter((x) => x.id !== att.id))}
-                >
-                  <Icon name="delete" size={16} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {staged.length > 0 && <StagedTray staged={staged} onChange={setStaged} service={service ?? ''} />}
 
       <div className="composer-row">
        <div className="composer-box">
@@ -1325,7 +1311,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
                 !e.altKey &&
                 !e.metaKey &&
                 !text &&
-                (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'xmpp')
+                (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'xmpp' || service === 'signal')
               ) {
                 const last = store.lastEditableOwn(buffer.id)
                 if (last) {
@@ -1441,7 +1427,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
             messages at all: Discord's flag and base64 waveform, and Matrix's
             MSC3245 marker with integers. The daemon speaks both from one
             recording, so this is the same button either way. */}
-        {!thread && (service === 'discord' || service === 'matrix' || service === 'telegram' || service === 'xmpp') && <VoiceRecorder bufferId={buffer.id} />}
+        {!thread && (service === 'discord' || service === 'matrix' || service === 'telegram' || service === 'xmpp' || service === 'signal') && <VoiceRecorder bufferId={buffer.id} />}
 
         {/* Sending is the one thing the box does that its own Enter does not
             say, so it is only drawn when there is something to send. */}
@@ -1464,13 +1450,15 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
           onSend={(place, label) => {
             setPlaceOpen(false)
             void window.moho
-              .rpc('sendMatrixLocation', { bufferId: buffer.id, place, label })
+              .rpc(service === 'signal' ? 'signalSendLocation' : 'sendMatrixLocation', { bufferId: buffer.id, place, label })
               .catch((e: Error) => store.toast('error', e.message))
           }}
         />
       )}
 
       {polling && <PollComposer bufferId={buffer.id} onClose={() => setPolling(false)} />}
+      {storying && <StoryComposer bufferId={buffer.id} onClose={() => setStorying(false)} />}
+      {sharingContact && <ContactCardComposer bufferId={buffer.id} onClose={() => setSharingContact(false)} />}
 
 
       {gifPicker && (
@@ -1480,6 +1468,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
           accountId={buffer.accountId}
           discord={service === 'discord'}
           telegram={service === 'telegram'}
+          signal={service === 'signal'}
           onClose={() => setGifPicker(false)}
         />
       )}
@@ -1506,6 +1495,8 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
                       ? window.moho.rpc('sendSteamSticker', { bufferId: buffer.id, name: sticker.name })
                       : service === 'telegram'
                         ? window.moho.rpc('sendTelegramSticker', { bufferId: buffer.id, id: sticker.id })
+                        : service === 'signal'
+                        ? window.moho.rpc('sendSignalSticker', { bufferId: buffer.id, id: sticker.id })
                         : sticker.id
                         ? window.moho.rpc('sendDiscordSticker', { bufferId: buffer.id, stickerId: sticker.id })
                         : window.moho.rpc('sendMatrixSticker', { bufferId: buffer.id, mxc: sticker.mxc, body: sticker.body })

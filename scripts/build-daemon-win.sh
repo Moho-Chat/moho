@@ -27,6 +27,10 @@ echo "building the Windows daemon with $CARGO"
 # daemon then reports its version, or "development".
 NOBILIS_CHANNEL="$(node "$SRC_DIR/scripts/version-label.mjs" --channel)"
 export NOBILIS_CHANNEL
+# CMake's view of the MinGW target, for every crate built with it: compilers, and BoringSSL (Signal's number lookup)
+# built without its assembly, which is ELF/Mach-O only and fails to link for MinGW. See the file.
+CMAKE_TOOLCHAIN_FILE_x86_64_pc_windows_gnu="$SRC_DIR/nobilis/cmake/x86_64-w64-mingw32.cmake"
+export CMAKE_TOOLCHAIN_FILE_x86_64_pc_windows_gnu
 # From inside nobilis/, for its .cargo/config.toml - see build-daemon.sh.
 cd "$SRC_DIR/nobilis"
 # --locked: see build-daemon.sh.

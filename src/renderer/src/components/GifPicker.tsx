@@ -44,6 +44,7 @@ export function GifPicker({
   accountId,
   discord,
   telegram,
+  signal,
   onClose
 }: {
   anchor: HTMLElement | null
@@ -53,6 +54,8 @@ export function GifPicker({
   discord: boolean
   /** Whether the conversation is on Telegram, which has GIFs of its own: the account's saved ones, and its GIF search. */
   telegram?: boolean
+  /** Signal: the video is sent as an attachment marked GIF, as Signal's clients send one. */
+  signal?: boolean
   onClose: () => void
 }): JSX.Element {
   const store = useStore()
@@ -145,6 +148,11 @@ export function GifPicker({
     // Telegram's are files on Telegram: sending one is sending that file, not a link to it.
     if (telegram) {
       void window.moho.rpc('sendTelegramGif', { bufferId, id: gif.id }).catch((e: Error) => store.toast('error', e.message))
+      return
+    }
+    // Signal's are sent as the video, marked as a GIF, the way Signal's own clients send them.
+    if (signal) {
+      void window.moho.rpc('sendSignalGif', { bufferId, url: gif.src || gif.gifSrc }).catch((e: Error) => store.toast('error', e.message))
       return
     }
     // Discord's own client sends the link, which Discord turns into the GIF.

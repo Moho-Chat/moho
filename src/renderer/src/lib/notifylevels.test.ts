@@ -6,9 +6,17 @@ describe('which levels a service can keep', () => {
   const person = { kind: 'dm' } as const
 
   it('offers all four where the service has a setting for every one, or the daemon keeps it', () => {
-    for (const service of ['matrix', 'discord', 'stoat', 'irc', 'twitch', 'kick', 'sneedchat', undefined]) {
+    for (const service of ['stoat', 'irc', 'twitch', 'kick', undefined]) {
       expect(notifyLevelsFor(service, room)).toEqual(['default', 'all', 'mentions', 'mute'])
     }
+  })
+
+  it('adds direct mentions only where a whole place can be addressed, and not for one person', () => {
+    for (const service of ['matrix', 'discord', 'sneedchat']) {
+      expect(notifyLevelsFor(service, room)).toEqual(['default', 'all', 'mentions', 'direct', 'mute'])
+      expect(notifyLevelsFor(service, person)).toEqual(['default', 'all', 'mentions', 'mute'])
+    }
+    expect(levelLabel('direct', 'discord', 'channel')).toBe('Direct mentions only')
   })
 
   it('offers Telegram only what it keeps for a chat: muted or not', () => {
@@ -17,7 +25,8 @@ describe('which levels a service can keep', () => {
   })
 
   it('offers a Steam group room its three and a friend only muted or not', () => {
-    expect(notifyLevelsFor('steam', room)).toEqual(['all', 'mentions', 'mute'])
+    // @all and @online are Steam's way of addressing everybody.
+    expect(notifyLevelsFor('steam', room)).toEqual(['all', 'mentions', 'direct', 'mute'])
     expect(notifyLevelsFor('steam', person)).toEqual(['default', 'mute'])
   })
 })

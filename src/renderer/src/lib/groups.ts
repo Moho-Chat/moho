@@ -103,7 +103,7 @@ export function waitingCount(buffer: BufferEntry, muted = false): number {
   if (isDirectMessage(buffer)) {
     if (muted) return 0
     // Told only of what names you, a direct message is counted like a channel.
-    return level === 'mentions' ? buffer.mentions : buffer.unread
+    return level === 'mentions' || level === 'direct' ? buffer.mentions : buffer.unread
   }
   // Told of every message, each is an interruption and each is counted.
   return level === 'all' ? buffer.unread : buffer.mentions

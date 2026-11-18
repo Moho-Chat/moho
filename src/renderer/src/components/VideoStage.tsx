@@ -50,6 +50,7 @@ export function VideoStage({
   onBringBack,
   height,
   onHeight,
+  ownControls,
   children
 }: {
   /** Above the conversation, in a corner of the window, or a window of its own. */
@@ -68,6 +69,8 @@ export function VideoStage({
   /** Inline only: how tall the picture is now, and how to change it. `null` puts it back to what it was. */
   height?: number
   onHeight?: (height: number | null, commit: boolean) => void
+  /** The source draws its controls over its own picture: no bar under it, and no card round it. */
+  ownControls?: boolean
   children: ReactNode
 }): JSX.Element {
   const panel = useRef<HTMLDivElement>(null)
@@ -298,7 +301,7 @@ export function VideoStage({
   }
 
   return (
-    <div className={classes('call-stage', mode === 'pip' && 'pip', mode === 'window' && 'in-window')} ref={panel} style={placed}>
+    <div className={classes('call-stage', mode === 'pip' && 'pip', mode === 'window' && 'in-window', ownControls && 'own-controls')} ref={panel} style={placed}>
       {mode === 'pip' &&
         // Any edge or corner, the way a window is resized.
         EDGES.map((dir) => (
@@ -358,6 +361,7 @@ export function VideoStage({
         />
       )}
 
+      {!ownControls && (
       <div className="call-stage-controls">
         {/* Which conversation this belongs to, because the picture no longer
             sits under it: it outlives looking at something else. */}
@@ -373,6 +377,7 @@ export function VideoStage({
         )}
         <IconButton name={endIcon} title={endLabel} className="calling" onClick={onEnd} />
       </div>
+      )}
     </div>
   )
 }

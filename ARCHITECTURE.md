@@ -282,6 +282,29 @@ called `subscribe` for that buffer.
   other implementations as the other side (`scripts/probe-xmpp-*.mjs`, `scripts/check-xmpp-*.mjs`); the plan and what has and has
   not been run is Gitea issue #23.
 
+- **Signal** (on the `protocol/signal` branch, not yet released, and not yet run against a real account: no test
+  account exists; linking has been checked as far as Signal giving a code, directly and through Tor) - moho links to
+  an existing Signal account as a secondary device, the way Signal Desktop does, by a QR code scanned with Signal on
+  the phone; it never registers a number or answers a captcha. The protocol is Signal's own `libsignal` reached
+  through Whisperfish's `libsignal-service-rs` and `presage` (AGPL-3.0, see the nobilis README), both **vendored with
+  small patches** (`nobilis/vendor/*/PATCHED.md`): a per-thread network setting so an account's connections go
+  through its Tor or proxy route under moho's name, link previews only when the phone allows them, the group
+  server's requests (change, create, link) that the library lacked, and stories delivered. The library's stores are
+  not `Send`, so each account's `Manager` lives on a thread of its own with a single-threaded runtime, and the rest
+  of the daemon talks to it by sending `Command`s. The account's keys, sessions, contacts, groups and messages are one
+  private SQLite file per account (presage's store re-written over rusqlite, because its own needs a SQLCipher that
+  cannot share a binary with this one). A message has no id on Signal: it is the author and the time they stamped
+  it, which is also how a reply, reaction, edit or delete names it. What the phone keeps for every device - names,
+  who is accepted or blocked, mutes, pins, the privacy settings - is read from the storage service (`storage`); a
+  stranger's messages wait as a request on the Invitations tile until accepted (`requests`). Built: text with styles
+  and mentions both ways, long messages, replies, reactions, edits, deletes, files and GIFs, link cards,
+  disappearing messages, receipts and typing (as the phone's settings say), what is sent from the phone appearing
+  here, polls, stories (shown for a day, answered or reacted to), groups - made, changed, joined by link, with their
+  changes as lines (`groups`, `manage`) - blocking, safety numbers marked verified, the account's own profile, and
+  the phone's call log as lines. Not built or not possible with the library as it stands: calls themselves (RingRTC),
+  posting stories and writing to the storage service, sending stickers, history transfer at link time, looking up a
+  number (CDSI). The code is `nobilis/src/backend/signal/`.
+
 ### Notifications are cards
 
 Anything a service *says* rather than somebody *saying* - a join or part, a topic or mode change, a kick,

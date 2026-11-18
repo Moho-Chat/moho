@@ -30,6 +30,24 @@ describe('an XMPP request and a file offered device to device', () => {
   })
 })
 
+describe("Signal's message requests", () => {
+  const signal = [account('signal:me', 'signal')]
+  const list = listInvitations(
+    sources({
+      friends: { 'signal:me': [{ id: 'p:1111', name: 'Pat', detail: 'wants to message you: “hello”' }] },
+      rooms: { 'signal:me': [{ roomId: 'g:abcd', name: 'Book club', inviter: 'Pat', avatarUrl: null, isDirect: false }] }
+    }),
+    signal
+  )
+
+  it('are a person asking to message, and a group the account was added to, with nothing of it shown yet', () => {
+    expect(list.map((i) => [i.kind, i.id, i.detail])).toEqual([
+      ['room', 'g:abcd', 'Pat added you to this group. Nothing from it is shown until you accept'],
+      ['friend', 'p:1111', 'wants to message you: “hello”']
+    ])
+  })
+})
+
 describe('the invitations from every service', () => {
   const list = listInvitations(sources({ rooms: { 'matrix:@me:x': [room, dm] }, friends: { 'steam:me': [friend] } }), accounts)
 

@@ -30,10 +30,11 @@
   --outline-medium: rgba(140, 145, 153, 0.12);
   --outline-strong: rgba(140, 145, 153, 0.18);
 
-  --primary-hover-light: rgba(66, 165, 245, 0.08);
-  --primary-hover: rgba(66, 165, 245, 0.12);
-  --primary-pressed: rgba(66, 165, 245, 0.16);
-  --primary-selected: rgba(66, 165, 245, 0.3);
+  /* Made from the accent, so a different accent brings its own. */
+  --primary-hover-light: color-mix(in srgb, var(--primary) 8%, transparent);
+  --primary-hover: color-mix(in srgb, var(--primary) 12%, transparent);
+  --primary-pressed: color-mix(in srgb, var(--primary) 16%, transparent);
+  --primary-selected: color-mix(in srgb, var(--primary) 30%, transparent);
 
   /* Whispers. Their own colour rather than the mention blue, because they are
      a different kind of "this one is yours": a mention is the room saying your
@@ -81,6 +82,13 @@
   --go: #248046;
   --go-hover: #1a6334;
 
+  /* How an account is doing (#339): up, on its way, turned away, switched
+     off. The same four wherever an account is listed. */
+  --state-ok: #3dbb6c;
+  --state-busy: #e3a53a;
+  --state-bad: var(--danger-text);
+  --state-off: #7d848e;
+
   /* Text on a coloured fill or over a picture, where the theme's own text
      colour would vanish. */
   --on-accent: #ffffff;
@@ -98,7 +106,8 @@
   --text-muted: #949ba4;
 
   /*
-   * Bubble mode. Green for what you said, blue for what everyone else did.
+   * Bubble mode. Green for what you said; what everyone else said sits on the
+   * plain surface (it was blue until #339 - see below the green).
    *
    * Both are deeper than the phone's own, for the same reason. Its green is
    * the brighter #34c759, which carries white text at about 2.3:1, and its
@@ -114,8 +123,10 @@
    */
   --bubble-me: #1f7a3a;
   --bubble-me-text: #ffffff;
-  --bubble-them: #0b6fd8;
-  --bubble-them-text: #ffffff;
+  /* What somebody else said sits on the surface, quietly; only your own is filled. Every other
+     bubble in a saturated blue made a long conversation a wall of it. */
+  --bubble-them: var(--surface-container-high);
+  --bubble-them-text: var(--surface-text);
 
   --spacing-xxs: 2px;
   --spacing-xs: 4px;
@@ -188,7 +199,9 @@
   --rail-width: 56px;
   --sidebar-width: 220px;
   --nicklist-width: 180px;
-  --settings-rail-width: 130px;
+  --settings-rail-width: 184px;
+  /* The list of accounts beside the page for the one chosen. */
+  --master-list-width: 256px;
 }
 
 * {
@@ -426,4 +439,61 @@ a:hover {
     transition-duration: 0s !important;
     scroll-behavior: auto !important;
   }
+}
+
+/*
+ * The light theme (#339): the same tokens with a second set of values.
+ *
+ * The accent is deeper than on the dark theme, because the same blue on white
+ * is too pale to read as text or carry white on a button. Hover, pressed and
+ * selected are ink laid over the surface rather than light, for the same
+ * reason they are light on the dark one.
+ */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --primary: #1565c0;
+  --primary-text: #ffffff;
+  --primary-container: #d3e4fb;
+  --secondary: #2f6fbe;
+
+  --surface: #f4f5f7;
+  --surface-text: #1b1d21;
+  --surface-variant: #d5d9df;
+  --surface-variant-text: #4a5058;
+
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #eceef1;
+  --surface-container: #ffffff;
+  --surface-container-high: #e6e9ed;
+  --surface-container-highest: #d9dde3;
+  --button-subtle: #d0d5dc;
+
+  --outline: #6b727b;
+  --outline-light: rgba(40, 48, 60, 0.1);
+  --outline-medium: rgba(40, 48, 60, 0.17);
+  --outline-strong: rgba(40, 48, 60, 0.28);
+  --outline-hover: rgba(40, 48, 60, 0.45);
+
+  --whisper: #6a3fc4;
+  --whisper-tint: rgba(106, 63, 196, 0.1);
+  --notice: #00796b;
+  --notice-tint: rgba(0, 121, 107, 0.09);
+
+  --surface-hover: rgba(20, 28, 40, 0.06);
+  --surface-pressed: rgba(20, 28, 40, 0.1);
+  --surface-selected: rgba(20, 28, 40, 0.12);
+
+  --error: #b3261e;
+  --warning: #a15c00;
+  --danger-text: #c62828;
+  --mention-row: rgba(240, 160, 20, 0.16);
+  --mention-edge: #c98a00;
+  --state-ok: #1f8a4c;
+  --state-busy: #a86a00;
+  --state-off: #7b838d;
+
+  --overlay-control: rgba(0, 0, 0, 0.08);
+  --text-muted: #646b75;
+  --scrim: rgba(20, 24, 30, 0.45);
 }

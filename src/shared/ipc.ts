@@ -2,6 +2,10 @@
 export const IPC = {
   // renderer -> main (invoke)
   rpc: 'moho:rpc',
+  /** Signal calls, run by RingRTC in main (see main/signal-calls.ts): one invoke for every action. */
+  signalCall: 'moho:signalCall',
+  /** main -> window: the other side's picture (width, height, RGBA bytes). window -> main: this side's camera. */
+  signalCallFrame: 'moho:signalCallFrame',
   prefsGetAll: 'moho:prefs:getAll',
   prefsSet: 'moho:prefs:set',
   windowMinimize: 'moho:window:minimize',
@@ -10,9 +14,12 @@ export const IPC = {
   windowIsMaximized: 'moho:window:isMaximized',
   openExternal: 'moho:openExternal',
   openArticle: 'moho:openArticle',
+  /** A finished transfer's file, opened or shown in its folder; or the folder downloads go to. Named by the transfer, never by a path. */
+  transferFile: 'moho:transferFile',
   resolveImagePage: 'moho:resolveImagePage',
   pickFile: 'moho:pickFile',
   pickSavePath: 'moho:pickSavePath',
+  saveAttachment: 'moho:saveAttachment',
   pickDirectory: 'moho:pickDirectory',
   downloadMedia: 'moho:downloadMedia',
   copyImage: 'moho:copyImage',

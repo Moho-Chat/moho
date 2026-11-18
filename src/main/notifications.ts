@@ -120,10 +120,12 @@ export class Notifier {
     if (!this.prefs.get<boolean>('notifications.desktop', true)) return
     if (!Notification.isSupported()) return
 
-    const icon = await this.notificationIcon(payload.avatarUrl)
+    // How much a notification may say, for whoever else can see the screen or the desktop's notification history.
+    const shows = this.prefs.get<string>('notifications.content', 'all')
+    const icon = shows === 'none' ? null : await this.notificationIcon(payload.avatarUrl)
     const notification = new Notification({
-      title: payload.title || 'moho',
-      body: payload.body || '',
+      title: shows === 'none' ? 'moho' : payload.title || 'moho',
+      body: shows === 'all' ? payload.body || '' : 'New message',
       // The system's own sound for it, unless asked to be quiet.
       silent: !this.prefs.get<boolean>('notifications.sound', true),
       ...(icon ? { icon } : {})

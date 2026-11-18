@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Icon, IconButton } from './Icon'
 import { AddToConversation } from './AddToConversation'
 import { DiscordInvite } from './DiscordInvite'
 import { RoomSettings } from './RoomSettings'
+import { SignalGroupSettings } from './SignalGroupSettings'
+import { TelegramChatSettings } from './TelegramChatSettings'
+import { TelegramSecretTools } from './TelegramSecretTools'
+import { TelegramVoiceChat } from './TelegramVoiceChat'
 import { HeaderPopover } from './HeaderPopover'
+import { SearchPane } from './SearchPane'
 import { useChat, useStore } from '../state/hooks'
-import { bufferDisplayName, classes, formatFullTime } from '../lib/util'
+import { classes, formatFullTime } from '../lib/util'
+import { shortCount } from '../lib/streamplayer'
 import { hasQuery, parseSearch, suggestions } from '../lib/searchfilters'
 import type { BufferEntry, LiveCard } from '../state/store'
 import type { Message } from '../../../shared/wire'
@@ -561,6 +568,33 @@ function PinnedMessages({ buffer }: { buffer: BufferEntry }): JSX.Element | null
  * invents its own, and these are the handful that change whether you can say
  * anything. An unknown letter is shown as itself.
  */
+/**
+ * A worded list of modes - Kick's and Twitch's "followers only (1 hour), slow
+ * mode 5s" - as a chip each: a glyph for which, and the number where it has
+ * one. Nothing for mode letters, which are set as they always were.
+ */
+export function wordedModes(modes: string): { full: string; icon: string; short: string }[] | null {
+  if (/^[+-][A-Za-z]/.test(modes) || !/[a-z]{3}/i.test(modes)) return null
+  return modes
+    .split(/,\s*/)
+    .map((full) => full.trim())
+    .filter(Boolean)
+    .map((full) => {
+      const amount = /\(([^)]+)\)/.exec(full)?.[1] ?? /(\d+\s*[a-z]*)\s*$/i.exec(full)?.[1] ?? ''
+      const brief = amount
+        .replace(/\s*minutes?/, 'm')
+        .replace(/\s*hours?/, 'h')
+        .replace(/\s*days?/, 'd')
+        .replace(/\s*seconds?/, 's')
+      if (/follow/i.test(full)) return { full, icon: 'favorite', short: brief || 'Followers' }
+      if (/slow/i.test(full)) return { full, icon: 'hourglass_bottom', short: brief || 'Slow' }
+      if (/sub/i.test(full)) return { full, icon: 'star', short: brief || 'Subs' }
+      if (/emote/i.test(full)) return { full, icon: 'mood', short: 'Emotes' }
+      if (/unique|r9k/i.test(full)) return { full, icon: 'fingerprint', short: 'Unique' }
+      return { full, icon: 'tune', short: full }
+    })
+}
+
 function describeModes(modes: string): string {
   if (/[\s]/.test(modes) || !/^\+?[a-z]+$/i.test(modes)) return modes
   const meanings: Record<string, string> = {
@@ -576,6 +610,12 @@ function describeModes(modes: string): string {
   const described = [...modes.replace(/[^a-z]/gi, '')].map((letter) => meanings[letter] ?? letter)
   return described.length ? described.join(', ') : modes
 }
+
+/** The strip under the header that holds a narrow header's other tools; App owns it. */
+export const HEADER_TRAY_HOST = 'header-tray-host'
+
+/** Below this many pixels the room's tools go behind one button. */
+const NARROW_HEADER = 720
 
 /**
  * The call button and search box at the head of a conversation.
@@ -606,6 +646,22 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   /** How many the server found, which is usually far more than it sent. */
   const [total, setTotal] = useState<number | null>(null)
   const box = useRef<HTMLDivElement>(null)
+  /** Whether the header is too narrow for every tool to sit in the row, and whether the rest are showing. */
+  const [narrow, setNarrow] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
+  const [trayHost, setTrayHost] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    const header = box.current?.closest('.main-header')
+    if (!header) return
+    setTrayHost(document.getElementById(HEADER_TRAY_HOST))
+    const measure = (): void => setNarrow(header.clientWidth < NARROW_HEADER)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(header)
+    return () => observer.disconnect()
+  }, [])
+  // Put away when the conversation changes: the strip belongs to the one it was opened on.
+  useEffect(() => setMoreOpen(false), [buffer.id])
   const searchButton = useRef<HTMLSpanElement>(null)
   const searchInput = useRef<HTMLInputElement>(null)
 
@@ -627,6 +683,9 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   // picture, and the one in the main window keeps playing there.
   const watching = useChat((s) => s.watching?.bufferId === buffer.id)
   const matrixCall = useChat((s) => s.activeCall)
+  const signalCall = useChat((s) => s.signalCall)
+  const signalCallsAvailable = useChat((s) => s.signalCallsAvailable)
+  const signalGroupCall = useChat((s) => s.signalGroupCall)
   const isDm = buffer.kind === 'dm'
   // An account that goes through Tor (or the proxy) takes no calls: a call's audio and video cannot go through Tor, so they would
   // go around it and show the real address. The daemon refuses them as well; here the buttons say so before anybody presses them.
@@ -741,6 +800,13 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
     return () => clearInterval(timer)
   }, [hasStream, buffer.id, buffer.kind])
 
+  // The column beside the conversation is there for as long as there is something to put in it.
+  const hasResults = results !== null
+  useEffect(() => {
+    store.setSearchPane(hasResults)
+    return () => store.setSearchPane(false)
+  }, [hasResults, store])
+
   const rerun = async (): Promise<void> => {
     setSearching(true)
     try {
@@ -847,23 +913,53 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           say - an unmodded channel has no modes worth a badge - and titled
           with the long form, since the letters are only obvious to people who
           already knew. */}
-      {buffer.channelModes && (
+      {/* What the stream is, for a channel that is one: whether it is on
+          air, its title - the part that gives way when the header is tight -
+          and how many are watching. What it is a stream *of* is on the
+          picture itself (see StreamStage), not repeated here. */}
+      {stream && (
         <span
-          // Mode letters ("+nt") are set like code; a service that names its
-          // modes in words - Kick's "followers only" - is set like text, or it
-          // wraps into a two-line box in a monospace fallback.
-          className={`channel-modes small${/^[+-][A-Za-z]/.test(buffer.channelModes) ? ' letters' : ''}`}
-          title={describeModes(buffer.channelModes)}
+          className={classes('stream-chip', 'small', stream.live && 'live')}
+          title={
+            stream.live
+              ? [stream.title, stream.category, stream.viewers ? `${stream.viewers.toLocaleString()} watching` : null]
+                  .filter(Boolean)
+                  .join(' · ')
+              : 'Not streaming right now'
+          }
         >
-          {buffer.channelModes}
+          <span className={classes('live-pill', !stream.live && 'off')}>{stream.live ? 'LIVE' : 'OFFLINE'}</span>
+          {stream.live && stream.title && <span className="stream-chip-title ellipsis">{stream.title}</span>}
+          {stream.live && stream.viewers !== null && stream.viewers !== undefined && (
+            <span className="stream-viewers">
+              <Icon name="person" size={14} fill />
+              {shortCount(stream.viewers)}
+            </span>
+          )}
         </span>
       )}
 
-      {/* What the stream is, for a channel that is one. Kick's chat is
-          watched beside a video this client does not show, so the title, the
-          game and the number of people watching are the context the chat is
-          missing - and "offline" is worth saying too, since a quiet channel
-          and an off-air one look identical otherwise. */}
+      {/* What the channel itself is set to. Only where there is something to
+          say - an unmodded channel has no modes worth a badge - and titled
+          with the long form, since the letters are only obvious to people who
+          already knew. A service that words its modes gets a small chip for
+          each, a glyph and the one number that matters. */}
+      {buffer.channelModes &&
+        (wordedModes(buffer.channelModes) ? (
+          <span className="mode-chips" title={`This room: ${buffer.channelModes}`}>
+            {wordedModes(buffer.channelModes)!.map((m) => (
+              <span key={m.full} className="mode-chip small">
+                <Icon name={m.icon} size={13} />
+                {m.short}
+              </span>
+            ))}
+          </span>
+        ) : (
+          <span className="channel-modes small letters" title={describeModes(buffer.channelModes)}>
+            {buffer.channelModes}
+          </span>
+        ))}
+
       {/* Following is the one thing about a Kick channel somebody changes from
           here - subscribing is money and raiding is the broadcaster's own
           gesture, and neither belongs behind a button in a chat client.
@@ -877,49 +973,28 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           onClick={() => store.setFollowing(buffer.id, !stream.following)}
         >
           <Icon name={stream.following ? 'favorite' : 'favorite_border'} size={15} />
-          {stream.following ? 'Following' : 'Follow'}
+          <span className="follow-button-word">{stream.following ? 'Following' : 'Follow'}</span>
         </button>
       )}
 
-      {stream && (
-        <span
-          className={classes('stream-chip', 'small', stream.live && 'live')}
-          title={
-            stream.live
-              ? [stream.title, stream.category, stream.viewers ? `${stream.viewers.toLocaleString()} watching` : null]
-                  .filter(Boolean)
-                  .join(' · ')
-              : 'Not streaming right now'
-          }
-        >
-          {stream.live ? (
-            <>
-              <span className="stream-dot" />
-              <span className="ellipsis">{stream.title || 'Live'}</span>
-              {stream.category && <span className="muted ellipsis">{stream.category}</span>}
-              {stream.viewers !== null && stream.viewers !== undefined && (
-                <span className="muted">{stream.viewers.toLocaleString()}</span>
-              )}
-            </>
-          ) : (
-            <span className="muted">offline</span>
-          )}
-        </span>
-      )}
       {/* Watching, offered where the chat is rather than only on the row in
           the list - a popped-out channel has no list to right-click, and the
           window that has the conversation is the one somebody is looking at
           when they decide to watch it.
 
-          Beside the chip that says the channel is on air, and only while it
-          is: a playlist for an offline channel is a signed URL to nothing. */}
+          The one filled button on the header, and only while the channel is
+          on air: a playlist for an offline channel is a signed URL to
+          nothing. */}
       {stream && (stream.live || watching) && (
-        <IconButton
-          name={watching ? 'stop_circle' : 'live_tv'}
+        <button
+          type="button"
+          className={classes('button', 'watch-button', watching ? 'subtle' : 'primary')}
           title={watching ? 'Stop watching' : 'Watch the stream'}
-          className={watching ? 'calling' : undefined}
           onClick={() => (watching ? store.stopWatching() : store.watchStream(buffer.id))}
-        />
+        >
+          <Icon name={watching ? 'stop_circle' : 'play_arrow'} size={16} fill={!watching} />
+          {watching ? 'Stop' : 'Watch'}
+        </button>
       )}
 
       {/* Matrix's own calls, which this window makes rather than the daemon:
@@ -963,6 +1038,26 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
         />
       )}
 
+      {/* Signal's calls, run by RingRTC in main: one person at a time, voice or video. */}
+      {buffer.accountId.startsWith('signal:') && buffer.remoteId?.startsWith('p:') && signalCallsAvailable && !signalCall && (
+        <>
+          <IconButton name="call" title={callsOff ?? 'Voice call'} disabled={!!callsOff} onClick={() => void store.startSignalCall(buffer.id, false)} />
+          <IconButton name="videocam" title={callsOff ?? 'Video call'} disabled={!!callsOff} onClick={() => void store.startSignalCall(buffer.id, true)} />
+        </>
+      )}
+      {buffer.accountId.startsWith('signal:') && buffer.remoteId?.startsWith('g:') && signalCallsAvailable && !signalCall && !signalGroupCall && (
+        <>
+          <IconButton name="call" title={callsOff ?? 'Start or join the group call'} disabled={!!callsOff} onClick={() => void store.joinSignalGroupCall(buffer.id, false, true)} />
+          <IconButton name="videocam" title={callsOff ?? 'Start or join the group call with video'} disabled={!!callsOff} onClick={() => void store.joinSignalGroupCall(buffer.id, true, true)} />
+        </>
+      )}
+      {signalGroupCall && signalGroupCall.bufferId === buffer.id && (
+        <IconButton name="call_end" title="Leave the call" className="calling" onClick={() => store.leaveSignalGroupCall()} />
+      )}
+      {signalCall && signalCall.bufferId === buffer.id && signalCall.state !== 'ringing' && (
+        <IconButton name="call_end" title="Hang up" className="calling" onClick={() => store.hangUpSignalCall()} />
+      )}
+
       {/* Stoat's calls are held on a media server and drawn by the same stage as Matrix's: a direct message, a group or a
           voice room is joined, with the camera as a second choice. */}
       {buffer.accountId.startsWith('stoat:') && (buffer.kind === 'dm' || buffer.category === 'Groups' || buffer.nameIcon === 'volume_up') && matrixCall?.bufferId !== buffer.id && !matrixCall && (
@@ -985,46 +1080,77 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
         />
       )}
 
-      {/* Beside the call button, for the same reason it is here: it acts on
-          the conversation being read rather than on the window. */}
-      {isDiscord && isDm && <AddToConversation buffer={buffer} />}
+      {/* What the room keeps and what can be done to it - invites, threads,
+          pins, its settings, what it has asked before. In a wide header they
+          sit in the row; in a narrow one they go behind one button and are
+          laid out in a strip under the header, so the conversation's name
+          is not what gives way to them (#339). */}
+      {(() => {
+        const more = (
+          <>
+          {/* Beside the call button, for the same reason it is here: it acts on
+              the conversation being read rather than on the window. */}
+          {isDiscord && isDm && <AddToConversation buffer={buffer} />}
 
-      {/* A Discord channel is joined with a link rather than by being asked,
-          so the invite here is a thing to make and paste rather than a person
-          to name. A group message can be invited into as well as a channel,
-          which is why this is not gated on kind - the component hides itself
-          on the one conversation Discord has no link into, a one-to-one. */}
-      {isDiscord && buffer.kind !== 'server' && <DiscordInvite buffer={buffer} />}
+          {/* A Discord channel is joined with a link rather than by being asked,
+              so the invite here is a thing to make and paste rather than a person
+              to name. A group message can be invited into as well as a channel,
+              which is why this is not gated on kind - the component hides itself
+              on the one conversation Discord has no link into, a one-to-one. */}
+          {isDiscord && buffer.kind !== 'server' && <DiscordInvite buffer={buffer} />}
 
-      {/* The same job on Matrix, where it needs no picker: a Matrix address
-          names somebody whether or not this account has ever met them, so
-          there is no friend list to choose from and nothing to look up. */}
-      {buffer.accountId.startsWith('matrix:') && <InviteToRoom buffer={buffer} />}
+          {/* The same job on Matrix, where it needs no picker: a Matrix address
+              names somebody whether or not this account has ever met them, so
+              there is no friend list to choose from and nothing to look up. */}
+          {buffer.accountId.startsWith('matrix:') && <InviteToRoom buffer={buffer} />}
 
-      {isMatrix && buffer.kind !== 'server' && <ThreadList buffer={buffer} />}
-      {isDiscord && buffer.kind === 'channel' && <DiscordThreads buffer={buffer} />}
-      {(isMatrix || isDiscord || buffer.accountId.startsWith('telegram:') || isStoat) && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
+          {isMatrix && buffer.kind !== 'server' && <ThreadList buffer={buffer} />}
+          {isDiscord && buffer.kind === 'channel' && <DiscordThreads buffer={buffer} />}
+          {(isMatrix || isDiscord || buffer.accountId.startsWith('telegram:') || isStoat) && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
 
-      {/* Beside the pins, because it is the same kind of fact about a room:
-          something the room keeps, rather than something said in it. */}
-      {isMatrix && buffer.kind !== 'server' && <RoomWidgets buffer={buffer} />}
+          {/* Beside the pins, because it is the same kind of fact about a room:
+              something the room keeps, rather than something said in it. */}
+          {isMatrix && buffer.kind !== 'server' && <RoomWidgets buffer={buffer} />}
 
-      {/* And the room's own settings, next to them for the same reason.
-          Only on a room: a direct message has no history for anybody to
-          join and read. */}
-      {isMatrix && buffer.kind === 'channel' && <RoomSettings buffer={buffer} />}
+          {/* And the room's own settings, next to them for the same reason.
+              Only on a room: a direct message has no history for anybody to
+              join and read. */}
+          {isMatrix && buffer.kind === 'channel' && <RoomSettings buffer={buffer} />}
+          {/* Signal's, for a group, and for a conversation with one person the timer its messages disappear by. */}
+          {buffer.accountId.startsWith('signal:') && (buffer.kind === 'channel' || buffer.kind === 'dm') && <SignalGroupSettings buffer={buffer} />}
+          {/* Telegram's, for a group or channel (a forum topic belongs to its group, whose settings these are). */}
+          {buffer.accountId.startsWith('telegram:') && buffer.kind === 'channel' && <TelegramVoiceChat buffer={buffer} />}
+          {buffer.accountId.startsWith('telegram:') && buffer.kind === 'channel' && <TelegramChatSettings buffer={buffer} />}
+          {buffer.accountId.startsWith('telegram:') && buffer.kind === 'dm' && <TelegramSecretTools buffer={buffer} />}
 
-      {/* What this channel has asked before now. Two buttons rather than one
-          list, because a poll and a prediction are different questions -
-          which one is worth going back to is not a filter you want to apply
-          after opening a list.
+          {/* What this channel has asked before now. Two buttons rather than one
+              list, because a poll and a prediction are different questions -
+              which one is worth going back to is not a filter you want to apply
+              after opening a list.
 
-          Each appears only where the service has the thing: Matrix rooms
-          have polls and no predictions, IRC has neither, and an icon that
-          opens an empty list on a service that could never fill it is an
-          icon that says the feature is missing rather than absent. */}
-      {(isKick || isMatrix || isTwitch) && <CardHistory buffer={buffer} kind="poll" icon="help" label="Past polls" />}
-      {(isKick || isTwitch) && <CardHistory buffer={buffer} kind="prediction" icon="casino" label="Past predictions" />}
+              Each appears only where the service has the thing: Matrix rooms
+              have polls and no predictions, IRC has neither, and an icon that
+              opens an empty list on a service that could never fill it is an
+              icon that says the feature is missing rather than absent. */}
+          {(isKick || isMatrix || isTwitch || buffer.accountId.startsWith('signal:')) && <CardHistory buffer={buffer} kind="poll" icon="help" label="Past polls" />}
+          {(isKick || isTwitch) && <CardHistory buffer={buffer} kind="prediction" icon="casino" label="Past predictions" />}
+          </>
+        )
+        // Only where there is something to put behind it: IRC has none of these.
+        const hasMore = buffer.kind !== 'server' && /^(discord|matrix|signal|telegram|stoat|kick|twitch):/.test(buffer.accountId)
+        if (!narrow || !hasMore) return more
+        return (
+          <>
+            <IconButton
+              name="more_horiz"
+              title={moreOpen ? 'Hide the room\'s tools' : 'Threads, pins, settings and more'}
+              className={moreOpen ? 'active' : undefined}
+              onClick={() => setMoreOpen(!moreOpen)}
+            />
+            {moreOpen && trayHost && createPortal(<div className="header-tray-items">{more}</div>, trayHost)}
+          </>
+        )
+      })()}
 
       {/* An icon until it is being used. A box wide enough to type into is
           the single widest thing in this row, and a header that always
@@ -1178,40 +1304,36 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
             </div>
           )}
 
+          {/* The results are beside the conversation, not in here: this is the box and its filters. */}
           {results && (
-            <div className="search-results">
-              <div className="search-results-head small muted">
-                {searching
-                  ? 'Searching…'
-                  : jumping
-                    ? 'Loading older messages…'
-                    : total !== null && total > results.length
-                      ? // What the server found, not what it sent: a search
-                        // answering "25 results" when there are thousands is
-                        // a wrong answer to "how much is there".
-                        `${results.length} of ${total.toLocaleString()} results`
-                      : `${results.length} ${results.length === 1 ? 'result' : 'results'}`}
-              </div>
-              {results.map((m) => (
-                <button key={m.id} type="button" className="search-result" onClick={() => void jumpToResult(m)}>
-                  <span className="search-result-head small">
-                    <span className="search-result-from">{m.from}</span>
-                    {m.bufferId && m.bufferId !== buffer.id && (
-                      <span className="muted ellipsis">
-                        in {roomNames[m.bufferId] || bufferDisplayName(m.bufferId)}
-                      </span>
-                    )}
-                    <span className="muted">{formatFullTime(m.ts)}</span>
-                  </span>
-                  <span className="search-result-body small ellipsis">{m.body}</span>
-                </button>
-              ))}
-              {!searching && results.length === 0 && (
-                <div className="search-results-empty small muted">Nothing found in this conversation.</div>
-              )}
+            <div className="small muted search-popover-count">
+              {searching ? 'Searching…' : 'What it found is beside the conversation.'}
             </div>
           )}
         </HeaderPopover>
+      )}
+
+      {results && (
+        <SearchPane
+          query={query}
+          results={results}
+          total={total}
+          searching={searching}
+          jumping={jumping}
+          here={buffer.id}
+          roomNames={roomNames}
+          notes={[
+            // Why an encrypted room finds only what this window already had: the server holds ciphertext.
+            ...(isMatrix && encrypted ? ['This room is encrypted, so the server cannot search it. These are from what this window has downloaded.'] : []),
+            ...(indexing ? ['Discord is still indexing this server. Try again in a minute.'] : [])
+          ]}
+          onJump={(m) => void jumpToResult(m)}
+          onClose={() => {
+            setQuery('')
+            setResults(null)
+            setSearchOpen(false)
+          }}
+        />
       )}
     </div>
   )

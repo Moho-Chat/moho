@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ACCENTS } from '../../lib/appearance'
 import { ConfirmButton } from '../ConfirmButton'
 import { Switch } from '../Switch'
 import {
@@ -13,11 +14,11 @@ import {
   useSavedFlash
 } from './controls'
 import { useChat, usePref, useStore } from '../../state/hooks'
-import { Icon } from '../Icon'
+import { Icon, ServiceMark } from '../Icon'
 import { acceleratorLabel, acceleratorOf } from '../../lib/accelerator'
 import { AccountsPanel } from '../AccountsPanel'
 import { DownloadsPanel } from '../DownloadsPanel'
-import { humanBytes } from '../../lib/util'
+import { humanBytes, serviceIcon, classes } from '../../lib/util'
 import { DEFAULT_SEARCH_ENGINE, SEARCH_ENGINES, validTemplate } from '../../lib/searchengines'
 import { TunnelAllSwitch, useNetSettings } from './Tunnel'
 import type { Account, DccPrefs } from '../../../../shared/wire'
@@ -117,21 +118,21 @@ const CATEGORIES: { id: string; label: string; group: string; icon?: string; ser
   { id: 'accounts', label: 'Accounts', group: 'Personal', icon: 'manage_accounts' },
   { id: 'downloads', label: 'Downloads', group: 'Personal', icon: 'download' },
   // The app itself.
-  { id: 'general', label: 'General', group: 'App' },
-  { id: 'appearance', label: 'Appearance', group: 'App' },
-  { id: 'notifications', label: 'Notifications', group: 'App' },
-  { id: 'keybinds', label: 'Keybinds', group: 'App' },
+  { id: 'general', label: 'General', group: 'App', icon: 'tune' },
+  { id: 'appearance', label: 'Appearance', group: 'App', icon: 'palette' },
+  { id: 'notifications', label: 'Notifications', group: 'App', icon: 'notifications' },
+  { id: 'keybinds', label: 'Keybinds', group: 'App', icon: 'keyboard' },
   // One page per network, each only while there is an account on it.
   { id: 'irc', label: 'IRC', group: 'Networks', service: 'irc' },
   { id: 'sneedchat', label: 'Sneedchat', group: 'Networks', service: 'sneedchat' },
-  { id: 'tor', label: 'Tor', group: 'Networks' },
+  { id: 'tor', label: 'Tor', group: 'Networks', icon: 'vpn_lock' },
   { id: 'discord', label: 'Discord', group: 'Networks', service: 'discord' },
   { id: 'matrix', label: 'Matrix', group: 'Networks', service: 'matrix' },
   { id: 'kick', label: 'Kick', group: 'Networks', service: 'kick' },
   { id: 'twitch', label: 'Twitch', group: 'Networks', service: 'twitch' },
   { id: 'telegram', label: 'Telegram', group: 'Networks', service: 'telegram' },
   { id: 'stoat', label: 'Stoat', group: 'Networks', service: 'stoat' },
-  { id: 'about', label: 'About', group: 'About' }
+  { id: 'about', label: 'About', group: 'About', icon: 'info' }
 ]
 
 /**
@@ -355,6 +356,10 @@ export function SettingsPanel({ page = 'settings' }: { page?: 'settings' | 'acco
                   className={`settings-rail-item${!searching && current === c.id ? ' active' : ''}`}
                   onClick={() => go(c.id)}
                 >
+                  {/* A network's page wears the network's own mark; the rest a glyph. */}
+                  <span className="settings-rail-icon">
+                    {c.service ? <ServiceMark icon={serviceIcon(c.service)} size={16} /> : <Icon name={c.icon ?? 'settings'} size={18} />}
+                  </span>
                   {c.label}
                 </button>
               ))}
@@ -382,7 +387,11 @@ export function SettingsPanel({ page = 'settings' }: { page?: 'settings' | 'acco
               <NoMatches />
             </>
           ) : (
-            <Page id={selected} />
+            // Keyed, so going to another page is that page arriving.
+            <div key={selected} data-page={selected}>
+              <h2 className="page-title settings-title">{shown.find((c) => c.id === selected)?.label}</h2>
+              <Page id={selected} />
+            </div>
           ))}
       </div>
     </div>
@@ -745,6 +754,17 @@ function NotificationSettings(): JSX.Element {
           description="Use the system's own notification sound. Off, they arrive silently."
           defaultValue={true}
         />
+        <DropdownSetting
+          settingKey="notifications.content"
+          label="What a notification shows"
+          description="Notifications can be seen by anybody looking at the screen, and some desktops keep them in a history."
+          defaultValue="all"
+          options={[
+            { value: 'all', label: 'Who it is from, and the message' },
+            { value: 'name', label: 'Who it is from, not the message' },
+            { value: 'none', label: 'Only that something arrived' }
+          ]}
+        />
       </SettingsSection>
 
       <SettingsSection title="When moho is not in front">
@@ -768,13 +788,48 @@ function NotificationSettings(): JSX.Element {
 /** How things look and read: the layout, the size, the spacing, motion and the clock. */
 function AppearanceSettings(): JSX.Element {
   const [zoom, setZoom] = usePref<number>('appearance.zoom', 1)
+  const [accent, setAccent] = usePref<string>('appearance.accent', 'blue')
+  const [theme] = usePref<string>('appearance.theme', 'dark')
   return (
     <>
+      <SettingsSection title="Colours">
+        <SelectionSetting
+          settingKey="appearance.theme"
+          label="Theme"
+          description="Dark, light, or whichever the system is set to."
+          defaultValue="dark"
+          options={[
+            { label: 'Dark', value: 'dark' },
+            { label: 'Light', value: 'light' },
+            { label: 'System', value: 'system' }
+          ]}
+        />
+        <div className="setting-row">
+          <div className="setting-text">
+            <div className="setting-label">Accent</div>
+            <div className="small muted">The colour of what is chosen, pressed and pointed at.</div>
+          </div>
+          <div className="accent-swatches" role="radiogroup" aria-label="Accent">
+            {ACCENTS.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                role="radio"
+                aria-checked={accent === a.id}
+                title={a.label}
+                className={classes('accent-swatch', accent === a.id && 'active')}
+                style={{ ['--swatch' as string]: theme === 'light' ? a.light : a.dark }}
+                onClick={() => setAccent(a.id)}
+              />
+            ))}
+          </div>
+        </div>
+      </SettingsSection>
       <SettingsSection title="Messages">
         <SelectionSetting
           settingKey="display.messageMode"
           label="Display style"
-          description="Classic: a compact IRC-style log, one line per message. Comfy: grouped by author with an avatar and more breathing room. Bubbles: phone-messaging style, yours on the right in green and theirs on the left in blue, with the time inside each bubble."
+          description="Classic: a compact IRC-style log, one line per message. Comfy: grouped by author with an avatar and more breathing room. Bubbles: phone-messaging style, yours on the right in green and theirs on the left on the plain surface, with the time inside each bubble."
           defaultValue="comfy"
           options={[
             { label: 'Classic', value: 'classic' },

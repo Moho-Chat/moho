@@ -65,20 +65,12 @@ try {
   await until(main, 'globalThis.__mohoTray', 'the tray')
   scratchDir = await main.evaluate('process.env.HOME')
 
-  // Nothing waiting.
-  await tray('t.update({ unread: 0, dms: 0, mentions: 0 })'.replace('t.', 't.'))
-  check(/^tray-(light|dark)\.png$/.test(await tray('t.icon()')), 'idle: the plain bubble', await tray('t.icon()'))
-  check((await tray('t.menu()[0].label')) === 'Nothing new', 'idle: the menu says nothing is new')
-  check((await tray('t.tooltip()')) === 'moho', 'idle: the tooltip is just moho')
-
-  // Something waiting: the count is on the icon, and the menu says what.
+  // No account connected: nothing can arrive, and the tray says so whatever is counted.
   await tray('t.update({ unread: 3, dms: 2, mentions: 1 })')
-  check(/^tray-(light|dark)-3\.png$/.test(await tray('t.icon()')), 'waiting: the icon carries the count', await tray('t.icon()'))
-  check((await tray('t.tooltip()')) === 'moho - 2 direct messages, 1 mention', 'waiting: the tooltip says what', await tray('t.tooltip()'))
-  check((await tray('t.menu()[0].label')) === '2 direct messages, 1 mention - open', 'waiting: the menu says what', await tray('t.menu()[0].label'))
-  await tray('t.update({ unread: 40, dms: 40, mentions: 0 })')
-  check(/-more\.png$/.test(await tray('t.icon()')), 'a great many: the icon says 9+')
+  check(/^tray-(light|dark)-offline\.png$/.test(await tray('t.icon()')), 'no account connected: the struck-through bubble', await tray('t.icon()'))
+  check((await tray('t.tooltip()')) === 'moho - offline', 'no account connected: the tooltip says offline', await tray('t.tooltip()'))
   await tray('t.update({ unread: 0, dms: 0, mentions: 0 })')
+  check((await tray('t.menu()[0].label')) === 'Nothing new', 'idle: the menu says nothing is new')
 
   // The entries, and that none of them is daemon plumbing.
   const labels = await tray('t.menu().map((i) => i.label ?? "-")')
@@ -96,8 +88,9 @@ try {
   await until(page, 'window.__trayGot.length', 'the status to reach the window')
   check(JSON.stringify(await page.evaluate('window.__trayGot[0]')) === '["status","dnd"]', 'a status is handed to the window')
 
-  // There is no notifications switch of its own: Do not disturb is that.
-  check(!labels.some((l) => /notification/i.test(l)), 'the menu has no notifications switch of its own', labels.join(' | '))
+  // Quiet for this machine alone, apart from Do not disturb, and its version last.
+  check(labels.includes('Pause notifications'), 'the menu offers to pause notifications', labels.join(' | '))
+  check(/^moho \d/.test(labels.at(-1)), 'the menu says its version last', labels.at(-1))
 
   // With an IRC account connected - which has away and back, and no invisible -
   // the menu offers what IRC can be set to, and the daemon takes it.
@@ -114,6 +107,31 @@ try {
     await until(main, 'globalThis.__mohoTray.menu().find((i) => i.label === "Status").submenu.length === 3', 'the menu to offer only IRC\'s statuses')
     const offered = await tray('t.menu().find((i) => i.label === "Status").submenu.map((i) => i.label)')
     check(JSON.stringify(offered) === '["Online","Idle","Do not disturb"]', 'IRC alone: no Invisible is offered', JSON.stringify(offered))
+
+    // An account is connected now: the plain bubble, the count, and what is waiting by name.
+    await tray('t.update({ unread: 0, dms: 0, mentions: 0 })')
+    check(/^tray-(light|dark)\.png$/.test(await tray('t.icon()')), 'connected and idle: the plain bubble', await tray('t.icon()'))
+    check((await tray('t.tooltip()')) === 'moho', 'connected and idle: the tooltip is just moho', await tray('t.tooltip()'))
+    await tray('t.update({ unread: 3, dms: 2, mentions: 1 })')
+    check(/^tray-(light|dark)-3\.png$/.test(await tray('t.icon()')), 'waiting: the icon carries the count', await tray('t.icon()'))
+    check((await tray('t.tooltip()')) === 'moho - 2 direct messages, 1 mention', 'waiting: the tooltip says what', await tray('t.tooltip()'))
+    check((await tray('t.menu()[0].label')) === '2 direct messages, 1 mention - open', 'waiting, unnamed: the first line opens it', await tray('t.menu()[0].label'))
+    await tray('t.update({ unread: 3, dms: 2, mentions: 1, waiting: [{ id: "x|bob", name: "bob", count: 2, direct: true }, { id: "x|#lobby", name: "#lobby", count: 1, direct: false }] })')
+    const named = await tray('t.menu().slice(0, 4).map((i) => i.label)')
+    check(JSON.stringify(named) === '["2 direct messages, 1 mention","bob - 2","#lobby - 1 mention","Mark everything read"]', 'waiting: each conversation is named', JSON.stringify(named))
+    await tray('t.update({ unread: 40, dms: 40, mentions: 0 })')
+    check(/-more\.png$/.test(await tray('t.icon()')), 'a great many: the icon says 9+')
+
+    // Paused: the moon, no count, and the way back.
+    await tray('t.click(["Pause notifications", "For 1 hour"])')
+    check(/^tray-(light|dark)-quiet\.png$/.test(await tray('t.icon()')), 'paused: the moon, and no count', await tray('t.icon()'))
+    check(/^moho - notifications paused, 40 direct messages waiting$/.test(await tray('t.tooltip()')), 'paused: the tooltip says so', await tray('t.tooltip()'))
+    const resume = (await tray('t.menu().map((i) => i.label ?? "-")')).find((l) => /^Resume notifications \(paused until /.test(l))
+    check(!!resume, 'paused: the menu offers to resume, and says until when', String(resume))
+    await tray(`t.click([${JSON.stringify(resume ?? '')}])`)
+    check(/-more\.png$/.test(await tray('t.icon()')), 'resumed: the count is back', await tray('t.icon()'))
+    await tray('t.update({ unread: 0, dms: 0, mentions: 0 })')
+
     const statusOf = () => page.evaluate('window.moho.rpc("listAccounts", {}).then((a) => a.find((x) => x.id.startsWith("checker")).status)')
     await tray('t.click(["Status", "Idle"])')
     await until(page, 'window.moho.rpc("listAccounts", {}).then((a) => a.find((x) => x.id.startsWith("checker")).status === "idle")', 'IRC to go idle')

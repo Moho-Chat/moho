@@ -1,7 +1,9 @@
 import { steamRoomIds } from '../lib/steamchat'
+import { isRoomEvent } from '../lib/searchmarks'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
+import { Modal } from './Modal'
 import { Avatar } from './Avatar'
 import { ReasonPrompt } from './ReasonPrompt'
 import { EventSource } from './EventSource'
@@ -407,6 +409,25 @@ function MessageRowBody({
   const [pickerOpen, setPickerOpen] = useState(false)
   /** Writing the reason for a report, before it is sent. */
   const [reporting, setReporting] = useState(false)
+  /**
+   * A report to Telegram, part way: the reasons it offered, or the comment it
+   * asked for once one was chosen.
+   */
+  const [telegramReport, setTelegramReport] = useState<TelegramReportStep | null>(null)
+  const reportToTelegram = (option: string, comment = ''): void => {
+    void window.moho
+      .rpc<TelegramReportStep>('reportTelegramMessage', { bufferId, messageId: message.id, option, comment })
+      .then((step) => {
+        if (step.done) {
+          setTelegramReport(null)
+          store.toast('info', 'Reported to Telegram')
+        } else setTelegramReport(step)
+      })
+      .catch((e: Error) => {
+        setTelegramReport(null)
+        store.toast('error', e.message)
+      })
+  }
   const [sourceOpen, setSourceOpen] = useState(false)
   /** Choosing where to send this message on to. */
   const [forwarding, setForwarding] = useState(false)
@@ -427,12 +448,12 @@ function MessageRowBody({
   // Discord, Sneedchat and Matrix support editing and deleting your own
   // messages; IRC has no such concept.
   const canEditDelete =
-    !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'xmpp')
+    !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'xmpp' || service === 'signal')
   const beginEdit = (): void => {
     setDraft(message.body)
     setEditing(true)
   }
-  const canReact = service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'xmpp'
+  const canReact = service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'xmpp' || service === 'signal'
   // Steam's stickers, asked for when the reaction picker opens: it reacts with them too.
   const [steamStickers, setSteamStickers] = useState<StickerEntry[]>([])
   useEffect(() => {
@@ -654,10 +675,10 @@ function MessageRowBody({
       ? ([{ label: 'Copy text', icon: 'content_copy', onClick: () => void window.moho.copyText(message.body) }] as MenuEntry[])
       : []),
     // Sending somebody else's message on. Only where the service has a real
-    // forward: Discord's carries the original itself, and Matrix's sends its
-    // content again, the same upload and formatting. Anywhere else it would
-    // be a copy posted as you, which is not a forward.
-    ...((service === 'discord' || service === 'matrix') && !isSystem && message.id
+    // forward: Discord's and Telegram's carry the original itself, and
+    // Matrix's sends its content again, the same upload and formatting.
+    // Anywhere else it would be a copy posted as you, which is not a forward.
+    ...((service === 'discord' || service === 'matrix' || service === 'telegram') && !isSystem && message.id
       ? ([{ label: 'Forward…', icon: 'forward', onClick: () => setForwarding(true) }] as MenuEntry[])
       : []),
     // Never hearing from them again. What that costs differs by service and
@@ -786,6 +807,19 @@ function MessageRowBody({
           }
         ] as MenuEntry[])
       : []),
+    // Telegram's moderators, who ask for a reason from their own list first:
+    // the list is theirs, in the account's language, so it is asked for
+    // rather than written here.
+    ...(service === 'telegram' && !message.isOwn && !isSystem && message.id
+      ? ([
+          {
+            label: 'Report to Telegram…',
+            icon: 'flag',
+            danger: true,
+            onClick: () => reportToTelegram('')
+          }
+        ] as MenuEntry[])
+      : []),
     // Talking to somebody directly, from where they said the thing you want to
     // talk to them about. Only where the sender is somebody to open one with:
     // your own messages, and anything the server itself said, are not.
@@ -797,6 +831,19 @@ function MessageRowBody({
             onClick: () => {
               const account = store.accountFor(bufferId)
               if (account) void store.openDirectMessage(account.id, message.senderId ?? '', message.from)
+            }
+          }
+        ] as MenuEntry[])
+      : []),
+    // Telegram's end-to-end chat with the sender: a conversation of its own, on this device only.
+    ...(service === 'telegram' && !message.isOwn && !isSystem && message.senderId && /^\d+$/.test(message.senderId)
+      ? ([
+          {
+            label: `Secret chat with ${message.from}`,
+            icon: 'lock',
+            onClick: () => {
+              const account = store.accountFor(bufferId)
+              if (account) void store.startTelegramSecretChat(account.id, message.senderId ?? '')
             }
           }
         ] as MenuEntry[])
@@ -907,15 +954,8 @@ function MessageRowBody({
           onOpenChannel={(id) => void store.selectBuffer(id, true)}
           onOpenLink={(url) => store.followDeepLink(url)}
         />
-        {message.edited && (
-          <span
-            className="edited-tag small muted"
-            title={message.editedTs ? `Edited ${formatFullTime(message.editedTs)}` : 'Edited'}
-          >
-            {' '}
-            (edited)
-          </span>
-        )}
+        {message.edited && <EditedTag bufferId={message.bufferId} messageId={message.id} body={message.body} editedTs={message.editedTs} />}
+        {message.isOwn && message.delivery && <DeliveryTick delivery={message.delivery} />}
       </span>
     )
 
@@ -1314,6 +1354,13 @@ function MessageRowBody({
             </div>
           ) : kickEvent ? (
             <KickEventCard embed={kickEvent} bufferId={bufferId} />
+          ) : systemCard && isRoomEvent(message) ? (
+            // Somebody coming or going is the least of what a room says: one quiet line, not a plate as
+            // heavy as a message (#339).
+            <span className="room-event-line small">
+              <Icon name={SYSTEM_MARKS[message.kind] ?? 'info'} size={14} />
+              <span>{renderBody()}</span>
+            </span>
           ) : systemCard ? (
             <NotificationCard icon={SYSTEM_MARKS[message.kind] ?? 'info'} warning={isWarning(message.kind, message.id)}>
               {renderBody()}
@@ -1503,6 +1550,11 @@ function MessageRowBody({
                   messageId={message.id}
                   from={message.from}
                   onOpenInDiscord={(b, m) => void store.openInDiscord(b, m)}
+                  // A Discord link somebody typed lapses like any other, and
+                  // the daemon signs it again in the text - in a Discord
+                  // conversation, the only place it can ask from.
+                  onRefresh={bufferId.startsWith('discord:') ? (b, m) => store.refreshAttachments(b, m) : undefined}
+                  onStale={bufferId.startsWith('discord:') ? (b, m) => store.resignWhenIdle(b, m) : undefined}
                 />
               ))}
             </div>
@@ -1709,6 +1761,31 @@ function MessageRowBody({
       {sourceOpen && (
         <EventSource bufferId={bufferId} messageId={message.id} onClose={() => setSourceOpen(false)} />
       )}
+      {telegramReport?.options && (
+        <Modal title={telegramReport.title || 'Report'} icon="flag" className="reason-prompt report-reasons" onClose={() => setTelegramReport(null)}>
+          <p className="small muted">This goes to Telegram&rsquo;s moderators, with the message. Pick the reason that fits.</p>
+          <div className="card tool-list report-reasons-list">
+            {telegramReport.options.map((o) => (
+              <button key={o.option} type="button" className="setting-row report-reason" onClick={() => reportToTelegram(o.option)}>
+                <span className="setting-text">{o.label}</span>
+                <Icon name="chevron_right" size={18} />
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
+      {telegramReport?.comment && (
+        <ReasonPrompt
+          title={`Report ${message.from}’s message`}
+          detail="Telegram asks for a few words about what is wrong. Its moderators see them with the message."
+          placeholder="What is wrong with this message"
+          confirmLabel="Report"
+          optional={telegramReport.optional}
+          danger
+          onCancel={() => setTelegramReport(null)}
+          onConfirm={(reason) => reportToTelegram(telegramReport.option ?? '', reason)}
+        />
+      )}
       {reporting && (
         <ReasonPrompt
           title={`Report ${message.from}’s message`}
@@ -1728,6 +1805,16 @@ function MessageRowBody({
       )}
     </>
   )
+}
+
+/** One step of reporting a message to Telegram, as the daemon answers it. */
+interface TelegramReportStep {
+  done?: boolean
+  title?: string
+  options?: { label: string; option: string }[]
+  comment?: boolean
+  optional?: boolean
+  option?: string
 }
 
 /** What the first word of an emoji's name is, for the ones the picker knows: what a reaction is called when it is not a custom one. */
@@ -1769,7 +1856,7 @@ function ReactionPill({
 
   const ask = (): void => {
     const service = store.accountFor(bufferId)?.service
-    if (service !== 'discord' && service !== 'matrix') return
+    if (service !== 'discord' && service !== 'matrix' && service !== 'telegram') return
     const key = `${bufferId}|${messageId}|${r.emoji}`
     const kept = reactorCache.get(key)
     if (kept && kept.count === r.count && Date.now() - kept.at < REACTORS_KEPT_MS) {
@@ -1901,7 +1988,7 @@ function moderationEntries(
     out.push({ label: 'Ban sender', icon: 'gavel', danger: true, onClick: () => call('banMatrixMember') })
     // Reachable only from here, not the member list: a banned user is no
     // longer a member, so their scrollback is the one place left to find them.
-    if (!telegram) out.push({ label: 'Unban sender', icon: 'lock_open', onClick: () => call('unbanMatrixMember') })
+    out.push({ label: 'Unban sender', icon: 'lock_open', onClick: () => call('unbanMatrixMember') })
   }
   return out
 }
@@ -2000,3 +2087,66 @@ function MessageControls({
  * either values or references held steady by whoever draws the list.
  */
 export const MessageRow = memo(MessageRowBody)
+
+/** How far one of your own messages got: one tick sent, two delivered, two filled in read. */
+function DeliveryTick({ delivery }: { delivery: 'sent' | 'delivered' | 'read' }): JSX.Element {
+  const words = { sent: 'Sent', delivered: 'Delivered', read: 'Read' }[delivery]
+  return (
+    <span className={classes('delivery-tick', `delivery-${delivery}`)} title={words} aria-label={words}>
+      {' '}
+      <Icon name={delivery === 'sent' ? 'check' : 'done_all'} size={13} fill={delivery === 'read'} />
+    </span>
+  )
+}
+
+/**
+ * "(edited)", which opens what the message said before each edit, where moho saw them happen (an edit made before
+ * moho had the message has no earlier version here).
+ */
+function EditedTag({ bufferId, messageId, body, editedTs }: { bufferId: string; messageId: string; body: string; editedTs?: number }): JSX.Element {
+  const [versions, setVersions] = useState<{ body: string; replacedAt: number }[] | null>(null)
+  const open = (): void => {
+    void window.moho
+      .rpc<{ body: string; replacedAt: number }[]>('getEditHistory', { bufferId, messageId })
+      .then(setVersions)
+      .catch(() => setVersions([]))
+  }
+  return (
+    <>
+      <button
+        type="button"
+        className="edited-tag small muted"
+        title={editedTs ? `Edited ${formatFullTime(editedTs)}. Show earlier versions` : 'Edited. Show earlier versions'}
+        onClick={(e) => {
+          e.stopPropagation()
+          open()
+        }}
+      >
+        {' '}
+        (edited)
+      </button>
+      {versions &&
+        createPortal(
+          <Modal title="Edit history" icon="history" className="modal" onClose={() => setVersions(null)}>
+            {versions.length === 0 ? (
+              <p className="small muted">It was edited before moho had it, so its earlier words are not here.</p>
+            ) : (
+              <ol className="edit-history">
+                {versions.map((v, i) => (
+                  <li key={i}>
+                    <div className="selectable">{v.body}</div>
+                    <div className="small muted">Replaced {formatFullTime(v.replacedAt)}</div>
+                  </li>
+                ))}
+                <li className="edit-history-now">
+                  <div className="selectable">{body}</div>
+                  <div className="small muted">Now</div>
+                </li>
+              </ol>
+            )}
+          </Modal>,
+          document.body
+        )}
+    </>
+  )
+}

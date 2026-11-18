@@ -9,7 +9,7 @@ import { fullImageFor, knownFullImage } from '../lib/fullimage'
 import { useMediaUrl, useStrictRoute } from '../lib/route'
 import { classes, humanSize } from '../lib/util'
 import { mediaKey } from '../lib/mediaSpoiler'
-import { useIdSetPref } from '../state/hooks'
+import { useIdSetPref, useStore } from '../state/hooks'
 import type { MediaItem } from '../lib/format'
 import type { Attachment } from '../../../shared/wire'
 
@@ -205,6 +205,29 @@ export function MediaEmbed({
   const openTarget = attachment?.url || item?.full || item?.page || fullSrc
 
   const open = (): void => void window.moho.openExternal(openTarget)
+
+  const store = useStore()
+  // A file the daemon keeps for this message (a document, an archive...) is saved, not opened: openExternal takes only
+  // web links, so a click on one did nothing at all. Fetched first if it is not on disk yet - never downloaded, or let
+  // go by the cache.
+  const cachedFile = attachment?.path?.startsWith('file:') ? attachment.path : undefined
+  const save = async (): Promise<void> => {
+    if (!cachedFile) return
+    const name = attachment?.filename || 'attachment'
+    let outcome = await window.moho.saveAttachment(cachedFile, name)
+    if (outcome === 'missing') {
+      const fetched = await window.moho
+        .rpc<{ path: string }>('restoreMedia', { path: cachedFile, bufferId, messageId })
+        .catch((e: Error) => {
+          store.toast('error', `Couldn't fetch ${name}: ${e.message}`)
+          return null
+        })
+      if (!fetched) return
+      outcome = await window.moho.saveAttachment(fetched.path, name)
+    }
+    if (outcome === 'saved') store.toast('success', `Saved ${name}`)
+    else if (outcome === 'missing' || outcome === 'refused') store.toast('error', `Couldn't save ${name}`)
+  }
 
   /** What the viewer shows for this one: also what it shows when stepped to from another. */
   const viewerSource = (): LightboxSource =>
@@ -580,7 +603,12 @@ export function MediaEmbed({
   if (kind === 'file') {
     // Nothing to preview - show what it is and let the user open it.
     return (
-      <button type="button" className="media-embed file-card" onClick={open}>
+      <button
+        type="button"
+        className="media-embed file-card"
+        onClick={cachedFile ? () => void save() : open}
+        title={cachedFile ? 'Save…' : 'Open'}
+      >
         <Icon name="description" size={22} />
         <span className="file-meta">
           <span className="ellipsis">{attachment?.filename || 'attachment'}</span>
@@ -588,7 +616,7 @@ export function MediaEmbed({
             <span className="small muted">{humanSize(attachment.size)}</span>
           )}
         </span>
-        <Icon name="open_in_new" size={16} />
+        <Icon name={cachedFile ? 'download' : 'open_in_new'} size={16} />
       </button>
     )
   }
