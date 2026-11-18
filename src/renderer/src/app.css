@@ -1008,6 +1008,12 @@ body.resizing-column {
   color: var(--primary);
 }
 
+.lc-hidden-note {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
 /* Folded away: still running, still one click from being answered. */
 .poll-card.folded {
   padding: 0;

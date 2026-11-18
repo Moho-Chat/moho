@@ -84,6 +84,9 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
   const stage = stageOf(card, open)
   const taking = stage === 'open' && !reviewing
   const total = card.options.reduce((sum, o) => sum + o.votes, 0)
+  /** The split is kept until it ends: nothing to draw but the answers. */
+  const kept = !!card.resultsHidden && stage === 'open'
+  const voters = card.voters ?? total
   const share = (votes: number): number => (total > 0 ? Math.round((votes / total) * 100) : 0)
   const folded = !reviewing && hidden.includes(card.id)
   const two = card.options.length === 2
@@ -169,7 +172,7 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
   const people = card.options.reduce((sum, o) => sum + (o.backers ?? 0), 0)
   const summary = isPrediction
     ? [card.total ? `${round(card.total)} points` : null, people ? `${round(people)} people` : null].filter(Boolean).join(' · ')
-    : [card.multiple ? 'pick several' : null, `${total} ${total === 1 ? 'vote' : 'votes'}`].filter(Boolean).join(' · ')
+    : [card.multiple ? 'pick several' : null, `${voters} ${voters === 1 ? 'vote' : 'votes'}`, kept ? 'results when it ends' : null].filter(Boolean).join(' · ')
 
   const stats = (o: LiveCardOption): string =>
     isPrediction ? [`${round(o.votes)} pts`, o.odds].filter(Boolean).join(' · ') : `${o.votes} ${o.votes === 1 ? 'vote' : 'votes'}`
@@ -283,8 +286,8 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
                     {ended && won(o.id) && <Icon name="check_circle" size={15} fill className="lc-win-mark" />}
                     {o.label}
                   </span>
-                  <span className="lc-big">{share(o.votes)}%</span>
-                  <span className="lc-meta">{stats(o)}</span>
+                  <span className="lc-big">{kept ? '?' : `${share(o.votes)}%`}</span>
+                  {!kept && <span className="lc-meta">{stats(o)}</span>}
                   {!!o.backers && <span className="lc-meta">{round(o.backers)} people</span>}
                   {mine(o.id) ? (
                     <span className="lc-note">{isPrediction ? 'Your bet' : 'Your vote'}</span>
@@ -316,7 +319,7 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
                 onClick={() => choose(o.id)}
                 title={clickable ? (isPrediction ? `Put points on ${o.label}` : `Vote for ${o.label}`) : o.label}
               >
-                <span className="lc-fill" style={{ width: `${share(o.votes)}%` }} />
+                {!kept && <span className="lc-fill" style={{ width: `${share(o.votes)}%` }} />}
                 {!isPrediction && taking && <span className={classes('lc-mark', card.multiple && 'square', mine(o.id) && 'on')} />}
                 <span className="lc-swatch" />
                 <span className="lc-label ellipsis">
@@ -324,8 +327,12 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
                   {o.label}
                   {mine(o.id) && (stage !== 'open' || isPrediction) && <span className="small muted"> {isPrediction ? 'your bet' : 'your vote'}</span>}
                 </span>
-                <span className="lc-num small">{isPrediction ? round(o.votes) : o.votes}</span>
-                <span className="lc-pct small">{share(o.votes)}%</span>
+                {!kept && (
+                  <>
+                    <span className="lc-num small">{isPrediction ? round(o.votes) : o.votes}</span>
+                    <span className="lc-pct small">{share(o.votes)}%</span>
+                  </>
+                )}
                 {o.odds && <span className="lc-odds small">{o.odds}</span>}
               </button>
             )
@@ -339,9 +346,9 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
           <span
             key={o.id}
             style={{
-              width: total > 0 ? `${(o.votes / total) * 100}%` : `${100 / card.options.length}%`,
-              background: colourOf(i),
-              opacity: total === 0 || (stage === 'decided' && winners.length > 0 && !won(o.id)) ? 0.35 : 1
+              width: total > 0 && !kept ? `${(o.votes / total) * 100}%` : `${100 / card.options.length}%`,
+              background: kept ? 'var(--outline)' : colourOf(i),
+              opacity: kept ? 0.4 : total === 0 || (stage === 'decided' && winners.length > 0 && !won(o.id)) ? 0.35 : 1
             }}
           />
         ))}
@@ -408,6 +415,12 @@ function Card({ card, reviewing = false }: { card: LiveCard; reviewing?: boolean
             </button>
           </div>
         </>
+      )}
+
+      {kept && (
+        <div className="small muted lc-hidden-note">
+          <Icon name="visibility_off" size={14} /> Results when it ends. {card.hasVoted ? 'Your vote is in.' : 'Pick an answer to vote.'}
+        </div>
       )}
 
       {!isPrediction && taking && card.hasVoted && card.changeable && !card.multiple && (

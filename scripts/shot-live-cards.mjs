@@ -52,6 +52,10 @@ const scenes = {
     prediction: { ...base, kind: 'prediction', id: 'p4', title: 'Does he beat the boss this run?', options: [{ ...two[0], winner: true }, { ...two[1], winner: false }], state: 'RESOLVED', total: 76500, hasVoted: true, votedOptionId: 'y', stake: 6420, yourReturn: 10270 },
     poll: { ...base, kind: 'poll', id: 'q4', title: 'Where are we eating Friday?', options: [{ id: 1, label: 'Pizza', votes: 26 }, { id: 2, label: 'Thai', votes: 39 }, { id: 3, label: 'Tacos', votes: 51 }, { id: 4, label: 'Soup', votes: 15 }], open: false, closed: true, hasVoted: true, votedOptionId: 2 }
   },
+  'cards-hidden': {
+    prediction: { ...base, kind: 'prediction', id: 'p6', title: 'Does he beat the boss this run?', options: two, duration: 120, remaining: 90, state: 'ACTIVE', total: 76500, balance: 12840, minBet: 10 },
+    poll: { ...base, kind: 'poll', id: 'q6', title: 'Which logo do we keep?', options: [{ id: 'a', label: 'The round one', votes: 0 }, { id: 'b', label: 'The square one', votes: 0 }, { id: 'c', label: 'Neither', votes: 0 }], open: true, resultsHidden: true, voters: 12, hasVoted: true, votedOptionId: 'b' }
+  },
   'cards-lost': {
     prediction: { ...base, kind: 'prediction', id: 'p5', title: 'Which act does he finish on?', options: acts.map((a) => ({ ...a, winner: a.id === 'a3' })), state: 'RESOLVED', total: 77100, hasVoted: true, votedOptionId: 'a2', stake: 1000 },
     poll: { ...base, kind: 'poll', id: 'q5', title: 'Pizza tonight?', options: [{ id: 1, label: 'Yes', votes: 42 }, { id: 2, label: 'No', votes: 29 }], open: false, closed: true, hasVoted: true, votedOptionId: 1 }

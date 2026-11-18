@@ -286,6 +286,10 @@ export interface LiveCard {
   readOnly?: boolean
   /** The service gives no way to end it from a viewer's card (Twitch's polls). */
   noEnd?: boolean
+  /** The service keeps the split until it closes (Telegram's "results when it ends"): no percentages to draw yet. */
+  resultsHidden?: boolean
+  /** How many have voted, where the service says so apart from the answers' counts. */
+  voters?: number | null
   /** "open", "locked", "resolved" - whatever the service calls it. */
   state?: string | null
   /**
