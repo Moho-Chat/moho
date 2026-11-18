@@ -329,6 +329,22 @@ try {
   const seenPost = await until('post seen', async () => (await as('mohob', 'GET', `/channels/${forum.id}/threads/search?limit=10`)).threads.find((t) => t.name === `Post from moho ${run}`))
   check('a post made in moho is in the forum', !!seenPost && !!posted?.bufferId, JSON.stringify(posted))
 
+  // The account's own profile.
+  await rpc('setStoatProfile', { accountId: account, displayName: `Ada ${run.slice(-4)}`, pronouns: 'she/her', bio: `about ${run}` })
+  const mine3 = await as('mohob', 'GET', `/users/${acc.mohoa.user_id}/profile`)
+  check('the display name, pronouns and about text are set on the account', mine3.user.global_name === `Ada ${run.slice(-4)}` && mine3.user_profile.pronouns === 'she/her' && mine3.user_profile.bio === `about ${run}`, JSON.stringify([mine3.user.global_name, mine3.user_profile]))
+  const read3 = await rpc('stoatOwnProfile', { accountId: account })
+  check('and read back for the account tools', read3.displayName === `Ada ${run.slice(-4)}` && read3.handle === 'mohoa', JSON.stringify(read3))
+  await rpc('setStoatProfile', { accountId: account, displayName: 'mohoa', pronouns: '', bio: '' })
+
+  // A pasted token: signed in with it, and removing the account leaves that session alone (it is another app's).
+  const cAccount = `fluxer:${acc.mohoc.user_id}`
+  await rpc('addFluxerAccountToken', { instance: ORIGIN, token: acc.mohoc.token })
+  check('a pasted token signs in', !!(await until('c in', async () => (await rpc('listAccounts')).find((a) => a.id === cAccount && a.state === 'connected'))))
+  await rpc('removeAccount', { accountId: cAccount })
+  await sleep(2000)
+  check('and removing that account leaves its session working', !!(await as('mohoc', 'GET', '/users/@me').catch(() => null)))
+
   // Typing, both ways.
   await as('mohob', 'POST', `/channels/${channel}/typing`)
   await ev(`window.__mohoShots.store.selectBuffer?.(${JSON.stringify(general)})`)

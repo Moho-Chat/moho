@@ -445,6 +445,7 @@ const SERVICE_TAB: Partial<Record<Account['service'], string>> = {
   matrix: 'Sessions, keys and your profile on the homeserver',
   steam: 'What Steam says about the account, and where it is signed in',
   stoat: 'Your profile and sessions on this instance',
+  fluxer: 'Your profile on this instance',
   telegram: 'Your profile and where the account is signed in',
   signal: 'Linked devices, your username, stories and call links',
   xmpp: 'The server, your profile, and what it publishes for you',
@@ -725,7 +726,7 @@ function AccountPage({ account, serviceName }: { account: Account; serviceName: 
             <h4 className="section-label">{serviceTab}</h4>
             <div className="card">
               {account.service === 'steam' && <SteamAccountTools account={account} />}
-              {account.service === 'stoat' && <StoatAccountTools account={account} />}
+              {(account.service === 'stoat' || account.service === 'fluxer') && <StoatAccountTools account={account} />}
               {account.service === 'twitch' && <TwitchAccountTools account={account} />}
               {account.service === 'kick' && <KickFollowSync account={account} />}
             </div>
