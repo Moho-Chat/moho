@@ -27,7 +27,7 @@ stream's chat going past at forty lines a minute you're able to be part of the c
 
 | Protocol | Chat | Direct messages | Pictures and files | Reactions | Voice calls | Video and screen sharing | End-to-end encryption | Tor or SOCKS5 |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **IRC** | ✅ | ✅ | ✅ | ❌ | - | - | - | ✅ |
+| **IRC** | ✅ | ✅ | ✅ | ✅ | - | - | - | ✅ |
 | **Matrix** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Discord** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - | ✅ |
 | **Kick** | ✅ | - | - | - | - | - | - | ✅ |
@@ -39,6 +39,8 @@ stream's chat going past at forty lines a minute you're able to be part of the c
 | **XMPP** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ✅ supported in moho  ·  ❌ the service has it and moho does not yet  ·  `-` the service has nothing of the kind
+
+IRC reactions are the IRCv3 `+draft/react` tag, offered only on networks that relay it.
 
 Telegram's ❌ are its calls and its secret chats. Discord's chat is not end-to-end encrypted, but its calls are. XMPP calls are refused on an account routed through Tor, since their media would go around it.
 
