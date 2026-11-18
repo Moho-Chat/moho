@@ -550,16 +550,79 @@ interface StoatPeople {
 
 function TelegramJoin({ account }: { account: Account }): JSX.Element {
   const store = useStore()
+  const [title, setTitle] = useState('')
+  const [kind, setKind] = useState<'group' | 'channel'>('group')
+  const [about, setAbout] = useState('')
+  const [members, setMembers] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const create = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      const r = await window.moho.rpc<{ bufferId: string; note?: string | null }>('createTelegramChat', { accountId: account.id, title: title.trim(), kind, about, members })
+      setTitle('')
+      setAbout('')
+      setMembers('')
+      if (r.note) store.toast('info', r.note)
+      await store.refreshBuffers()
+      await store.selectBuffer(r.bufferId)
+    } catch (e) {
+      store.toast('error', `Couldn't make the ${kind}: ${(e as Error).message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
-    <JoinSection kind="join">
-      <JoinAction
-        icon="alternate_email"
-        title="Join a chat, or message someone"
-        help="A public group or channel is joined by its @name or t.me link, a private one by the invite link somebody gave you, and a person's @name opens a conversation with them. Telegram may ask an administrator to accept a request to join. Closing a chat in the list leaves it."
-      >
-        <ActionField placeholder="@name, or a t.me link" verb="Open" onSubmit={(name) => void store.joinAndOpen(account.id, name)} />
-      </JoinAction>
-    </JoinSection>
+    <>
+      <JoinSection kind="join">
+        <JoinAction
+          icon="alternate_email"
+          title="Join a chat, or message someone"
+          help="A public group or channel is joined by its @name or t.me link, a private one by the invite link somebody gave you, and a person's @name opens a conversation with them. Telegram may ask an administrator to accept a request to join. Closing a chat in the list leaves it."
+        >
+          <ActionField placeholder="@name, or a t.me link" verb="Open" onSubmit={(name) => void store.joinAndOpen(account.id, name)} />
+        </JoinAction>
+      </JoinSection>
+
+      <JoinSection kind="create">
+        <JoinAction
+          icon={kind === 'channel' ? 'campaign' : 'group_add'}
+          title={kind === 'channel' ? 'Make a channel' : 'Make a group'}
+          help={
+            kind === 'channel'
+              ? 'You post, others read. Private until you give it a public @name in Telegram; its invite link is in its settings.'
+              : 'Everybody talks, and you own it. People whose privacy settings keep them from being added are said to be; send them the invite link from its settings.'
+          }
+          aside={
+            <div className="segmented" role="group" aria-label="What to make">
+              <button type="button" className={kind === 'group' ? 'active' : undefined} onClick={() => setKind('group')}>
+                Group
+              </button>
+              <button type="button" className={kind === 'channel' ? 'active' : undefined} onClick={() => setKind('channel')}>
+                Channel
+              </button>
+            </div>
+          }
+        >
+          <input className="text-field" placeholder="Its name" maxLength={128} value={title} disabled={busy} onChange={(e) => setTitle(e.target.value)} />
+          <input className="text-field" placeholder="What it is about (optional)" maxLength={255} value={about} disabled={busy} onChange={(e) => setAbout(e.target.value)} />
+          <div className="action-field">
+            <input
+              className="text-field"
+              placeholder={kind === 'channel' ? 'Subscribers to add: @names, separated by commas' : 'Who is in it: @names, separated by commas'}
+              value={members}
+              disabled={busy}
+              onChange={(e) => setMembers(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && title.trim() && void create()}
+            />
+            <button type="button" className="button primary" disabled={busy || !title.trim()} onClick={() => void create()}>
+              {kind === 'channel' ? 'Make channel' : 'Make group'}
+            </button>
+          </div>
+        </JoinAction>
+      </JoinSection>
+    </>
   )
 }
 

@@ -14,9 +14,9 @@ import { bufferDisplayName } from '../lib/util'
  * Ordered by what was said in recently, since a message being forwarded is
  * usually going somewhere the person has just been.
  *
- * Only where the forward can land. Discord's does not leave the account it
- * was made on; Matrix's is the content sent again, and goes to any Matrix
- * room on any account here.
+ * Only where the forward can land. Discord's and Telegram's do not leave the
+ * account they were made on; Matrix's is the content sent again, and goes to
+ * any Matrix room on any account here.
  */
 export function ForwardPicker({
   bufferId,
@@ -102,5 +102,5 @@ export function ForwardPicker({
 function reaches(from: string | undefined, to: string): boolean {
   if (!from) return false
   if (from.startsWith('matrix:')) return to.startsWith('matrix:')
-  return from === to && from.startsWith('discord:')
+  return from === to && (from.startsWith('discord:') || from.startsWith('telegram:'))
 }

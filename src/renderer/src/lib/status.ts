@@ -26,7 +26,7 @@ export function supportsStatus(service: string, status: Choosable): boolean {
     case 'focus':
       return service === 'stoat'
     case 'invisible':
-      return service === 'discord' || service === 'matrix' || service === 'steam' || service === 'stoat'
+      return service === 'discord' || service === 'matrix' || service === 'steam' || service === 'stoat' || service === 'telegram'
   }
 }
 
@@ -38,11 +38,11 @@ export function statusesFor(service: string): Choosable[] {
 /**
  * What a status is called on this service.
  *
- * Matrix has no invisible mode: what is sent for it is offline presence, which
- * is what it is, so that is what it says there. Everything else is called what
- * the others call it.
+ * Matrix and Telegram have no invisible mode: what is sent for it is offline
+ * presence ("last seen" on Telegram), which is what it is, so that is what it
+ * says there. Everything else is called what the others call it.
  */
 export function statusName(service: string, status: Choosable): string {
-  if (status === 'invisible' && service === 'matrix') return 'Offline'
+  if (status === 'invisible' && (service === 'matrix' || service === 'telegram')) return 'Offline'
   return { online: 'Online', idle: 'Idle', focus: 'Focus', dnd: 'Do not disturb', invisible: 'Invisible' }[status]
 }

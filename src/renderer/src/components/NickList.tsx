@@ -430,10 +430,15 @@ export function NickList(): JSX.Element {
                     return
                   }
                   if (account.service === 'telegram') {
-                    if (action !== 'kick' && action !== 'ban' && action !== 'mute') return
+                    if (action === 'voice') return
+                    const said = { ban: 'Banned', mute: 'Muted for 10 minutes', kick: 'Removed', op: 'Made an administrator:', deop: 'No longer an administrator:' }[action]
                     void window.moho
                       .rpc('moderateTelegramMember', { bufferId: buffer.id, userId: member.userId, action })
-                      .then(() => store.toast('info', `${action === 'ban' ? 'Banned' : action === 'mute' ? 'Muted for 10 minutes' : 'Removed'} ${member.nick}`))
+                      .then(() => {
+                        store.toast('info', `${said} ${member.nick}`)
+                        // The marks in the list come from Telegram: read them again.
+                        if (action === 'op' || action === 'deop') void window.moho.rpc('requestMemberList', { bufferId: buffer.id }).catch(() => undefined)
+                      })
                       .catch((e: Error) => store.toast('error', e.message))
                     return
                   }
@@ -542,6 +547,11 @@ export function NickList(): JSX.Element {
                   // than at every call site that offers this.
                   void store.openDirectMessage(account.id, member.userId ?? '', member.nick)
                 }}
+                onSecretChat={
+                  account?.service === 'telegram' && member.userId && !member.bot
+                    ? () => void store.startTelegramSecretChat(account.id, member.userId ?? '')
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -605,6 +615,8 @@ interface MemberRowProps {
   /** Matrix only: give this member a power level outright. */
   onSetPower: (level: number) => void
   onOpenDm: () => void
+  /** Telegram only: ask this member for a secret chat. */
+  onSecretChat?: () => void
   onWhisper: () => void
   onSendFile: () => void
   /** Only where the protocol supports it and the member is identifiable. */
@@ -635,6 +647,7 @@ function MemberRow({
   onModerate,
   onSetRole,
   onOpenDm,
+  onSecretChat,
   onWhisper,
   onSendFile,
   canCall,
@@ -662,6 +675,7 @@ function MemberRow({
     { label: 'Mention', icon: 'alternate_email', onClick: onMention },
     ...(canCall ? ([{ label: 'Call', icon: 'call', onClick: onCall }] as MenuEntry[]) : []),
     ...(canOpenDm ? ([{ label: 'Open DM', icon: 'chat', onClick: onOpenDm }] as MenuEntry[]) : []),
+    ...(onSecretChat ? ([{ label: 'Secret chat', icon: 'lock', onClick: onSecretChat }] as MenuEntry[]) : []),
     ...(canWhisper ? ([{ label: 'Whisper', icon: 'lock', onClick: onWhisper }] as MenuEntry[]) : []),
     ...(canSendFile ? ([{ label: 'Send a file', icon: 'upload_file', onClick: onSendFile }] as MenuEntry[]) : []),
     { separator: true },
@@ -752,7 +766,17 @@ function MemberRow({
       : []),
     // An XMPP owner or admin is a moderator by standing, which no role change
     // can take away, so the room would refuse either entry for them.
-    ...(perms.canOp && !(service === 'xmpp' && (member.prefix === 'owner' || member.prefix === 'admin'))
+    // Telegram's administrators: made with the rights its own apps tick, taken
+    // back to an ordinary member. Its owner is nobody's to demote.
+    ...(service === 'telegram' && perms.canOp && member.prefix !== '👑'
+      ? ([
+          { separator: true },
+          isOperator
+            ? { label: 'Take administrator', icon: 'remove_moderator', onClick: () => onModerate('deop') }
+            : { label: 'Make administrator', icon: 'shield', onClick: () => onModerate('op') }
+        ] as MenuEntry[])
+      : []),
+    ...(perms.canOp && service !== 'telegram' && !(service === 'xmpp' && (member.prefix === 'owner' || member.prefix === 'admin'))
       ? ([
           { separator: true },
           { label: isOperator ? 'Take operator' : 'Give operator', icon: 'shield', onClick: () => onModerate(isOperator ? 'deop' : 'op') },

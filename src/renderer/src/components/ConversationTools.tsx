@@ -5,6 +5,9 @@ import { AddToConversation } from './AddToConversation'
 import { DiscordInvite } from './DiscordInvite'
 import { RoomSettings } from './RoomSettings'
 import { SignalGroupSettings } from './SignalGroupSettings'
+import { TelegramChatSettings } from './TelegramChatSettings'
+import { TelegramSecretTools } from './TelegramSecretTools'
+import { TelegramVoiceChat } from './TelegramVoiceChat'
 import { HeaderPopover } from './HeaderPopover'
 import { SearchPane } from './SearchPane'
 import { useChat, useStore } from '../state/hooks'
@@ -1115,6 +1118,10 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           {isMatrix && buffer.kind === 'channel' && <RoomSettings buffer={buffer} />}
           {/* Signal's, for a group, and for a conversation with one person the timer its messages disappear by. */}
           {buffer.accountId.startsWith('signal:') && (buffer.kind === 'channel' || buffer.kind === 'dm') && <SignalGroupSettings buffer={buffer} />}
+          {/* Telegram's, for a group or channel (a forum topic belongs to its group, whose settings these are). */}
+          {buffer.accountId.startsWith('telegram:') && buffer.kind === 'channel' && <TelegramVoiceChat buffer={buffer} />}
+          {buffer.accountId.startsWith('telegram:') && buffer.kind === 'channel' && <TelegramChatSettings buffer={buffer} />}
+          {buffer.accountId.startsWith('telegram:') && buffer.kind === 'dm' && <TelegramSecretTools buffer={buffer} />}
 
           {/* What this channel has asked before now. Two buttons rather than one
               list, because a poll and a prediction are different questions -

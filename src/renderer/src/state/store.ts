@@ -49,6 +49,7 @@ import type { PopoutState } from '../../../shared/ipc'
 import { isNewerVersion } from '../lib/version'
 import { steamRoomIds, type SteamChatGroup } from '../lib/steamchat'
 import { SteamVoice, type SteamRing, type SteamVoicePhase, type SteamVoiceTarget } from '../lib/steamvoice'
+import { TelegramVoice, type TelegramVoiceParticipant, type TelegramVoicePhase } from '../lib/telegramvoice'
 
 /**
  * The whole client-side model, held in one immutable object that is replaced
@@ -491,6 +492,18 @@ export interface ChatState {
   steamRings: SteamRing[]
   /** The Steam voice this window holds, if any: where, and how far it has got. */
   steamVoiceNow: { accountId: string; target: SteamVoiceTarget; phase: SteamVoicePhase } | null
+  /** The Telegram voice chat this window is in, if any: where, how far it has got, who is in it and who is speaking. */
+  telegramVoiceNow: {
+    accountId: string
+    bufferId: string
+    name: string
+    phase: TelegramVoicePhase
+    people: TelegramVoiceParticipant[]
+    speakers: string[]
+    forcedMute: boolean
+  } | null
+  /** Whether each Telegram conversation has a voice chat going, as Telegram last said, by buffer. */
+  telegramVoiceCalls: Record<string, boolean>
   /** A group somebody has asked to leave, waiting on the confirmation. */
   leaveRequest: { id: string; name: string; kind: string } | null
   /**
@@ -848,6 +861,8 @@ const INITIAL: ChatState = {
   steamVoiceRooms: {},
   steamRings: [],
   steamVoiceNow: null,
+  telegramVoiceNow: null,
+  telegramVoiceCalls: {},
   leaveRequest: null,
   incomingCalls: [],
   transfers: [],
@@ -1385,7 +1400,7 @@ export class ChatStore {
     const offered = ALL_STATUSES.filter((s) => connected.some((a) => supportsStatus(a.service, s)))
     const widest = [...connected].sort((a, b) => statusesFor(b.service).length - statusesFor(a.service).length)[0]
     // Invisible is what Discord calls it; where only Matrix has it, it is offline.
-    const invisibleName = connected.some((a) => supportsStatus(a.service, 'invisible') && a.service !== 'matrix') ? 'Invisible' : 'Offline'
+    const invisibleName = connected.some((a) => supportsStatus(a.service, 'invisible') && a.service !== 'matrix' && a.service !== 'telegram') ? 'Invisible' : 'Offline'
     const report = JSON.stringify([statuses, offered, (widest?.autoIdle ? 'online' : widest?.status) ?? null, invisibleName])
     if (report === this.lastTrayReport) return
     this.lastTrayReport = report
@@ -1683,6 +1698,15 @@ export class ChatStore {
         // Not connected yet: the daemon's own push fills it in.
       }
     }
+    // Telegram's are asks for a secret chat, offered as a conversation to accept.
+    for (const account of this.state.accounts.filter((a) => a.service === 'telegram' && a.state === 'connected')) {
+      try {
+        const rooms = await window.moho.rpc<MatrixInvite[]>('telegramSecretRequests', { accountId: account.id })
+        this.set({ matrixInvites: { ...this.state.matrixInvites, [account.id]: rooms } })
+      } catch {
+        // Not connected yet: the daemon's own push fills it in.
+      }
+    }
     // XMPP's are the people who asked to see the account's presence and have not been answered.
     for (const account of this.state.accounts.filter((a) => a.service === 'xmpp' && a.state === 'connected')) {
       try {
@@ -1792,6 +1816,8 @@ export class ChatStore {
         }
       } else if (invitation.service === 'xmpp') {
         await window.moho.rpc('xmppAnswerInvite', { accountId, roomId: id, accept })
+      } else if (invitation.service === 'telegram') {
+        await window.moho.rpc('answerTelegramSecretChat', { accountId, chatId: id, accept })
       } else if (invitation.service === 'signal') {
         await window.moho.rpc('signalAnswerRequest', { accountId, id, answer: accept ? 'accept' : 'delete' })
       } else if (invitation.service === 'steam') {
@@ -2048,6 +2074,7 @@ export class ChatStore {
     this.set({ voicePrefs: { ...this.state.voicePrefs, ...next } })
     // And onto the Steam voice this window holds, which obeys the same buttons.
     this.steamVoice.applyMute()
+    this.telegramVoice.applyMute()
     try {
       this.set({ voicePrefs: await window.moho.rpc<VoicePrefs>('setVoiceMuted', next) })
     } catch (e) {
@@ -2187,7 +2214,7 @@ export class ChatStore {
   async refreshVoiceSessions(): Promise<void> {
     // Steam's voice is held in this window and not by the daemon, so it is
     // added to what the daemon says rather than lost when that is asked for.
-    const steam = this.steamVoiceSession()
+    const steam = [...this.steamVoiceSession(), ...this.telegramVoiceSession()]
     try {
       this.set({ voiceSessions: [...(await window.moho.rpc<VoiceSession[]>('getVoiceSession')), ...steam] })
     } catch {
@@ -2233,6 +2260,67 @@ export class ChatStore {
       return friend && account?.status !== 'invisible' && account?.status !== 'dnd'
     }
   })
+
+  /** The Telegram voice chat of this window, as a voice session every voice surface lists. */
+  private telegramVoiceSession(): VoiceSession[] {
+    const v = this.telegramVoice
+    const t = v.target
+    if (!v.active || !t) return []
+    return [{ accountId: t.accountId, channelId: t.call, channelName: t.name, isDirect: false, bufferId: t.bufferId }]
+  }
+
+  private syncTelegramVoice(): void {
+    const v = this.telegramVoice
+    const others = this.state.voiceSessions.filter((s) => !s.accountId.startsWith('telegram:'))
+    this.set({
+      voiceSessions: [...others, ...this.telegramVoiceSession()],
+      telegramVoiceNow:
+        v.active && v.target
+          ? {
+              accountId: v.target.accountId,
+              bufferId: v.target.bufferId,
+              name: v.target.name,
+              phase: v.phase,
+              people: [...v.people.values()],
+              speakers: [...v.speakers],
+              forcedMute: v.forcedMute
+            }
+          : null
+    })
+  }
+
+  private telegramVoice: TelegramVoice = new TelegramVoice({
+    rpc: (params) => window.moho.rpc('telegramVoice', params),
+    onChange: () => this.syncTelegramVoice(),
+    toast: (kind, message) => this.toast(kind, message),
+    muted: () => ({ micMuted: this.state.voicePrefs.micMuted, deafened: this.state.voicePrefs.deafened })
+  })
+
+  /** Joins a Telegram group's or channel's voice chat, as it is now. */
+  async joinTelegramVoice(bufferId: string): Promise<void> {
+    const buffer = this.state.buffers.find((b) => b.id === bufferId)
+    if (!buffer) return
+    try {
+      const info = await window.moho.rpc<{ active: boolean; call?: string; title?: string; participants?: TelegramVoiceParticipant[] }>('telegramVoice', { op: 'info', bufferId })
+      if (!info.active || !info.call) {
+        this.toast('info', 'There is no voice chat here now')
+        return
+      }
+      await this.telegramVoice.join(
+        { accountId: buffer.accountId, bufferId, call: info.call, name: info.title || bufferDisplayName(buffer.name) },
+        info.participants ?? []
+      )
+    } catch (e) {
+      this.toast('error', `Couldn't join the voice chat: ${(e as Error).message}`)
+    }
+  }
+
+  /** Mutes somebody else in the voice chat (an administrator's), or lets them speak. */
+  async muteInTelegramVoice(userId: string, muted: boolean): Promise<void> {
+    const t = this.telegramVoice.target
+    if (!t) return
+    await window.moho.rpc('telegramVoice', { op: 'mute', bufferId: t.bufferId, call: t.call, userId, muted }).catch((e: Error) => this.toast('error', e.message))
+  }
 
   /** Joins the voice of a room of a Steam group. */
   async joinSteamVoice(accountId: string, groupId: string, roomId: string): Promise<void> {
@@ -2553,6 +2641,17 @@ export class ChatStore {
    * passed because IRC has only a nick to go on while Discord and Matrix have
    * real ids, and a display name is not something to look somebody up by.
    */
+  /** Asks somebody on Telegram for a secret chat, and opens it to wait for their answer. */
+  async startTelegramSecretChat(accountId: string, userId: string): Promise<void> {
+    try {
+      const r = await window.moho.rpc<{ bufferId: string }>('startTelegramSecretChat', { accountId, userId })
+      await this.refreshBuffers()
+      await this.selectBuffer(r.bufferId)
+    } catch (e) {
+      this.toast('error', `Couldn't start a secret chat: ${(e as Error).message}`)
+    }
+  }
+
   async openDirectMessage(accountId: string, userId: string, nick: string): Promise<void> {
     try {
       const r = await window.moho.rpc<{ bufferId: string }>('openDirectMessage', { accountId, userId, nick })
@@ -2975,6 +3074,10 @@ export class ChatStore {
   async leaveVoice(accountId: string): Promise<void> {
     if (accountId.startsWith('steam:')) {
       await this.steamVoice.stop()
+      return
+    }
+    if (accountId.startsWith('telegram:')) {
+      await this.telegramVoice.leave()
       return
     }
     // What this end was sending goes with it. Left running, the camera light
@@ -4339,6 +4442,11 @@ export class ChatStore {
       // happening. The media is the window's; see lib/steamvoice.ts.
       case 'steamVoice':
         this.steamVoice.handle(data as never)
+        break
+      case 'telegramVoice':
+        this.telegramVoice.handle(data as never)
+        // A voice chat starting or ending where nobody here is in one: the header's button reads it again.
+        if ((data as { kind?: string }).kind === 'call') this.set({ telegramVoiceCalls: { ...this.state.telegramVoiceCalls, [String((data as { data: { bufferId?: string } }).data.bufferId ?? '')]: !!(data as { data: { active?: boolean } }).data.active } })
         break
       // Removed from a Steam group by somebody else.
       case 'steamGroupRemoved':

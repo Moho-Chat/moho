@@ -5,6 +5,7 @@ import { AccountFace, AccountList, MasterDetail, StatePill, Tabs, accountState, 
 import { SavedMark, useSavedFlash } from './settings/controls'
 import { MatrixAccountTools } from './MatrixAccountTools'
 import { StoatAccountTools } from './StoatAccountTools'
+import { TelegramAccountTools } from './TelegramAccountTools'
 import { SignalAccountTools } from './SignalAccountTools'
 import { XmppAccountTools } from './XmppAccountTools'
 import { XmppDataForm, type XmppForm } from './XmppDataForm'
@@ -442,6 +443,7 @@ const SERVICE_TAB: Partial<Record<Account['service'], string>> = {
   matrix: 'Sessions, keys and your profile on the homeserver',
   steam: 'What Steam says about the account, and where it is signed in',
   stoat: 'Your profile and sessions on this instance',
+  telegram: 'Your profile and where the account is signed in',
   signal: 'Linked devices, your username, stories and call links',
   xmpp: 'The server, your profile, and what it publishes for you',
   twitch: 'Video, moderation and whispers',
@@ -714,8 +716,9 @@ function AccountPage({ account, serviceName }: { account: Account; serviceName: 
         {tab === 'service' && account.service === 'xmpp' && <XmppAccountTools account={account} />}
         {tab === 'service' && account.service === 'signal' && <SignalAccountTools account={account} />}
         {tab === 'service' && account.service === 'matrix' && <MatrixAccountTools account={account} />}
+        {tab === 'service' && account.service === 'telegram' && <TelegramAccountTools account={account} />}
 
-        {tab === 'service' && !['xmpp', 'signal', 'matrix'].includes(account.service) && (
+        {tab === 'service' && !['xmpp', 'signal', 'matrix', 'telegram'].includes(account.service) && (
           <section className="page-section">
             <h4 className="section-label">{serviceTab}</h4>
             <div className="card">
