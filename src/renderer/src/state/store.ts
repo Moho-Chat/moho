@@ -791,6 +791,10 @@ export interface ChatState {
    * whatever draws it cannot be the thing that asked.
    */
   profile: Profile | null
+  /** Where the card was asked for from (the name or avatar), for it to open beside; none for the middle of the window. */
+  profileAnchor: { x: number; y: number; w: number; h: number } | null
+  /** Whether the card is showing because the pointer rests on a name, rather than because it was opened. */
+  profileHover: boolean
   /** Each Steam account's friend groups as Steam last said them; absent until it has. */
   steamGroups: Record<string, SteamGroup[]>
   /** Each Telegram account's chat folders as Telegram last said them, in its order; absent until it has. */
@@ -943,6 +947,8 @@ const INITIAL: ChatState = {
   activeInvitationKey: '',
   steamDialog: null,
   profile: null,
+  profileAnchor: null,
+  profileHover: false,
   steamGroups: {},
   telegramFolders: {},
   replyingTo: null,
@@ -3338,15 +3344,32 @@ export class ChatStore {
    * take a second to reply - and a menu item that appears to do nothing for
    * a second is a menu item people press twice.
    */
-  showProfile(bufferId: string, nick: string, userId?: string): void {
+  showProfile(bufferId: string, nick: string, userId?: string, opts: { anchor?: Element | null; hover?: boolean } = {}): void {
+    // A card somebody opened is not replaced by one the pointer passed over.
+    if (opts.hover && this.state.profile && !this.state.profileHover) return
+    const r = opts.anchor?.getBoundingClientRect()
+    const anchor = r ? { x: r.left, y: r.top, w: r.width, h: r.height } : null
+    const hover = !!opts.hover
     void window.moho
       .rpc<Profile>('requestProfile', { bufferId, nick, ...(userId ? { userId } : {}) })
-      .then((opening) => this.set({ profile: opening }))
-      .catch((e: Error) => this.toast('error', e.message))
+      .then((opening) => {
+        // Hovered and then left before the answer came: nothing to show.
+        if (hover && this.profileHoverCancelled) return
+        this.set({ profile: opening, profileAnchor: anchor, profileHover: hover })
+      })
+      .catch((e: Error) => (hover ? undefined : this.toast('error', e.message)))
+  }
+
+  /** Set when a hover ends before its card arrives (lib/profilehover.ts). */
+  profileHoverCancelled = false
+
+  /** Keeps a card that opened on hover, with everything on it. */
+  pinProfile(): void {
+    if (this.state.profileHover) this.set({ profileHover: false })
   }
 
   closeProfile(): void {
-    this.set({ profile: null })
+    this.set({ profile: null, profileAnchor: null, profileHover: false })
   }
 
   /** Changes what the open card says, after something done from it (a block, a verification). */

@@ -8195,37 +8195,119 @@ video.lightbox-media {
 /* --- profile -------------------------------------------------------------
    An answer to a question, not a document: narrow, high in the window, and
    gone on Escape. */
+/* The profile card (#339): a popover beside the name it was opened from, with a cover strip and a large picture
+   over it. The same card opens on hover; pinned, a transparent scrim behind it takes the press that puts it away. */
+.profile-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+}
+
 .profile-card {
-  width: 420px;
-  max-width: calc(100vw - var(--spacing-xl));
-  margin-top: 12vh;
-  align-self: flex-start;
+  position: fixed;
+  z-index: 901;
+  width: 320px;
+  max-width: calc(100vw - var(--spacing-l));
+  max-height: calc(100vh - var(--spacing-l));
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-s);
-  padding: var(--spacing-m);
-  background: var(--surface-container);
+  background: var(--surface-container-high);
   border: 1px solid var(--outline-medium);
   border-radius: var(--corner-radius);
   box-shadow: var(--shadow-3);
 }
 
-.profile-head {
+.profile-cover {
+  position: relative;
+  flex: none;
+  height: 64px;
+}
+
+.profile-close {
+  position: absolute;
+  top: var(--spacing-xs);
+  right: var(--spacing-xs);
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  border-radius: 50%;
+}
+
+.profile-body {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--spacing-s);
+  padding: 0 var(--spacing-l) var(--spacing-l);
+}
+
+.profile-avatar {
+  width: max-content;
+  margin-top: -32px;
+  padding: 4px;
+  border-radius: 50%;
+  background: var(--surface-container-high);
 }
 
 .profile-title {
-  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 1px;
 }
 
 .profile-name {
-  font-size: var(--font-size-large);
-  font-weight: var(--weight-semibold);
+  font-size: var(--font-size-xlarge);
+  font-weight: var(--weight-bold);
+  line-height: 1.2;
+}
+
+.profile-activity {
+  padding: var(--spacing-s) var(--spacing-m);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container);
+}
+
+.profile-acts {
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  gap: var(--spacing-xs);
+}
+
+.profile-act {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: var(--spacing-s) 0;
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container);
+  color: var(--surface-variant-text);
+  font-size: var(--font-size-xs);
+  transition: background var(--motion-fast) var(--ease);
+}
+
+.profile-act .icon {
+  color: var(--surface-text);
+}
+
+.profile-act:hover {
+  background: var(--surface-container-highest);
+  color: var(--surface-text);
+}
+
+.profile-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.profile-section .section-label {
+  margin: 0;
+}
+
+.profile-card .profile-actions {
+  flex-wrap: wrap;
 }
 
 .profile-roles {
@@ -8235,10 +8317,14 @@ video.lightbox-media {
 }
 
 .profile-role {
-  padding: 1px var(--spacing-xs);
-  border: 1px solid var(--outline-medium);
-  border-radius: var(--corner-radius-small);
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 var(--spacing-s);
+  border-radius: 6px;
+  background: var(--surface-container-highest);
   color: var(--surface-variant-text);
+  font-weight: var(--weight-semibold);
 }
 
 /* Label and value on one line, labels aligned, so the card is read down its

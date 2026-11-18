@@ -70,6 +70,7 @@ import {
   readableColor
 } from '../lib/util'
 import { useEscapeLayer } from '../lib/layers'
+import { profileHoverProps } from '../lib/profilehover'
 import { removedReason } from '../lib/moderation'
 
 /**
@@ -605,7 +606,9 @@ function MessageRowBody({
     ? { url: searchAddress, name: engineName(searchEngine, searchCustom), shown: shortened(selected) }
     : null
   const canOpenProfile = !!message.from && !isSystem && !message.isOwn
-  const openProfile = (): void => store.showProfile(bufferId, message.from, message.senderId)
+  const openProfile = (e?: React.MouseEvent): void => store.showProfile(bufferId, message.from, message.senderId, { anchor: e?.currentTarget })
+  /** Resting the pointer on the name or picture opens the same card (#339). */
+  const profileHover = canOpenProfile ? profileHoverProps(store, bufferId, message.from, message.senderId) : {}
   // Back to what this answers, bringing it into view first if it is a long
   // way up - and saying so if it is gone, rather than doing nothing.
   const jumpToReply = (): void => {
@@ -1026,7 +1029,7 @@ function MessageRowBody({
           <span
             className={classes('message-avatar', canOpenProfile && !grouped && 'clickable')}
             onClick={canOpenProfile && !grouped ? openProfile : undefined}
-            title={canOpenProfile && !grouped ? `Profile of ${message.from}` : undefined}
+            {...(!grouped ? profileHover : {})}
           >
             {/* A follow-up line has no name line to carry its time, so the
                 time waits in the gutter where the picture would be, and shows
@@ -1073,8 +1076,8 @@ function MessageRowBody({
                 className={classes('message-from', canOpenProfile && 'clickable')}
                 style={{ color: message.senderColor ? readableColor(message.senderColor) : nickColor(message.from) }}
                 onClick={canOpenProfile ? openProfile : undefined}
+                {...profileHover}
                 role={canOpenProfile ? 'button' : undefined}
-                title={canOpenProfile ? `Profile of ${message.from}` : undefined}
               >
                 {message.isAction ? `* ${message.from}` : message.from}
               </span>
