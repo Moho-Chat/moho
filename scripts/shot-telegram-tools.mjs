@@ -52,7 +52,7 @@ try {
     const buffers = [
       buffer('lunch', 'Lunch Club', 'channel', '-1001234', 'Groups'),
       buffer('ada', 'Ada Lovelace', 'dm', '11', 'Direct Messages'),
-      buffer('secret', '🔒 Ada Lovelace', 'dm', 'secret:77', 'Direct Messages', { nameIcon: 'lock' })
+      buffer('secret', '🔒 Ada Lovelace', 'dm', 'secret:77', 'Direct Messages')
     ]
     window.__tg = { id, buffers }
     s.patch({ accounts: [...st.accounts, account], groups: [...st.groups, group], buffers: [...st.buffers, ...buffers], activeGroupId: group.id, activeBufferId: buffers[0].id })
@@ -85,7 +85,11 @@ try {
 
   await page.evaluate(`window.__mohoShots.store.setActivePanel('accounts')`)
   await sleep(800)
-  await page.evaluate(`(() => { const row = [...document.querySelectorAll('button, [role=button], li, .account-row')].find((e) => e.textContent.trim().startsWith('Sal') || e.textContent.includes('Telegram')); row && row.click() })()`)
+  await page.evaluate(`(() => {
+    const card = [...document.querySelectorAll('div')].filter((d) => d.textContent.includes('Telegram · connected') && d.querySelector('button')).sort((a, b) => a.textContent.length - b.textContent.length)[0]
+    const chevron = card && [...card.querySelectorAll('button')].find((b) => b.textContent.includes('expand_more') || b.title === 'More' || b.getAttribute('aria-expanded') !== null)
+    chevron && chevron.click()
+  })()`)
   await sleep(1200)
   await shot('telegram-account.png')
   await page.evaluate(`(() => { const p = document.querySelector('.account-tools'); p && p.scrollIntoView({ block: 'start' }) })()`)
