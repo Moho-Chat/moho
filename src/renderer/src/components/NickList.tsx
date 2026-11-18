@@ -378,7 +378,7 @@ export function NickList(): JSX.Element {
                     : undefined
                 }
                 onUnfriend={
-                  account?.service === 'stoat' && member.relationship === 'Friend' && member.userId
+                  (account?.service === 'stoat' || account?.service === 'fluxer') && member.relationship === 'Friend' && member.userId
                     ? () => {
                         void window.moho
                           .rpc('answerStoatFriendRequest', { accountId: account.id, userId: member.userId, accept: false })

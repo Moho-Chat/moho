@@ -703,7 +703,7 @@ function AccountPage({ account, serviceName }: { account: Account; serviceName: 
               <IgnoreList account={account} showEmpty />
             </div>
             {/* The other kind of shutting somebody out, where the service has one. */}
-            {(account.service === 'steam' || account.service === 'stoat') && (
+            {(account.service === 'steam' || account.service === 'stoat' || account.service === 'fluxer') && (
               <>
                 <h4 className="section-label section-label-next">People the account has blocked</h4>
                 <div className="card">

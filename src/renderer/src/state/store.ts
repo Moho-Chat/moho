@@ -1681,7 +1681,7 @@ export class ChatStore {
       }
     }
     // Stoat's are the people whose relationship to this account is "incoming": the daemon lists them.
-    for (const account of this.state.accounts.filter((a) => a.service === 'stoat' && a.state === 'connected')) {
+    for (const account of this.state.accounts.filter((a) => (a.service === 'stoat' || a.service === 'fluxer') && a.state === 'connected')) {
       try {
         const r = await window.moho.rpc<{ incoming: FriendRequest[] }>('stoatFriendRequests', { accountId: account.id })
         next[account.id] = r.incoming
@@ -1806,7 +1806,7 @@ export class ChatStore {
       } else if (invitation.kind === 'friend') {
         if (invitation.service === 'discord') {
           await window.moho.rpc('answerDiscordFriendRequest', { accountId, userId: id, accept })
-        } else if (invitation.service === 'stoat') {
+        } else if (invitation.service === 'stoat' || invitation.service === 'fluxer') {
           await window.moho.rpc('answerStoatFriendRequest', { accountId, userId: id, accept })
         } else if (invitation.service === 'xmpp') {
           await window.moho.rpc('xmppAnswerRequest', { accountId, jid: id, accept })
@@ -1896,7 +1896,7 @@ export class ChatStore {
     // it is what makes the direct message exist, so it does not have to be
     // waited for.
     // Stoat's are not either, and its conversations are named by channel, not by person.
-    if ((invitation.service === 'discord' || invitation.service === 'stoat') && invitation.kind === 'friend') {
+    if ((invitation.service === 'discord' || invitation.service === 'stoat' || invitation.service === 'fluxer') && invitation.kind === 'friend') {
       try {
         const r = await window.moho.rpc<{ bufferId: string }>(invitation.service === 'discord' ? 'openDiscordDm' : 'openDirectMessage', {
           accountId: invitation.accountId,

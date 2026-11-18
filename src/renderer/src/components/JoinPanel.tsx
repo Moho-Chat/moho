@@ -49,7 +49,7 @@ const ON_DISCORD_ONLY: { label: string; icon: string; why: string }[] = [
 ]
 
 /** The services this pane has a page for. */
-const JOINABLE = ['irc', 'matrix', 'discord', 'kick', 'sneedchat', 'steam', 'twitch', 'telegram', 'stoat', 'xmpp', 'signal']
+const JOINABLE = ['irc', 'matrix', 'discord', 'kick', 'sneedchat', 'steam', 'twitch', 'telegram', 'stoat', 'fluxer', 'xmpp', 'signal']
 
 /**
  * The "+" pane: every account down the left, and what can be added or joined
@@ -100,6 +100,7 @@ export function JoinPanel(): JSX.Element {
       case 'telegram':
         return <TelegramJoin account={account} />
       case 'stoat':
+      case 'fluxer':
         return <StoatJoin account={account} />
       case 'xmpp':
         return <XmppJoin account={account} />
@@ -486,7 +487,7 @@ function StoatJoin({ account }: { account: Account }): JSX.Element {
           help="Somebody who asks to be your friend waits as a tile in the server list, where you answer."
         >
           <ActionField
-            placeholder="Their name and number, like name#1234"
+            placeholder={account.service === 'fluxer' ? 'Their username' : 'Their name and number, like name#1234'}
             verb="Add friend"
             value={friend}
             onChange={setFriend}
@@ -526,7 +527,7 @@ function StoatJoin({ account }: { account: Account }): JSX.Element {
       </JoinSection>
 
       <JoinSection kind="join">
-        <JoinAction icon="login" title="Join a server" help="Closing a server from its menu leaves it, unless you own it.">
+        <JoinAction icon="login" title={account.service === 'fluxer' ? 'Join a community' : 'Join a server'} help="Closing one from its menu leaves it, unless you own it.">
           <ActionField placeholder="An invite link, or its code" verb="Join" onSubmit={(code) => void store.joinAndOpen(account.id, code)} />
         </JoinAction>
       </JoinSection>
