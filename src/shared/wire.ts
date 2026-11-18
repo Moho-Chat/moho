@@ -3,7 +3,7 @@
 
 export interface Account {
   id: string
-  service: 'irc' | 'discord' | 'sneedchat' | 'matrix' | 'kick' | 'steam' | 'twitch' | 'telegram' | 'stoat' | 'xmpp' | 'signal' | 'jabber' | 'slack'
+  service: 'irc' | 'discord' | 'sneedchat' | 'matrix' | 'kick' | 'steam' | 'twitch' | 'telegram' | 'stoat' | 'fluxer' | 'xmpp' | 'signal' | 'jabber' | 'slack'
   displayName: string
   /**
    * How the user is presenting: "online" | "idle". Distinct from

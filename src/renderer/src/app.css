@@ -11429,6 +11429,15 @@ html[data-reduce-motion] *::after {
   box-shadow: var(--shadow-3);
 }
 
+/* The code a Fluxer sign-in shows, to be typed into another Fluxer app: large, spaced, easy to copy by eye. */
+.fluxer-handoff-code {
+  font-family: var(--font-mono, monospace);
+  font-size: 1.8em;
+  letter-spacing: 0.12em;
+  user-select: all;
+  margin: 0.5em 0;
+}
+
 .stoat-server {
   width: 680px;
 }
