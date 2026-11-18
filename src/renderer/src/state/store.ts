@@ -1379,7 +1379,7 @@ export class ChatStore {
     const offered = ALL_STATUSES.filter((s) => connected.some((a) => supportsStatus(a.service, s)))
     const widest = [...connected].sort((a, b) => statusesFor(b.service).length - statusesFor(a.service).length)[0]
     // Invisible is what Discord calls it; where only Matrix has it, it is offline.
-    const invisibleName = connected.some((a) => supportsStatus(a.service, 'invisible') && a.service !== 'matrix') ? 'Invisible' : 'Offline'
+    const invisibleName = connected.some((a) => supportsStatus(a.service, 'invisible') && a.service !== 'matrix' && a.service !== 'telegram') ? 'Invisible' : 'Offline'
     const report = JSON.stringify([statuses, offered, (widest?.autoIdle ? 'online' : widest?.status) ?? null, invisibleName])
     if (report === this.lastTrayReport) return
     this.lastTrayReport = report

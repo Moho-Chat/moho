@@ -14,6 +14,10 @@ describe('the statuses a service has', () => {
     expect(statusesFor('matrix')).toEqual(['online', 'dnd', 'invisible'])
   })
 
+  it('gives Telegram online and offline, and moho\'s own do not disturb', () => {
+    expect(statusesFor('telegram')).toEqual(['online', 'dnd', 'invisible'])
+  })
+
   it('gives Steam online, away and invisible, and moho\'s own do not disturb', () => {
     expect(statusesFor('steam')).toEqual(['online', 'idle', 'dnd', 'invisible'])
   })
@@ -30,5 +34,6 @@ describe('what a status is called', () => {
     expect(statusName('matrix', 'invisible')).toBe('Offline')
     expect(statusName('discord', 'invisible')).toBe('Invisible')
     expect(statusName('matrix', 'dnd')).toBe('Do not disturb')
+    expect(statusName('telegram', 'invisible')).toBe('Offline')
   })
 })

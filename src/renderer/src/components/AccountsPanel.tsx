@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Icon, IconButton, ServiceMark } from './Icon'
 import { MatrixAccountTools } from './MatrixAccountTools'
 import { StoatAccountTools } from './StoatAccountTools'
+import { TelegramAccountTools } from './TelegramAccountTools'
 import { SignalAccountTools } from './SignalAccountTools'
 import { XmppAccountTools, xmppStateWords } from './XmppAccountTools'
 import { XmppDataForm, type XmppForm } from './XmppDataForm'
@@ -492,6 +493,7 @@ function AccountRow({ account }: { account: Account }): JSX.Element {
 
           {account.service === 'steam' && <SteamAccountTools account={account} />}
           {account.service === 'stoat' && <StoatAccountTools account={account} />}
+          {account.service === 'telegram' && <TelegramAccountTools account={account} />}
           {account.service === 'signal' && <SignalAccountTools account={account} />}
           {account.service === 'xmpp' && <XmppAccountTools account={account} />}
           {account.service === 'twitch' && <TwitchAccountTools account={account} />}
