@@ -408,6 +408,25 @@ function MessageRowBody({
   const [pickerOpen, setPickerOpen] = useState(false)
   /** Writing the reason for a report, before it is sent. */
   const [reporting, setReporting] = useState(false)
+  /**
+   * A report to Telegram, part way: the reasons it offered, or the comment it
+   * asked for once one was chosen.
+   */
+  const [telegramReport, setTelegramReport] = useState<TelegramReportStep | null>(null)
+  const reportToTelegram = (option: string, comment = ''): void => {
+    void window.moho
+      .rpc<TelegramReportStep>('reportTelegramMessage', { bufferId, messageId: message.id, option, comment })
+      .then((step) => {
+        if (step.done) {
+          setTelegramReport(null)
+          store.toast('info', 'Reported to Telegram')
+        } else setTelegramReport(step)
+      })
+      .catch((e: Error) => {
+        setTelegramReport(null)
+        store.toast('error', e.message)
+      })
+  }
   const [sourceOpen, setSourceOpen] = useState(false)
   /** Choosing where to send this message on to. */
   const [forwarding, setForwarding] = useState(false)
@@ -655,10 +674,10 @@ function MessageRowBody({
       ? ([{ label: 'Copy text', icon: 'content_copy', onClick: () => void window.moho.copyText(message.body) }] as MenuEntry[])
       : []),
     // Sending somebody else's message on. Only where the service has a real
-    // forward: Discord's carries the original itself, and Matrix's sends its
-    // content again, the same upload and formatting. Anywhere else it would
-    // be a copy posted as you, which is not a forward.
-    ...((service === 'discord' || service === 'matrix') && !isSystem && message.id
+    // forward: Discord's and Telegram's carry the original itself, and
+    // Matrix's sends its content again, the same upload and formatting.
+    // Anywhere else it would be a copy posted as you, which is not a forward.
+    ...((service === 'discord' || service === 'matrix' || service === 'telegram') && !isSystem && message.id
       ? ([{ label: 'Forward…', icon: 'forward', onClick: () => setForwarding(true) }] as MenuEntry[])
       : []),
     // Never hearing from them again. What that costs differs by service and
@@ -784,6 +803,19 @@ function MessageRowBody({
             icon: 'flag',
             danger: true,
             onClick: () => setReporting(true)
+          }
+        ] as MenuEntry[])
+      : []),
+    // Telegram's moderators, who ask for a reason from their own list first:
+    // the list is theirs, in the account's language, so it is asked for
+    // rather than written here.
+    ...(service === 'telegram' && !message.isOwn && !isSystem && message.id
+      ? ([
+          {
+            label: 'Report to Telegram…',
+            icon: 'flag',
+            danger: true,
+            onClick: () => reportToTelegram('')
           }
         ] as MenuEntry[])
       : []),
@@ -1703,6 +1735,30 @@ function MessageRowBody({
       {sourceOpen && (
         <EventSource bufferId={bufferId} messageId={message.id} onClose={() => setSourceOpen(false)} />
       )}
+      {telegramReport?.options && (
+        <Modal title={telegramReport.title || 'Report'} icon="flag" className="report-reasons" onClose={() => setTelegramReport(null)}>
+          <p className="small muted">This goes to Telegram&rsquo;s moderators, with the message. Pick the reason that fits.</p>
+          <div className="report-reasons-list">
+            {telegramReport.options.map((o) => (
+              <button key={o.option} type="button" className="button subtle" onClick={() => reportToTelegram(o.option)}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
+      {telegramReport?.comment && (
+        <ReasonPrompt
+          title={`Report ${message.from}’s message`}
+          detail="Telegram asks for a few words about what is wrong. Its moderators see them with the message."
+          placeholder="What is wrong with this message"
+          confirmLabel="Report"
+          optional={telegramReport.optional}
+          danger
+          onCancel={() => setTelegramReport(null)}
+          onConfirm={(reason) => reportToTelegram(telegramReport.option ?? '', reason)}
+        />
+      )}
       {reporting && (
         <ReasonPrompt
           title={`Report ${message.from}’s message`}
@@ -1722,6 +1778,16 @@ function MessageRowBody({
       )}
     </>
   )
+}
+
+/** One step of reporting a message to Telegram, as the daemon answers it. */
+interface TelegramReportStep {
+  done?: boolean
+  title?: string
+  options?: { label: string; option: string }[]
+  comment?: boolean
+  optional?: boolean
+  option?: string
 }
 
 /** What the first word of an emoji's name is, for the ones the picker knows: what a reaction is called when it is not a custom one. */
@@ -1763,7 +1829,7 @@ function ReactionPill({
 
   const ask = (): void => {
     const service = store.accountFor(bufferId)?.service
-    if (service !== 'discord' && service !== 'matrix') return
+    if (service !== 'discord' && service !== 'matrix' && service !== 'telegram') return
     const key = `${bufferId}|${messageId}|${r.emoji}`
     const kept = reactorCache.get(key)
     if (kept && kept.count === r.count && Date.now() - kept.at < REACTORS_KEPT_MS) {
@@ -1895,7 +1961,7 @@ function moderationEntries(
     out.push({ label: 'Ban sender', icon: 'gavel', danger: true, onClick: () => call('banMatrixMember') })
     // Reachable only from here, not the member list: a banned user is no
     // longer a member, so their scrollback is the one place left to find them.
-    if (!telegram) out.push({ label: 'Unban sender', icon: 'lock_open', onClick: () => call('unbanMatrixMember') })
+    out.push({ label: 'Unban sender', icon: 'lock_open', onClick: () => call('unbanMatrixMember') })
   }
   return out
 }

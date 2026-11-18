@@ -429,10 +429,15 @@ export function NickList(): JSX.Element {
                     return
                   }
                   if (account.service === 'telegram') {
-                    if (action !== 'kick' && action !== 'ban' && action !== 'mute') return
+                    if (action === 'voice') return
+                    const said = { ban: 'Banned', mute: 'Muted for 10 minutes', kick: 'Removed', op: 'Made an administrator:', deop: 'No longer an administrator:' }[action]
                     void window.moho
                       .rpc('moderateTelegramMember', { bufferId: buffer.id, userId: member.userId, action })
-                      .then(() => store.toast('info', `${action === 'ban' ? 'Banned' : action === 'mute' ? 'Muted for 10 minutes' : 'Removed'} ${member.nick}`))
+                      .then(() => {
+                        store.toast('info', `${said} ${member.nick}`)
+                        // The marks in the list come from Telegram: read them again.
+                        if (action === 'op' || action === 'deop') void window.moho.rpc('requestMemberList', { bufferId: buffer.id }).catch(() => undefined)
+                      })
                       .catch((e: Error) => store.toast('error', e.message))
                     return
                   }
@@ -751,7 +756,17 @@ function MemberRow({
       : []),
     // An XMPP owner or admin is a moderator by standing, which no role change
     // can take away, so the room would refuse either entry for them.
-    ...(perms.canOp && !(service === 'xmpp' && (member.prefix === 'owner' || member.prefix === 'admin'))
+    // Telegram's administrators: made with the rights its own apps tick, taken
+    // back to an ordinary member. Its owner is nobody's to demote.
+    ...(service === 'telegram' && perms.canOp && member.prefix !== '👑'
+      ? ([
+          { separator: true },
+          isOperator
+            ? { label: 'Take administrator', icon: 'remove_moderator', onClick: () => onModerate('deop') }
+            : { label: 'Make administrator', icon: 'shield', onClick: () => onModerate('op') }
+        ] as MenuEntry[])
+      : []),
+    ...(perms.canOp && service !== 'telegram' && !(service === 'xmpp' && (member.prefix === 'owner' || member.prefix === 'admin'))
       ? ([
           { separator: true },
           { label: isOperator ? 'Take operator' : 'Give operator', icon: 'shield', onClick: () => onModerate(isOperator ? 'deop' : 'op') },

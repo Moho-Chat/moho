@@ -5309,6 +5309,23 @@ img.smilie {
   gap: var(--spacing-s);
 }
 
+/* Telegram's reasons for a report: its own list, one button each, read top to bottom. */
+.report-reasons {
+  width: min(400px, 90vw);
+}
+
+.report-reasons-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-s);
+}
+
+.report-reasons-list .button {
+  justify-content: flex-start;
+  text-align: left;
+}
+
 /* Expanded media viewer. Sits above everything including the title bar, so
    the picture is the only thing competing for attention. */
 .lightbox-backdrop {
