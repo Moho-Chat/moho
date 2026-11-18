@@ -305,7 +305,7 @@ function RailTile(props: TileProps): JSX.Element {
             ...(props.onSettings
               ? [
                   {
-                    label: props.group.service === 'stoat' ? 'Server settings' : 'Group settings',
+                    label: props.group.service === 'stoat' ? 'Server settings' : props.group.service === 'fluxer' ? 'Community settings' : 'Group settings',
                     icon: 'settings',
                     onClick: props.onSettings
                   } as const
@@ -591,7 +591,7 @@ export function ServerRail(): JSX.Element | null {
         }
         onBrowse={g.kind === 'space' ? () => setBrowsing(g) : undefined}
         onInvite={
-          g.service === 'stoat' && g.kind === 'guild'
+          (g.service === 'stoat' || g.service === 'fluxer') && g.kind === 'guild'
             ? () => {
                 const inside = buffers.find((b) => b.groupId === g.id)
                 if (!inside) return
@@ -602,7 +602,7 @@ export function ServerRail(): JSX.Element | null {
               }
             : undefined
         }
-        onSettings={steamGroupOfRail(g.id) ? () => setConfiguring(g) : g.service === 'stoat' && g.kind === 'guild' ? () => setStoatSettings(g) : undefined}
+        onSettings={steamGroupOfRail(g.id) ? () => setConfiguring(g) : (g.service === 'stoat' || g.service === 'fluxer') && g.kind === 'guild' ? () => setStoatSettings(g) : undefined}
         unread={t?.unread ?? 0}
         highlight={t?.highlight ?? false}
         mentions={t?.mentions ?? 0}

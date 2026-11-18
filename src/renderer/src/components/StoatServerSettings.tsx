@@ -10,6 +10,11 @@ import { resolveMediaUrl } from '../lib/util'
  * Asks the daemon; or, in a window the screenshot harness started, takes the answer it left in `__rpcFixture`, since
  * the harness has no Stoat to ask.
  */
+/** Whose server this is, for the words that name the service: the same window serves Stoat's servers and Fluxer's communities. */
+function serviceName(bufferId: string): string {
+  return bufferId.startsWith('fluxer:') ? 'Fluxer' : 'Stoat'
+}
+
 function ask<T>(method: string, params: Record<string, unknown>): Promise<T> {
   const w = window as unknown as { __mohoShots?: unknown; __rpcFixture?: Record<string, (p: Record<string, unknown>) => unknown> }
   const stub = w.__mohoShots ? w.__rpcFixture?.[method] : undefined
@@ -137,7 +142,7 @@ export function StoatServerSettings({ bufferId, onClose }: { bufferId: string; o
     return (
       <Modal title="Server" icon="dns" onClose={onClose} className="steam-group stoat-server">
         <p className="small muted">
-          <span className="spinner" /> Asking Stoat…
+          <span className="spinner" /> Asking {serviceName(bufferId)}…
         </p>
       </Modal>
     )
@@ -637,7 +642,7 @@ function Webhooks({ server, busy, act }: { server: Overview; busy: boolean; act:
           ))}
         </select>
       </div>
-      {list === null && <p className="small muted">Asking Stoat…</p>}
+      {list === null && <p className="small muted">Asking…</p>}
       {list?.length === 0 && <p className="small muted">None in this channel.</p>}
       {list?.map((w) => (
         <div key={w.id} className="field-row steam-group-row">
@@ -682,7 +687,7 @@ function Audit({ act }: { act: Act }): JSX.Element {
     })
   }
   useEffect(() => load(), []) // eslint-disable-line react-hooks/exhaustive-deps
-  if (entries === null) return <p className="small muted">Asking Stoat…</p>
+  if (entries === null) return <p className="small muted">Asking…</p>
   if (entries.length === 0) return <p className="small muted">Nothing has been recorded.</p>
   return (
     <>
