@@ -1105,7 +1105,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           {buffer.accountId.startsWith('matrix:') && <InviteToRoom buffer={buffer} />}
 
           {isMatrix && buffer.kind !== 'server' && <ThreadList buffer={buffer} />}
-          {isDiscord && buffer.kind === 'channel' && <DiscordThreads buffer={buffer} />}
+          {(isDiscord || buffer.accountId.startsWith('fluxer:')) && buffer.kind === 'channel' && !buffer.forum && <DiscordThreads buffer={buffer} />}
           {(isMatrix || isDiscord || buffer.accountId.startsWith('telegram:') || isStoat) && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
 
           {/* Beside the pins, because it is the same kind of fact about a room:

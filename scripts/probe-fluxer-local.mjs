@@ -302,6 +302,33 @@ try {
   const tidy = await as('mohob', 'GET', `/guilds/${hall.id}/channels`)
   check('a channel and a heading are deleted again', !tidy.some((c) => c.id === made.id || c.name === `Heading ${run}`))
 
+  // Threads and a forum.
+  const started = await as('mohob', 'POST', `/channels/${channel}/messages`, { content: `thread root ${run}` })
+  const thread = await as('mohob', 'POST', `/channels/${channel}/messages/${started.id}/threads`, { name: `Thread ${run}` })
+  const threads = await until('threads', async () => {
+    const r = await rpc('listDiscordThreads', { bufferId: general })
+    return r.threads.some((t) => t.id === thread.id) ? r : null
+  })
+  check('a channel’s threads are listed', !!threads, JSON.stringify(threads?.threads?.slice(0, 3)))
+  const openedThread = await rpc('openDiscordThread', { bufferId: general, threadId: thread.id })
+  check('opening one joins it and makes it a conversation', !!openedThread.bufferId && (await rpc('listBuffers')).some((b) => b.id === openedThread.bufferId && b.remoteId === thread.id), JSON.stringify(openedThread))
+  await rpc('sendMessage', { bufferId: openedThread.bufferId, body: `in the thread ${run}` })
+  const inThread = await until('in thread', async () => (await as('mohob', 'GET', `/channels/${thread.id}/messages?limit=5`)).find((m) => m.content === `in the thread ${run}`))
+  check('and what is said in it reaches the thread', !!inThread)
+  let forum = (await as('mohob', 'GET', `/guilds/${hall.id}/channels`)).find((c) => c.type === 15)
+  if (!forum) forum = await as('mohob', 'POST', `/guilds/${hall.id}/channels`, { name: 'ideas', type: 15 })
+  await as('mohob', 'POST', `/channels/${forum.id}/threads`, { name: `Post by mohob ${run}`, message: { content: `first words ${run}` } })
+  const forumBuffer = await until('forum buffer', async () => (await rpc('listBuffers')).find((b) => b.accountId === account && b.remoteId === forum.id))
+  check('a forum is a forum pane', forumBuffer?.forum === true, JSON.stringify(forumBuffer && [forumBuffer.name, forumBuffer.forum]))
+  const posts = forumBuffer && (await until('posts', async () => {
+    const r = await rpc('listForumPosts', { bufferId: forumBuffer.id, sort: 'active', offset: 0 })
+    return r.posts.some((p) => p.name === `Post by mohob ${run}`) ? r : null
+  }))
+  check('its posts are listed with their first words', posts?.posts.some((p) => p.name === `Post by mohob ${run}` && p.content.includes(`first words ${run}`)), JSON.stringify(posts?.posts?.[0]))
+  const posted = forumBuffer && (await rpc('createForumPost', { bufferId: forumBuffer.id, title: `Post from moho ${run}`, body: `hello forum ${run}`, tags: [] }))
+  const seenPost = await until('post seen', async () => (await as('mohob', 'GET', `/channels/${forum.id}/threads/search?limit=10`)).threads.find((t) => t.name === `Post from moho ${run}`))
+  check('a post made in moho is in the forum', !!seenPost && !!posted?.bufferId, JSON.stringify(posted))
+
   // Typing, both ways.
   await as('mohob', 'POST', `/channels/${channel}/typing`)
   await ev(`window.__mohoShots.store.selectBuffer?.(${JSON.stringify(general)})`)

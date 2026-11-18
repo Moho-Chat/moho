@@ -18,7 +18,7 @@ export async function as(who, method, route, body) {
   for (let attempt = 0; ; attempt++) {
     const r = await fetch(API + route, {
       method,
-      headers: { Authorization: token, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+      headers: { Authorization: token, 'X-Fluxer-Features': 'channel_threads', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined
     })
     const text = await r.text()
