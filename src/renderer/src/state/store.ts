@@ -1671,6 +1671,15 @@ export class ChatStore {
         // Not connected yet: the daemon's own push fills it in.
       }
     }
+    // Telegram's are asks for a secret chat, offered as a conversation to accept.
+    for (const account of this.state.accounts.filter((a) => a.service === 'telegram' && a.state === 'connected')) {
+      try {
+        const rooms = await window.moho.rpc<MatrixInvite[]>('telegramSecretRequests', { accountId: account.id })
+        this.set({ matrixInvites: { ...this.state.matrixInvites, [account.id]: rooms } })
+      } catch {
+        // Not connected yet: the daemon's own push fills it in.
+      }
+    }
     // XMPP's are the people who asked to see the account's presence and have not been answered.
     for (const account of this.state.accounts.filter((a) => a.service === 'xmpp' && a.state === 'connected')) {
       try {
@@ -1780,6 +1789,8 @@ export class ChatStore {
         }
       } else if (invitation.service === 'xmpp') {
         await window.moho.rpc('xmppAnswerInvite', { accountId, roomId: id, accept })
+      } else if (invitation.service === 'telegram') {
+        await window.moho.rpc('answerTelegramSecretChat', { accountId, chatId: id, accept })
       } else if (invitation.service === 'signal') {
         await window.moho.rpc('signalAnswerRequest', { accountId, id, answer: accept ? 'accept' : 'delete' })
       } else if (invitation.service === 'steam') {
@@ -2541,6 +2552,17 @@ export class ChatStore {
    * passed because IRC has only a nick to go on while Discord and Matrix have
    * real ids, and a display name is not something to look somebody up by.
    */
+  /** Asks somebody on Telegram for a secret chat, and opens it to wait for their answer. */
+  async startTelegramSecretChat(accountId: string, userId: string): Promise<void> {
+    try {
+      const r = await window.moho.rpc<{ bufferId: string }>('startTelegramSecretChat', { accountId, userId })
+      await this.refreshBuffers()
+      await this.selectBuffer(r.bufferId)
+    } catch (e) {
+      this.toast('error', `Couldn't start a secret chat: ${(e as Error).message}`)
+    }
+  }
+
   async openDirectMessage(accountId: string, userId: string, nick: string): Promise<void> {
     try {
       const r = await window.moho.rpc<{ bufferId: string }>('openDirectMessage', { accountId, userId, nick })

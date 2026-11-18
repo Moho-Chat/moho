@@ -546,6 +546,11 @@ export function NickList(): JSX.Element {
                   // than at every call site that offers this.
                   void store.openDirectMessage(account.id, member.userId ?? '', member.nick)
                 }}
+                onSecretChat={
+                  account?.service === 'telegram' && member.userId && !member.bot
+                    ? () => void store.startTelegramSecretChat(account.id, member.userId ?? '')
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -609,6 +614,8 @@ interface MemberRowProps {
   /** Matrix only: give this member a power level outright. */
   onSetPower: (level: number) => void
   onOpenDm: () => void
+  /** Telegram only: ask this member for a secret chat. */
+  onSecretChat?: () => void
   onWhisper: () => void
   onSendFile: () => void
   /** Only where the protocol supports it and the member is identifiable. */
@@ -639,6 +646,7 @@ function MemberRow({
   onModerate,
   onSetRole,
   onOpenDm,
+  onSecretChat,
   onWhisper,
   onSendFile,
   canCall,
@@ -666,6 +674,7 @@ function MemberRow({
     { label: 'Mention', icon: 'alternate_email', onClick: onMention },
     ...(canCall ? ([{ label: 'Call', icon: 'call', onClick: onCall }] as MenuEntry[]) : []),
     ...(canOpenDm ? ([{ label: 'Open DM', icon: 'chat', onClick: onOpenDm }] as MenuEntry[]) : []),
+    ...(onSecretChat ? ([{ label: 'Secret chat', icon: 'lock', onClick: onSecretChat }] as MenuEntry[]) : []),
     ...(canWhisper ? ([{ label: 'Whisper', icon: 'lock', onClick: onWhisper }] as MenuEntry[]) : []),
     ...(canSendFile ? ([{ label: 'Send a file', icon: 'upload_file', onClick: onSendFile }] as MenuEntry[]) : []),
     { separator: true },

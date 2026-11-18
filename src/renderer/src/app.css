@@ -5309,6 +5309,17 @@ img.smilie {
   gap: var(--spacing-s);
 }
 
+/* A secret chat's key, as rows of hex both people read aloud. */
+.secret-key {
+  margin: var(--spacing-xs) 0 0;
+  padding: var(--spacing-s);
+  border-radius: var(--corner-radius-small);
+  background: var(--surface-container);
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.05em;
+  line-height: 1.6;
+}
+
 /* Telegram's reasons for a report: its own list, one button each, read top to bottom. */
 .report-reasons {
   width: min(400px, 90vw);

@@ -834,6 +834,19 @@ function MessageRowBody({
           }
         ] as MenuEntry[])
       : []),
+    // Telegram's end-to-end chat with the sender: a conversation of its own, on this device only.
+    ...(service === 'telegram' && !message.isOwn && !isSystem && message.senderId && /^\d+$/.test(message.senderId)
+      ? ([
+          {
+            label: `Secret chat with ${message.from}`,
+            icon: 'lock',
+            onClick: () => {
+              const account = store.accountFor(bufferId)
+              if (account) void store.startTelegramSecretChat(account.id, message.senderId ?? '')
+            }
+          }
+        ] as MenuEntry[])
+      : []),
     ...(service === 'discord' && message.id && !isSystem
       ? ([
           {
