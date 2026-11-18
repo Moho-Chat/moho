@@ -11,6 +11,7 @@ import { KickPoints } from './KickPoints'
 import { ReasonPrompt } from './ReasonPrompt'
 import type { Member } from '../../../shared/wire'
 import { steamRoomIds, type SteamChatGroup } from '../lib/steamchat'
+import { profileHoverProps } from '../lib/profilehover'
 
 /**
  * The member list for the active channel. Two grouping modes, both driven off
@@ -537,8 +538,9 @@ export function NickList(): JSX.Element {
                 }}
                 onWhisper={() => store.startWhisper(member.nick)}
                 onProfile={
-                  buffer ? () => store.showProfile(buffer.id, member.nick, member.userId) : undefined
+                  buffer ? (anchor) => store.showProfile(buffer.id, member.nick, member.userId, { anchor }) : undefined
                 }
+                profileHover={buffer ? profileHoverProps(store, buffer.id, member.nick, member.userId) : undefined}
                 onSendFile={() => account && void store.sendFileTo(account.id, member.nick)}
                 onOpenDm={() => {
                   if (!account) return
@@ -622,7 +624,9 @@ interface MemberRowProps {
   /** Only where the protocol supports it and the member is identifiable. */
   canCall: boolean
   /** Ask the service who this is. Every service answers something. */
-  onProfile?: () => void
+  onProfile?: (anchor?: Element) => void
+  /** Resting the pointer on the row opens their card too (#339). */
+  profileHover?: ReturnType<typeof profileHoverProps>
   /** Matrix only: tell the homeserver's moderators about this person. */
   onReport?: (reason: string) => void
   /** Stoat only: stop being friends with somebody who is one. */
@@ -653,6 +657,7 @@ function MemberRow({
   canCall,
   onCall,
   onProfile,
+  profileHover,
   onReport,
   onUnfriend,
   onRemoveFromGroup
@@ -671,7 +676,7 @@ function MemberRow({
     // First, because it is what a right click on a person is usually for -
     // and because everything under it acts on somebody, which is a thing to
     // decide after seeing who they are rather than before.
-    ...(onProfile ? ([{ label: 'Profile', icon: 'person_search', onClick: onProfile }] as MenuEntry[]) : []),
+    ...(onProfile ? ([{ label: 'Profile', icon: 'person_search', onClick: () => onProfile() }] as MenuEntry[]) : []),
     { label: 'Mention', icon: 'alternate_email', onClick: onMention },
     ...(canCall ? ([{ label: 'Call', icon: 'call', onClick: onCall }] as MenuEntry[]) : []),
     ...(canOpenDm ? ([{ label: 'Open DM', icon: 'chat', onClick: onOpenDm }] as MenuEntry[]) : []),
@@ -809,8 +814,9 @@ function MemberRow({
         onContextMenu={open}
         // Who they are is the click, as in Discord, Slack and Element;
         // mentioning is Shift+click and the menu's own entry.
-        onClick={(e) => (onProfile && !e.shiftKey ? onProfile() : onMention())}
-        title={memberTitle(member)}
+        onClick={(e) => (onProfile && !e.shiftKey ? onProfile(e.currentTarget) : onMention())}
+        {...profileHover}
+        title={profileHover ? undefined : memberTitle(member)}
       >
         {/* A face on everybody in comfy, with a dot where the service has
             presence to report; classic is a list of names, and a column of
