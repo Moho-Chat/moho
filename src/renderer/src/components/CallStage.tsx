@@ -374,7 +374,7 @@ export function StoatCallBar({ bufferId }: { bufferId: string }): JSX.Element | 
   const buffer = useChat((s) => s.buffers).find((b) => b.id === bufferId)
   const members = useChat((s) => s.stoatVoice[bufferId]) ?? []
   const activeCall = useChat((s) => s.activeCall)
-  if (!buffer?.accountId.startsWith('stoat:')) return null
+  if (!buffer?.accountId.startsWith('stoat:') && !buffer?.accountId.startsWith('fluxer:')) return null
   const callable = buffer.nameIcon === 'volume_up' || buffer.kind === 'dm' || buffer.category === 'Groups'
   if (!callable) return null
   const inIt = activeCall?.bufferId === bufferId

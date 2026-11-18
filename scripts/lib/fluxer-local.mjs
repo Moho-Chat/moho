@@ -64,6 +64,7 @@ export async function session(who) {
   await ready
   return {
     events,
+    send: (payload) => ws.send(JSON.stringify(payload)),
     close: () => {
       clearInterval(timer)
       ws.close(4000)

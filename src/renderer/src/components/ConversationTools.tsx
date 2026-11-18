@@ -1060,13 +1060,13 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
 
       {/* Stoat's calls are held on a media server and drawn by the same stage as Matrix's: a direct message, a group or a
           voice room is joined, with the camera as a second choice. */}
-      {buffer.accountId.startsWith('stoat:') && (buffer.kind === 'dm' || buffer.category === 'Groups' || buffer.nameIcon === 'volume_up') && matrixCall?.bufferId !== buffer.id && !matrixCall && (
+      {(buffer.accountId.startsWith('stoat:') || buffer.accountId.startsWith('fluxer:')) && (buffer.kind === 'dm' || buffer.category === 'Groups' || buffer.nameIcon === 'volume_up') && matrixCall?.bufferId !== buffer.id && !matrixCall && (
         <>
           <IconButton name="call" title={callsOff ?? 'Join the call'} disabled={!!callsOff} onClick={() => void store.joinStoatCall(buffer.id, false)} />
           <IconButton name="videocam" title={callsOff ?? 'Join the call with video'} disabled={!!callsOff} onClick={() => void store.joinStoatCall(buffer.id, true)} />
         </>
       )}
-      {buffer.accountId.startsWith('stoat:') && matrixCall?.bufferId === buffer.id && (
+      {(buffer.accountId.startsWith('stoat:') || buffer.accountId.startsWith('fluxer:')) && matrixCall?.bufferId === buffer.id && (
         <IconButton name="call_end" title="Hang up" className="calling" onClick={() => store.hangUpMatrixCall()} />
       )}
 

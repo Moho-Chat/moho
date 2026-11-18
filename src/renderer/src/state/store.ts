@@ -2424,8 +2424,8 @@ export class ChatStore {
     // Optimistic: the ringing stops the instant it is answered, rather than a
     // round trip later with the ringtone still going.
     this.setRinging({ ...this.callFor(bufferId), ringing: false })
-    // A Stoat call is answered by joining it on its media server.
-    if (this.state.buffers.find((b) => b.id === bufferId)?.accountId.startsWith('stoat:')) {
+    // A Stoat or Fluxer call is answered by joining it on its media server.
+    if (this.onMediaServer(bufferId)) {
       await this.selectBuffer(bufferId, true)
       await this.joinStoatCall(bufferId, false)
       return
@@ -2449,7 +2449,7 @@ export class ChatStore {
       return
     }
     try {
-      await window.moho.rpc(this.state.buffers.find((b) => b.id === bufferId)?.accountId.startsWith('stoat:') ? 'declineStoatCall' : 'declineCall', { bufferId })
+      await window.moho.rpc(this.onMediaServer(bufferId) ? 'declineStoatCall' : 'declineCall', { bufferId })
     } catch (e) {
       this.toast('error', `Couldn't decline: ${(e as Error).message}`)
     }
@@ -2600,8 +2600,8 @@ export class ChatStore {
    * resolves it to the channel the call happens in.
    */
   async callBuffer(bufferId: string): Promise<void> {
-    // A Stoat conversation is called into on its media server, with the camera off until it is asked for.
-    if (this.state.buffers.find((b) => b.id === bufferId)?.accountId.startsWith('stoat:')) {
+    // A Stoat or Fluxer conversation is called into on its media server, with the camera off until it is asked for.
+    if (this.onMediaServer(bufferId)) {
       await this.joinStoatCall(bufferId, false)
       return
     }
@@ -3824,7 +3824,7 @@ export class ChatStore {
    */
   async joinStoatCall(bufferId: string, video: boolean): Promise<void> {
     const account = this.accountFor(bufferId)
-    if (!account || account.service !== 'stoat') return
+    if (!account || (account.service !== 'stoat' && account.service !== 'fluxer')) return
     if (this.state.activeCall || this.stoatCall) {
       this.toast('info', 'Leave the call you are in first')
       return
@@ -3834,7 +3834,7 @@ export class ChatStore {
       activeCall: { accountId: account.id, bufferId, phase: 'connecting', video, muted: false, sharingScreen: false, cameraOn: video, onServer: true }
     })
     try {
-      const way = await window.moho.rpc<{ token: string; url: string; note?: string | null }>('joinStoatCall', { bufferId })
+      const way = await window.moho.rpc<{ token: string; url: string; note?: string | null; e2eeKey?: string | null }>('joinStoatCall', { bufferId, video })
       // What a new account is held to is said once, as the call starts.
       if (way.note) this.toast('info', way.note)
       let wasConnected = false
@@ -3850,6 +3850,7 @@ export class ChatStore {
             // ends the call.
             if (connected) wasConnected = true
             if (!connected && wasConnected && this.state.activeCall?.bufferId === bufferId) {
+              if (account.service === 'fluxer') void window.moho.rpc('leaveFluxerCall', { bufferId }).catch(() => {})
               this.stoatCall = null
               this.levels.dispose()
               this.set({ activeCall: null })
@@ -3859,7 +3860,8 @@ export class ChatStore {
           },
           onError: (message) => this.toast('error', message)
         },
-        false
+        false,
+        way.e2eeKey
       )
       this.stoatCall = { sfu, bufferId, people: [], local: null }
       await sfu.join(way.url, way.token, video)
@@ -3869,9 +3871,23 @@ export class ChatStore {
     } catch (e) {
       this.stoatCall?.sfu.leave().catch(() => {})
       this.stoatCall = null
+      if (account.service === 'fluxer') void window.moho.rpc('leaveFluxerCall', { bufferId }).catch(() => {})
       this.set({ activeCall: null })
       this.toast('error', `Couldn't join the call: ${(e as Error).message}`)
     }
+  }
+
+  /** Whether a conversation's calls are held on a media server the window joins (Stoat's and Fluxer's). */
+  private onMediaServer(bufferId: string): boolean {
+    const account = this.state.buffers.find((b) => b.id === bufferId)?.accountId ?? ''
+    return account.startsWith('stoat:') || account.startsWith('fluxer:')
+  }
+
+  /** Tells Fluxer the microphone, camera and screen as they are, so the others' apps show them. */
+  private sayFluxerVoice(): void {
+    const call = this.state.activeCall
+    if (!call || !call.bufferId.startsWith('fluxer:')) return
+    void window.moho.rpc('fluxerVoiceState', { bufferId: call.bufferId, muted: !!call.muted, camera: !!call.cameraOn, screen: !!call.sharingScreen }).catch(() => {})
   }
 
   /** Somebody's name in a Stoat call: the daemon's, which knows people the roster has not listed. */
@@ -3884,6 +3900,8 @@ export class ChatStore {
       const call = this.stoatCall
       this.stoatCall = null
       void call.sfu.leave().catch(() => {})
+      // Fluxer keeps the voice connection until it is told it is over.
+      if (call.bufferId.startsWith('fluxer:')) void window.moho.rpc('leaveFluxerCall', { bufferId: call.bufferId }).catch(() => {})
       this.levels.dispose()
       this.set({ activeCall: null })
       return
@@ -4131,6 +4149,7 @@ export class ChatStore {
     if (this.stoatCall) {
       void this.stoatCall.sfu.toggleMute().then((muted) => {
         if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, muted } })
+        this.sayFluxerVoice()
       })
       return
     }
@@ -4172,6 +4191,7 @@ export class ChatStore {
         return false
       })
       if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, cameraOn: on } })
+      this.sayFluxerVoice()
       return
     }
     const want = !this.matrixCalls.cameraOn
@@ -4220,6 +4240,7 @@ export class ChatStore {
           sharing = await sfu.setScreen(stream)
         }
         if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, sharingScreen: sharing } })
+        this.sayFluxerVoice()
       } catch (e) {
         this.toast('error', `Couldn't share the screen: ${(e as Error).message}`)
       }

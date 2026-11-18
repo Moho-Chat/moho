@@ -45,7 +45,7 @@ export function useDmCategories(): void {
   }, [connectedTelegram, store])
 
   // And who is in a Stoat account's calls.
-  const connectedStoat = accounts.filter((a) => a.service === 'stoat' && a.state === 'connected').map((a) => a.id).join(',')
+  const connectedStoat = accounts.filter((a) => (a.service === 'stoat' || a.service === 'fluxer') && a.state === 'connected').map((a) => a.id).join(',')
   useEffect(() => {
     for (const id of connectedStoat.split(',').filter(Boolean)) store.loadStoatVoice(id)
   }, [connectedStoat, store])
