@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { IconButton } from './Icon'
 import { Modal } from './Modal'
 import { ChoiceSetting } from './settings/controls'
+import { ask } from '../lib/ask'
 import { useStore } from '../state/hooks'
 import type { BufferEntry } from '../state/store'
 
@@ -66,11 +67,11 @@ export function TelegramChatSettings({ buffer }: { buffer: BufferEntry }): JSX.E
 
   const load = async (): Promise<void> => {
     try {
-      const got = await window.moho.rpc<Info>('telegramChatInfo', { bufferId: buffer.id })
+      const got = await ask<Info>('telegramChatInfo', { bufferId: buffer.id })
       setInfo(got)
       setTitle(got.title)
       setAbout(got.about)
-      setBanned(got.mayBan ? await window.moho.rpc<Person[]>('telegramBanned', { bufferId: buffer.id }) : [])
+      setBanned(got.mayBan ? await ask<Person[]>('telegramBanned', { bufferId: buffer.id }) : [])
     } catch (e) {
       store.toast('error', (e as Error).message)
       setOpen(false)
@@ -91,7 +92,7 @@ export function TelegramChatSettings({ buffer }: { buffer: BufferEntry }): JSX.E
   const change = async (params: Record<string, unknown>, done?: string): Promise<boolean> => {
     setBusy(true)
     try {
-      const r = await window.moho.rpc<{ note?: string | null }>('telegramChatChange', { bufferId: buffer.id, ...params })
+      const r = await ask<{ note?: string | null }>('telegramChatChange', { bufferId: buffer.id, ...params })
       if (r.note) store.toast('info', r.note)
       else if (done) store.toast('info', done)
       await load()
@@ -107,7 +108,7 @@ export function TelegramChatSettings({ buffer }: { buffer: BufferEntry }): JSX.E
   const unban = async (p: Person): Promise<void> => {
     setBusy(true)
     try {
-      await window.moho.rpc('moderateTelegramMember', { bufferId: buffer.id, userId: p.userId, action: 'unban' })
+      await ask('moderateTelegramMember', { bufferId: buffer.id, userId: p.userId, action: 'unban' })
       store.toast('info', `${p.nick} is no longer banned`)
       await load()
     } catch (e) {

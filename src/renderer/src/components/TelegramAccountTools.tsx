@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
+import { ask } from '../lib/ask'
 import { useStore } from '../state/hooks'
 import { resolveMediaUrl } from '../lib/util'
 import type { Account } from '../../../shared/wire'
@@ -49,16 +50,14 @@ export function TelegramAccountTools({ account }: { account: Account }): JSX.Ele
   const [busy, setBusy] = useState(false)
 
   const load = (): void => {
-    void window.moho
-      .rpc<OwnProfile>('telegramOwnProfile', { accountId: account.id })
+    void ask<OwnProfile>('telegramOwnProfile', { accountId: account.id })
       .then((p) => {
         setProfile(p)
         setForm({ firstName: p.firstName, lastName: p.lastName, bio: p.bio, username: p.username })
       })
       // An account still connecting has no answer yet; the panel shows nothing in its place.
       .catch(() => setProfile(null))
-    void window.moho
-      .rpc<Session[]>('telegramSessions', { accountId: account.id })
+    void ask<Session[]>('telegramSessions', { accountId: account.id })
       .then(setSessions)
       .catch(() => setSessions(null))
   }
@@ -76,9 +75,9 @@ export function TelegramAccountTools({ account }: { account: Account }): JSX.Ele
       if (nameChanged.length > 0) {
         const body: Record<string, string> = {}
         for (const k of nameChanged) body[k] = form[k]
-        await window.moho.rpc('setTelegramProfile', { accountId: account.id, ...body })
+        await ask('setTelegramProfile', { accountId: account.id, ...body })
       }
-      if (usernameChanged) await window.moho.rpc('setTelegramUsername', { accountId: account.id, username: form.username })
+      if (usernameChanged) await ask('setTelegramUsername', { accountId: account.id, username: form.username })
       store.toast('info', 'Profile changed')
       load()
     } catch (e) {
@@ -89,8 +88,7 @@ export function TelegramAccountTools({ account }: { account: Account }): JSX.Ele
   }
   const picture = (path: string): void => {
     setBusy(true)
-    void window.moho
-      .rpc('setTelegramProfilePhoto', { accountId: account.id, path })
+    void ask('setTelegramProfilePhoto', { accountId: account.id, path })
       .then(() => {
         store.toast('info', path ? 'Picture changed' : 'Picture taken off')
         load()
@@ -100,8 +98,7 @@ export function TelegramAccountTools({ account }: { account: Account }): JSX.Ele
   }
   const end = (id: string): void => {
     setEnding(null)
-    void window.moho
-      .rpc('endTelegramSession', { accountId: account.id, sessionId: id })
+    void ask('endTelegramSession', { accountId: account.id, sessionId: id })
       .then(() => {
         store.toast('info', 'That session is signed out')
         load()

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Icon, IconButton } from './Icon'
 import { Modal } from './Modal'
+import { ask } from '../lib/ask'
 import { useChat, useStore } from '../state/hooks'
 import type { BufferEntry } from '../state/store'
 import type { TelegramVoiceParticipant } from '../lib/telegramvoice'
@@ -31,7 +32,7 @@ export function TelegramVoiceChat({ buffer }: { buffer: BufferEntry }): JSX.Elem
 
   const load = async (): Promise<void> => {
     try {
-      setInfo(await window.moho.rpc<Info>('telegramVoice', { op: 'info', bufferId: buffer.id }))
+      setInfo(await ask<Info>('telegramVoice', { op: 'info', bufferId: buffer.id }))
     } catch (e) {
       setInfo({ active: false })
       store.toast('error', (e as Error).message)
@@ -40,8 +41,7 @@ export function TelegramVoiceChat({ buffer }: { buffer: BufferEntry }): JSX.Elem
   // Read once when the conversation is opened, so the button can say whether a voice chat is going.
   useEffect(() => {
     setInfo(null)
-    void window.moho
-      .rpc<Info>('telegramVoice', { op: 'info', bufferId: buffer.id })
+    void ask<Info>('telegramVoice', { op: 'info', bufferId: buffer.id })
       .then(setInfo)
       .catch(() => setInfo({ active: false }))
   }, [buffer.id, live])
@@ -49,7 +49,7 @@ export function TelegramVoiceChat({ buffer }: { buffer: BufferEntry }): JSX.Elem
   const act = async (op: string, done?: string): Promise<void> => {
     setBusy(true)
     try {
-      await window.moho.rpc('telegramVoice', { op, bufferId: buffer.id, call: info?.call ?? '' })
+      await ask('telegramVoice', { op, bufferId: buffer.id, call: info?.call ?? '' })
       if (done) store.toast('info', done)
       await load()
     } catch (e) {

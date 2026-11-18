@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { IconButton } from './Icon'
 import { Modal } from './Modal'
 import { ChoiceSetting } from './settings/controls'
+import { ask } from '../lib/ask'
 import { useStore } from '../state/hooks'
 import type { BufferEntry } from '../state/store'
 
@@ -51,7 +52,7 @@ export function TelegramSecretTools({ buffer }: { buffer: BufferEntry }): JSX.El
 
   const load = async (): Promise<void> => {
     try {
-      setInfo(await window.moho.rpc<Info>('telegramSecretInfo', { bufferId: buffer.id }))
+      setInfo(await ask<Info>('telegramSecretInfo', { bufferId: buffer.id }))
     } catch (e) {
       store.toast('error', (e as Error).message)
       setOpen(false)
@@ -60,7 +61,7 @@ export function TelegramSecretTools({ buffer }: { buffer: BufferEntry }): JSX.El
   const setTimer = async (seconds: number): Promise<void> => {
     setBusy(true)
     try {
-      await window.moho.rpc('setTelegramSecretTimer', { bufferId: buffer.id, seconds })
+      await ask('setTelegramSecretTimer', { bufferId: buffer.id, seconds })
       await load()
     } catch (e) {
       store.toast('error', `Couldn't change that: ${(e as Error).message}`)
