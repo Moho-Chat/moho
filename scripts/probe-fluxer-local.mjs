@@ -9,7 +9,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { launchApp, sleep } from './lib/harness.mjs'
-import { accounts, as, sendFile, session, ORIGIN } from './lib/fluxer-local.mjs'
+import { accounts, as, sendFile, session, ORIGIN, API } from './lib/fluxer-local.mjs'
 
 const out = process.argv[2] ?? '.'
 fs.mkdirSync(out, { recursive: true })
@@ -49,6 +49,12 @@ try {
   const hall = guilds.find((g) => g.name === 'Test Hall')
   const channels = await as('mohob', 'GET', `/guilds/${hall.id}/channels`)
   const channel = channels.find((c) => c.name === 'general').id
+  // mohoa moderates here: a role that may pin, manage messages and moderate, made once and given to it.
+  const PIN = 1n << 51n
+  const MOD = PIN | (1n << 13n) | (1n << 1n) | (1n << 2n) | (1n << 40n) | (1n << 28n) | (1n << 4n) | (1n << 5n) | (1n << 7n) | (1n << 29n)
+  const roles = await as('mohob', 'GET', `/guilds/${hall.id}/roles`)
+  const modRole = roles.find((r) => r.name === 'Probe mods') ?? (await as('mohob', 'POST', `/guilds/${hall.id}/roles`, { name: 'Probe mods', permissions: MOD.toString() }))
+  await as('mohob', 'PUT', `/guilds/${hall.id}/members/${acc.mohoa.user_id}/roles/${modRole.id}`).catch((e) => console.log('role:', e.message))
 
   // Signing in by password: the proof of work is done by the daemon.
   const { loginId } = await rpc('addFluxerAccount', { instance: ORIGIN, login: 'mohoa', password: 'moho-test-pass-1' })
@@ -159,6 +165,76 @@ try {
   const left = await until('left', async () => !(await rpc('listBufferGroups')).some((g) => g.accountId === account && g.name === other.name))
   check('and leaving it takes it off again', !!left)
   await as('mohob', 'DELETE', `/guilds/${other.id}`).catch(() => {})
+
+  // Search and pins.
+  await as('mohob', 'POST', `/channels/${channel}/messages`, { content: `findable ${run} zebra` })
+  const found = await until('search', async () => {
+    try {
+      const r = await rpc('searchStoatMessages', { bufferId: general, query: `zebra` })
+      return r.results.find((m) => m.body.includes(`findable ${run}`)) ? r : null
+    } catch (e) {
+      return /indexing/.test(e.message) ? null : Promise.reject(e)
+    }
+  }, 45000)
+  check('searching a channel finds what mohob said', !!found, JSON.stringify(found?.results?.slice(0, 2)))
+  const toPin = (await rpc('getBacklog', { bufferId: general })).find((m) => m.body.includes(`findable ${run}`))
+  await rpc('setPinned', { bufferId: general, messageId: toPin.id, pinned: true })
+  const pinned = await until('pinned', async () => (await as('mohob', 'GET', `/channels/${channel}/messages/pins`)).items.some((p) => p.message.id === toPin.id))
+  check('pinning in moho pins it on Fluxer', !!pinned)
+  const listed = await rpc('listPinned', { bufferId: general }).catch((e) => ({ error: e.message }))
+  check('and the pins are listed', JSON.stringify(listed).includes(toPin.id), JSON.stringify(listed).slice(0, 200))
+
+  // An invite link is drawn as a card.
+  const inviteCard = await as('mohob', 'POST', `/channels/${channel}/invites`, {})
+  await as('mohob', 'POST', `/channels/${channel}/messages`, { content: `come along ${ORIGIN}/invite/${inviteCard.code} ${run}` })
+  const carded = await until('card', async () => (await rpc('getBacklog', { bufferId: general })).find((m) => m.body.includes(`come along`) && m.body.includes(run) && m.embeds?.some((e) => e.kind === 'invite')))
+  check('an invite link is drawn as a card for the community', !!carded, JSON.stringify(carded?.embeds?.find((e) => e.kind === 'invite')))
+
+  // A custom emoji: offered in the picker, drawn in what mohob says, sent by name.
+  const emojiName = `party${run.slice(-4)}`
+  const emoji = await as('mohob', 'POST', `/guilds/${hall.id}/emojis`, { name: emojiName, image: `data:image/png;base64,${png.toString('base64')}` }).catch((e) => ({ error: e.message }))
+  check('a custom emoji is made on the guild', !!emoji.id, JSON.stringify(emoji).slice(0, 200))
+  const offered = await until('offered', async () => (await rpc('listAllEmoji', { bufferId: general })).find((src) => src.service === 'fluxer' && src.emoji.some((e) => e.name === emojiName)))
+  check('it is offered in the picker under the guild’s name', offered?.name === 'Test Hall', JSON.stringify(offered && [offered.name, offered.emoji.length]))
+  await as('mohob', 'POST', `/channels/${channel}/messages`, { content: `yay <:${emojiName}:${emoji.id}> ${run}` })
+  const drawn = await until('drawn', async () => (await rpc('getBacklog', { bufferId: general })).find((m) => m.body.startsWith(`yay [fluxer:emoji:${emojiName}:`)))
+  check('one in what mohob says is a picture token naming the cache', !!drawn && /fluxer-media\//.test(drawn.body), drawn?.body)
+  await rpc('sendMessage', { bufferId: general, body: `back :${emojiName}: ${run}` })
+  const sent = await until('sent', async () => (await as('mohob', 'GET', `/channels/${channel}/messages?limit=10`)).find((m) => m.content?.startsWith('back ') && m.content.includes(run)))
+  check('what mohoa types by name goes out as the emoji', sent?.content === `back <:${emojiName}:${emoji.id}> ${run}`, sent?.content)
+
+  // Read marks: reading the channel here marks it read on the account (seen in a fresh session's READY).
+  const newest = (await as('mohob', 'GET', `/channels/${channel}/messages?limit=1`))[0]
+  await rpc('markBufferRead', { bufferId: general })
+  await sleep(1500)
+  const look = await session('mohoa')
+  const readState = look.events.find((e) => e.t === 'READY')?.d.read_states?.find((r) => r.id === channel)
+  look.close()
+  check('reading the channel in moho marks it read on the account', readState?.last_message_id === newest.id, JSON.stringify([readState?.last_message_id, newest.id]))
+
+  // A second account, signed in by a code approved in another Fluxer app (here, mohob's own session), then removed.
+  const codes = []
+  await ev(`window.__fluxerNeeds = []; window.moho.onEvent((e) => { if (e.event === 'fluxerLoginNeeds') window.__fluxerNeeds.push(e.data) })`)
+  await rpc('addFluxerAccountHandoff', { instance: ORIGIN })
+  const need = await until('code', () => ev('window.__fluxerNeeds.find((n) => n.step === "handoff")'))
+  check('a sign-in by code shows a code to type into another Fluxer app', /^[A-Z0-9]{6}-[A-Z0-9]{6}$/i.test(need?.code ?? ''), need?.code)
+  if (need) {
+    const plain = need.code.replace('-', '')
+    codes.push(plain)
+    await fetch(`${API}/auth/handoff/${plain}/info`).then((r) => r.text())
+    const done = await fetch(`${API}/auth/handoff/complete`, { method: 'POST', headers: { Authorization: acc.mohob.token, 'Content-Type': 'application/json' }, body: JSON.stringify({ code: plain, user_id: acc.mohob.user_id }) })
+    check('mohob approves it', done.status === 204 || done.status === 200, String(done.status))
+  }
+  const bobAccount = `fluxer:${acc.mohob.user_id}`
+  const bobIn = await until('bob in', async () => (await rpc('listAccounts')).find((a) => a.id === bobAccount && a.state === 'connected'), 30000)
+  check('and moho is signed in as mohob without a password', !!bobIn)
+  const before = (await as('mohob', 'GET', '/auth/sessions')).length
+  await rpc('removeAccount', { accountId: bobAccount })
+  const after = await until('session ended', async () => {
+    const n = (await as('mohob', 'GET', '/auth/sessions')).length
+    return n < before ? n : null
+  })
+  check('removing it ends the session moho made, and only that one', after === before - 1, `${before} -> ${after}`)
 
   // Typing, both ways.
   await as('mohob', 'POST', `/channels/${channel}/typing`)

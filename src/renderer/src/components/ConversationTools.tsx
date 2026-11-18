@@ -675,7 +675,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   // XMPP calls: two people, or a group call joined from a room (XEP-0272, held as a mesh the way Matrix's are).
   const isXmppCalls = buffer.accountId.startsWith('xmpp:') && (buffer.kind === 'dm' || buffer.kind === 'channel')
   const isTelegram = buffer.accountId.startsWith('telegram:')
-  const isStoat = buffer.accountId.startsWith('stoat:')
+  const isStoat = buffer.accountId.startsWith('stoat:') || buffer.accountId.startsWith('fluxer:')
   const isSteam = buffer.accountId.startsWith('steam:')
   const stream = useChat((s) => s.kickStreams)[buffer.id]
   // Whether this window is the one playing this channel. Per window rather
