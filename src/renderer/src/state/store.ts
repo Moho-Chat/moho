@@ -49,6 +49,7 @@ import type { PopoutState } from '../../../shared/ipc'
 import { isNewerVersion } from '../lib/version'
 import { steamRoomIds, type SteamChatGroup } from '../lib/steamchat'
 import { SteamVoice, type SteamRing, type SteamVoicePhase, type SteamVoiceTarget } from '../lib/steamvoice'
+import { TelegramVoice, type TelegramVoiceParticipant, type TelegramVoicePhase } from '../lib/telegramvoice'
 
 /**
  * The whole client-side model, held in one immutable object that is replaced
@@ -491,6 +492,18 @@ export interface ChatState {
   steamRings: SteamRing[]
   /** The Steam voice this window holds, if any: where, and how far it has got. */
   steamVoiceNow: { accountId: string; target: SteamVoiceTarget; phase: SteamVoicePhase } | null
+  /** The Telegram voice chat this window is in, if any: where, how far it has got, who is in it and who is speaking. */
+  telegramVoiceNow: {
+    accountId: string
+    bufferId: string
+    name: string
+    phase: TelegramVoicePhase
+    people: TelegramVoiceParticipant[]
+    speakers: string[]
+    forcedMute: boolean
+  } | null
+  /** Whether each Telegram conversation has a voice chat going, as Telegram last said, by buffer. */
+  telegramVoiceCalls: Record<string, boolean>
   /** A group somebody has asked to leave, waiting on the confirmation. */
   leaveRequest: { id: string; name: string; kind: string } | null
   /**
@@ -844,6 +857,8 @@ const INITIAL: ChatState = {
   steamVoiceRooms: {},
   steamRings: [],
   steamVoiceNow: null,
+  telegramVoiceNow: null,
+  telegramVoiceCalls: {},
   leaveRequest: null,
   incomingCalls: [],
   transfers: [],
@@ -2047,6 +2062,7 @@ export class ChatStore {
     this.set({ voicePrefs: { ...this.state.voicePrefs, ...next } })
     // And onto the Steam voice this window holds, which obeys the same buttons.
     this.steamVoice.applyMute()
+    this.telegramVoice.applyMute()
     try {
       this.set({ voicePrefs: await window.moho.rpc<VoicePrefs>('setVoiceMuted', next) })
     } catch (e) {
@@ -2186,7 +2202,7 @@ export class ChatStore {
   async refreshVoiceSessions(): Promise<void> {
     // Steam's voice is held in this window and not by the daemon, so it is
     // added to what the daemon says rather than lost when that is asked for.
-    const steam = this.steamVoiceSession()
+    const steam = [...this.steamVoiceSession(), ...this.telegramVoiceSession()]
     try {
       this.set({ voiceSessions: [...(await window.moho.rpc<VoiceSession[]>('getVoiceSession')), ...steam] })
     } catch {
@@ -2232,6 +2248,67 @@ export class ChatStore {
       return friend && account?.status !== 'invisible' && account?.status !== 'dnd'
     }
   })
+
+  /** The Telegram voice chat of this window, as a voice session every voice surface lists. */
+  private telegramVoiceSession(): VoiceSession[] {
+    const v = this.telegramVoice
+    const t = v.target
+    if (!v.active || !t) return []
+    return [{ accountId: t.accountId, channelId: t.call, channelName: t.name, isDirect: false, bufferId: t.bufferId }]
+  }
+
+  private syncTelegramVoice(): void {
+    const v = this.telegramVoice
+    const others = this.state.voiceSessions.filter((s) => !s.accountId.startsWith('telegram:'))
+    this.set({
+      voiceSessions: [...others, ...this.telegramVoiceSession()],
+      telegramVoiceNow:
+        v.active && v.target
+          ? {
+              accountId: v.target.accountId,
+              bufferId: v.target.bufferId,
+              name: v.target.name,
+              phase: v.phase,
+              people: [...v.people.values()],
+              speakers: [...v.speakers],
+              forcedMute: v.forcedMute
+            }
+          : null
+    })
+  }
+
+  private telegramVoice: TelegramVoice = new TelegramVoice({
+    rpc: (params) => window.moho.rpc('telegramVoice', params),
+    onChange: () => this.syncTelegramVoice(),
+    toast: (kind, message) => this.toast(kind, message),
+    muted: () => ({ micMuted: this.state.voicePrefs.micMuted, deafened: this.state.voicePrefs.deafened })
+  })
+
+  /** Joins a Telegram group's or channel's voice chat, as it is now. */
+  async joinTelegramVoice(bufferId: string): Promise<void> {
+    const buffer = this.state.buffers.find((b) => b.id === bufferId)
+    if (!buffer) return
+    try {
+      const info = await window.moho.rpc<{ active: boolean; call?: string; title?: string; participants?: TelegramVoiceParticipant[] }>('telegramVoice', { op: 'info', bufferId })
+      if (!info.active || !info.call) {
+        this.toast('info', 'There is no voice chat here now')
+        return
+      }
+      await this.telegramVoice.join(
+        { accountId: buffer.accountId, bufferId, call: info.call, name: info.title || bufferDisplayName(buffer.name) },
+        info.participants ?? []
+      )
+    } catch (e) {
+      this.toast('error', `Couldn't join the voice chat: ${(e as Error).message}`)
+    }
+  }
+
+  /** Mutes somebody else in the voice chat (an administrator's), or lets them speak. */
+  async muteInTelegramVoice(userId: string, muted: boolean): Promise<void> {
+    const t = this.telegramVoice.target
+    if (!t) return
+    await window.moho.rpc('telegramVoice', { op: 'mute', bufferId: t.bufferId, call: t.call, userId, muted }).catch((e: Error) => this.toast('error', e.message))
+  }
 
   /** Joins the voice of a room of a Steam group. */
   async joinSteamVoice(accountId: string, groupId: string, roomId: string): Promise<void> {
@@ -2969,6 +3046,10 @@ export class ChatStore {
   async leaveVoice(accountId: string): Promise<void> {
     if (accountId.startsWith('steam:')) {
       await this.steamVoice.stop()
+      return
+    }
+    if (accountId.startsWith('telegram:')) {
+      await this.telegramVoice.leave()
       return
     }
     // What this end was sending goes with it. Left running, the camera light
@@ -4329,6 +4410,11 @@ export class ChatStore {
       // happening. The media is the window's; see lib/steamvoice.ts.
       case 'steamVoice':
         this.steamVoice.handle(data as never)
+        break
+      case 'telegramVoice':
+        this.telegramVoice.handle(data as never)
+        // A voice chat starting or ending where nobody here is in one: the header's button reads it again.
+        if ((data as { kind?: string }).kind === 'call') this.set({ telegramVoiceCalls: { ...this.state.telegramVoiceCalls, [String((data as { data: { bufferId?: string } }).data.bufferId ?? '')]: !!(data as { data: { active?: boolean } }).data.active } })
         break
       // Removed from a Steam group by somebody else.
       case 'steamGroupRemoved':

@@ -6,6 +6,7 @@ import { RoomSettings } from './RoomSettings'
 import { SignalGroupSettings } from './SignalGroupSettings'
 import { TelegramChatSettings } from './TelegramChatSettings'
 import { TelegramSecretTools } from './TelegramSecretTools'
+import { TelegramVoiceChat } from './TelegramVoiceChat'
 import { HeaderPopover } from './HeaderPopover'
 import { useChat, useStore } from '../state/hooks'
 import { bufferDisplayName, classes, formatFullTime } from '../lib/util'
@@ -1042,6 +1043,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
       {/* Signal's, for a group, and for a conversation with one person the timer its messages disappear by. */}
       {buffer.accountId.startsWith('signal:') && (buffer.kind === 'channel' || buffer.kind === 'dm') && <SignalGroupSettings buffer={buffer} />}
       {/* Telegram's, for a group or channel (a forum topic belongs to its group, whose settings these are). */}
+      {buffer.accountId.startsWith('telegram:') && buffer.kind === 'channel' && <TelegramVoiceChat buffer={buffer} />}
       {buffer.accountId.startsWith('telegram:') && buffer.kind === 'channel' && <TelegramChatSettings buffer={buffer} />}
       {buffer.accountId.startsWith('telegram:') && buffer.kind === 'dm' && <TelegramSecretTools buffer={buffer} />}
 
