@@ -535,6 +535,29 @@ interface StoatPeople {
 
 function TelegramJoin({ account }: { account: Account }): JSX.Element {
   const store = useStore()
+  const [title, setTitle] = useState('')
+  const [kind, setKind] = useState<'group' | 'channel'>('group')
+  const [about, setAbout] = useState('')
+  const [members, setMembers] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const create = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      const r = await window.moho.rpc<{ bufferId: string; note?: string | null }>('createTelegramChat', { accountId: account.id, title: title.trim(), kind, about, members })
+      setTitle('')
+      setAbout('')
+      setMembers('')
+      if (r.note) store.toast('info', r.note)
+      await store.refreshBuffers()
+      await store.selectBuffer(r.bufferId)
+    } catch (e) {
+      store.toast('error', `Couldn't make the ${kind}: ${(e as Error).message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="panel join-panel">
       <SubmitField
@@ -547,6 +570,34 @@ function TelegramJoin({ account }: { account: Account }): JSX.Element {
         somebody gave you, and a person's @name opens a conversation with them. Telegram may ask an
         administrator to accept a request to join. Closing a chat in the list leaves it.
       </p>
+
+      <div className="field">
+        <span className="small muted">Make a group or a channel</span>
+        <div className="field-row">
+          <select className="text-field" value={kind} disabled={busy} onChange={(e) => setKind(e.target.value as 'group' | 'channel')}>
+            <option value="group">Group: everybody talks</option>
+            <option value="channel">Channel: you post, others read</option>
+          </select>
+          <input className="text-field" placeholder="Its name" maxLength={128} value={title} disabled={busy} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+        <input className="text-field" placeholder="What it is about (optional)" maxLength={255} value={about} disabled={busy} onChange={(e) => setAbout(e.target.value)} />
+        <div className="field-row">
+          <input
+            className="text-field"
+            placeholder={kind === 'channel' ? 'Subscribers to add: @names, separated by commas' : 'Who is in it: @names, separated by commas'}
+            value={members}
+            disabled={busy}
+            onChange={(e) => setMembers(e.target.value)}
+          />
+          <button type="button" className="button" disabled={busy || !title.trim()} onClick={() => void create()}>
+            Make
+          </button>
+        </div>
+        <p className="small muted">
+          You own it. It is private until you give it a public @name in Telegram; its invite link is in the
+          chat&rsquo;s settings. People whose privacy settings keep them from being added are said to be.
+        </p>
+      </div>
     </div>
   )
 }
