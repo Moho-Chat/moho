@@ -15,7 +15,7 @@ import { isPlainEmoji } from '../lib/recents'
 import { KickEventCard, NotificationCard, isKickEvent } from './KickEventCard'
 import { InviteCard } from './InviteCard'
 import { COMMON_EMOJI, EmojiPicker, readRecent, type StickerEntry } from './EmojiPicker'
-import { reactionLabel, reactorsSentence } from '../lib/reactions'
+import { isLocalIrcId, reactionLabel, reactorsSentence } from '../lib/reactions'
 import { UploadMeter } from './UploadMeter'
 import { RichText } from '../lib/richtext'
 import { ReplyBody } from './ReplyBody'
@@ -206,6 +206,9 @@ export interface RowContext {
   pinned: string[]
   /** Colour is how IRC has always been written, and also how a bot shouts. */
   ircColours: boolean
+  /** IRC only: the network relays `+draft/react`, so a reaction sent here
+   *  reaches anybody. Read off the live connection by the daemon. */
+  ircReactions: boolean
 }
 
 /** The above, for one conversation. Called once per list, not once per row. */
@@ -213,7 +216,9 @@ export function useRowContext(bufferId: string): RowContext {
   const permissions = useChat((s) => s.matrixPermissions)[bufferId]
   const smilies = useChat((s) => s.smilieIndex)
   const emoji = useChat((s) => s.bufferEmoji)[bufferId]
-  const kind = useChat((s) => s.buffers).find((b) => b.id === bufferId)?.kind
+  const buffer = useChat((s) => s.buffers).find((b) => b.id === bufferId)
+  const kind = buffer?.kind
+  const ircReactions = !!useChat((s) => s.accounts).find((a) => a.id === buffer?.accountId)?.reactions
   const pinned = useChat((s) => s.pinnedMessages)[bufferId]
   const [ircColours] = usePref<boolean>('irc.renderColours', true)
   return useMemo(
@@ -223,9 +228,10 @@ export function useRowContext(bufferId: string): RowContext {
       emoji: emoji ?? [],
       inDirectMessage: kind === 'dm',
       pinned: pinned ?? [],
-      ircColours
+      ircColours,
+      ircReactions
     }),
-    [permissions, smilies, emoji, kind, pinned, ircColours]
+    [permissions, smilies, emoji, kind, pinned, ircColours, ircReactions]
   )
 }
 
@@ -441,7 +447,8 @@ function MessageRowBody({
     smilies: smilieIndex,
     emoji: bufferEmoji,
     inDirectMessage,
-    ircColours
+    ircColours,
+    ircReactions
   } = shared
   const sniffed = useSniffedTypes()
 
@@ -454,7 +461,11 @@ function MessageRowBody({
     setDraft(message.body)
     setEditing(true)
   }
-  const canReact = service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'xmpp' || service === 'signal'
+  // IRC only where the network carries the tag, and only on a message the
+  // server gave an id - a reaction names its message by that id.
+  const canReact =
+    service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'xmpp' || service === 'signal' ||
+    (service === 'irc' && ircReactions && !isLocalIrcId(message.id))
   // Steam's stickers, asked for when the reaction picker opens: it reacts with them too.
   const [steamStickers, setSteamStickers] = useState<StickerEntry[]>([])
   useEffect(() => {

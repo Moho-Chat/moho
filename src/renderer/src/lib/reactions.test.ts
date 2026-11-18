@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { reactionLabel, reactorsSentence } from './reactions'
+import { isLocalIrcId, reactionLabel, reactorsSentence } from './reactions'
 
 describe('reactionLabel', () => {
   it('names a custom emoji from its own token, animated or not', () => {
@@ -29,5 +29,13 @@ describe('reactorsSentence', () => {
   it('says only how many when nobody is named', () => {
     expect(reactorsSentence(':fire:', [], 1)).toBe('1 person reacted with :fire:')
     expect(reactorsSentence(':fire:', [], 5)).toBe('5 people reacted with :fire:')
+  })
+})
+
+describe('isLocalIrcId', () => {
+  it('knows the ids the daemon made up from the ones a server gave', () => {
+    expect(isLocalIrcId('1731940000.12')).toBe(true)
+    expect(isLocalIrcId('01HZX3K9ABCDEF')).toBe(false)
+    expect(isLocalIrcId('abc.def')).toBe(false)
   })
 })

@@ -35,3 +35,12 @@ export function reactorsSentence(label: string, names: string[], total: number):
   if (shown.length === 1) return `${shown[0]} reacted with ${label}`
   return `${shown.slice(0, -1).join(', ')} and ${shown[shown.length - 1]} reacted with ${label}`
 }
+
+/**
+ * Whether an IRC message's id is one the daemon made up because the server sent none - seconds, a dot, a
+ * sequence number (nobilis's `next_message_id`). An IRC reaction names its message by the server's id, so a
+ * message without one has nothing to react to.
+ */
+export function isLocalIrcId(id: string): boolean {
+  return /^\d+\.\d+$/.test(id)
+}
