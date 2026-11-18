@@ -345,6 +345,47 @@ try {
   await sleep(2000)
   check('and removing that account leaves its session working', !!(await as('mohoc', 'GET', '/users/@me').catch(() => null)))
 
+  // What else arrives: a rich embed, a forward, a sticker, and the card a pin leaves.
+  await as('mohob', 'POST', `/channels/${channel}/messages`, { content: '', embeds: [{ title: `Embed ${run}`, description: 'with **words**', color: 0x3366ff }] })
+  const embedded = await until('embed', async () => (await rpc('getBacklog', { bufferId: general })).find((m) => m.embeds?.some((e) => e.title === `Embed ${run}`)))
+  check('a rich embed arrives as an embed', !!embedded, JSON.stringify(embedded?.embeds?.[0]))
+  const original = await as('mohob', 'POST', `/channels/${channel}/messages`, { content: `to forward ${run}` })
+  await as('mohob', 'POST', `/channels/${dm.id}/messages`, { message_reference: { message_id: original.id, channel_id: channel, guild_id: hall.id, type: 1 } }).catch((e) => console.log('forward:', e.message))
+  const forwarded = await until('forward', async () => (await rpc('getBacklog', { bufferId: dmBuffer.id })).find((m) => m.body.includes(`to forward ${run}`)))
+  check('a forwarded message arrives with what it forwards', !!forwarded, JSON.stringify(forwarded && [forwarded.body, forwarded.replyTo]))
+  const sticker = await as('mohob', 'POST', `/guilds/${hall.id}/stickers`, { name: `st${run.slice(-4)}`, tags: ['probe'], image: `data:image/png;base64,${png.toString('base64')}` }).catch((e) => ({ error: e.message }))
+  if (sticker.id) {
+    await as('mohob', 'POST', `/channels/${channel}/messages`, { content: `sticker ${run}`, sticker_ids: [sticker.id] })
+    const stuck = await until('sticker', async () => (await rpc('getBacklog', { bufferId: general })).find((m) => m.body.includes(`sticker ${run}`) && m.attachments?.some((a) => /stickers/.test(a.url ?? ''))))
+    check('a sticker arrives as its picture', !!stuck, JSON.stringify(stuck?.attachments))
+  } else {
+    check('a sticker is made on the guild', false, JSON.stringify(sticker))
+  }
+  const pinCard = await until('pin card', async () => (await rpc('getBacklog', { bufferId: general })).find((m) => m.kind === 'system' && /pinned a message/.test(m.body)))
+  check('a pin leaves its card', !!pinCard, pinCard?.body)
+
+  // Reactions with a custom emoji, and who reacted.
+  const target = (await rpc('getBacklog', { bufferId: general })).find((m) => m.body.includes(`to forward ${run}`))
+  await as('mohob', 'PUT', `/channels/${channel}/messages/${target.id}/reactions/${encodeURIComponent(`${emojiName}:${emoji.id}`)}/@me`)
+  const custom = await until('custom reaction', async () => (await rpc('getBacklog', { bufferId: general })).find((m) => m.id === target.id)?.reactions?.find((r) => r.emoji.startsWith(`[fluxer:emoji:${emojiName}:`)))
+  check('a custom emoji reaction is drawn as the emoji', !!custom, JSON.stringify(custom))
+  const who = custom && (await rpc('listReactors', { bufferId: general, messageId: target.id, emoji: custom.emoji }))
+  check('and who reacted is said', who?.users?.some((u) => u.id === acc.mohob.user_id), JSON.stringify(who))
+  await rpc('toggleReaction', { bufferId: general, messageId: target.id, emoji: custom.emoji, add: true })
+  const both = await until('both', async () => ((await as('mohob', 'GET', `/channels/${channel}/messages/${target.id}`)).reactions ?? []).find((r) => r.emoji.id === emoji.id)?.count === 2)
+  check('and pressing it adds moho’s own', !!both)
+
+  // Blocking, and a status seen by a friend.
+  await rpc('stoatBlock', { accountId: account, userId: acc.mohoc.user_id, block: true })
+  const blocked = await until('blocked', async () => (await rpc('stoatFriendRequests', { accountId: account })).blocked.some((p) => p.id === acc.mohoc.user_id))
+  check('blocking somebody lists them as blocked', !!blocked)
+  await rpc('stoatBlock', { accountId: account, userId: acc.mohoc.user_id, block: false })
+  check('and unblocking takes them off', !(await rpc('stoatFriendRequests', { accountId: account })).blocked.some((p) => p.id === acc.mohoc.user_id))
+  await rpc('setAccountStatus', { accountId: account, status: 'dnd' })
+  const dndSeen = await until('dnd', () => [...bob.events].reverse().find((e) => e.t === 'PRESENCE_UPDATE' && e.d.user?.id === acc.mohoa.user_id && e.d.status === 'dnd'))
+  check('a status chosen in moho is seen by a friend', !!dndSeen)
+  await rpc('setAccountStatus', { accountId: account, status: 'online' })
+
   // Typing, both ways.
   await as('mohob', 'POST', `/channels/${channel}/typing`)
   await ev(`window.__mohoShots.store.selectBuffer?.(${JSON.stringify(general)})`)

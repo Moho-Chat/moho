@@ -268,6 +268,7 @@ export function ProfileCard(): JSX.Element | null {
 function joinedLabel(service: string): string {
   if (service === 'irc') return 'Connected'
   if (service === 'discord') return 'Joined server'
+  if (service === 'fluxer') return 'Joined community'
   return 'Joined'
 }
 

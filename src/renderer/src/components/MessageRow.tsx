@@ -579,7 +579,7 @@ function MessageRowBody({
           isSneedchat,
           smilies: smilieIndex,
           channels,
-          markdownEscapes: service === 'discord',
+          markdownEscapes: service === 'discord' || service === 'fluxer',
           xmppStyling: service === 'xmpp',
           // Only IRC's own traffic is drawn with IRC's codes. Elsewhere they
           // are stripped, which is what the formatter does when not told.
@@ -1423,7 +1423,7 @@ function MessageRowBody({
               {embed.description && (
                 <div className="rich-embed-desc small">
                   <RichText
-                    html={formatMessage(embed.description, { channels, markdownEscapes: service === 'discord' })}
+                    html={formatMessage(embed.description, { channels, markdownEscapes: service === 'discord' || service === 'fluxer' })}
                     ownMarkup
                     onOpenChannel={(id) => void store.selectBuffer(id, true)}
                   onOpenLink={(url) => store.followDeepLink(url)}
@@ -1436,7 +1436,7 @@ function MessageRowBody({
                     <div key={k} className="rich-embed-field">
                       <div className="rich-embed-field-name">{f.name}</div>
                       {/* Markdown on Discord, like the description above; plain text elsewhere. */}
-                      {service === 'discord' ? (
+                      {service === 'discord' || service === 'fluxer' ? (
                         <RichText
                           html={formatMessage(f.value, { channels, markdownEscapes: true })}
                           ownMarkup
@@ -1856,7 +1856,7 @@ function ReactionPill({
 
   const ask = (): void => {
     const service = store.accountFor(bufferId)?.service
-    if (service !== 'discord' && service !== 'matrix' && service !== 'telegram') return
+    if (service !== 'discord' && service !== 'fluxer' && service !== 'matrix' && service !== 'telegram') return
     const key = `${bufferId}|${messageId}|${r.emoji}`
     const kept = reactorCache.get(key)
     if (kept && kept.count === r.count && Date.now() - kept.at < REACTORS_KEPT_MS) {
