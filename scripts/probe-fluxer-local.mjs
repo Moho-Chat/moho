@@ -116,7 +116,7 @@ try {
   fs.writeFileSync(mine2, png)
   await rpc('sendMessage', { bufferId: general, body: `a picture from moho ${run}`, attachmentPaths: [mine2], spoilerPaths: [mine2] })
   const theirs = await until('picture seen', async () => (await as('mohob', 'GET', `/channels/${channel}/messages?limit=10`)).find((m) => m.content === `a picture from moho ${run}` && m.attachments?.length))
-  check('a picture mohoa sends, as a spoiler, is seen by mohob', !!theirs && /^SPOILER_/.test(theirs.attachments[0].filename), JSON.stringify(theirs?.attachments?.[0]?.filename))
+  check('a picture mohoa sends, as a spoiler, is seen by mohob as one', !!theirs && (theirs.attachments[0].flags & 8) !== 0, JSON.stringify(theirs?.attachments?.[0]))
 
   // A direct message.
   const dm = await as('mohob', 'POST', '/users/@me/channels', { recipient_id: acc.mohoa.user_id })
