@@ -1,3 +1,4 @@
+import { SneedchatInvite } from './SneedchatInvite'
 import { activityLabel } from '../lib/activity'
 import { ActivityLine } from './ActivityLine'
 import { useEffect, useMemo, useState } from 'react'
@@ -191,6 +192,8 @@ export function NickList(): JSX.Element {
   const permissions = useChat((s) => s.matrixPermissions)
   const [blocked, toggleBlocked, isBlocked] = useIdSetPref('blockedNicks')
   const [searchActive, setSearchActive] = useState(false)
+  // Somebody being invited to a Kiwi Farms side room, from their name here.
+  const [inviting, setInviting] = useState<{ id: string; name: string } | null>(null)
   const [query, setQuery] = useState('')
 
   const members = (buffer && presenceByBuffer[buffer.id]) || []
@@ -306,6 +309,7 @@ export function NickList(): JSX.Element {
 
   return (
     <div className="nicklist">
+      {inviting && account && <SneedchatInvite accountId={account.id} person={inviting} onClose={() => setInviting(null)} />}
       <div className="nicklist-header">
         {searchActive ? (
           <input
@@ -574,6 +578,11 @@ export function NickList(): JSX.Element {
                     ? () => void store.startTelegramSecretChat(account.id, member.userId ?? '')
                     : undefined
                 }
+                onInvite={
+                  account?.service === 'sneedchat' && member.nick !== account.currentNick && member.nick !== account.displayName
+                    ? () => setInviting({ id: member.userId ?? '', name: member.nick })
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -637,6 +646,8 @@ interface MemberRowProps {
   onOpenDm: () => void
   /** Telegram only: ask this member for a secret chat. */
   onSecretChat?: () => void
+  /** Kiwi Farms only: invite this member to a side room. */
+  onInvite?: () => void
   onSendFile: () => void
   /** Only where the protocol supports it and the member is identifiable. */
   canCall: boolean
@@ -668,6 +679,7 @@ function MemberRow({
   onSetRole,
   onOpenDm,
   onSecretChat,
+  onInvite,
   onSendFile,
   canCall,
   onCall,
@@ -696,6 +708,7 @@ function MemberRow({
     ...(canCall ? ([{ label: 'Call', icon: 'call', onClick: onCall }] as MenuEntry[]) : []),
     ...(canOpenDm ? ([{ label: 'Open DM', icon: 'chat', onClick: onOpenDm }] as MenuEntry[]) : []),
     ...(onSecretChat ? ([{ label: 'Secret chat', icon: 'lock', onClick: onSecretChat }] as MenuEntry[]) : []),
+    ...(onInvite ? ([{ label: 'Invite to side room…', icon: 'group_add', onClick: onInvite }] as MenuEntry[]) : []),
     ...(canSendFile ? ([{ label: 'Send a file', icon: 'upload_file', onClick: onSendFile }] as MenuEntry[]) : []),
     { separator: true },
     // Not hearing from them. This used to be a list in this window's own

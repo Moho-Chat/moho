@@ -1,3 +1,4 @@
+import { SneedchatInvite } from './SneedchatInvite'
 import { useState } from 'react'
 import { HeaderTopic } from './HeaderTopic'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
@@ -46,6 +47,7 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
   const [reporting, setReporting] = useState(false)
   const [roomDialog, setRoomDialog] = useState(false)
   const [omemoDialog, setOmemoDialog] = useState(false)
+  const [inviting, setInviting] = useState(false)
   const [, togglePin, isPinned] = useIdSetPref('pinnedBuffers')
   const [hidden, setHidden] = usePref<string[]>('hiddenBuffers', [])
   const [assignment, setAssignment] = useMapPref<string>('channelCategory')
@@ -129,6 +131,10 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
     ...(account?.service === 'xmpp' && buffer.kind === 'dm'
       ? ([{ label: buffer.encrypted ? 'Encryption…' : 'Encrypt…', icon: buffer.encrypted ? 'lock' : 'lock_open', onClick: () => setOmemoDialog(true) }] as MenuEntry[])
       : []),
+    // A Kiwi Farms side room (a private room, its listed rooms have a "#"): somebody can be invited into it.
+    ...(account?.service === 'sneedchat' && buffer.kind !== 'server' && !buffer.name.startsWith('#')
+      ? ([{ label: 'Invite someone…', icon: 'group_add', onClick: () => setInviting(true) }] as MenuEntry[])
+      : []),
     // An XMPP room has controls of its own: its settings, who holds what standing in it, an invitation, the subject.
     ...(account?.service === 'xmpp' && buffer.kind === 'channel'
       ? ([{ label: buffer.encrypted ? 'Stop encrypting this room' : 'Encrypt this room', icon: buffer.encrypted ? 'lock' : 'lock_open', onClick: () => void window.moho.rpc('xmppSetEncryption', { bufferId: buffer.id, on: !buffer.encrypted }).catch((e: Error) => store.toast('error', e.message)) }] as MenuEntry[])
@@ -185,6 +191,7 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
 
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={entries} onClose={close} />}
 
+      {inviting && <SneedchatInvite accountId={buffer.accountId} roomBufferId={buffer.id} onClose={() => setInviting(false)} />}
       {omemoDialog && buffer.remoteId && <XmppOmemoDialog bufferId={buffer.id} accountId={buffer.accountId} jid={buffer.remoteId} name={name} encrypted={!!buffer.encrypted} onClose={() => setOmemoDialog(false)} />}
 
       {roomDialog && <XmppRoomDialog bufferId={buffer.id} name={name} onClose={() => setRoomDialog(false)} />}

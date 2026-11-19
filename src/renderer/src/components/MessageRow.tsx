@@ -1,3 +1,4 @@
+import { SneedchatInvite } from './SneedchatInvite'
 import { steamRoomIds } from '../lib/steamchat'
 import { isRoomEvent } from '../lib/searchmarks'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -453,6 +454,7 @@ function MessageRowBody({
   const [sourceOpen, setSourceOpen] = useState(false)
   /** Choosing where to send this message on to. */
   const [forwarding, setForwarding] = useState(false)
+  const [inviting, setInviting] = useState(false)
   const reactButtonRef = useRef<HTMLButtonElement>(null)
 
   // All of this is the conversation's rather than the message's, and is read
@@ -747,6 +749,10 @@ function MessageRowBody({
             onClick: () => store.setPinned(bufferId, message.id, !pinned)
           }
         ] as MenuEntry[])
+      : []),
+    // Kiwi Farms' side rooms: whoever wrote this, into a new one or one this account is in.
+    ...(service === 'sneedchat' && !message.isOwn && message.from && !isSystem
+      ? ([{ label: 'Invite to side room…', icon: 'group_add', onClick: () => setInviting(true) }] as MenuEntry[])
       : []),
     // From the message rather than from a member list, because the person you
     // want to send something to is usually the one who just said something.
@@ -1797,6 +1803,13 @@ function MessageRowBody({
       )}
 
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={entries} onClose={close} />}
+      {inviting && (
+        <SneedchatInvite
+          accountId={bufferId.split('|')[0]}
+          person={{ id: message.senderId ?? '', name: message.from }}
+          onClose={() => setInviting(false)}
+        />
+      )}
       {forwarding && (
         <ForwardPicker
           bufferId={bufferId}
