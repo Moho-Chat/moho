@@ -748,11 +748,6 @@ function MessageRowBody({
           }
         ] as MenuEntry[])
       : []),
-    // Beside Reply because it is the same gesture aimed somewhere else, and
-    // only where the service has whispers at all.
-    ...(service === 'sneedchat' && !message.isOwn && message.from && !isSystem
-      ? ([{ label: `Whisper ${message.from}`, icon: 'lock', onClick: () => store.startWhisper(message.from) }] as MenuEntry[])
-      : []),
     // From the message rather than from a member list, because the person you
     // want to send something to is usually the one who just said something.
     ...(service === 'irc' && !message.isOwn && message.from && !isSystem

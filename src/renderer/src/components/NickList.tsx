@@ -355,7 +355,6 @@ export function NickList(): JSX.Element {
                 blockKey={`${buffer?.accountId}|${member.nick}`}
                 blocked={isBlocked(`${buffer?.accountId}|${member.nick}`)}
                 canOpenDm={hasDirectMessages(account?.service)}
-                canWhisper={account?.service === 'sneedchat'}
                 canSendFile={account?.service === 'irc'}
                 canCall={canCall && !!member.userId}
                 onRemoveFromGroup={
@@ -558,7 +557,6 @@ export function NickList(): JSX.Element {
                     .then((r) => store.selectBuffer(r.bufferId))
                     .catch((e: Error) => store.toast('error', `Couldn't call: ${e.message}`))
                 }}
-                onWhisper={() => store.startWhisper(member.nick)}
                 onProfile={
                   buffer ? (anchor) => store.showProfile(buffer.id, member.nick, member.userId, { anchor }) : undefined
                 }
@@ -609,8 +607,6 @@ interface MemberRowProps {
   blocked: boolean
   /** The protocol can start a conversation from a member list. */
   canOpenDm: boolean
-  /** Sneedchat has no conversations, but it does have private messages. */
-  canWhisper: boolean
   /** IRC carries a file directly between two people; nothing else here does. */
   canSendFile: boolean
   /**
@@ -641,7 +637,6 @@ interface MemberRowProps {
   onOpenDm: () => void
   /** Telegram only: ask this member for a secret chat. */
   onSecretChat?: () => void
-  onWhisper: () => void
   onSendFile: () => void
   /** Only where the protocol supports it and the member is identifiable. */
   canCall: boolean
@@ -662,7 +657,6 @@ function MemberRow({
   blockKey,
   blocked,
   canOpenDm,
-  canWhisper,
   canSendFile,
   perms,
   service,
@@ -674,7 +668,6 @@ function MemberRow({
   onSetRole,
   onOpenDm,
   onSecretChat,
-  onWhisper,
   onSendFile,
   canCall,
   onCall,
@@ -703,7 +696,6 @@ function MemberRow({
     ...(canCall ? ([{ label: 'Call', icon: 'call', onClick: onCall }] as MenuEntry[]) : []),
     ...(canOpenDm ? ([{ label: 'Open DM', icon: 'chat', onClick: onOpenDm }] as MenuEntry[]) : []),
     ...(onSecretChat ? ([{ label: 'Secret chat', icon: 'lock', onClick: onSecretChat }] as MenuEntry[]) : []),
-    ...(canWhisper ? ([{ label: 'Whisper', icon: 'lock', onClick: onWhisper }] as MenuEntry[]) : []),
     ...(canSendFile ? ([{ label: 'Send a file', icon: 'upload_file', onClick: onSendFile }] as MenuEntry[]) : []),
     { separator: true },
     // Not hearing from them. This used to be a list in this window's own
