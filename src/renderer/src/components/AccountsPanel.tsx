@@ -1084,6 +1084,7 @@ function IrcForm({ onDone }: { onDone: () => void }): JSX.Element {
                 setHost(n.host)
                 setPort(String(n.port))
                 setSsl(n.tls)
+                if (n.sasl) setAuth('sasl')
               }}
             >
               <span className="network-mark" style={{ background: n.colour }}>
