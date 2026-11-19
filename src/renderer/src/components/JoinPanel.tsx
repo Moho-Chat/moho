@@ -1179,7 +1179,7 @@ function SneedchatRooms({ account }: { account: Account }): JSX.Element {
    * it. Until it answers, or if it cannot be read, the rooms this account
    * already has open are still shown, so they can always be closed.
    */
-  const [catalogue, setCatalogue] = useState<{ id: number; name: string }[]>([])
+  const [catalogue, setCatalogue] = useState<{ id: string; name: string }[]>([])
   const [asking, setAsking] = useState(true)
   const [error, setError] = useState('')
 
@@ -1187,13 +1187,13 @@ function SneedchatRooms({ account }: { account: Account }): JSX.Element {
     let live = true
     setAsking(true)
     void window.moho
-      .rpc<{ rooms: { id: number; name: string }[] }>('listSneedChatRooms', { accountId: account.id })
+      .rpc<{ rooms: { id: string; name: string }[] }>('listSneedChatRooms', { accountId: account.id })
       .then((r) => live && r.rooms?.length && setCatalogue(r.rooms))
       .catch((e: Error) => live && setError(e.message))
 
     const stop = window.moho.onEvent((frame) => {
       if (frame.event !== 'sneedchatRooms') return
-      const data = frame.data as { accountId: string; rooms: { id: number; name: string }[] }
+      const data = frame.data as { accountId: string; rooms: { id: string; name: string }[] }
       if (!live || data.accountId !== account.id || !data.rooms.length) return
       setCatalogue(data.rooms)
       setAsking(false)
@@ -1207,7 +1207,7 @@ function SneedchatRooms({ account }: { account: Account }): JSX.Element {
 
   const rooms = [...catalogue, ...enabled.filter((open) => !catalogue.some((r) => r.id === open.id))]
 
-  const toggle = (id: number, on: boolean): void => {
+  const toggle = (id: string, on: boolean): void => {
     const room = rooms.find((r) => r.id === id)
     if (on && !room) return
     const next = on

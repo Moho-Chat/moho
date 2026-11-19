@@ -41,11 +41,13 @@ export default defineConfig({
   main: {
     define,
     plugins: [externalizeDepsPlugin()],
-    build: { rollupOptions: { input: { index: resolve('src/main/index.ts') } } }
+    // entry.ts picks the client or the daemon's web helper; each is a chunk of
+    // its own beside it, so `__dirname` is out/main for both, as it always was.
+    build: { rollupOptions: { input: { index: resolve('src/main/entry.ts') }, output: { chunkFileNames: '[name].js' } } }
   },
   preload: {
     plugins: [externalizeDepsPlugin()],
-    build: { rollupOptions: { input: { index: resolve('src/preload/index.ts') } } }
+    build: { rollupOptions: { input: { index: resolve('src/preload/index.ts'), webhelper: resolve('src/preload/webhelper.ts') } } }
   },
   renderer: {
     define,

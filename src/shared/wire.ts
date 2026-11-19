@@ -104,7 +104,8 @@ export interface Account {
 }
 
 export interface SneedChatRoom {
-  id: number
+  /** The room's uuid on Ephyra Chat (an account from the old chat may still hold a number, as text, until it next connects). */
+  id: string
   name: string
 }
 
