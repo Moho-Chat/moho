@@ -135,6 +135,17 @@ jobs:
           rustup default stable
           echo "RUSTC_VERSION=$(rustc -V | tr ' /' '--')" >> "$GITHUB_ENV"
 
+      # Protobuf's own protoc rather than the distribution's: the Signal crates' .proto files use proto3 `optional`,
+      # which ubuntu-22.04's packaged protoc (3.12) refuses without a flag their build scripts do not pass - 1.5.2's
+      # first run died there. Pinned, so a runner image changing under us changes nothing.
+      - name: protoc
+        run: |
+          curl -fsSL -o /tmp/protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v29.3/protoc-29.3-linux-x86_64.zip
+          mkdir -p "$HOME/protoc" && unzip -q -o /tmp/protoc.zip -d "$HOME/protoc"
+          echo "PROTOC=$HOME/protoc/bin/protoc" >> "$GITHUB_ENV"
+          echo "PROTOC_INCLUDE=$HOME/protoc/include" >> "$GITHUB_ENV"
+          "$HOME/protoc/bin/protoc" --version
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -370,6 +381,17 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
+      # Protobuf's own protoc rather than the distribution's: the Signal crates' .proto files use proto3 `optional`,
+      # which ubuntu-22.04's packaged protoc (3.12) refuses without a flag their build scripts do not pass - 1.5.2's
+      # first run died there. Pinned, so a runner image changing under us changes nothing.
+      - name: protoc
+        run: |
+          curl -fsSL -o /tmp/protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v29.3/protoc-29.3-linux-x86_64.zip
+          mkdir -p "$HOME/protoc" && unzip -q -o /tmp/protoc.zip -d "$HOME/protoc"
+          echo "PROTOC=$HOME/protoc/bin/protoc" >> "$GITHUB_ENV"
+          echo "PROTOC_INCLUDE=$HOME/protoc/include" >> "$GITHUB_ENV"
+          "$HOME/protoc/bin/protoc" --version
+
       # No pkg-config and no libasound2-dev here, deliberately: the cross
       # build must not find the host's Linux libraries. In particular do NOT
       # set PKG_CONFIG_ALLOW_CROSS - libopus_sys' pkg-config probe correctly
@@ -396,7 +418,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential cmake gcc-mingw-w64-x86-64 protobuf-compiler
+            build-essential cmake gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 protobuf-compiler
           # i386 as well as amd64, because the program wine is needed for is
           # a 32-bit one: electron-builder writes the icon and version
           # metadata into the .exe with rcedit-ia32.exe, and a 64-bit-only
