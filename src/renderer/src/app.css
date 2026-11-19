@@ -13048,6 +13048,22 @@ span.tone-bad {
   font-weight: var(--weight-semibold);
 }
 
+/* How far along a service is, after its name where accounts are added:
+   red warns, green is working but still settling. */
+.service-stage {
+  margin-left: 0.4em;
+  font-weight: var(--weight-semibold);
+}
+
+.service-stage-red {
+  /* --danger rather than --error, which is a pale pink in the dark theme. */
+  color: var(--danger);
+}
+
+.service-stage-green {
+  color: var(--success);
+}
+
 .service-tile-blurb {
   font-size: var(--font-size-small);
   line-height: 1.35;

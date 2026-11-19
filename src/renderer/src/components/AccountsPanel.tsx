@@ -58,6 +58,24 @@ const SERVICE_BLURB: Record<AddableService, string> = {
   signal: 'Linked to the Signal on your phone'
 }
 
+/**
+ * How far along a service's support is, said beside its name wherever an
+ * account is added - so nobody signs an account they care about into
+ * something still being built without being told. Red is a warning, green a
+ * service that works but is still settling.
+ */
+const SERVICE_STAGE: Partial<Record<AddableService, { words: string; tone: 'red' | 'green' }>> = {
+  signal: { words: '(Alpha) (DANGEROUS)', tone: 'red' },
+  sneedchat: { words: '(Alpha)', tone: 'red' },
+  fluxer: { words: '(Beta)', tone: 'green' }
+}
+
+function ServiceStage({ service }: { service: AddableService }): JSX.Element | null {
+  const stage = SERVICE_STAGE[service]
+  if (!stage) return null
+  return <span className={`service-stage service-stage-${stage.tone}`}>{stage.words}</span>
+}
+
 /** What the right-hand side is showing: an account's page, or the way to add one. */
 type View = { kind: 'account'; id: string } | { kind: 'add'; service: AddableService | null }
 
@@ -248,7 +266,10 @@ function AddAccount({
                 <ServiceMark icon={serviceIcon(id)} size={22} />
               </span>
               <span className="service-tile-text">
-                <span className="service-tile-name">{nameFor(id)}</span>
+                <span className="service-tile-name">
+                  {nameFor(id)}
+                  <ServiceStage service={id} />
+                </span>
                 <span className="service-tile-blurb">{SERVICE_BLURB[id]}</span>
               </span>
               <Icon name="chevron_right" size={18} className="service-tile-go" />
@@ -278,7 +299,10 @@ function AddAccount({
           <ServiceMark icon={serviceIcon(service)} size={26} />
         </span>
         <div className="page-head-text">
-          <h2 className="page-title">Add {/^[aeiou]/i.test(nameFor(service)) || ['IRC', 'XMPP'].includes(nameFor(service)) ? 'an' : 'a'} {nameFor(service)} account</h2>
+          <h2 className="page-title">
+            Add {/^[aeiou]/i.test(nameFor(service)) || ['IRC', 'XMPP'].includes(nameFor(service)) ? 'an' : 'a'} {nameFor(service)} account
+            <ServiceStage service={service} />
+          </h2>
           <p className="page-sub">{SERVICE_BLURB[service]}</p>
         </div>
         <button type="button" className="button quiet" onClick={() => onPick(null)}>
@@ -1087,6 +1111,7 @@ function IrcForm({ onDone }: { onDone: () => void }): JSX.Element {
                 setHost(n.host)
                 setPort(String(n.port))
                 setSsl(n.tls)
+                if (n.sasl) setAuth('sasl')
               }}
             >
               <span className="network-mark" style={{ background: n.colour }}>
