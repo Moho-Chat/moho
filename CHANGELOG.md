@@ -23,7 +23,7 @@ Each section has two parts:
 
 ### Major features
 
-- Sneedchat on Kiwi Farms' new Ephyra Chat (alpha): one connection for every room, replies, edits and deletes that say whether the chat took them, reactions from the site's own set with who reacted, whispers as private conversations, the site's emoticons, scrolling back through a room's history, room subtitles and a moderator's mutes and bans. The site's gate admits only a browser, so the daemon carries the connection on moho's own browser engine, run headless in the background.
+- Sneedchat on Kiwi Farms' new Ephyra Chat (alpha): one connection for every room, replies, edits and deletes that say whether the chat took them, reactions from the site's own set with who reacted, side rooms (private and group conversations) with invites, the site's emoticons, scrolling back through a room's history, room subtitles and a moderator's mutes and bans. The site's gate admits only a browser, so the daemon carries the connection on moho's own browser engine, run headless in the background.
 - Fluxer (beta): servers, channels, direct messages, reactions, threads and forums, voice, moderation and server settings, on fluxer.com or any instance.
 
 ### Fixes, patches and changes
