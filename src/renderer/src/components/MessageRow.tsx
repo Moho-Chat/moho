@@ -15,7 +15,7 @@ import { isPlainEmoji } from '../lib/recents'
 import { KickEventCard, NotificationCard, isKickEvent } from './KickEventCard'
 import { InviteCard } from './InviteCard'
 import { COMMON_EMOJI, EmojiPicker, readRecent, type StickerEntry } from './EmojiPicker'
-import { isLocalIrcId, reactionLabel, reactorsSentence } from '../lib/reactions'
+import { isLocalIrcId, reactionLabel, reactorsSentence, sneedchatReactionOf } from '../lib/reactions'
 import { UploadMeter } from './UploadMeter'
 import { RichText } from '../lib/richtext'
 import { ReplyBody } from './ReplyBody'
@@ -394,6 +394,13 @@ function MessageRowBody({
   const openRoot = useChat((s) => s.openThread?.rootId)
   const [showBadgePictures] = usePref<boolean>('kick.showBadgePictures', true)
   const twitchModerator = useChat((s) => s.twitchRights[bufferId] === true)
+  const sneedchatModerator = useChat((s) => s.sneedchatPowers[bufferId]?.moderate === true)
+  const sneedchatReactions = useChat((s) => s.sneedchatReactions)
+  // What the account may do in a Sneedchat room, asked once per room: the menu offers a moderator's actions only
+  // to a moderator.
+  useEffect(() => {
+    if (service === 'sneedchat') store.ensureSneedchatPowers(bufferId)
+  }, [service, bufferId, store])
   const twitchBlocker = useChat((s) => s.accounts.find((a) => bufferId.startsWith(`${a.id}|`))?.moderation === true)
   const original = useChat((s) => (replyId ? s.messagesByBuffer[bufferId]?.find((m) => m.id === replyId) : undefined))
   // What a reply quotes. Twitch sends the parent's words as plain text, with no word of which are emotes; where the
@@ -414,6 +421,10 @@ function MessageRowBody({
   }, [editing])
   const [revealed, setRevealed] = useState<Record<number, boolean>>({})
   const [pickerOpen, setPickerOpen] = useState(false)
+  // Kiwi Farms' reactions are read when somebody first goes to react.
+  useEffect(() => {
+    if (pickerOpen && service === 'sneedchat') void store.ensureSneedchatReactions()
+  }, [pickerOpen, service, store])
   /** Writing the reason for a report, before it is sent. */
   const [reporting, setReporting] = useState(false)
   /**
@@ -805,6 +816,10 @@ function MessageRowBody({
     // own lines. Timing out is by the sender's login; removing a message is by its id.
     ...(twitchModerator && service === 'twitch' && !message.isOwn && !isSystem && message.from
       ? twitchModerationEntries(message, bufferId, store)
+      : []),
+    // A Sneedchat moderator's: mute or ban by the sender's name, in this room or across the chat, and undo either.
+    ...(sneedchatModerator && service === 'sneedchat' && !message.isOwn && !isSystem && message.from
+      ? sneedchatModerationEntries(message, bufferId, store)
       : []),
     // Telling whoever runs the homeserver. Beside the moderation entries and
     // deliberately not gated like them: those need power in the room and this
@@ -1741,12 +1756,13 @@ function MessageRowBody({
       {pickerOpen && (
         <EmojiPicker
           anchor={reactButtonRef.current}
-          customEmoji={bufferEmoji}
+          // Kiwi Farms reacts with its own short set and nothing else.
+          customEmoji={service === 'sneedchat' ? sneedchatReactions : bufferEmoji}
           accountId={store.accountFor(bufferId)?.id}
           // Steam reacts with what the account was given and nothing else: its
           // emoticons, and its stickers on their own tab.
           bufferId={service === 'steam' ? bufferId : undefined}
-          fixedSet={service === 'steam'}
+          fixedSet={service === 'steam' || service === 'sneedchat'}
           stickers={service === 'steam' ? steamStickers : undefined}
           onSticker={
             service === 'steam'
@@ -1870,7 +1886,7 @@ function ReactionPill({
 
   const ask = (): void => {
     const service = store.accountFor(bufferId)?.service
-    if (service !== 'discord' && service !== 'fluxer' && service !== 'matrix' && service !== 'telegram') return
+    if (service !== 'discord' && service !== 'fluxer' && service !== 'matrix' && service !== 'telegram' && service !== 'sneedchat') return
     const key = `${bufferId}|${messageId}|${r.emoji}`
     const kept = reactorCache.get(key)
     if (kept && kept.count === r.count && Date.now() - kept.at < REACTORS_KEPT_MS) {
@@ -1930,6 +1946,9 @@ function ReactionEmoji({ emoji }: { emoji: string }): JSX.Element {
   const steam = steamTokenOf(emoji)
   if (steam) return <img className="reaction-emoji" src={steamPictureUrl(steam.kind, steam.name)} alt={steam.name} />
   // Stoat's, which the daemon holds as the picture's own token (see format.ts) so the pill is drawn with it.
+  // Kiwi Farms', held with the site's name for it and the picture the daemon cached.
+  const sneed = sneedchatReactionOf(emoji)
+  if (sneed) return sneed.path ? <img className="reaction-emoji" src={media(sneed.path)} alt={sneed.title || sneed.code} /> : <span>{sneed.title || sneed.code}</span>
   const stoat = emoji.match(/^\[(?:stoat|fluxer):emoji:([A-Za-z0-9_]{1,32}):(file:\/\/[^\]\s]*\/(?:stoat|fluxer)-media\/[A-Za-z0-9._-]+)\]$/)
   if (stoat) return <img className="reaction-emoji" src={media(stoat[2])} alt={stoat[1]} />
   const custom = emoji.match(/^<?a?:?([A-Za-z0-9_~]{2,32}):(\d+)>?$/)
@@ -1949,6 +1968,18 @@ function twitchAct(
     .rpc('twitchModerate', { bufferId, action, login: message.from.toLowerCase(), userId: message.senderId, ...extra })
     .then(() => done && store.toast('info', done))
     .catch((e: Error) => store.toast('error', e.message))
+}
+
+/** A Sneedchat moderator's actions on whoever wrote a message: by their name, which the daemon knows them by. */
+function sneedchatModerationEntries(message: ChatMessage, bufferId: string, store: ReturnType<typeof useStore>): MenuEntry[] {
+  const who = message.from
+  return [
+    { label: `Mute ${who} for an hour`, icon: 'volume_off', onClick: () => void store.sneedchatModerate(bufferId, who, 'mute', 60) },
+    { label: `Mute ${who} for a day`, icon: 'volume_off', onClick: () => void store.sneedchatModerate(bufferId, who, 'mute', 24 * 60) },
+    { label: `Ban ${who} from this room`, icon: 'block', danger: true, onClick: () => void store.sneedchatModerate(bufferId, who, 'ban') },
+    { label: `Ban ${who} from the whole chat`, icon: 'block', danger: true, onClick: () => void store.sneedchatModerate(bufferId, who, 'ban', undefined, true) },
+    { label: `Lift ${who}'s mute or ban`, icon: 'check_circle', onClick: () => void store.sneedchatModerate(bufferId, who, 'lift') }
+  ]
 }
 
 function twitchModerationEntries(message: ChatMessage, bufferId: string, store: ReturnType<typeof useStore>): MenuEntry[] {

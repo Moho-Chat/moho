@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isLocalIrcId, reactionLabel, reactorsSentence } from './reactions'
+import { isLocalIrcId, reactionLabel, reactorsSentence, sneedchatReactionOf } from './reactions'
 
 describe('reactionLabel', () => {
   it('names a custom emoji from its own token, animated or not', () => {
@@ -37,5 +37,28 @@ describe('isLocalIrcId', () => {
     expect(isLocalIrcId('1731940000.12')).toBe(true)
     expect(isLocalIrcId('01HZX3K9ABCDEF')).toBe(false)
     expect(isLocalIrcId('abc.def')).toBe(false)
+  })
+})
+
+describe("Kiwi Farms' reactions", () => {
+  const held = '[sneedchat:reaction:reaction_2:Agree:file:///home/u/.cache/nobilis/sneedchat-avatars/reaction-reaction_2.png#1795]'
+
+  it('are read back with their name and cached picture', () => {
+    expect(sneedchatReactionOf(held)).toEqual({
+      code: 'reaction_2',
+      title: 'Agree',
+      path: 'file:///home/u/.cache/nobilis/sneedchat-avatars/reaction-reaction_2.png#1795'
+    })
+    expect(reactionLabel(held)).toBe('Agree')
+  })
+
+  it('are named by code while their picture is not yet fetched', () => {
+    expect(sneedchatReactionOf('[sneedchat:reaction:reaction_9::]')).toEqual({ code: 'reaction_9', title: '', path: '' })
+    expect(reactionLabel('[sneedchat:reaction:reaction_9::]')).toBe('reaction_9')
+  })
+
+  it('never take a picture from outside the cache', () => {
+    expect(sneedchatReactionOf('[sneedchat:reaction:reaction_2:Agree:file:///etc/passwd]')).toBeNull()
+    expect(sneedchatReactionOf('[sneedchat:reaction:reaction_2:Agree:https://evil.example/a.png]')).toBeNull()
   })
 })

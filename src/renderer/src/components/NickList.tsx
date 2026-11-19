@@ -69,7 +69,8 @@ function shortBadge(prefix: string): string {
     subscriber: 'SUB',
     founder: 'FDR',
     og: 'OG',
-    vip: 'VIP'
+    vip: 'VIP',
+    staff: 'STAFF'
   }
   return short[prefix] ?? prefix.slice(0, 3).toUpperCase()
 }
@@ -88,6 +89,25 @@ const XMPP_RANKS: Record<string, { group: string; order: number }> = {
   moderator: { group: 'Moderators', order: 2 },
   '': { group: 'Participants', order: 3 },
   visitor: { group: 'Muted', order: 4 }
+}
+
+/**
+ * A Sneedchat room's member list as the site lists it: a group per rank the
+ * chat names (Staff), in the order the daemon gives them, then everybody else
+ * under Online. Alphabetical within each.
+ */
+function sneedchatGroups(members: Member[]): { label: string; members: Member[] }[] {
+  const labels: Record<string, string> = { staff: 'Staff', moderator: 'Moderators' }
+  const order: string[] = []
+  for (const m of members) if (m.prefix && !order.includes(m.prefix)) order.push(m.prefix)
+  const byName = (a: Member, b: Member): number => a.nick.localeCompare(b.nick)
+  return [
+    ...order.map((rank) => ({
+      label: labels[rank] ?? rank.charAt(0).toUpperCase() + rank.slice(1),
+      members: members.filter((m) => m.prefix === rank).sort(byName)
+    })),
+    { label: 'Online', members: members.filter((m) => !m.prefix).sort(byName) }
+  ].filter((g) => g.members.length > 0)
 }
 
 /** An XMPP room's member list, one group per standing, alphabetical within each. */
@@ -252,6 +272,8 @@ export function NickList(): JSX.Element {
     // would be one group of everybody. Standing is what tells them apart; the
     // dot on each face still says who is away.
     if (account?.service === 'xmpp' && buffer?.kind === 'channel') return xmppGroups(filtered)
+    // Sneedchat's own grouping, by the rank the chat gives each member.
+    if (account?.service === 'sneedchat') return sneedchatGroups(filtered)
 
     if (hasPresence) {
       const byPower = (a: Member, b: Member): number =>

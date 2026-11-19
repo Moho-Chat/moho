@@ -21,6 +21,7 @@ import type {
   Reaction,
   RoomPermissions,
   SneedchatSmilie,
+  SneedchatPowers,
   VoiceChannel,
   VoicePrefs,
   VoiceSession
@@ -624,6 +625,10 @@ export interface ChatState {
   kickStreams: Record<string, KickStream>
   /** Whether the account may moderate each Twitch channel it has open, as Twitch last said. */
   twitchRights: Record<string, boolean>
+  /** What the account may do in each Sneedchat room it has open, as the chat's page said. */
+  sneedchatPowers: Record<string, SneedchatPowers>
+  /** The reactions Kiwi Farms offers, for the reaction picker. */
+  sneedchatReactions: CustomEmoji[]
   /** The poll and prediction running in each channel, by `cardSlot`. */
   livePolls: Record<string, LiveCard>
   /**
@@ -904,6 +909,8 @@ const INITIAL: ChatState = {
   matrixPermissions: {},
   kickStreams: {},
   twitchRights: {},
+  sneedchatPowers: {},
+  sneedchatReactions: [],
   livePolls: {},
   pinnedByBuffer: {},
   reviewCard: null,
@@ -2826,6 +2833,40 @@ export class ChatStore {
    * The whisper now appears in the room, marked as one, which is where the
    * site puts it and where the person who sent it is still looking.
    */
+  private sneedchatPowersAsked = new Set<string>()
+
+  /** Asks once per conversation what the account may do in a Sneedchat room. */
+  ensureSneedchatPowers(bufferId: string): void {
+    if (this.sneedchatPowersAsked.has(bufferId)) return
+    this.sneedchatPowersAsked.add(bufferId)
+    void window.moho
+      .rpc<SneedchatPowers>('sneedchatPowers', { bufferId })
+      .then((p) => this.set({ sneedchatPowers: { ...this.state.sneedchatPowers, [bufferId]: p } }))
+      .catch(() => this.sneedchatPowersAsked.delete(bufferId))
+  }
+
+  /** The site's reactions, asked once a connection has read them. */
+  async ensureSneedchatReactions(): Promise<void> {
+    if (this.state.sneedchatReactions.length) return
+    try {
+      const list = await window.moho.rpc<{ id: string; name: string; url: string }[]>('listSneedchatReactions')
+      this.set({ sneedchatReactions: list.map((r) => ({ id: r.id, name: r.name, url: r.url }) as CustomEmoji) })
+    } catch {
+      // An older daemon, or none read yet: the picker shows nothing to pick.
+    }
+  }
+
+  /** A Sneedchat moderator's mute, ban or lifting of one. */
+  async sneedchatModerate(bufferId: string, who: string, action: 'mute' | 'ban' | 'lift', minutes?: number, siteWide = false): Promise<void> {
+    try {
+      await window.moho.rpc('sneedchatModerate', { bufferId, who, action, minutes, siteWide })
+      const done = action === 'lift' ? `${who} is no longer muted or banned` : `${who} is ${action === 'ban' ? 'banned' : 'muted'}`
+      this.toast('info', done)
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
+  }
+
   async sendWhisper(accountId: string, target: string, body: string): Promise<void> {
     if (!body.trim()) return
     try {
@@ -5009,6 +5050,11 @@ export class ChatStore {
         this.set({ twitchPoints: { ...this.state.twitchPoints, [data.bufferId]: { points: data.points ?? null, name: data.name ?? null } } })
         break
 
+      case 'sneedchatSmilies':
+        // The chat revised its emoticons: read the table again.
+        this.smiliesFetched = false
+        void this.fetchSmilies()
+        break
       case 'twitchRights':
         this.set({ twitchRights: { ...this.state.twitchRights, [data.bufferId]: !!data.moderator } })
         break
@@ -5654,9 +5700,10 @@ export class ChatStore {
         window.moho.rpc<SneedchatSmilie[]>('listSneedchatSmilies'),
         window.moho.smiliesDir()
       ])
+      // The chat's own emoticons come with their cached picture; the bundled table with a file the client finds.
       const smilies: SmilieEntry[] = rows.map((s) => ({
         ...s,
-        url: resolveMediaUrl(`${dir}/${s.file}`)
+        url: resolveMediaUrl(s.path ?? `${dir}/${s.file}`)
       }))
       this.set({ smilies, smilieIndex: buildSmilieIndex(smilies) })
     } catch (e) {

@@ -6898,7 +6898,8 @@ video.lightbox-media {
    every badge would make a name with four of them the loudest thing on the
    screen, which is the opposite of what a badge is for. */
 .sender-badge.broadcaster,
-.sender-badge.moderator {
+.sender-badge.moderator,
+.sender-badge.staff {
   background: var(--primary-hover);
   color: var(--primary);
 }

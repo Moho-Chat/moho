@@ -894,8 +894,19 @@ export interface CustomEmoji {
 export interface SneedchatSmilie {
   label: string
   aliases: string[]
-  /** Filename within the client's bundled sneedchat-smilies/ resource dir. */
-  file: string
+  /** Filename within the client's bundled sneedchat-smilies/ resource dir (the bundled table). */
+  file?: string
+  /** The cached picture, `file://...` (the chat's own emoticons, once read). */
+  path?: string
+}
+
+/** What the account may do in a Sneedchat room (`sneedchatPowers`). */
+export interface SneedchatPowers {
+  post: boolean
+  react: boolean
+  whisper: boolean
+  moderate: boolean
+  frozen: boolean
 }
 
 export interface MatrixDevice {
