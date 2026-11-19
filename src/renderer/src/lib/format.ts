@@ -177,7 +177,7 @@ export function sourcePick(service: string, e: { id: string; name?: string; anim
   // Discord's is named by a number alone, which is no message at all: picked from another server's section it went
   // into the box (and the recent list) as the bare digits. It leaves as the form Discord parses, which the box draws
   // as its picture - and which Nitro lets any server take.
-  if (service === 'discord' && /^\d+$/.test(e.id)) return `<${e.animated ? 'a' : ''}:${e.name || 'emoji'}:${e.id}>`
+  if ((service === 'discord' || service === 'fluxer') && /^\d+$/.test(e.id)) return `<${e.animated ? 'a' : ''}:${e.name || 'emoji'}:${e.id}>`
   // Stoat's is typed by name between colons; the daemon turns it into the id Stoat reads as it goes out.
   if (service === 'stoat') return `:${e.name || e.id}:`
   return e.id
@@ -207,7 +207,17 @@ export function sneedSameText(sent: string, logged: string): boolean {
  */
 export function stoatSameText(sent: string, logged: string): boolean {
   const sentForm = sent.replace(/!!([^\n]+?)!!/g, '||$1||').trim()
-  const loggedForm = logged.replace(/\[stoat:emoji:([A-Za-z0-9_]+):file:\/\/[^\]\s]*\]/g, ':$1:').trim()
+  const loggedForm = logged.replace(/\[(?:stoat|fluxer):emoji:([A-Za-z0-9_]+):file:\/\/[^\]\s]*\]/g, ':$1:').trim()
+  return sentForm === loggedForm
+}
+
+/**
+ * Whether what was typed into a Fluxer conversation is what Fluxer logged: a custom emoji goes out as `<:name:id>` (or is
+ * typed `:name:`) and comes back as the daemon's picture token, so both are read as `:name:`.
+ */
+export function fluxerSameText(sent: string, logged: string): boolean {
+  const sentForm = sent.replace(/<a?:([A-Za-z0-9_]{1,32}):\d+>/g, ':$1:').trim()
+  const loggedForm = logged.replace(/\[fluxer:emoji:([A-Za-z0-9_]+):file:\/\/[^\]\s]*\]/g, ':$1:').trim()
   return sentForm === loggedForm
 }
 
@@ -641,7 +651,7 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
 
   // Stoat's custom emoji, which the daemon writes as `[stoat:emoji:name:file://...]`: the picture is a file it has named in
   // its own cache (and fetches when this draws it), and only that folder is accepted, so a message cannot name another.
-  out = out.replace(/\[stoat:emoji:([A-Za-z0-9_]{1,32}):(file:\/\/[^\]\s]*\/stoat-media\/[A-Za-z0-9._-]+)\]/g, (_m, name: string, src: string) =>
+  out = out.replace(/\[(?:stoat|fluxer):emoji:([A-Za-z0-9_]{1,32}):(file:\/\/[^\]\s]*\/(?:stoat|fluxer)-media\/[A-Za-z0-9._-]+)\]/g, (_m, name: string, src: string) =>
     stow(`<img src="${src}" class="custom-emoji" alt=":${name}:">`)
   )
 

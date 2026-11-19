@@ -122,3 +122,40 @@ describe('a verification request that was accepted', () => {
     expect(held()?.emoji).toHaveLength(1)
   })
 })
+
+describe('a message we send on IRC, and the server echoing it', () => {
+  type S = {
+    state: { buffers: unknown[]; accounts: unknown[]; messagesByBuffer: Record<string, { id: string; pending?: boolean; failed?: boolean; body: string }[]> }
+    handleEvent: (f: { event: string; data: unknown }) => void
+    sendMessage: (b: string, body: string) => Promise<void>
+  }
+  const bufferId = 'Salastil@irc.libera.chat|#archlinux'
+  const real = { id: 'srv-1', bufferId, from: 'Salastil', body: 'a', ts: 1, isAction: false, isHighlight: false, kind: 'chat', isOwn: true }
+  function ready(rpc: () => Promise<unknown>): S {
+    ;(globalThis as unknown as { window: unknown }).window = { moho: { rpc: vi.fn(rpc) } }
+    const store = new ChatStore() as unknown as S
+    store.state = {
+      ...store.state,
+      accounts: [{ id: 'Salastil@irc.libera.chat', service: 'irc', name: 'Salastil', state: 'connected' }],
+      buffers: [{ id: bufferId, accountId: 'Salastil@irc.libera.chat', kind: 'channel', name: '#archlinux', lastActivityTs: 0, unread: 0, highlight: false, mentions: 0 }]
+    }
+    return store
+  }
+
+  it('replaces the pending row when the echo arrives after the send returns', async () => {
+    const store = ready(() => Promise.resolve({ ok: true }))
+    await store.sendMessage(bufferId, 'a')
+    store.handleEvent({ event: 'message', data: real })
+    expect(store.state.messagesByBuffer[bufferId].map((m) => [m.id, m.pending])).toEqual([['srv-1', undefined]])
+  })
+
+  it('replaces it when the echo arrives before the send returns', async () => {
+    let done!: (v: unknown) => void
+    const store = ready(() => new Promise((r) => (done = r)))
+    const sent = store.sendMessage(bufferId, 'a')
+    store.handleEvent({ event: 'message', data: real })
+    done({ ok: true })
+    await sent
+    expect(store.state.messagesByBuffer[bufferId].map((m) => [m.id, m.pending])).toEqual([['srv-1', undefined]])
+  })
+})

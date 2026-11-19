@@ -25,6 +25,7 @@ export interface MentionKeyword {
 export function mentionKeywords(service: string | undefined): MentionKeyword[] {
   switch (service) {
     case 'discord':
+    case 'fluxer':
       return [
         { word: 'everyone', detail: 'Notify everyone in this channel' },
         { word: 'here', detail: 'Notify everyone who is online' }

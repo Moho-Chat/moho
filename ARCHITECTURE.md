@@ -255,6 +255,20 @@ called `subscribe` for that buffer.
   self-hosted instance in docker (`scripts/probe-stoat-local.mjs`, `probe-stoat-voice.mjs`,
   `probe-stoat-manage.mjs`).
 
+- **Fluxer** (on the `protocol/fluxer` branch, not yet released) - an open-source service shaped like Discord, over its
+  REST api and gateway (Discord's opcodes, its own `v=1`), for the official instance or a self-hosted one; every address
+  is read from the instance's `/.well-known/fluxer`. Sign-in by a code approved in another Fluxer app, by password (with
+  the ALTCHA proof of work Fluxer asks every client to do, and a second factor), or by a pasted token. Requests are paced
+  well under Fluxer's global limit, since a global refusal revokes a user's session. Guilds, categories, text, voice,
+  announcement and forum channels, threads, DMs, groups and personal notes; permissions worked out per channel; history
+  and live messages, edits, deletions, replies, embeds and attachments (read by Discord's own readers, which Fluxer's
+  JSON fits), files both ways, reactions, custom emoji, stickers, typing, read marks, pins and search, invite links as
+  cards; members from Fluxer's lazy member list, presence, profile cards, friends, blocks and the account's own profile;
+  mutes kept in the account's guild settings; moderation and a community's settings (through the same window and calls
+  as Stoat's); and calls on LiveKit through the same client (rings both ways; peer-to-peer calls are left to Fluxer's
+  app). The code is `nobilis/src/backend/fluxer/`; the verification scripts run it against a self-hosted instance in
+  docker (`scripts/probe-fluxer-local.mjs`, `probe-fluxer-voice.mjs`).
+
 - **XMPP** (on the `protocol/xmpp` branch, not yet released) - an account is an address on a server of its own choosing, over the
   xmpp-rs stack (`tokio-xmpp`, `xmpp-parsers`; MPL-2.0), which carries the stanza stream and stream management. What it does not do is
   ours: reaching the server (TCP through the account's route - Tor, SOCKS5 - or a WebSocket; STARTTLS or direct TLS; the server trusted

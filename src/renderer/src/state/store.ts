@@ -21,6 +21,7 @@ import type {
   Reaction,
   RoomPermissions,
   SneedchatSmilie,
+  SneedchatPowers,
   VoiceChannel,
   VoicePrefs,
   VoiceSession
@@ -29,7 +30,7 @@ import { addToast, type ToastAction, type ToastItem } from '../lib/toasts'
 import { ALL_STATUSES, statusesFor, supportsStatus } from '../lib/status'
 import type { SteamGroup, GroupCall } from '../lib/steamgroups'
 import type { TelegramFolder } from '../lib/telegramfolders'
-import { buildSmilieIndex, sneedSameText, steamSameText, stoatSameText, type SmilieEntry, type SmilieIndex } from '../lib/format'
+import { buildSmilieIndex, fluxerSameText, sneedSameText, steamSameText, stoatSameText, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
 import { heldOnAccount, type NotifyLevel } from '../lib/notifylevels'
 import { runExport } from '../lib/exporter'
@@ -624,6 +625,10 @@ export interface ChatState {
   kickStreams: Record<string, KickStream>
   /** Whether the account may moderate each Twitch channel it has open, as Twitch last said. */
   twitchRights: Record<string, boolean>
+  /** What the account may do in each Sneedchat room it has open, as the chat's page said. */
+  sneedchatPowers: Record<string, SneedchatPowers>
+  /** The reactions Kiwi Farms offers, for the reaction picker. */
+  sneedchatReactions: CustomEmoji[]
   /** The poll and prediction running in each channel, by `cardSlot`. */
   livePolls: Record<string, LiveCard>
   /**
@@ -904,6 +909,8 @@ const INITIAL: ChatState = {
   matrixPermissions: {},
   kickStreams: {},
   twitchRights: {},
+  sneedchatPowers: {},
+  sneedchatReactions: [],
   livePolls: {},
   pinnedByBuffer: {},
   reviewCard: null,
@@ -1000,6 +1007,7 @@ function echoMatches(echo: ChatMessage, real: Message): boolean {
   if (real.bufferId.startsWith('steam:') && echo.pendingBody !== undefined && steamSameText(echo.pendingBody, real.body)) return true
   if (real.bufferId.startsWith('sneedchat:') && echo.pendingBody !== undefined && sneedSameText(echo.pendingBody, real.body)) return true
   if (real.bufferId.startsWith('stoat:') && echo.pendingBody !== undefined && stoatSameText(echo.pendingBody, real.body)) return true
+  if (real.bufferId.startsWith('fluxer:') && echo.pendingBody !== undefined && fluxerSameText(echo.pendingBody, real.body)) return true
   // A file is posted as markup the daemon builds - a BBCode image tag on
   // Sneedchat, a bare link on IRC - so what comes back is never what was
   // typed, and usually nothing was typed at all. Matching on the whole body
@@ -1690,7 +1698,7 @@ export class ChatStore {
       }
     }
     // Stoat's are the people whose relationship to this account is "incoming": the daemon lists them.
-    for (const account of this.state.accounts.filter((a) => a.service === 'stoat' && a.state === 'connected')) {
+    for (const account of this.state.accounts.filter((a) => (a.service === 'stoat' || a.service === 'fluxer') && a.state === 'connected')) {
       try {
         const r = await window.moho.rpc<{ incoming: FriendRequest[] }>('stoatFriendRequests', { accountId: account.id })
         next[account.id] = r.incoming
@@ -1815,7 +1823,7 @@ export class ChatStore {
       } else if (invitation.kind === 'friend') {
         if (invitation.service === 'discord') {
           await window.moho.rpc('answerDiscordFriendRequest', { accountId, userId: id, accept })
-        } else if (invitation.service === 'stoat') {
+        } else if (invitation.service === 'stoat' || invitation.service === 'fluxer') {
           await window.moho.rpc('answerStoatFriendRequest', { accountId, userId: id, accept })
         } else if (invitation.service === 'xmpp') {
           await window.moho.rpc('xmppAnswerRequest', { accountId, jid: id, accept })
@@ -1905,7 +1913,7 @@ export class ChatStore {
     // it is what makes the direct message exist, so it does not have to be
     // waited for.
     // Stoat's are not either, and its conversations are named by channel, not by person.
-    if ((invitation.service === 'discord' || invitation.service === 'stoat') && invitation.kind === 'friend') {
+    if ((invitation.service === 'discord' || invitation.service === 'stoat' || invitation.service === 'fluxer') && invitation.kind === 'friend') {
       try {
         const r = await window.moho.rpc<{ bufferId: string }>(invitation.service === 'discord' ? 'openDiscordDm' : 'openDirectMessage', {
           accountId: invitation.accountId,
@@ -2433,8 +2441,8 @@ export class ChatStore {
     // Optimistic: the ringing stops the instant it is answered, rather than a
     // round trip later with the ringtone still going.
     this.setRinging({ ...this.callFor(bufferId), ringing: false })
-    // A Stoat call is answered by joining it on its media server.
-    if (this.state.buffers.find((b) => b.id === bufferId)?.accountId.startsWith('stoat:')) {
+    // A Stoat or Fluxer call is answered by joining it on its media server.
+    if (this.onMediaServer(bufferId)) {
       await this.selectBuffer(bufferId, true)
       await this.joinStoatCall(bufferId, false)
       return
@@ -2458,7 +2466,7 @@ export class ChatStore {
       return
     }
     try {
-      await window.moho.rpc(this.state.buffers.find((b) => b.id === bufferId)?.accountId.startsWith('stoat:') ? 'declineStoatCall' : 'declineCall', { bufferId })
+      await window.moho.rpc(this.onMediaServer(bufferId) ? 'declineStoatCall' : 'declineCall', { bufferId })
     } catch (e) {
       this.toast('error', `Couldn't decline: ${(e as Error).message}`)
     }
@@ -2609,8 +2617,8 @@ export class ChatStore {
    * resolves it to the channel the call happens in.
    */
   async callBuffer(bufferId: string): Promise<void> {
-    // A Stoat conversation is called into on its media server, with the camera off until it is asked for.
-    if (this.state.buffers.find((b) => b.id === bufferId)?.accountId.startsWith('stoat:')) {
+    // A Stoat or Fluxer conversation is called into on its media server, with the camera off until it is asked for.
+    if (this.onMediaServer(bufferId)) {
       await this.joinStoatCall(bufferId, false)
       return
     }
@@ -2825,6 +2833,40 @@ export class ChatStore {
    * The whisper now appears in the room, marked as one, which is where the
    * site puts it and where the person who sent it is still looking.
    */
+  private sneedchatPowersAsked = new Set<string>()
+
+  /** Asks once per conversation what the account may do in a Sneedchat room. */
+  ensureSneedchatPowers(bufferId: string): void {
+    if (this.sneedchatPowersAsked.has(bufferId)) return
+    this.sneedchatPowersAsked.add(bufferId)
+    void window.moho
+      .rpc<SneedchatPowers>('sneedchatPowers', { bufferId })
+      .then((p) => this.set({ sneedchatPowers: { ...this.state.sneedchatPowers, [bufferId]: p } }))
+      .catch(() => this.sneedchatPowersAsked.delete(bufferId))
+  }
+
+  /** The site's reactions, asked once a connection has read them. */
+  async ensureSneedchatReactions(): Promise<void> {
+    if (this.state.sneedchatReactions.length) return
+    try {
+      const list = await window.moho.rpc<{ id: string; name: string; url: string }[]>('listSneedchatReactions')
+      this.set({ sneedchatReactions: list.map((r) => ({ id: r.id, name: r.name, url: r.url, set: 'Kiwi Farms reactions' }) as CustomEmoji) })
+    } catch {
+      // An older daemon, or none read yet: the picker shows nothing to pick.
+    }
+  }
+
+  /** A Sneedchat moderator's mute, ban or lifting of one. */
+  async sneedchatModerate(bufferId: string, who: string, action: 'mute' | 'ban' | 'lift', minutes?: number, siteWide = false): Promise<void> {
+    try {
+      await window.moho.rpc('sneedchatModerate', { bufferId, who, action, minutes, siteWide })
+      const done = action === 'lift' ? `${who} is no longer muted or banned` : `${who} is ${action === 'ban' ? 'banned' : 'muted'}`
+      this.toast('info', done)
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
+  }
+
   async sendWhisper(accountId: string, target: string, body: string): Promise<void> {
     if (!body.trim()) return
     try {
@@ -3850,7 +3892,7 @@ export class ChatStore {
    */
   async joinStoatCall(bufferId: string, video: boolean): Promise<void> {
     const account = this.accountFor(bufferId)
-    if (!account || account.service !== 'stoat') return
+    if (!account || (account.service !== 'stoat' && account.service !== 'fluxer')) return
     if (this.state.activeCall || this.stoatCall) {
       this.toast('info', 'Leave the call you are in first')
       return
@@ -3860,7 +3902,7 @@ export class ChatStore {
       activeCall: { accountId: account.id, bufferId, phase: 'connecting', video, muted: false, sharingScreen: false, cameraOn: video, onServer: true }
     })
     try {
-      const way = await window.moho.rpc<{ token: string; url: string; note?: string | null }>('joinStoatCall', { bufferId })
+      const way = await window.moho.rpc<{ token: string; url: string; note?: string | null; e2eeKey?: string | null }>('joinStoatCall', { bufferId, video })
       // What a new account is held to is said once, as the call starts.
       if (way.note) this.toast('info', way.note)
       let wasConnected = false
@@ -3876,6 +3918,7 @@ export class ChatStore {
             // ends the call.
             if (connected) wasConnected = true
             if (!connected && wasConnected && this.state.activeCall?.bufferId === bufferId) {
+              if (account.service === 'fluxer') void window.moho.rpc('leaveFluxerCall', { bufferId }).catch(() => {})
               this.stoatCall = null
               this.levels.dispose()
               this.set({ activeCall: null })
@@ -3885,7 +3928,8 @@ export class ChatStore {
           },
           onError: (message) => this.toast('error', message)
         },
-        false
+        false,
+        way.e2eeKey
       )
       this.stoatCall = { sfu, bufferId, people: [], local: null }
       await sfu.join(way.url, way.token, video)
@@ -3895,9 +3939,23 @@ export class ChatStore {
     } catch (e) {
       this.stoatCall?.sfu.leave().catch(() => {})
       this.stoatCall = null
+      if (account.service === 'fluxer') void window.moho.rpc('leaveFluxerCall', { bufferId }).catch(() => {})
       this.set({ activeCall: null })
       this.toast('error', `Couldn't join the call: ${(e as Error).message}`)
     }
+  }
+
+  /** Whether a conversation's calls are held on a media server the window joins (Stoat's and Fluxer's). */
+  private onMediaServer(bufferId: string): boolean {
+    const account = this.state.buffers.find((b) => b.id === bufferId)?.accountId ?? ''
+    return account.startsWith('stoat:') || account.startsWith('fluxer:')
+  }
+
+  /** Tells Fluxer the microphone, camera and screen as they are, so the others' apps show them. */
+  private sayFluxerVoice(): void {
+    const call = this.state.activeCall
+    if (!call || !call.bufferId.startsWith('fluxer:')) return
+    void window.moho.rpc('fluxerVoiceState', { bufferId: call.bufferId, muted: !!call.muted, camera: !!call.cameraOn, screen: !!call.sharingScreen }).catch(() => {})
   }
 
   /** Somebody's name in a Stoat call: the daemon's, which knows people the roster has not listed. */
@@ -3910,6 +3968,8 @@ export class ChatStore {
       const call = this.stoatCall
       this.stoatCall = null
       void call.sfu.leave().catch(() => {})
+      // Fluxer keeps the voice connection until it is told it is over.
+      if (call.bufferId.startsWith('fluxer:')) void window.moho.rpc('leaveFluxerCall', { bufferId: call.bufferId }).catch(() => {})
       this.levels.dispose()
       this.set({ activeCall: null })
       return
@@ -4157,6 +4217,7 @@ export class ChatStore {
     if (this.stoatCall) {
       void this.stoatCall.sfu.toggleMute().then((muted) => {
         if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, muted } })
+        this.sayFluxerVoice()
       })
       return
     }
@@ -4198,6 +4259,7 @@ export class ChatStore {
         return false
       })
       if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, cameraOn: on } })
+      this.sayFluxerVoice()
       return
     }
     const want = !this.matrixCalls.cameraOn
@@ -4246,6 +4308,7 @@ export class ChatStore {
           sharing = await sfu.setScreen(stream)
         }
         if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, sharingScreen: sharing } })
+        this.sayFluxerVoice()
       } catch (e) {
         this.toast('error', `Couldn't share the screen: ${(e as Error).message}`)
       }
@@ -4987,6 +5050,21 @@ export class ChatStore {
         this.set({ twitchPoints: { ...this.state.twitchPoints, [data.bufferId]: { points: data.points ?? null, name: data.name ?? null } } })
         break
 
+      case 'sneedchatReactions': {
+        // A connection was admitted: the site's reactions and each room's permissions are read now, so what was
+        // asked before - an empty set, a room not joined yet - is asked again.
+        this.set({ sneedchatReactions: [] })
+        void this.ensureSneedchatReactions()
+        const rooms = [...this.sneedchatPowersAsked]
+        this.sneedchatPowersAsked.clear()
+        for (const bufferId of rooms) this.ensureSneedchatPowers(bufferId)
+        break
+      }
+      case 'sneedchatSmilies':
+        // The chat revised its emoticons: read the table again.
+        this.smiliesFetched = false
+        void this.fetchSmilies()
+        break
       case 'twitchRights':
         this.set({ twitchRights: { ...this.state.twitchRights, [data.bufferId]: !!data.moderator } })
         break
@@ -5632,9 +5710,10 @@ export class ChatStore {
         window.moho.rpc<SneedchatSmilie[]>('listSneedchatSmilies'),
         window.moho.smiliesDir()
       ])
+      // The chat's own emoticons come with their cached picture; the bundled table with a file the client finds.
       const smilies: SmilieEntry[] = rows.map((s) => ({
         ...s,
-        url: resolveMediaUrl(`${dir}/${s.file}`)
+        url: resolveMediaUrl(s.path ?? `${dir}/${s.file}`)
       }))
       this.set({ smilies, smilieIndex: buildSmilieIndex(smilies) })
     } catch (e) {

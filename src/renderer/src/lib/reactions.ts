@@ -9,13 +9,25 @@ import { steamTokenOf } from './format'
  * the token it is stored as (`<:name:id>`, or `<a:name:id>` when it moves); a
  * Unicode one is looked up, and with no name to give is shown as itself.
  */
+/**
+ * A Kiwi Farms reaction as the daemon holds it: `[sneedchat:reaction:<code>:<title>:<picture>]`, the picture a
+ * cached file (empty while it has not been fetched).
+ */
+export function sneedchatReactionOf(emoji: string): { code: string; title: string; path: string } | null {
+  const m = emoji.match(/^\[sneedchat:reaction:([A-Za-z0-9_-]{1,64}):([A-Za-z0-9 ]*):((?:file:\/\/[^\]\s]*\/sneedchat-avatars\/[A-Za-z0-9._-]+(?:#\d+)?)?)\]$/)
+  return m ? { code: m[1], title: m[2], path: m[3] } : null
+}
+
 export function reactionLabel(emoji: string, unicodeNames: ReadonlyMap<string, string> = new Map()): string {
   const custom = emoji.match(/^<a?:([A-Za-z0-9_~]{2,32}):\d+>$/)
   if (custom) return `:${custom[1]}:`
-  const stoat = emoji.match(/^\[stoat:emoji:([A-Za-z0-9_]{1,32}):file:\/\/[^\]\s]*\]$/)
+  const stoat = emoji.match(/^\[(?:stoat|fluxer):emoji:([A-Za-z0-9_]{1,32}):file:\/\/[^\]\s]*\]$/)
   if (stoat) return `:${stoat[1]}:`
   const steam = steamTokenOf(emoji)
   if (steam) return `:${steam.name}:`
+  // Kiwi Farms' own reactions, named by the site ("Agree"), or by code when the name is not known.
+  const sneed = sneedchatReactionOf(emoji)
+  if (sneed) return sneed.title || sneed.code
   const name = unicodeNames.get(emoji)
   return name ? `:${name}:` : emoji
 }

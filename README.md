@@ -32,7 +32,7 @@ stream's chat going past at forty lines a minute you're able to be part of the c
 | **Discord** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - | ✅ |
 | **Kick** | ✅ | - | - | - | - | - | - | ✅ |
 | **Twitch** | ✅ | ✅ | - | - | - | - | - | ✅ |
-| **Sneedchat** | ✅ | ✅ | ✅ | - | - | - | - | ✅ |
+| **Sneedchat** | ✅ | ✅ | ✅ | ✅ | - | - | - | ✅ |
 | **Steam** | ✅ | ✅ | ✅ | ✅ | ✅ | - | - | ✅ |
 | **Telegram** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
 | **Stoat** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - | ✅ |

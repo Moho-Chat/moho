@@ -79,7 +79,7 @@ export function StoatAccountTools({ account }: { account: Account }): JSX.Elemen
     <div className="account-tools">
       <div className="setting-row">
         <div className="setting-text">
-          <div>Your profile on Stoat ({profile.handle})</div>
+          <div>Your profile on {account.service === 'fluxer' ? 'Fluxer' : 'Stoat'} ({profile.handle})</div>
           <div className="small muted">Changing these changes them for everyone who can see you.</div>
         </div>
       </div>

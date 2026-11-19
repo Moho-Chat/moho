@@ -386,6 +386,7 @@ function seen(ts: number): string {
 function joinedLabel(service: string): string {
   if (service === 'irc') return 'Connected'
   if (service === 'discord') return 'Joined server'
+  if (service === 'fluxer') return 'Joined community'
   return 'Joined'
 }
 

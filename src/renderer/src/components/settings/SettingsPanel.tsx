@@ -132,6 +132,7 @@ const CATEGORIES: { id: string; label: string; group: string; icon?: string; ser
   { id: 'twitch', label: 'Twitch', group: 'Networks', service: 'twitch' },
   { id: 'telegram', label: 'Telegram', group: 'Networks', service: 'telegram' },
   { id: 'stoat', label: 'Stoat', group: 'Networks', service: 'stoat' },
+  { id: 'fluxer', label: 'Fluxer', group: 'Networks', service: 'fluxer' },
   { id: 'about', label: 'About', group: 'About', icon: 'info' }
 ]
 
@@ -256,6 +257,8 @@ function Page({ id }: { id: string }): JSX.Element | null {
       return <TelegramSettings />
     case 'stoat':
       return <StoatSettings />
+    case 'fluxer':
+      return <FluxerSettings />
     case 'about':
       return <AboutSettings />
     default:
@@ -1383,6 +1386,47 @@ function TelegramSettings(): JSX.Element {
       <SettingsSection
         title="What moho does not do"
         description="Secret chats, voice and video calls, stories, payments and bots' inline mode are not part of moho. Signing in by QR code, folders, forum topics, drafts and scheduled messages are not done yet."
+      />
+    </>
+  )
+}
+
+/**
+ * Fluxer. What is built is in issue #57; this says how the parts that are not obvious behave.
+ */
+function FluxerSettings(): JSX.Element {
+  return (
+    <>
+      <SettingsSection
+        title="Fluxer"
+        description="An account names its instance (fluxer.com, or one you or a friend host) and signs in once: with a code you approve in a Fluxer app where you are already signed in, with your password, or with a session token pasted from another app. moho keeps the session, never the password, and does not make accounts. A password sign-in includes the small proof of work Fluxer asks every app to do, which takes moho a moment and you nothing. Add an account from the Accounts pane."
+      />
+
+      <SettingsSection
+        title="Typing"
+        description="Fluxer's own apps tell the others when you are typing, and so does moho. Turn it off here if you would rather not."
+      >
+        <ToggleSetting settingKey="fluxer.sendTyping" label="Tell others when I am typing" defaultValue={true} />
+      </SettingsSection>
+
+      <SettingsSection
+        title="Muting and notifications"
+        description="Muting a conversation from its menu is kept in your Fluxer account's own settings, so it holds in the app on your phone as well, and one you muted there is muted here. A community you muted there silences its channels here too."
+      />
+
+      <SettingsSection
+        title="Large communities"
+        description="In a community of more than 250 people, Fluxer only sends an app the messages of the communities it has open. moho opens one when you open any of its conversations, and until then marks its channels unread when something new is said in them."
+      />
+
+      <SettingsSection
+        title="Calls"
+        description="Voice channels and direct messages use the instance's media servers: microphone, camera and a shared screen. Starting a call in a direct message or a group rings the others, and one that begins there rings here. A call whose people connect to each other directly (Fluxer's peer-to-peer calls) is not joined from moho: join it from Fluxer's own app."
+      />
+
+      <SettingsSection
+        title="Communities you look after"
+        description="Where your roles allow, a community's menu on the rail opens its settings (channels and categories, roles and what each may do, who may do what in one channel, webhooks and the audit log), and a member's menu offers kicking, banning, timing out and roles. Fluxer checks again and says why when it refuses."
       />
     </>
   )

@@ -102,6 +102,22 @@ function sandboxed(): boolean {
  */
 let pendingDeepLink: string | null = null
 
+/**
+ * The command that starts this binary as the daemon's web helper.
+ *
+ * The AppImage itself rather than the binary inside it: the daemon outlives
+ * this process, and the AppImage's mount goes when it does. `--no-sandbox`
+ * passes on when this process was given it - whatever made that necessary
+ * here is just as true for the helper.
+ */
+function webHelperCommand(): string[] {
+  // Headless on Linux: the helper shows nothing (its pages render offscreen),
+  // and a daemon may well be running where there is no display to open.
+  const extra = [...(sandboxed() ? [] : ['--no-sandbox']), ...(process.platform === 'linux' ? ['--ozone-platform=headless'] : [])]
+  if (!app.isPackaged) return [process.execPath, app.getAppPath(), ...extra, '--moho-web-helper']
+  return [process.env.APPIMAGE || process.execPath, ...extra, '--moho-web-helper']
+}
+
 /** The first argument that is a link this client handles, if any. */
 function deepLinkIn(argv: string[]): string | null {
   return argv.find((a) => isDeepLink(a)) ?? null
@@ -1568,6 +1584,10 @@ app.whenReady().then(() => {
     // through Tor or the proxy is the daemon's setting, asked of it here.
     void applyTunnel((method, params) => client.request(method, params))
     resetRoute()
+    // How the daemon starts its web helper - this same binary - for sites that
+    // admit only a browser's network stack (see web-helper.ts). Told on every
+    // connection, because the daemon may have been started by something else.
+    void client.request('setWebHelper', { command: webHelperCommand() }).catch(() => {})
     // The daemon usually outlives this process, so its buffers were announced
     // long before this connection existed and no bufferListChange is coming
     // for them. Without asking outright, main knows of no conversations at

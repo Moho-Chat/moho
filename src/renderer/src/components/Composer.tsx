@@ -135,6 +135,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const [gifPicker, setGifPicker] = useState(false)
   const [discordTyping] = usePref<boolean>('discord.sendTyping', false)
   const [stoatTyping] = usePref<boolean>('stoat.sendTyping', true)
+  const [fluxerTyping] = usePref<boolean>('fluxer.sendTyping', true)
   /**
    * What to do with files dropped on the window: they land in the tray, to be
    * looked over and sent with the next message rather than going out on the
@@ -272,7 +273,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   // here rather than left as the one service where the button is dead.
   // Steam takes a picture or a short video, and says which and how big.
   const supportsAttachments =
-    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'xmpp' || service === 'signal'
+    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'xmpp' || service === 'signal'
 
   // Starting a reply puts the cursor in the box: the next thing anybody does
   // is write the answer.
@@ -459,6 +460,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
     // Discord can tell it apart by, and Dissent does without it altogether. A setting in Settings > Discord.
     if (service === 'discord' && !discordTyping) return
     if (service === 'stoat' && !stoatTyping) return
+    if (service === 'fluxer' && !fluxerTyping) return
     const now = Date.now()
     if (now - typingSentAt.current < TYPING_REPEAT_MS) return
     typingSentAt.current = now
@@ -612,8 +614,8 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
           staged.map((att) => att.path),
           staged.filter((att) => att.spoiler).map((att) => att.path)
         )
-      } else if (service === 'stoat') {
-        // Stoat carries several files in one message (up to five; the daemon says if the account is allowed fewer), and
+      } else if (service === 'stoat' || service === 'fluxer') {
+        // Stoat and Fluxer carry several files in one message (Stoat up to five, Fluxer ten; the daemon says if the account is allowed fewer), and
         // names a spoiler by the file's name, so each file's mark has to go with it.
         for (let i = 0; i < staged.length; i += 5) {
           const batch = staged.slice(i, i + 5)
@@ -1311,7 +1313,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
                 !e.altKey &&
                 !e.metaKey &&
                 !text &&
-                (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'xmpp' || service === 'signal')
+                (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'xmpp' || service === 'signal')
               ) {
                 const last = store.lastEditableOwn(buffer.id)
                 if (last) {

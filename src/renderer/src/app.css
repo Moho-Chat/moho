@@ -6898,7 +6898,8 @@ video.lightbox-media {
    every badge would make a name with four of them the loudest thing on the
    screen, which is the opposite of what a badge is for. */
 .sender-badge.broadcaster,
-.sender-badge.moderator {
+.sender-badge.moderator,
+.sender-badge.staff {
   background: var(--primary-hover);
   color: var(--primary);
 }
@@ -11767,6 +11768,15 @@ html[data-reduce-motion] *::after {
   box-shadow: var(--shadow-3);
 }
 
+/* The code a Fluxer sign-in shows, to be typed into another Fluxer app: large, spaced, easy to copy by eye. */
+.fluxer-handoff-code {
+  font-family: var(--font-mono, monospace);
+  font-size: 1.8em;
+  letter-spacing: 0.12em;
+  user-select: all;
+  margin: 0.5em 0;
+}
+
 .stoat-server {
   width: 680px;
 }
@@ -13037,6 +13047,22 @@ span.tone-bad {
 
 .service-tile-name {
   font-weight: var(--weight-semibold);
+}
+
+/* How far along a service is, after its name where accounts are added:
+   red warns, green is working but still settling. */
+.service-stage {
+  margin-left: 0.4em;
+  font-weight: var(--weight-semibold);
+}
+
+.service-stage-red {
+  /* --danger rather than --error, which is a pale pink in the dark theme. */
+  color: var(--danger);
+}
+
+.service-stage-green {
+  color: var(--success);
 }
 
 .service-tile-blurb {

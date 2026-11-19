@@ -21,12 +21,12 @@ export function supportsStatus(service: string, status: Choosable): boolean {
     case 'dnd':
       return true
     case 'idle':
-      return service === 'discord' || service === 'irc' || service === 'steam' || service === 'stoat' || service === 'xmpp'
+      return service === 'discord' || service === 'irc' || service === 'steam' || service === 'stoat' || service === 'fluxer' || service === 'xmpp'
     // Stoat's own: only mentions reach you.
     case 'focus':
       return service === 'stoat'
     case 'invisible':
-      return service === 'discord' || service === 'matrix' || service === 'steam' || service === 'stoat' || service === 'telegram'
+      return service === 'discord' || service === 'matrix' || service === 'steam' || service === 'stoat' || service === 'fluxer' || service === 'telegram'
   }
 }
 

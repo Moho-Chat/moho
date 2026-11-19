@@ -32,7 +32,7 @@ import type { Account } from '../../../shared/wire'
  * that gains a backend appears here as soon as it gains a form, and one the
  * daemon stops offering disappears without this file being touched.
  */
-const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram', 'stoat', 'xmpp', 'signal'] as const
+const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram', 'stoat', 'fluxer', 'xmpp', 'signal'] as const
 type AddableService = (typeof FORMS)[number]
 
 /** What `listProtocols` answers with. */
@@ -53,8 +53,27 @@ const SERVICE_BLURB: Record<AddableService, string> = {
   twitch: 'Stream chat and whispers',
   telegram: 'A phone number, or a QR code',
   stoat: 'Any instance, by email or token',
+  fluxer: 'Any instance: a code from your Fluxer app, or a password',
   xmpp: 'An address on any server',
   signal: 'Linked to the Signal on your phone'
+}
+
+/**
+ * How far along a service's support is, said beside its name wherever an
+ * account is added - so nobody signs an account they care about into
+ * something still being built without being told. Red is a warning, green a
+ * service that works but is still settling.
+ */
+const SERVICE_STAGE: Partial<Record<AddableService, { words: string; tone: 'red' | 'green' }>> = {
+  signal: { words: '(Alpha) (DANGEROUS)', tone: 'red' },
+  sneedchat: { words: '(Alpha)', tone: 'red' },
+  fluxer: { words: '(Beta)', tone: 'green' }
+}
+
+function ServiceStage({ service }: { service: AddableService }): JSX.Element | null {
+  const stage = SERVICE_STAGE[service]
+  if (!stage) return null
+  return <span className={`service-stage service-stage-${stage.tone}`}>{stage.words}</span>
 }
 
 /** What the right-hand side is showing: an account's page, or the way to add one. */
@@ -247,7 +266,10 @@ function AddAccount({
                 <ServiceMark icon={serviceIcon(id)} size={22} />
               </span>
               <span className="service-tile-text">
-                <span className="service-tile-name">{nameFor(id)}</span>
+                <span className="service-tile-name">
+                  {nameFor(id)}
+                  <ServiceStage service={id} />
+                </span>
                 <span className="service-tile-blurb">{SERVICE_BLURB[id]}</span>
               </span>
               <Icon name="chevron_right" size={18} className="service-tile-go" />
@@ -277,7 +299,10 @@ function AddAccount({
           <ServiceMark icon={serviceIcon(service)} size={26} />
         </span>
         <div className="page-head-text">
-          <h2 className="page-title">Add {/^[aeiou]/i.test(nameFor(service)) || ['IRC', 'XMPP'].includes(nameFor(service)) ? 'an' : 'a'} {nameFor(service)} account</h2>
+          <h2 className="page-title">
+            Add {/^[aeiou]/i.test(nameFor(service)) || ['IRC', 'XMPP'].includes(nameFor(service)) ? 'an' : 'a'} {nameFor(service)} account
+            <ServiceStage service={service} />
+          </h2>
           <p className="page-sub">{SERVICE_BLURB[service]}</p>
         </div>
         <button type="button" className="button quiet" onClick={() => onPick(null)}>
@@ -294,6 +319,7 @@ function AddAccount({
         {service === 'twitch' && <TwitchForm onDone={onDone} />}
         {service === 'telegram' && <TelegramForm onDone={onDone} />}
         {service === 'stoat' && <StoatForm onDone={onDone} />}
+        {service === 'fluxer' && <FluxerForm onDone={onDone} />}
         {service === 'signal' && <SignalForm onDone={onDone} />}
         {service === 'xmpp' && <XmppForm onDone={onDone} />}
       </div>
@@ -443,6 +469,7 @@ const SERVICE_TAB: Partial<Record<Account['service'], string>> = {
   matrix: 'Sessions, keys and your profile on the homeserver',
   steam: 'What Steam says about the account, and where it is signed in',
   stoat: 'Your profile and sessions on this instance',
+  fluxer: 'Your profile on this instance',
   telegram: 'Your profile and where the account is signed in',
   signal: 'Linked devices, your username, stories and call links',
   xmpp: 'The server, your profile, and what it publishes for you',
@@ -701,7 +728,7 @@ function AccountPage({ account, serviceName }: { account: Account; serviceName: 
               <IgnoreList account={account} showEmpty />
             </div>
             {/* The other kind of shutting somebody out, where the service has one. */}
-            {(account.service === 'steam' || account.service === 'stoat') && (
+            {(account.service === 'steam' || account.service === 'stoat' || account.service === 'fluxer') && (
               <>
                 <h4 className="section-label section-label-next">People the account has blocked</h4>
                 <div className="card">
@@ -723,7 +750,7 @@ function AccountPage({ account, serviceName }: { account: Account; serviceName: 
             <h4 className="section-label">{serviceTab}</h4>
             <div className="card">
               {account.service === 'steam' && <SteamAccountTools account={account} />}
-              {account.service === 'stoat' && <StoatAccountTools account={account} />}
+              {(account.service === 'stoat' || account.service === 'fluxer') && <StoatAccountTools account={account} />}
               {account.service === 'twitch' && <TwitchAccountTools account={account} />}
               {account.service === 'kick' && <KickFollowSync account={account} />}
             </div>
@@ -1084,6 +1111,7 @@ function IrcForm({ onDone }: { onDone: () => void }): JSX.Element {
                 setHost(n.host)
                 setPort(String(n.port))
                 setSsl(n.tls)
+                if (n.sasl) setAuth('sasl')
               }}
             >
               <span className="network-mark" style={{ background: n.colour }}>
@@ -2404,6 +2432,270 @@ function StoatForm({ onDone }: { onDone: () => void }): JSX.Element {
       <div className="field-row">
         <button type="button" className="button primary" disabled={busy || !ready} onClick={begin}>
           {busy ? 'Signing in…' : 'Sign in'}
+        </button>
+        {busy && (
+          <button type="button" className="button" onClick={cancel}>
+            Cancel
+          </button>
+        )}
+      </div>
+      {busy && detail && <p className="small muted">{detail}…</p>}
+    </div>
+  )
+}
+
+/**
+ * Adding a Fluxer account. Three ways: a code shown here and approved in a Fluxer app where the person is already
+ * signed in (nothing secret is typed into moho); a username or email and password, then the code of an authenticator or
+ * a backup code if the account has a second factor; or a session token pasted from another app.
+ *
+ * Fluxer can be hosted by anybody, so the instance can be named; left empty it is the official one, fluxer.com. Nothing
+ * typed here is kept but the session Fluxer issues, and moho does not make accounts.
+ */
+function FluxerForm({ onDone }: { onDone: () => void }): JSX.Element {
+  const store = useStore()
+  const [instance, setInstance] = useState('')
+  const [method, setMethod] = useState<'handoff' | 'password' | 'token'>('handoff')
+  const [login, setLogin] = useState('')
+  const [password, setPassword] = useState('')
+  const [token, setToken] = useState('')
+  const [useTor, setUseTor] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [loginId, setLoginId] = useState('')
+  const [detail, setDetail] = useState('')
+  const [needs, setNeeds] = useState<{ step: string; code?: string; error?: string } | null>(null)
+  const [typed, setTyped] = useState('')
+
+  const current = useRef('')
+  const setId = (id: string): void => {
+    current.current = id
+    setLoginId(id)
+  }
+
+  useEffect(() => {
+    const off = window.moho.onEvent((e) => {
+      const d = e.data as { loginId?: string; text?: string; step?: string; code?: string; error?: string; success?: boolean }
+      if (!e.event.startsWith('fluxerLogin')) return
+      if (current.current && d.loginId !== current.current) return
+      if (e.event === 'fluxerLoginStatus') {
+        setDetail(d.text || '')
+      } else if (e.event === 'fluxerLoginNeeds') {
+        setNeeds({ step: d.step || 'mfa', code: d.code, error: d.error ?? undefined })
+        setTyped('')
+        setDetail('')
+      } else if (e.event === 'fluxerLoginResult') {
+        setNeeds(null)
+        setId('')
+        setBusy(false)
+        setDetail('')
+        if (d.success) {
+          setPassword('')
+          setToken('')
+          void store.refreshAccounts()
+          onDone()
+        } else {
+          store.toast('error', d.error || 'Fluxer sign-in failed')
+        }
+      }
+    })
+    return off
+  }, [onDone, store])
+
+  useEffect(
+    () => () => {
+      if (current.current) void window.moho.rpc('cancelFluxerLogin', { loginId: current.current }).catch(() => {})
+    },
+    []
+  )
+
+  const begin = (): void => {
+    setBusy(true)
+    setDetail('')
+    setNeeds(null)
+    current.current = ''
+    const call =
+      method === 'password'
+        ? window.moho.rpc<{ loginId: string }>('addFluxerAccount', { instance: instance.trim(), login: login.trim(), password, useTor })
+        : method === 'token'
+          ? window.moho.rpc<{ loginId: string }>('addFluxerAccountToken', { instance: instance.trim(), token: token.trim(), useTor })
+          : window.moho.rpc<{ loginId: string }>('addFluxerAccountHandoff', { instance: instance.trim(), useTor })
+    void call
+      .then((r) => setId(r.loginId))
+      .catch((e: Error) => {
+        setBusy(false)
+        store.toast('error', e.message)
+      })
+  }
+
+  const send = (): void => {
+    const value = typed.trim()
+    if (!value || !loginId || !needs) return
+    void window.moho
+      .rpc('submitFluxerCode', { loginId, value })
+      .then(() => setDetail('Checking'))
+      .catch((e: Error) => store.toast('error', e.message))
+  }
+
+  const cancel = (): void => {
+    if (current.current) void window.moho.rpc('cancelFluxerLogin', { loginId: current.current }).catch(() => {})
+    setId('')
+    setNeeds(null)
+    setDetail('')
+    setBusy(false)
+  }
+
+  if (needs?.step === 'handoff') {
+    return (
+      <div className="add-form">
+        <p>
+          In a Fluxer app where you are already signed in, open <strong>User Settings → Devices</strong> and choose to sign in
+          another device, then type this code there and approve it.
+        </p>
+        <p className="fluxer-handoff-code" aria-label="Code to type into Fluxer">
+          {needs.code}
+        </p>
+        <p className="small muted">Waiting for the approval. The code lasts five minutes.</p>
+        <div className="field-row">
+          <button type="button" className="button" onClick={cancel}>
+            Cancel sign-in
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (needs?.step === 'email') {
+    return (
+      <div className="add-form">
+        <p>Fluxer has emailed a link to approve signing in from here. Open it, and moho carries on by itself.</p>
+        <div className="field-row">
+          <button type="button" className="button" onClick={cancel}>
+            Cancel sign-in
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (needs) {
+    return (
+      <div className="add-form">
+        <p>This account has a second factor. Type the six-digit code from your authenticator app, or a backup code.</p>
+        <label className="field">
+          <span className="small muted">Code</span>
+          <input
+            className="text-field"
+            autoFocus
+            autoComplete="off"
+            spellCheck={false}
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') send()
+            }}
+          />
+        </label>
+        {needs.error && (
+          <div className="warning-note">
+            <Icon name="warning" size={16} />
+            <span>{needs.error}</span>
+          </div>
+        )}
+        {detail && <p className="small muted">{detail}…</p>}
+        <div className="field-row">
+          <button type="button" className="button primary" disabled={!typed.trim()} onClick={send}>
+            Submit code
+          </button>
+          <button type="button" className="button" onClick={cancel}>
+            Cancel sign-in
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const ready = method === 'password' ? login.trim() !== '' && password !== '' : method === 'token' ? token.trim() !== '' : true
+  return (
+    <div className="add-form">
+      <p className="small muted">
+        Sign in to your Fluxer account. Making an account is done in Fluxer&apos;s own app first. moho keeps only the session
+        Fluxer issues, never the password.
+      </p>
+      <p className="small muted">
+        What a third-party client does here: it signs in once and keeps that session, shown in Fluxer&apos;s own list of
+        devices as moho, and resumes it after a dropped connection instead of signing in again. Ending the session in Fluxer
+        signs moho out. A password sign-in includes the small proof of work Fluxer asks every app to do; moho makes no
+        accounts and runs no bots.
+      </p>
+      <TorSwitch service="fluxer" on={useTor} onChange={setUseTor} />
+      <label className="field">
+        <span className="small muted">Instance (leave empty for the official one, fluxer.com)</span>
+        <input
+          className="text-field"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="https://fluxer.com"
+          value={instance}
+          disabled={busy}
+          onChange={(e) => setInstance(e.target.value)}
+        />
+      </label>
+      <div className="segmented">
+        <button type="button" className={method === 'handoff' ? 'active' : undefined} disabled={busy} onClick={() => setMethod('handoff')}>
+          Code from your Fluxer app
+        </button>
+        <button type="button" className={method === 'password' ? 'active' : undefined} disabled={busy} onClick={() => setMethod('password')}>
+          Password
+        </button>
+        <button type="button" className={method === 'token' ? 'active' : undefined} disabled={busy} onClick={() => setMethod('token')}>
+          Session token
+        </button>
+      </div>
+      {method === 'handoff' && (
+        <p className="small muted">moho shows a code, you approve it in Fluxer on your phone or computer, and nothing secret is typed here.</p>
+      )}
+      {method === 'password' && (
+        <div className="field-row">
+          <label className="field">
+            <span className="small muted">Username or email</span>
+            <input className="text-field" autoComplete="off" spellCheck={false} value={login} disabled={busy} onChange={(e) => setLogin(e.target.value)} />
+          </label>
+          <label className="field">
+            <span className="small muted">Password</span>
+            <input
+              className="text-field"
+              type="password"
+              autoComplete="off"
+              value={password}
+              disabled={busy}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && ready && !busy) begin()
+              }}
+            />
+          </label>
+        </div>
+      )}
+      {method === 'token' && (
+        <label className="field">
+          <span className="small muted">Session token</span>
+          <input
+            className="text-field"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={token}
+            disabled={busy}
+            onChange={(e) => setToken(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && ready && !busy) begin()
+            }}
+          />
+        </label>
+      )}
+      <div className="field-row">
+        <button type="button" className="button primary" disabled={busy || !ready} onClick={begin}>
+          {busy ? 'Signing in…' : method === 'handoff' ? 'Get a code' : 'Sign in'}
         </button>
         {busy && (
           <button type="button" className="button" onClick={cancel}>

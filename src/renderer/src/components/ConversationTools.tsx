@@ -675,7 +675,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   // XMPP calls: two people, or a group call joined from a room (XEP-0272, held as a mesh the way Matrix's are).
   const isXmppCalls = buffer.accountId.startsWith('xmpp:') && (buffer.kind === 'dm' || buffer.kind === 'channel')
   const isTelegram = buffer.accountId.startsWith('telegram:')
-  const isStoat = buffer.accountId.startsWith('stoat:')
+  const isStoat = buffer.accountId.startsWith('stoat:') || buffer.accountId.startsWith('fluxer:')
   const isSteam = buffer.accountId.startsWith('steam:')
   const stream = useChat((s) => s.kickStreams)[buffer.id]
   // Whether this window is the one playing this channel. Per window rather
@@ -1060,13 +1060,13 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
 
       {/* Stoat's calls are held on a media server and drawn by the same stage as Matrix's: a direct message, a group or a
           voice room is joined, with the camera as a second choice. */}
-      {buffer.accountId.startsWith('stoat:') && (buffer.kind === 'dm' || buffer.category === 'Groups' || buffer.nameIcon === 'volume_up') && matrixCall?.bufferId !== buffer.id && !matrixCall && (
+      {(buffer.accountId.startsWith('stoat:') || buffer.accountId.startsWith('fluxer:')) && (buffer.kind === 'dm' || buffer.category === 'Groups' || buffer.nameIcon === 'volume_up') && matrixCall?.bufferId !== buffer.id && !matrixCall && (
         <>
           <IconButton name="call" title={callsOff ?? 'Join the call'} disabled={!!callsOff} onClick={() => void store.joinStoatCall(buffer.id, false)} />
           <IconButton name="videocam" title={callsOff ?? 'Join the call with video'} disabled={!!callsOff} onClick={() => void store.joinStoatCall(buffer.id, true)} />
         </>
       )}
-      {buffer.accountId.startsWith('stoat:') && matrixCall?.bufferId === buffer.id && (
+      {(buffer.accountId.startsWith('stoat:') || buffer.accountId.startsWith('fluxer:')) && matrixCall?.bufferId === buffer.id && (
         <IconButton name="call_end" title="Hang up" className="calling" onClick={() => store.hangUpMatrixCall()} />
       )}
 
@@ -1105,7 +1105,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           {buffer.accountId.startsWith('matrix:') && <InviteToRoom buffer={buffer} />}
 
           {isMatrix && buffer.kind !== 'server' && <ThreadList buffer={buffer} />}
-          {isDiscord && buffer.kind === 'channel' && <DiscordThreads buffer={buffer} />}
+          {(isDiscord || buffer.accountId.startsWith('fluxer:')) && buffer.kind === 'channel' && !buffer.forum && <DiscordThreads buffer={buffer} />}
           {(isMatrix || isDiscord || buffer.accountId.startsWith('telegram:') || isStoat) && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
 
           {/* Beside the pins, because it is the same kind of fact about a room:

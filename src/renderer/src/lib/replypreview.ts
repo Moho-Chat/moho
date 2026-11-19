@@ -19,7 +19,7 @@ export function replyPreviewHtml(
     isSneedchat: sneedchat,
     smilies: options.smilies,
     channels: options.channels,
-    markdownEscapes: options.service === 'discord',
+    markdownEscapes: options.service === 'discord' || options.service === 'fluxer',
     ircFormatting: options.service === 'irc' && options.ircColours ? 'render' : 'strip'
   })
   // Anchors that are not spoilers: their words, with no link.

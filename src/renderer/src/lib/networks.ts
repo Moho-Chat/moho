@@ -6,6 +6,7 @@ import undernetLogo from '../assets/irc/undernet.png'
 import hackintLogo from '../assets/irc/hackint.png'
 import dalnetLogo from '../assets/irc/dalnet.png'
 import coreircLogo from '../assets/irc/coreirc.png'
+import sneedchatLogo from '../assets/sneedchat.png'
 
 /**
  * The IRC networks somebody is actually likely to be joining.
@@ -46,6 +47,8 @@ export interface IrcNetwork {
   colour: string
   /** The network's own logo, bundled. Absent where it publishes none. */
   logo?: string
+  /** The network lets nobody in without SASL, so the form asks for a password. */
+  sasl?: boolean
 }
 
 export const IRC_NETWORKS: IrcNetwork[] = [
@@ -63,7 +66,11 @@ export const IRC_NETWORKS: IrcNetwork[] = [
   // offers it ready-made, and typing "irc.coreirc.net" correctly is exactly
   // the step this list exists to remove.
   { id: 'coreirc', name: 'CoreIRC', host: 'irc.coreirc.net', port: 6697, tls: true, mark: 'Co', colour: '#1d5c7a', logo: coreircLogo },
-  { id: 'abjects', name: 'Abjects', host: 'irc.abjects.net', port: 6697, tls: true, mark: 'Ab', colour: '#4b4373' }
+  { id: 'abjects', name: 'Abjects', host: 'irc.abjects.net', port: 6697, tls: true, mark: 'Ab', colour: '#4b4373' },
+  // Kiwi Farms' chat through its IRC portal - the same rooms as the Sneedchat
+  // protocol, without what IRC cannot carry. Nobody gets in without a handle
+  // and client password, so the form opens with SASL on.
+  { id: 'sneedchat', name: 'Sneedchat', host: 'irc.kiwifarms.net', port: 6697, tls: true, mark: 'Sn', colour: '#2f4a2f', logo: sneedchatLogo, sasl: true }
 ]
 
 /**

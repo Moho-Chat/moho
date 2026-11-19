@@ -19,6 +19,7 @@ import {
   sneedSameText,
   sourcePick,
   stoatSameText,
+  fluxerSameText,
   stripCodeBlocks,
   stripEmbeddedUrls,
   stripQuoteBlocks,
@@ -387,6 +388,19 @@ describe('what a picker section sends back', () => {
   it('leaves the other services as they were', () => {
     expect(sourcePick('sneedchat', { id: ':lol:' })).toBe(':lol:')
     expect(sourcePick('steam', { id: 'steam:steambored' })).toBe('[steam:emote:steambored]')
+  })
+})
+
+describe('Fluxer text', () => {
+  it('a custom emoji sent by id or typed by name is the picture token logged', () => {
+    const logged = 'yay [fluxer:emoji:party:file:///home/me/.cache/nobilis/fluxer-media/abc.webp]'
+    expect(fluxerSameText('yay <:party:1501320000000000000>', logged)).toBe(true)
+    expect(fluxerSameText('yay :party:', logged)).toBe(true)
+    expect(fluxerSameText('yay :other:', logged)).toBe(false)
+  })
+
+  it('a Fluxer custom emoji is picked in the form Fluxer parses', () => {
+    expect(sourcePick('fluxer', { id: '1501320000000000000', name: 'party' })).toBe('<:party:1501320000000000000>')
   })
 })
 

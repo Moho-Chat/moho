@@ -49,7 +49,7 @@ const ON_DISCORD_ONLY: { label: string; icon: string; why: string }[] = [
 ]
 
 /** The services this pane has a page for. */
-const JOINABLE = ['irc', 'matrix', 'discord', 'kick', 'sneedchat', 'steam', 'twitch', 'telegram', 'stoat', 'xmpp', 'signal']
+const JOINABLE = ['irc', 'matrix', 'discord', 'kick', 'sneedchat', 'steam', 'twitch', 'telegram', 'stoat', 'fluxer', 'xmpp', 'signal']
 
 /**
  * The "+" pane: every account down the left, and what can be added or joined
@@ -100,6 +100,7 @@ export function JoinPanel(): JSX.Element {
       case 'telegram':
         return <TelegramJoin account={account} />
       case 'stoat':
+      case 'fluxer':
         return <StoatJoin account={account} />
       case 'xmpp':
         return <XmppJoin account={account} />
@@ -486,7 +487,7 @@ function StoatJoin({ account }: { account: Account }): JSX.Element {
           help="Somebody who asks to be your friend waits as a tile in the server list, where you answer."
         >
           <ActionField
-            placeholder="Their name and number, like name#1234"
+            placeholder={account.service === 'fluxer' ? 'Their username' : 'Their name and number, like name#1234'}
             verb="Add friend"
             value={friend}
             onChange={setFriend}
@@ -526,7 +527,7 @@ function StoatJoin({ account }: { account: Account }): JSX.Element {
       </JoinSection>
 
       <JoinSection kind="join">
-        <JoinAction icon="login" title="Join a server" help="Closing a server from its menu leaves it, unless you own it.">
+        <JoinAction icon="login" title={account.service === 'fluxer' ? 'Join a community' : 'Join a server'} help="Closing one from its menu leaves it, unless you own it.">
           <ActionField placeholder="An invite link, or its code" verb="Join" onSubmit={(code) => void store.joinAndOpen(account.id, code)} />
         </JoinAction>
       </JoinSection>
@@ -1179,7 +1180,7 @@ function SneedchatRooms({ account }: { account: Account }): JSX.Element {
    * it. Until it answers, or if it cannot be read, the rooms this account
    * already has open are still shown, so they can always be closed.
    */
-  const [catalogue, setCatalogue] = useState<{ id: number; name: string }[]>([])
+  const [catalogue, setCatalogue] = useState<{ id: string; name: string }[]>([])
   const [asking, setAsking] = useState(true)
   const [error, setError] = useState('')
 
@@ -1187,13 +1188,13 @@ function SneedchatRooms({ account }: { account: Account }): JSX.Element {
     let live = true
     setAsking(true)
     void window.moho
-      .rpc<{ rooms: { id: number; name: string }[] }>('listSneedChatRooms', { accountId: account.id })
+      .rpc<{ rooms: { id: string; name: string }[] }>('listSneedChatRooms', { accountId: account.id })
       .then((r) => live && r.rooms?.length && setCatalogue(r.rooms))
       .catch((e: Error) => live && setError(e.message))
 
     const stop = window.moho.onEvent((frame) => {
       if (frame.event !== 'sneedchatRooms') return
-      const data = frame.data as { accountId: string; rooms: { id: number; name: string }[] }
+      const data = frame.data as { accountId: string; rooms: { id: string; name: string }[] }
       if (!live || data.accountId !== account.id || !data.rooms.length) return
       setCatalogue(data.rooms)
       setAsking(false)
@@ -1207,7 +1208,7 @@ function SneedchatRooms({ account }: { account: Account }): JSX.Element {
 
   const rooms = [...catalogue, ...enabled.filter((open) => !catalogue.some((r) => r.id === open.id))]
 
-  const toggle = (id: number, on: boolean): void => {
+  const toggle = (id: string, on: boolean): void => {
     const room = rooms.find((r) => r.id === id)
     if (on && !room) return
     const next = on

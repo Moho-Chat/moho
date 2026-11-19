@@ -20,6 +20,7 @@
 import {
   BaseKeyProvider,
   ConnectionState,
+  ExternalE2EEKeyProvider,
   Room,
   RoomEvent,
   Track,
@@ -86,6 +87,9 @@ export interface SfuHandlers {
  * the first, because a Matrix id has a colon in it already.
  */
 export function userFromIdentity(identity: string): string {
+  // Fluxer names a participant `user_<id>_<connection>`.
+  const fluxer = identity.match(/^user_(\d+)_/)
+  if (fluxer) return fluxer[1]
   const cut = identity.lastIndexOf(':')
   return cut > 0 ? identity.slice(0, cut) : identity
 }
@@ -98,9 +102,15 @@ export class SfuCall {
   /** This end's own capture, so the tile shows what is being sent. */
   local: MediaStream | null = null
 
-  constructor(handlers: SfuHandlers, encrypted: boolean) {
+  /** A room key the server handed out (Fluxer's encrypted call media), set once the room is joined. */
+  private sharedKey: string | null = null
+  private shared: ExternalE2EEKeyProvider | null = null
+
+  constructor(handlers: SfuHandlers, encrypted: boolean, sharedKey?: string | null) {
     this.handlers = handlers
     this.keys = encrypted ? new MatrixKeyProvider() : null
+    this.sharedKey = sharedKey || null
+    this.shared = this.sharedKey ? new ExternalE2EEKeyProvider() : null
     this.room = new Room({
       // Let LiveKit decide what to send as the window and the connection
       // change: it can see the packet loss and this cannot.
@@ -112,7 +122,9 @@ export class SfuCall {
       // transform touch them off the main thread.
       ...(this.keys
         ? { e2ee: { keyProvider: this.keys as unknown as BaseKeyProvider, worker: new E2EEWorker() } }
-        : {})
+        : this.shared
+          ? { e2ee: { keyProvider: this.shared, worker: new E2EEWorker() } }
+          : {})
     })
     const announce = (): void => this.handlers.onParticipants(this.people())
     this.room
@@ -159,6 +171,10 @@ export class SfuCall {
 
   /** Joins the media server and starts sending. */
   async join(url: string, token: string, video: boolean): Promise<void> {
+    if (this.shared && this.sharedKey) {
+      await this.shared.setKey(this.sharedKey)
+      await this.room.setE2EEEnabled(true)
+    }
     await this.room.connect(url, token)
     try {
       await this.room.localParticipant.setMicrophoneEnabled(true)

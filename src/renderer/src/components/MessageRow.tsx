@@ -1,3 +1,4 @@
+import { SneedchatInvite } from './SneedchatInvite'
 import { steamRoomIds } from '../lib/steamchat'
 import { isRoomEvent } from '../lib/searchmarks'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -15,7 +16,7 @@ import { isPlainEmoji } from '../lib/recents'
 import { KickEventCard, NotificationCard, isKickEvent } from './KickEventCard'
 import { InviteCard } from './InviteCard'
 import { COMMON_EMOJI, EmojiPicker, readRecent, type StickerEntry } from './EmojiPicker'
-import { isLocalIrcId, reactionLabel, reactorsSentence } from '../lib/reactions'
+import { isLocalIrcId, reactionLabel, reactorsSentence, sneedchatReactionOf } from '../lib/reactions'
 import { UploadMeter } from './UploadMeter'
 import { RichText } from '../lib/richtext'
 import { ReplyBody } from './ReplyBody'
@@ -394,6 +395,17 @@ function MessageRowBody({
   const openRoot = useChat((s) => s.openThread?.rootId)
   const [showBadgePictures] = usePref<boolean>('kick.showBadgePictures', true)
   const twitchModerator = useChat((s) => s.twitchRights[bufferId] === true)
+  const sneedchatModerator = useChat((s) => s.sneedchatPowers[bufferId]?.moderate === true)
+  const sneedchatMayReact = useChat((s) => s.sneedchatPowers[bufferId]?.react !== false)
+  const sneedchatReactions = useChat((s) => s.sneedchatReactions)
+  // What the account may do in a Sneedchat room, asked once per room: the menu offers a moderator's actions only
+  // to a moderator.
+  useEffect(() => {
+    if (service !== 'sneedchat') return
+    store.ensureSneedchatPowers(bufferId)
+    // The one-click reactions are the site's own, so they are wanted before any picker opens.
+    void store.ensureSneedchatReactions()
+  }, [service, bufferId, store])
   const twitchBlocker = useChat((s) => s.accounts.find((a) => bufferId.startsWith(`${a.id}|`))?.moderation === true)
   const original = useChat((s) => (replyId ? s.messagesByBuffer[bufferId]?.find((m) => m.id === replyId) : undefined))
   // What a reply quotes. Twitch sends the parent's words as plain text, with no word of which are emotes; where the
@@ -414,6 +426,10 @@ function MessageRowBody({
   }, [editing])
   const [revealed, setRevealed] = useState<Record<number, boolean>>({})
   const [pickerOpen, setPickerOpen] = useState(false)
+  // Kiwi Farms' reactions are read when somebody first goes to react.
+  useEffect(() => {
+    if (pickerOpen && service === 'sneedchat') void store.ensureSneedchatReactions()
+  }, [pickerOpen, service, store])
   /** Writing the reason for a report, before it is sent. */
   const [reporting, setReporting] = useState(false)
   /**
@@ -438,6 +454,7 @@ function MessageRowBody({
   const [sourceOpen, setSourceOpen] = useState(false)
   /** Choosing where to send this message on to. */
   const [forwarding, setForwarding] = useState(false)
+  const [inviting, setInviting] = useState(false)
   const reactButtonRef = useRef<HTMLButtonElement>(null)
 
   // All of this is the conversation's rather than the message's, and is read
@@ -456,15 +473,17 @@ function MessageRowBody({
   // Discord, Sneedchat and Matrix support editing and deleting your own
   // messages; IRC has no such concept.
   const canEditDelete =
-    !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'xmpp' || service === 'signal')
+    !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'xmpp' || service === 'signal')
   const beginEdit = (): void => {
     setDraft(message.body)
     setEditing(true)
   }
   // IRC only where the network carries the tag, and only on a message the
   // server gave an id - a reaction names its message by that id.
+  // Sneedchat where the room lets this account react (a guest or a muted member may not).
   const canReact =
-    service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'xmpp' || service === 'signal' ||
+    service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'xmpp' || service === 'signal' ||
+    (service === 'sneedchat' && sneedchatMayReact) ||
     (service === 'irc' && ircReactions && !isLocalIrcId(message.id))
   // Steam's stickers, asked for when the reaction picker opens: it reacts with them too.
   const [steamStickers, setSteamStickers] = useState<StickerEntry[]>([])
@@ -591,7 +610,7 @@ function MessageRowBody({
           isSneedchat,
           smilies: smilieIndex,
           channels,
-          markdownEscapes: service === 'discord',
+          markdownEscapes: service === 'discord' || service === 'fluxer',
           xmppStyling: service === 'xmpp',
           // Only IRC's own traffic is drawn with IRC's codes. Elsewhere they
           // are stripped, which is what the formatter does when not told.
@@ -722,7 +741,7 @@ function MessageRowBody({
     // rather than gated on a power level read here: the server decides, and
     // it refuses in words worth showing - hiding the action from somebody who
     // could have used it is the worse mistake.
-    ...((service === 'matrix' || service === 'discord' || service === 'telegram' || service === 'stoat') && !isSystem
+    ...((service === 'matrix' || service === 'discord' || service === 'telegram' || service === 'stoat' || service === 'fluxer') && !isSystem
       ? ([
           {
             label: pinned ? 'Unpin from this conversation' : 'Pin to this conversation',
@@ -731,10 +750,9 @@ function MessageRowBody({
           }
         ] as MenuEntry[])
       : []),
-    // Beside Reply because it is the same gesture aimed somewhere else, and
-    // only where the service has whispers at all.
+    // Kiwi Farms' side rooms: whoever wrote this, into a new one or one this account is in.
     ...(service === 'sneedchat' && !message.isOwn && message.from && !isSystem
-      ? ([{ label: `Whisper ${message.from}`, icon: 'lock', onClick: () => store.startWhisper(message.from) }] as MenuEntry[])
+      ? ([{ label: 'Invite to side room…', icon: 'group_add', onClick: () => setInviting(true) }] as MenuEntry[])
       : []),
     // From the message rather than from a member list, because the person you
     // want to send something to is usually the one who just said something.
@@ -805,6 +823,10 @@ function MessageRowBody({
     // own lines. Timing out is by the sender's login; removing a message is by its id.
     ...(twitchModerator && service === 'twitch' && !message.isOwn && !isSystem && message.from
       ? twitchModerationEntries(message, bufferId, store)
+      : []),
+    // A Sneedchat moderator's: mute or ban by the sender's name, in this room or across the chat, and undo either.
+    ...(sneedchatModerator && service === 'sneedchat' && !message.isOwn && !isSystem && message.from
+      ? sneedchatModerationEntries(message, bufferId, store)
       : []),
     // Telling whoever runs the homeserver. Beside the moderation entries and
     // deliberately not gated like them: those need power in the room and this
@@ -1437,7 +1459,7 @@ function MessageRowBody({
               {embed.description && (
                 <div className="rich-embed-desc small">
                   <RichText
-                    html={formatMessage(embed.description, { channels, markdownEscapes: service === 'discord' })}
+                    html={formatMessage(embed.description, { channels, markdownEscapes: service === 'discord' || service === 'fluxer' })}
                     ownMarkup
                     onOpenChannel={(id) => void store.selectBuffer(id, true)}
                   onOpenLink={(url) => store.followDeepLink(url)}
@@ -1450,7 +1472,7 @@ function MessageRowBody({
                     <div key={k} className="rich-embed-field">
                       <div className="rich-embed-field-name">{f.name}</div>
                       {/* Markdown on Discord, like the description above; plain text elsewhere. */}
-                      {service === 'discord' ? (
+                      {service === 'discord' || service === 'fluxer' ? (
                         <RichText
                           html={formatMessage(f.value, { channels, markdownEscapes: true })}
                           ownMarkup
@@ -1679,8 +1701,23 @@ function MessageRowBody({
         <div className="hover-toolbar">
           {/* Steam reacts with its own emoticons and stickers, so the
               one-click row of Unicode emoji is not offered there. */}
+          {/* Kiwi Farms takes only its own reactions: the first few of them, as the site's pictures. */}
+          {canReact &&
+            service === 'sneedchat' &&
+            sneedchatReactions.slice(0, 4).map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                className="toolbar-button"
+                title={`React ${r.name}`}
+                onClick={() => void store.toggleReaction(bufferId, message.id, `[emote:${r.id}:${r.name}]`, true)}
+              >
+                {r.url ? <img className="reaction-emoji" src={media(r.url)} alt={r.name} /> : r.name}
+              </button>
+            ))}
           {canReact &&
             service !== 'steam' &&
+            service !== 'sneedchat' &&
             quick.map((emoji) => (
               <button
                 key={emoji}
@@ -1741,12 +1778,13 @@ function MessageRowBody({
       {pickerOpen && (
         <EmojiPicker
           anchor={reactButtonRef.current}
-          customEmoji={bufferEmoji}
+          // Kiwi Farms reacts with its own short set and nothing else.
+          customEmoji={service === 'sneedchat' ? sneedchatReactions : bufferEmoji}
           accountId={store.accountFor(bufferId)?.id}
           // Steam reacts with what the account was given and nothing else: its
           // emoticons, and its stickers on their own tab.
           bufferId={service === 'steam' ? bufferId : undefined}
-          fixedSet={service === 'steam'}
+          fixedSet={service === 'steam' || service === 'sneedchat'}
           stickers={service === 'steam' ? steamStickers : undefined}
           onSticker={
             service === 'steam'
@@ -1765,6 +1803,13 @@ function MessageRowBody({
       )}
 
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={entries} onClose={close} />}
+      {inviting && (
+        <SneedchatInvite
+          accountId={bufferId.split('|')[0]}
+          person={{ id: message.senderId ?? '', name: message.from }}
+          onClose={() => setInviting(false)}
+        />
+      )}
       {forwarding && (
         <ForwardPicker
           bufferId={bufferId}
@@ -1870,7 +1915,7 @@ function ReactionPill({
 
   const ask = (): void => {
     const service = store.accountFor(bufferId)?.service
-    if (service !== 'discord' && service !== 'matrix' && service !== 'telegram') return
+    if (service !== 'discord' && service !== 'fluxer' && service !== 'matrix' && service !== 'telegram' && service !== 'sneedchat') return
     const key = `${bufferId}|${messageId}|${r.emoji}`
     const kept = reactorCache.get(key)
     if (kept && kept.count === r.count && Date.now() - kept.at < REACTORS_KEPT_MS) {
@@ -1930,7 +1975,10 @@ function ReactionEmoji({ emoji }: { emoji: string }): JSX.Element {
   const steam = steamTokenOf(emoji)
   if (steam) return <img className="reaction-emoji" src={steamPictureUrl(steam.kind, steam.name)} alt={steam.name} />
   // Stoat's, which the daemon holds as the picture's own token (see format.ts) so the pill is drawn with it.
-  const stoat = emoji.match(/^\[stoat:emoji:([A-Za-z0-9_]{1,32}):(file:\/\/[^\]\s]*\/stoat-media\/[A-Za-z0-9._-]+)\]$/)
+  // Kiwi Farms', held with the site's name for it and the picture the daemon cached.
+  const sneed = sneedchatReactionOf(emoji)
+  if (sneed) return sneed.path ? <img className="reaction-emoji" src={media(sneed.path)} alt={sneed.title || sneed.code} /> : <span>{sneed.title || sneed.code}</span>
+  const stoat = emoji.match(/^\[(?:stoat|fluxer):emoji:([A-Za-z0-9_]{1,32}):(file:\/\/[^\]\s]*\/(?:stoat|fluxer)-media\/[A-Za-z0-9._-]+)\]$/)
   if (stoat) return <img className="reaction-emoji" src={media(stoat[2])} alt={stoat[1]} />
   const custom = emoji.match(/^<?a?:?([A-Za-z0-9_~]{2,32}):(\d+)>?$/)
   if (!custom) return <span>{emoji}</span>
@@ -1949,6 +1997,18 @@ function twitchAct(
     .rpc('twitchModerate', { bufferId, action, login: message.from.toLowerCase(), userId: message.senderId, ...extra })
     .then(() => done && store.toast('info', done))
     .catch((e: Error) => store.toast('error', e.message))
+}
+
+/** A Sneedchat moderator's actions on whoever wrote a message: by their name, which the daemon knows them by. */
+function sneedchatModerationEntries(message: ChatMessage, bufferId: string, store: ReturnType<typeof useStore>): MenuEntry[] {
+  const who = message.from
+  return [
+    { label: `Mute ${who} for an hour`, icon: 'volume_off', onClick: () => void store.sneedchatModerate(bufferId, who, 'mute', 60) },
+    { label: `Mute ${who} for a day`, icon: 'volume_off', onClick: () => void store.sneedchatModerate(bufferId, who, 'mute', 24 * 60) },
+    { label: `Ban ${who} from this room`, icon: 'block', danger: true, onClick: () => void store.sneedchatModerate(bufferId, who, 'ban') },
+    { label: `Ban ${who} from the whole chat`, icon: 'block', danger: true, onClick: () => void store.sneedchatModerate(bufferId, who, 'ban', undefined, true) },
+    { label: `Lift ${who}'s mute or ban`, icon: 'check_circle', onClick: () => void store.sneedchatModerate(bufferId, who, 'lift') }
+  ]
 }
 
 function twitchModerationEntries(message: ChatMessage, bufferId: string, store: ReturnType<typeof useStore>): MenuEntry[] {

@@ -1,3 +1,4 @@
+import { SneedchatInvite } from './SneedchatInvite'
 import { activityLabel } from '../lib/activity'
 import { ActivityLine } from './ActivityLine'
 import { useEffect, useMemo, useState } from 'react'
@@ -69,7 +70,8 @@ function shortBadge(prefix: string): string {
     subscriber: 'SUB',
     founder: 'FDR',
     og: 'OG',
-    vip: 'VIP'
+    vip: 'VIP',
+    staff: 'STAFF'
   }
   return short[prefix] ?? prefix.slice(0, 3).toUpperCase()
 }
@@ -88,6 +90,25 @@ const XMPP_RANKS: Record<string, { group: string; order: number }> = {
   moderator: { group: 'Moderators', order: 2 },
   '': { group: 'Participants', order: 3 },
   visitor: { group: 'Muted', order: 4 }
+}
+
+/**
+ * A Sneedchat room's member list as the site lists it: a group per rank the
+ * chat names (Staff), in the order the daemon gives them, then everybody else
+ * under Online. Alphabetical within each.
+ */
+function sneedchatGroups(members: Member[]): { label: string; members: Member[] }[] {
+  const labels: Record<string, string> = { staff: 'Staff', moderator: 'Moderators' }
+  const order: string[] = []
+  for (const m of members) if (m.prefix && !order.includes(m.prefix)) order.push(m.prefix)
+  const byName = (a: Member, b: Member): number => a.nick.localeCompare(b.nick)
+  return [
+    ...order.map((rank) => ({
+      label: labels[rank] ?? rank.charAt(0).toUpperCase() + rank.slice(1),
+      members: members.filter((m) => m.prefix === rank).sort(byName)
+    })),
+    { label: 'Online', members: members.filter((m) => !m.prefix).sort(byName) }
+  ].filter((g) => g.members.length > 0)
 }
 
 /** An XMPP room's member list, one group per standing, alphabetical within each. */
@@ -171,6 +192,8 @@ export function NickList(): JSX.Element {
   const permissions = useChat((s) => s.matrixPermissions)
   const [blocked, toggleBlocked, isBlocked] = useIdSetPref('blockedNicks')
   const [searchActive, setSearchActive] = useState(false)
+  // Somebody being invited to a Kiwi Farms side room, from their name here.
+  const [inviting, setInviting] = useState<{ id: string; name: string } | null>(null)
   const [query, setQuery] = useState('')
 
   const members = (buffer && presenceByBuffer[buffer.id]) || []
@@ -205,9 +228,9 @@ export function NickList(): JSX.Element {
   const [discordPowers, setDiscordPowers] = useState<DiscordPowers | null>(null)
   useEffect(() => {
     setDiscordPowers(null)
-    if ((account?.service !== 'discord' && account?.service !== 'stoat' && account?.service !== 'xmpp') || !buffer) return
+    if ((account?.service !== 'discord' && account?.service !== 'stoat' && account?.service !== 'fluxer' && account?.service !== 'xmpp') || !buffer) return
     void window.moho
-      .rpc<DiscordPowers>(account.service === 'stoat' ? 'getStoatPowers' : account.service === 'xmpp' ? 'getXmppPowers' : 'getDiscordPowers', { bufferId: buffer.id })
+      .rpc<DiscordPowers>(account.service === 'stoat' || account.service === 'fluxer' ? 'getStoatPowers' : account.service === 'xmpp' ? 'getXmppPowers' : 'getDiscordPowers', { bufferId: buffer.id })
       .then(setDiscordPowers)
       .catch(() => {
         /* advisory only: no answer means no moderation entries */
@@ -239,7 +262,7 @@ export function NickList(): JSX.Element {
       ? ircPermissions(members, account.currentNick)
       : account?.service === 'kick'
         ? kickPermissions(members, account.currentNick)
-        : account?.service === 'discord' || account?.service === 'stoat' || account?.service === 'xmpp'
+        : account?.service === 'discord' || account?.service === 'stoat' || account?.service === 'fluxer' || account?.service === 'xmpp'
           ? discordPowers ?? {}
           : (buffer && permissions[buffer.id]) || {}
 
@@ -252,6 +275,8 @@ export function NickList(): JSX.Element {
     // would be one group of everybody. Standing is what tells them apart; the
     // dot on each face still says who is away.
     if (account?.service === 'xmpp' && buffer?.kind === 'channel') return xmppGroups(filtered)
+    // Sneedchat's own grouping, by the rank the chat gives each member.
+    if (account?.service === 'sneedchat') return sneedchatGroups(filtered)
 
     if (hasPresence) {
       const byPower = (a: Member, b: Member): number =>
@@ -284,6 +309,7 @@ export function NickList(): JSX.Element {
 
   return (
     <div className="nicklist">
+      {inviting && account && <SneedchatInvite accountId={account.id} person={inviting} onClose={() => setInviting(null)} />}
       <div className="nicklist-header">
         {searchActive ? (
           <input
@@ -333,7 +359,6 @@ export function NickList(): JSX.Element {
                 blockKey={`${buffer?.accountId}|${member.nick}`}
                 blocked={isBlocked(`${buffer?.accountId}|${member.nick}`)}
                 canOpenDm={hasDirectMessages(account?.service)}
-                canWhisper={account?.service === 'sneedchat'}
                 canSendFile={account?.service === 'irc'}
                 canCall={canCall && !!member.userId}
                 onRemoveFromGroup={
@@ -379,7 +404,7 @@ export function NickList(): JSX.Element {
                     : undefined
                 }
                 onUnfriend={
-                  account?.service === 'stoat' && member.relationship === 'Friend' && member.userId
+                  (account?.service === 'stoat' || account?.service === 'fluxer') && member.relationship === 'Friend' && member.userId
                     ? () => {
                         void window.moho
                           .rpc('answerStoatFriendRequest', { accountId: account.id, userId: member.userId, accept: false })
@@ -472,7 +497,7 @@ export function NickList(): JSX.Element {
                       .catch((e: Error) => store.toast('error', e.message))
                     return
                   }
-                  if (account.service === 'stoat') {
+                  if (account.service === 'stoat' || account.service === 'fluxer') {
                     if (action !== 'kick' && action !== 'ban' && action !== 'mute') return
                     void window.moho
                       .rpc('moderateStoatMember', { bufferId: buffer.id, userId: member.userId, action, minutes: 10 })
@@ -515,7 +540,7 @@ export function NickList(): JSX.Element {
                 onSetRole={(roleId, give) => {
                   if (!buffer) return
                   void window.moho
-                    .rpc(account?.service === 'stoat' ? 'setStoatMemberRole' : 'setDiscordMemberRole', {
+                    .rpc(account?.service === 'stoat' || account?.service === 'fluxer' ? 'setStoatMemberRole' : 'setDiscordMemberRole', {
                       bufferId: buffer.id,
                       userId: member.userId || member.nick,
                       roleId,
@@ -536,7 +561,6 @@ export function NickList(): JSX.Element {
                     .then((r) => store.selectBuffer(r.bufferId))
                     .catch((e: Error) => store.toast('error', `Couldn't call: ${e.message}`))
                 }}
-                onWhisper={() => store.startWhisper(member.nick)}
                 onProfile={
                   buffer ? (anchor) => store.showProfile(buffer.id, member.nick, member.userId, { anchor }) : undefined
                 }
@@ -552,6 +576,11 @@ export function NickList(): JSX.Element {
                 onSecretChat={
                   account?.service === 'telegram' && member.userId && !member.bot
                     ? () => void store.startTelegramSecretChat(account.id, member.userId ?? '')
+                    : undefined
+                }
+                onInvite={
+                  account?.service === 'sneedchat' && member.nick !== account.currentNick && member.nick !== account.displayName
+                    ? () => setInviting({ id: member.userId ?? '', name: member.nick })
                     : undefined
                 }
               />
@@ -587,8 +616,6 @@ interface MemberRowProps {
   blocked: boolean
   /** The protocol can start a conversation from a member list. */
   canOpenDm: boolean
-  /** Sneedchat has no conversations, but it does have private messages. */
-  canWhisper: boolean
   /** IRC carries a file directly between two people; nothing else here does. */
   canSendFile: boolean
   /**
@@ -619,7 +646,8 @@ interface MemberRowProps {
   onOpenDm: () => void
   /** Telegram only: ask this member for a secret chat. */
   onSecretChat?: () => void
-  onWhisper: () => void
+  /** Kiwi Farms only: invite this member to a side room. */
+  onInvite?: () => void
   onSendFile: () => void
   /** Only where the protocol supports it and the member is identifiable. */
   canCall: boolean
@@ -640,7 +668,6 @@ function MemberRow({
   blockKey,
   blocked,
   canOpenDm,
-  canWhisper,
   canSendFile,
   perms,
   service,
@@ -652,7 +679,7 @@ function MemberRow({
   onSetRole,
   onOpenDm,
   onSecretChat,
-  onWhisper,
+  onInvite,
   onSendFile,
   canCall,
   onCall,
@@ -681,7 +708,7 @@ function MemberRow({
     ...(canCall ? ([{ label: 'Call', icon: 'call', onClick: onCall }] as MenuEntry[]) : []),
     ...(canOpenDm ? ([{ label: 'Open DM', icon: 'chat', onClick: onOpenDm }] as MenuEntry[]) : []),
     ...(onSecretChat ? ([{ label: 'Secret chat', icon: 'lock', onClick: onSecretChat }] as MenuEntry[]) : []),
-    ...(canWhisper ? ([{ label: 'Whisper', icon: 'lock', onClick: onWhisper }] as MenuEntry[]) : []),
+    ...(onInvite ? ([{ label: 'Invite to side room…', icon: 'group_add', onClick: onInvite }] as MenuEntry[]) : []),
     ...(canSendFile ? ([{ label: 'Send a file', icon: 'upload_file', onClick: onSendFile }] as MenuEntry[]) : []),
     { separator: true },
     // Not hearing from them. This used to be a list in this window's own
@@ -749,7 +776,7 @@ function MemberRow({
     // Discord's roles, offered as entries rather than a submenu: a guild has
     // a handful worth giving by hand, and the rest are managed by bots and
     // were filtered out before they got here.
-    ...((service === 'discord' || service === 'stoat') && perms.canAssignRoles && (perms.roles?.length ?? 0) > 0
+    ...((service === 'discord' || service === 'stoat' || service === 'fluxer') && perms.canAssignRoles && (perms.roles?.length ?? 0) > 0
       ? ([
           { separator: true },
           ...(perms.roles ?? []).slice(0, 12).map((role) => ({

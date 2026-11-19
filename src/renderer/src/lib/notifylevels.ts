@@ -34,7 +34,7 @@ export function appliedLevelOf(buffer: Pick<WireBuffer, 'notify' | 'notifyApplie
  * mute kept in this window can only ever be stale.
  */
 export function heldOnAccount(accountId: string): boolean {
-  return ['matrix:', 'discord:', 'stoat:', 'steam:', 'telegram:'].some((prefix) => accountId.startsWith(prefix))
+  return ['matrix:', 'discord:', 'stoat:', 'fluxer:', 'steam:', 'telegram:'].some((prefix) => accountId.startsWith(prefix))
 }
 
 /**
