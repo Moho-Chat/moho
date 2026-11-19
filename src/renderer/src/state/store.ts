@@ -2850,7 +2850,7 @@ export class ChatStore {
     if (this.state.sneedchatReactions.length) return
     try {
       const list = await window.moho.rpc<{ id: string; name: string; url: string }[]>('listSneedchatReactions')
-      this.set({ sneedchatReactions: list.map((r) => ({ id: r.id, name: r.name, url: r.url }) as CustomEmoji) })
+      this.set({ sneedchatReactions: list.map((r) => ({ id: r.id, name: r.name, url: r.url, set: 'Kiwi Farms reactions' }) as CustomEmoji) })
     } catch {
       // An older daemon, or none read yet: the picker shows nothing to pick.
     }
@@ -5050,6 +5050,11 @@ export class ChatStore {
         this.set({ twitchPoints: { ...this.state.twitchPoints, [data.bufferId]: { points: data.points ?? null, name: data.name ?? null } } })
         break
 
+      case 'sneedchatReactions':
+        // The daemon has (again) read the site's reaction set: an empty answer from before is replaced.
+        this.set({ sneedchatReactions: [] })
+        void this.ensureSneedchatReactions()
+        break
       case 'sneedchatSmilies':
         // The chat revised its emoticons: read the table again.
         this.smiliesFetched = false
