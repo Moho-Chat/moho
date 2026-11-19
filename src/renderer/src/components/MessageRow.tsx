@@ -395,11 +395,15 @@ function MessageRowBody({
   const [showBadgePictures] = usePref<boolean>('kick.showBadgePictures', true)
   const twitchModerator = useChat((s) => s.twitchRights[bufferId] === true)
   const sneedchatModerator = useChat((s) => s.sneedchatPowers[bufferId]?.moderate === true)
+  const sneedchatMayReact = useChat((s) => s.sneedchatPowers[bufferId]?.react !== false)
   const sneedchatReactions = useChat((s) => s.sneedchatReactions)
   // What the account may do in a Sneedchat room, asked once per room: the menu offers a moderator's actions only
   // to a moderator.
   useEffect(() => {
-    if (service === 'sneedchat') store.ensureSneedchatPowers(bufferId)
+    if (service !== 'sneedchat') return
+    store.ensureSneedchatPowers(bufferId)
+    // The one-click reactions are the site's own, so they are wanted before any picker opens.
+    void store.ensureSneedchatReactions()
   }, [service, bufferId, store])
   const twitchBlocker = useChat((s) => s.accounts.find((a) => bufferId.startsWith(`${a.id}|`))?.moderation === true)
   const original = useChat((s) => (replyId ? s.messagesByBuffer[bufferId]?.find((m) => m.id === replyId) : undefined))
@@ -474,8 +478,10 @@ function MessageRowBody({
   }
   // IRC only where the network carries the tag, and only on a message the
   // server gave an id - a reaction names its message by that id.
+  // Sneedchat where the room lets this account react (a guest or a muted member may not).
   const canReact =
     service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'xmpp' || service === 'signal' ||
+    (service === 'sneedchat' && sneedchatMayReact) ||
     (service === 'irc' && ircReactions && !isLocalIrcId(message.id))
   // Steam's stickers, asked for when the reaction picker opens: it reacts with them too.
   const [steamStickers, setSteamStickers] = useState<StickerEntry[]>([])
@@ -1694,8 +1700,23 @@ function MessageRowBody({
         <div className="hover-toolbar">
           {/* Steam reacts with its own emoticons and stickers, so the
               one-click row of Unicode emoji is not offered there. */}
+          {/* Kiwi Farms takes only its own reactions: the first few of them, as the site's pictures. */}
+          {canReact &&
+            service === 'sneedchat' &&
+            sneedchatReactions.slice(0, 4).map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                className="toolbar-button"
+                title={`React ${r.name}`}
+                onClick={() => void store.toggleReaction(bufferId, message.id, `[emote:${r.id}:${r.name}]`, true)}
+              >
+                {r.url ? <img className="reaction-emoji" src={media(r.url)} alt={r.name} /> : r.name}
+              </button>
+            ))}
           {canReact &&
             service !== 'steam' &&
+            service !== 'sneedchat' &&
             quick.map((emoji) => (
               <button
                 key={emoji}
