@@ -19,6 +19,8 @@ Each section has two parts:
 
 ## [Unreleased]
 
+## [1.5.2]
+
 ### Major features
 
 - Sneedchat on Kiwi Farms' new Ephyra Chat (alpha): one connection for every room, replies, edits and deletes that say whether the chat took them, reactions from the site's own set with who reacted, whispers as private conversations, the site's emoticons, scrolling back through a room's history, room subtitles and a moderator's mutes and bans. The site's gate admits only a browser, so the daemon carries the connection on moho's own browser engine, run headless in the background.
@@ -26,7 +28,11 @@ Each section has two parts:
 
 ### Fixes, patches and changes
 
-- Where an account is added, Signal is marked alpha and dangerous, Sneedchat alpha and Fluxer beta
+- Where an account is added, Signal is marked alpha and dangerous, Sneedchat alpha and Fluxer beta ([moho `b2954b6`](https://github.com/Moho-Chat/moho/commit/b2954b6))
+- Sneedchat: the react button and the site's own one-click reactions on the hover bar, also right after moho starts ([moho `695d849`](https://github.com/Moho-Chat/moho/commit/695d849), [moho `bb1ad3c`](https://github.com/Moho-Chat/moho/commit/bb1ad3c), [moho `cb39c9b`](https://github.com/Moho-Chat/moho/commit/cb39c9b))
+- Sneedchat: rooms list Staff first, as the site does ([moho `4a435a8`](https://github.com/Moho-Chat/moho/commit/4a435a8))
+- Sneedchat: a side room with several people is a group chat with its member list, and closing one leaves it ([moho `ce509d1`](https://github.com/Moho-Chat/moho/commit/ce509d1), [moho `79f2d11`](https://github.com/Moho-Chat/moho/commit/79f2d11))
+- Sneedchat: "Invite to side room" on names, and "Invite someone" with a people search in side rooms, in place of whispers ([moho `7a817c3`](https://github.com/Moho-Chat/moho/commit/7a817c3), [moho `1559b84`](https://github.com/Moho-Chat/moho/commit/1559b84))
 
 ## [1.5.1]
 
