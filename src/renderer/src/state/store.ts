@@ -5050,11 +5050,16 @@ export class ChatStore {
         this.set({ twitchPoints: { ...this.state.twitchPoints, [data.bufferId]: { points: data.points ?? null, name: data.name ?? null } } })
         break
 
-      case 'sneedchatReactions':
-        // The daemon has (again) read the site's reaction set: an empty answer from before is replaced.
+      case 'sneedchatReactions': {
+        // A connection was admitted: the site's reactions and each room's permissions are read now, so what was
+        // asked before - an empty set, a room not joined yet - is asked again.
         this.set({ sneedchatReactions: [] })
         void this.ensureSneedchatReactions()
+        const rooms = [...this.sneedchatPowersAsked]
+        this.sneedchatPowersAsked.clear()
+        for (const bufferId of rooms) this.ensureSneedchatPowers(bufferId)
         break
+      }
       case 'sneedchatSmilies':
         // The chat revised its emoticons: read the table again.
         this.smiliesFetched = false
