@@ -34,7 +34,9 @@ stream's chat going past at forty lines a minute you're able to be part of the c
 | **Twitch** | ✅ | ✅ | - | - | - | - | - | ✅ |
 | **Sneedchat** | ✅ | ✅ | ✅ | ✅ | - | - | - | ✅ |
 | **Steam** | ✅ | ✅ | ✅ | ✅ | ✅ | - | - | ✅ |
-| **Telegram** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| **Telegram** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| **Signal** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Fluxer** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - | ✅ |
 | **Stoat** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - | ✅ |
 | **XMPP** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
@@ -42,7 +44,7 @@ stream's chat going past at forty lines a minute you're able to be part of the c
 
 IRC reactions are the IRCv3 `+draft/react` tag, offered only on networks that relay it.
 
-Telegram's ❌ are its calls and its secret chats. Discord's chat is not end-to-end encrypted, but its calls are. XMPP calls are refused on an account routed through Tor, since their media would go around it.
+Telegram's voice is its group voice chats and its encryption is its secret chats (one-to-one only); its one-to-one calls and video are not built. Signal calls are one-to-one; group calls are not built. Fluxer's one-to-one calls are refused. Discord's chat is not end-to-end encrypted, but its calls are. XMPP calls are refused on an account routed through Tor, since their media would go around it.
 
 Every protocol gets the same window, mentions inbox, search and per-account Tor or SOCKS5 routing.
 How much of each service's own feature set a protocol has is as far as its service lets a
