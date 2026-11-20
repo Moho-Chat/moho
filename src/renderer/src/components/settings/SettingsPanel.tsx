@@ -175,11 +175,10 @@ function UploadHostSetting({
   // Carried forward only where it can be honoured: postimg takes images and
   // nothing else, so it is never the answer for media.
   const legacyUsable = legacy === 'postimg' ? kind === 'images' : !!legacy
-  const fallback = legacyUsable
-    ? legacy
-    : kind === 'images' && service === 'sneedchat'
-      ? 'postimg'
-      : 'catbox'
+  // Sneedchat hosts files itself and takes any kind, so that is its default;
+  // the old single setting never knew about it and does not override it.
+  const fallback =
+    service === 'sneedchat' ? 'native' : legacyUsable ? legacy : 'catbox'
 
   const [host, setHost] = usePref<string>(`uploads.${service}.${kind}`, fallback)
   const [hosts, setHosts] = useState<UploadHost[]>([])
@@ -202,7 +201,9 @@ function UploadHostSetting({
       label={kind === 'images' ? 'Upload images to' : 'Upload other files to'}
       description={
         kind === 'images'
-          ? 'Pictures sent here are uploaded anonymously and the link is posted. A picture this host will not take - postimg.cc refuses avif, for instance - goes to the one below instead.'
+          ? service === 'sneedchat'
+            ? "Pictures are stored by the chat itself and shown as tiles. Choose another host to post a link instead - postimg.cc refuses avif, for instance, and such a picture goes to the host below."
+            : 'Pictures sent here are uploaded anonymously and the link is posted. A picture this host will not take - postimg.cc refuses avif, for instance - goes to the one below instead.'
           : 'Everything that is not a picture - video, archives, documents. Hosts that only take images are not offered.'
       }
       value={host}
