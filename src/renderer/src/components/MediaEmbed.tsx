@@ -334,6 +334,29 @@ export function MediaEmbed({
     )
   }
 
+  // A file the service is still converting. Its place is held at the size it
+  // will be - a video is the whole player, as on the site - so the row does not
+  // jump when it arrives, and it says what is happening.
+  if (attachment?.processing) {
+    const width = attachment.width ?? 560
+    const height = attachment.height ?? 315
+    return (
+      <span
+        className={classes('media-embed-wrap', 'media-processing', tile && 'tile')}
+        style={tile ? undefined : { aspectRatio: `${width} / ${height}`, maxWidth: width }}
+        role="status"
+      >
+        <span className="media-processing-label">
+          <svg className="upload-ring" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <circle className="upload-ring-track" cx="8" cy="8" r="6" fill="none" />
+            <circle className="upload-ring-arc" cx="8" cy="8" r="6" fill="none" />
+          </svg>
+          <span className="ellipsis">Processing: {attachment.filename || 'file'}</span>
+        </span>
+      </span>
+    )
+  }
+
   if (failed || !fullSrc) {
     // A cached preview outlives the signed link, so an expired attachment
     // still has something to show - click it to fetch the original again

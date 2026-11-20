@@ -167,11 +167,20 @@ function request(msg: Msg): Promise<Msg> {
         }
         req.setHeader('User-Agent', UA)
         const chunks: Buffer[] = []
+        // How far the body has gone, said as it goes: only for a request that
+        // asked, which is an upload somebody is watching.
+        let poll: ReturnType<typeof setInterval> | null = null
+        const stopPolling = (): void => {
+          if (poll) clearInterval(poll)
+          poll = null
+        }
         const timer = setTimeout(() => {
+          stopPolling()
           req.abort()
           resolve({ ok: false, error: 'timed out' })
         }, msg.timeoutMs || 60_000)
         const answer = (status: number, headers: Record<string, string | string[]>): void => {
+          stopPolling()
           const flat: [string, string][] = []
           for (const [k, v] of Object.entries(headers)) for (const one of Array.isArray(v) ? v : [v]) flat.push([k, one])
           resolve({ ok: true, status, headers: flat, body: Buffer.concat(chunks).toString('base64') })
@@ -196,10 +205,17 @@ function request(msg: Msg): Promise<Msg> {
         })
         req.on('error', (e) => {
           clearTimeout(timer)
+          stopPolling()
           resolve({ ok: false, error: e.message })
         })
         if (msg.body) req.write(Buffer.from(msg.body, 'base64'))
         req.end()
+        if (msg.progress) {
+          poll = setInterval(() => {
+            const p = req.getUploadProgress()
+            if (p.started) out({ event: 'upload', req: msg.id, current: p.current, total: p.total })
+          }, 250)
+        }
       })
   )
 }

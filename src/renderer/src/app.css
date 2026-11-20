@@ -1793,6 +1793,27 @@ button.video-tile {
   }
 }
 
+/* A file the service is still converting: its place, at its size, saying so. */
+.media-processing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px dashed var(--outline-strong);
+  border-radius: 6px;
+  background: var(--surface-raised, transparent);
+  color: var(--text-muted, inherit);
+}
+
+.media-processing-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 90%;
+  font-size: 12px;
+}
+
 .upload-elapsed {
   font-variant-numeric: tabular-nums;
   opacity: 0.75;
