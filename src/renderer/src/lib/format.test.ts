@@ -423,6 +423,12 @@ describe('Stoat text', () => {
     expect(forged).not.toContain('<img')
   })
 
+  it('draws a custom emoji from a Windows cache path too', () => {
+    const own = formatMessage('hi [stoat:emoji:party:file://C:\\Users\\me\\AppData\\Local\\nobilis\\stoat-media\\abc.png]')
+    expect(own).toContain('class="custom-emoji"')
+    expect(own).not.toContain('[stoat:emoji')
+  })
+
   it('is picked by name between colons', () => {
     expect(sourcePick('stoat', { id: '01ABC', name: 'party' })).toBe(':party:')
   })

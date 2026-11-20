@@ -1978,7 +1978,7 @@ function ReactionEmoji({ emoji }: { emoji: string }): JSX.Element {
   // Kiwi Farms', held with the site's name for it and the picture the daemon cached.
   const sneed = sneedchatReactionOf(emoji)
   if (sneed) return sneed.path ? <img className="reaction-emoji" src={media(sneed.path)} alt={sneed.title || sneed.code} /> : <span>{sneed.title || sneed.code}</span>
-  const stoat = emoji.match(/^\[(?:stoat|fluxer):emoji:([A-Za-z0-9_]{1,32}):(file:\/\/[^\]\s]*\/(?:stoat|fluxer)-media\/[A-Za-z0-9._-]+)\]$/)
+  const stoat = emoji.match(/^\[(?:stoat|fluxer):emoji:([A-Za-z0-9_]{1,32}):(file:\/\/[^\]\s]*[\\/](?:stoat|fluxer)-media[\\/][A-Za-z0-9._-]+)\]$/)
   if (stoat) return <img className="reaction-emoji" src={media(stoat[2])} alt={stoat[1]} />
   const custom = emoji.match(/^<?a?:?([A-Za-z0-9_~]{2,32}):(\d+)>?$/)
   if (!custom) return <span>{emoji}</span>

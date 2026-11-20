@@ -651,7 +651,7 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
 
   // Stoat's custom emoji, which the daemon writes as `[stoat:emoji:name:file://...]`: the picture is a file it has named in
   // its own cache (and fetches when this draws it), and only that folder is accepted, so a message cannot name another.
-  out = out.replace(/\[(?:stoat|fluxer):emoji:([A-Za-z0-9_]{1,32}):(file:\/\/[^\]\s]*\/(?:stoat|fluxer)-media\/[A-Za-z0-9._-]+)\]/g, (_m, name: string, src: string) =>
+  out = out.replace(/\[(?:stoat|fluxer):emoji:([A-Za-z0-9_]{1,32}):(file:\/\/[^\]\s]*[\\/](?:stoat|fluxer)-media[\\/][A-Za-z0-9._-]+)\]/g, (_m, name: string, src: string) =>
     stow(`<img src="${src}" class="custom-emoji" alt=":${name}:">`)
   )
 
