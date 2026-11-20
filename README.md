@@ -27,22 +27,30 @@ stream's chat going past at forty lines a minute you're able to be part of the c
 
 | Protocol | Chat | Direct messages | Pictures and files | Reactions | Voice calls | Video and screen sharing | End-to-end encryption | Tor or SOCKS5 |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **IRC** | ✅ | ✅ | ✅ | ✅ | - | - | - | ✅ |
+| **IRC** | ✅ | ✅ | ✅ | ✅* | - | - | - | ✅ |
 | **Matrix** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Discord** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - | ✅ |
+| **Discord** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | -* | ✅ |
 | **Kick** | ✅ | - | - | - | - | - | - | ✅ |
 | **Twitch** | ✅ | ✅ | - | - | - | - | - | ✅ |
-| **Sneedchat** | ✅ | ✅ | ✅ | ✅ | - | - | - | ✅ |
+| **Sneedchat** | ✅ | ✅* | ✅ | ✅* | - | - | - | ✅ |
 | **Steam** | ✅ | ✅ | ✅ | ✅ | ✅ | - | - | ✅ |
-| **Telegram** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| **Telegram** | ✅ | ✅ | ✅ | ✅ | ✅* | ❌* | ✅* | ✅ |
+| **Signal** | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | ✅ | ✅ |
+| **Fluxer** | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | - | ✅ |
 | **Stoat** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - | ✅ |
-| **XMPP** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **XMPP** | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | ✅ | ✅ |
 
 ✅ supported in moho  ·  ❌ the service has it and moho does not yet  ·  `-` the service has nothing of the kind
 
-IRC reactions are the IRCv3 `+draft/react` tag, offered only on networks that relay it.
+\* Caveats:
 
-Telegram's ❌ are its calls and its secret chats. Discord's chat is not end-to-end encrypted, but its calls are. XMPP calls are refused on an account routed through Tor, since their media would go around it.
+- **IRC reactions** are the IRCv3 `+draft/react` tag, offered only on networks that relay it, so they are not uniform across the ecosystem.
+- **Discord** chat is not end-to-end encrypted; its calls are.
+- **Sneedchat** direct messages are the site's side rooms, and reactions are the site's own set.
+- **Telegram** voice is its group voice chats, and encryption is its secret chats (one-to-one only). Its one-to-one calls and video are not built.
+- **Signal** calls are one-to-one; group calls are not built.
+- **Fluxer** voice and video are in a server's voice channels; its one-to-one calls are refused.
+- **XMPP** calls are refused on an account routed through Tor, since their media would go around it.
 
 Every protocol gets the same window, mentions inbox, search and per-account Tor or SOCKS5 routing.
 How much of each service's own feature set a protocol has is as far as its service lets a
