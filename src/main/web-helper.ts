@@ -251,9 +251,25 @@ async function handle(msg: Msg): Promise<void> {
   out({ id: msg.id, ...answer })
 }
 
+/**
+ * Where instructions arrive: the pipe nobilis holds on our stdin.
+ *
+ * Not `process.stdin` on Windows. There Electron's main process hands out a
+ * stdin that has already ended, though the pipe is open and nobilis is
+ * writing to it - so the helper read "the daemon has gone", quit half a second
+ * after saying it was ready, and every Sneedchat sign-in on Windows failed
+ * with "the web helper stopped before answering" or sat at "Connecting...".
+ * Reading descriptor 0 directly gets the pipe itself, and its end only when
+ * nobilis really closes it.
+ */
+function instructions(): NodeJS.ReadableStream {
+  if (process.platform !== 'win32') return process.stdin
+  return fs.createReadStream('', { fd: 0, autoClose: false })
+}
+
 app.whenReady().then(() => {
   UA = session.defaultSession.getUserAgent().replace(/ Electron\/\S+/, '').replace(/ moho\/\S+/, '')
-  const lines = readline.createInterface({ input: process.stdin })
+  const lines = readline.createInterface({ input: instructions() })
   lines.on('line', (line) => {
     let msg: Msg
     try {
