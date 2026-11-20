@@ -19,6 +19,14 @@ Each section has two parts:
 
 ## [Unreleased]
 
+## [1.5.3]
+
+### Fixes, patches and changes
+
+- Windows: the daemon starts again. 1.5.2's needed libstdc++-6.dll, which Windows does not have, so moho stayed "disconnected" and could not list sound devices ([moho `44c2bb0`](https://github.com/Moho-Chat/moho/commit/44c2bb0))
+- Sneedchat: an account is added by signing in with a browser alone; the username, password and TOTP fields could no longer get past the forum's CAPTCHA ([moho `77475ae`](https://github.com/Moho-Chat/moho/commit/77475ae), [nobilis `c041cd7`](https://github.com/Moho-Chat/nobilis/commit/c041cd7))
+- Removed Rust crate base32 0.5.1 ([nobilis `c041cd7`](https://github.com/Moho-Chat/nobilis/commit/c041cd7))
+
 ## [1.5.2]
 
 ### Major features
