@@ -19,6 +19,10 @@ Each section has two parts:
 
 ## [Unreleased]
 
+### Fixes, patches and changes
+
+- Sneedchat: the moderator entries in a right-click menu are shown only to somebody who can moderate; the site added permission positions that every member has, and they were read as moderation ([nobilis `34b99bb`](https://github.com/Moho-Chat/nobilis/commit/34b99bb))
+
 ## [1.5.5]
 
 ### Fixes, patches and changes
