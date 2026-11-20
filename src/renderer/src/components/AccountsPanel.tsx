@@ -3252,73 +3252,12 @@ function SneedChatBrowserLogin({ accountId, useTor }: { accountId?: string; useT
  * it looks like the way in. The browser window is the way in, and what it
  * brings back names the account as well as opening it.
  */
-/**
- * Signing in to the forum with an account, the ordinary way.
- *
- * This was taken out when the site put a CAPTCHA on its login form, because a
- * form that cannot work is worse than no form - it looks like the way in. moho
- * answers that CAPTCHA now (a proof of work, not a picture of a bus - see
- * nobilis/src/backend/sneedchat/captcha.rs), so the way in is a way in again
- * and this is back.
- *
- * It connects over the open internet, or through Tor if the switch is on,
- * and has two challenges to grind through before the password is even
- * offered - the site's gate, then the form's - so it can take anywhere from a
- * few seconds to over a minute, which is why it reports progress rather than
- * just sitting there.
- */
 function SneedChatForm(): JSX.Element {
-  const store = useStore()
-  const status = useChat((s) => s.sneedChatLoginStatus)
   const [useTor, setUseTor] = useState(false)
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [totpSecret, setTotpSecret] = useState('')
 
   return (
     <div className="add-form">
-      <div className="field-row">
-        <label className="field">
-          <span className="small muted">Username</span>
-          <input className="text-field" value={username} onChange={(e) => setUsername(e.target.value)} />
-        </label>
-        <label className="field">
-          <span className="small muted">Password</span>
-          <input
-            className="text-field"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
-      </div>
-      <label className="field">
-        <span className="small muted">TOTP secret (optional, if 2FA is on)</span>
-        <input className="text-field" value={totpSecret} onChange={(e) => setTotpSecret(e.target.value)} />
-      </label>
       <TorSwitch service="sneedchat" on={useTor} onChange={setUseTor} />
-      <button
-        type="button"
-        className="button"
-        disabled={!username || !password}
-        onClick={() =>
-          void window.moho
-            .rpc('addSneedChatAccount', {
-              username,
-              password,
-              useTor,
-              ...(totpSecret ? { totpSecret } : {})
-            })
-            .then(() => store.setSneedChatLoginStatus(useTor ? 'Bootstrapping Tor…' : 'Connecting…'))
-            .catch((e: Error) => store.toast('error', e.message))
-        }
-      >
-        Connect
-      </button>
-      {status && <p className="small muted">{status}</p>}
-
-      {/* Second because it is the fallback rather than the way in. */}
-      <p className="small muted account-alternative">Or, if signing in here will not go through:</p>
       <SneedChatBrowserLogin useTor={useTor} />
     </div>
   )
