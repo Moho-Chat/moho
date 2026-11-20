@@ -46,8 +46,58 @@ let UA = ''
 type Cookie = { name: string; value: string; path?: string; domain?: string; httpOnly?: boolean }
 type Msg = Record<string, any>
 
-const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'moho-web-helper-'))
+const PROFILE_PREFIX = 'moho-web-helper-'
+const OWNER_FILE = 'owner.pid'
+const profile = fs.mkdtempSync(path.join(os.tmpdir(), PROFILE_PREFIX))
+fs.writeFileSync(path.join(profile, OWNER_FILE), String(process.pid))
 app.setPath('userData', profile)
+sweepOrphanedProfiles()
+
+/**
+ * Removes profiles that earlier helpers left behind.
+ *
+ * Each helper deletes its own on the way out, and on Windows that fails: the
+ * GPU, network and renderer processes still hold files in it at that moment,
+ * and they outlive the code that is deleting. One folder stayed in %TEMP% per
+ * helper started. So the next helper clears them instead, once their owners
+ * are gone. A folder whose owner is still running belongs to another daemon's
+ * helper (a second moho, a test window) and is left alone; one from before
+ * owners were written down is cleared once it is a day old.
+ */
+function sweepOrphanedProfiles(): void {
+  const tmp = os.tmpdir()
+  let names: string[]
+  try {
+    names = fs.readdirSync(tmp).filter((n) => n.startsWith(PROFILE_PREFIX))
+  } catch {
+    return
+  }
+  for (const name of names) {
+    const dir = path.join(tmp, name)
+    if (dir === profile || !orphaned(dir)) continue
+    fs.rm(dir, { recursive: true, force: true, maxRetries: 2 }, () => {})
+  }
+}
+
+function orphaned(dir: string): boolean {
+  try {
+    const pid = Number(fs.readFileSync(path.join(dir, OWNER_FILE), 'utf8'))
+    if (!Number.isInteger(pid) || pid <= 0) return true
+    try {
+      process.kill(pid, 0)
+      return false
+    } catch (e) {
+      // EPERM: alive, and somebody else's.
+      return (e as NodeJS.ErrnoException).code === 'ESRCH'
+    }
+  } catch {
+    try {
+      return Date.now() - fs.statSync(dir).mtimeMs > 24 * 60 * 60 * 1000
+    } catch {
+      return false
+    }
+  }
+}
 app.disableHardwareAcceleration()
 app.on('window-all-closed', () => {
   // A helper with no page open is still a helper.
