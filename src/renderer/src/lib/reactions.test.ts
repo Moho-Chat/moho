@@ -9,6 +9,16 @@ describe('reactionLabel', () => {
   it('names a Stoat emoji from its picture token', () => {
     expect(reactionLabel('[stoat:emoji:party:file:///home/me/.cache/nobilis/stoat-media/abc.png]')).toBe(':party:')
   })
+  it('reads a Windows path in a picture token, backslashes and all', () => {
+    expect(reactionLabel('[stoat:emoji:party:file://C:\\Users\\me\\AppData\\Local\\nobilis\\stoat-media\\abc.png]')).toBe(':party:')
+    const sneed = '[sneedchat:reaction:reaction_39:Christian Content:file://C:\\Users\\me\\AppData\\Local\\nobilis\\sneedchat-avatars\\reaction-reaction_39.png#1795154362]'
+    expect(sneedchatReactionOf(sneed)).toEqual({
+      code: 'reaction_39',
+      title: 'Christian Content',
+      path: 'file://C:\\Users\\me\\AppData\\Local\\nobilis\\sneedchat-avatars\\reaction-reaction_39.png#1795154362'
+    })
+    expect(reactionLabel(sneed)).toBe('Christian Content')
+  })
   it('looks a Unicode one up, and shows it as itself when there is no name', () => {
     const names = new Map([['🔥', 'fire']])
     expect(reactionLabel('🔥', names)).toBe(':fire:')

@@ -14,7 +14,7 @@ import { steamTokenOf } from './format'
  * cached file (empty while it has not been fetched).
  */
 export function sneedchatReactionOf(emoji: string): { code: string; title: string; path: string } | null {
-  const m = emoji.match(/^\[sneedchat:reaction:([A-Za-z0-9_-]{1,64}):([A-Za-z0-9 ]*):((?:file:\/\/[^\]\s]*\/sneedchat-avatars\/[A-Za-z0-9._-]+(?:#\d+)?)?)\]$/)
+  const m = emoji.match(/^\[sneedchat:reaction:([A-Za-z0-9_-]{1,64}):([A-Za-z0-9 ]*):((?:file:\/\/[^\]\s]*[\\/]sneedchat-avatars[\\/][A-Za-z0-9._-]+(?:#\d+)?)?)\]$/)
   return m ? { code: m[1], title: m[2], path: m[3] } : null
 }
 

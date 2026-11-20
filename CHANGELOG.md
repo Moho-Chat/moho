@@ -19,6 +19,16 @@ Each section has two parts:
 
 ## [Unreleased]
 
+## [1.5.4]
+
+### Fixes, patches and changes
+
+- Windows: Sneedchat connects. The web helper that carries it quit half a second after starting, so sign-in failed with "the web helper stopped before answering" or sat at "Connecting..." ([moho `32985f6`](https://github.com/Moho-Chat/moho/commit/32985f6))
+- Windows: Kiwi Farms reactions, and Stoat and Fluxer custom emoji, are drawn as their pictures rather than shown as raw markers ([moho `3ed12d1`](https://github.com/Moho-Chat/moho/commit/3ed12d1))
+- Sneedchat: no false "the chat is down" while moho is still starting ([nobilis `a28c6d2`](https://github.com/Moho-Chat/nobilis/commit/a28c6d2))
+- Sneedchat: avatars and attachments the site's gate answered with a page instead of a picture are fetched again rather than kept broken ([nobilis `82fdcf1`](https://github.com/Moho-Chat/nobilis/commit/82fdcf1))
+- The web helper clears the temporary folders earlier helpers could not remove on Windows ([moho `42e2e36`](https://github.com/Moho-Chat/moho/commit/42e2e36))
+
 ## [1.5.3]
 
 ### Fixes, patches and changes
