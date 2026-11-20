@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 /**
  * What a message's attachment is doing, while it is doing it.
@@ -39,8 +39,20 @@ export function UploadMeter({
     return () => clearInterval(t)
   }, [])
 
+  // How fast the bytes are going: over the last few seconds rather than since
+  // the start, so it follows the connection instead of averaging it away.
+  const samples = useRef<{ at: number; sent: number }[]>([])
+  useEffect(() => {
+    if (sent === undefined) return
+    const list = samples.current
+    const at = Date.now()
+    if (list.length && sent < list[list.length - 1].sent) list.length = 0
+    list.push({ at, sent })
+    while (list.length > 2 && at - list[0].at > SPEED_WINDOW_MS) list.shift()
+  }, [sent])
   const seconds = Math.max(0, Math.floor((now - since) / 1000))
-  const where = host || 'the image host'
+  const speed = uploadSpeed(samples.current)
+  const where = host === 'native' ? 'the chat' : host || 'the image host'
   const noun = files && files > 1 ? `${files} files` : ''
   // Counted: how far through, in the one unit people read at a glance.
   const counted = phase === 'sending' && !!total && sent !== undefined
@@ -50,7 +62,7 @@ export function UploadMeter({
       ? `Preparing the ${noun || 'file'}…`
       : phase === 'sending'
         ? counted
-          ? `Uploading${noun ? ` ${noun}` : ''} to ${where} - ${Math.floor(fraction * 100)}% (${formatSize(sent!)} of ${formatSize(total!)})`
+          ? `Uploading${noun ? ` ${noun}` : ''} to ${where} - ${Math.floor(fraction * 100)}% (${formatSize(sent!)} of ${formatSize(total!)})${speed ? ` · ${formatSize(speed)}/s` : ''}`
           : `Uploading${noun ? ` ${noun}` : bytes ? ` ${formatSize(bytes)}` : ''} to ${where}…`
         : `Waiting for ${where}…`
   const CIRCUMFERENCE = 2 * Math.PI * 6
@@ -74,6 +86,19 @@ export function UploadMeter({
       {seconds >= 3 && <span className="upload-elapsed">{seconds}s</span>}
     </span>
   )
+}
+
+/** The span the speed is read over. */
+const SPEED_WINDOW_MS = 4000
+
+/** Bytes per second over the samples held, or null until there are two that differ in time. */
+export function uploadSpeed(samples: { at: number; sent: number }[]): number | null {
+  if (samples.length < 2) return null
+  const first = samples[0]
+  const last = samples[samples.length - 1]
+  const seconds = (last.at - first.at) / 1000
+  if (seconds <= 0 || last.sent <= first.sent) return null
+  return (last.sent - first.sent) / seconds
 }
 
 /** Sizes the way a person says them, not the way a disk does. */

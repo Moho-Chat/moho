@@ -671,6 +671,12 @@ export interface Attachment {
    */
   voice?: boolean
   /**
+   * The service is still converting the file: nothing to show yet, but the row
+   * keeps its place (`width` x `height`, as the service will draw it) and says
+   * so. Replaced by the finished attachment when it arrives.
+   */
+  processing?: boolean
+  /**
    * A GIF that was linked, to be played like one - silent, looping, without a
    * player's controls. Only ever set by the window itself, from an embed.
    */

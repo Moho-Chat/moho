@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { UploadMeter } from './UploadMeter'
+import { UploadMeter, uploadSpeed } from './UploadMeter'
 
 const draw = (props: Partial<Parameters<typeof UploadMeter>[0]>): string =>
   renderToStaticMarkup(
@@ -35,5 +35,19 @@ describe('the upload meter', () => {
     const html = draw({ phase: 'waiting', sent: 4, total: 4 })
     expect(html).toContain('Waiting for Discord')
     expect(html).not.toContain('counted')
+  })
+})
+
+describe('upload speed', () => {
+  it('is bytes over the time they took, and nothing until there is a span to read', () => {
+    expect(uploadSpeed([])).toBeNull()
+    expect(uploadSpeed([{ at: 1000, sent: 0 }])).toBeNull()
+    expect(uploadSpeed([{ at: 1000, sent: 0 }, { at: 3000, sent: 2_000_000 }])).toBe(1_000_000)
+    // Nothing moved: no speed rather than zero.
+    expect(uploadSpeed([{ at: 1000, sent: 5 }, { at: 2000, sent: 5 }])).toBeNull()
+  })
+
+  it('names the chat\'s own hosting as the chat', () => {
+    expect(draw({ host: 'native', bytes: 1024 })).toContain('to the chat')
   })
 })

@@ -1079,8 +1079,8 @@ async function hostAccepts(hostId: string, path: string, service: string): Promi
  * Where this file should go, for this service.
  *
  * Chosen by service and by whether the file is a picture, because the answer
- * differs on both counts: postimg.cc is the convention on Sneedchat and
- * meaningless on IRC, and it takes images and nothing else. Read at send
+ * differs on both counts: Sneedchat hosts files itself (`native`), which means
+ * nothing on IRC, and postimg.cc takes images and nothing else. Read at send
  * time, since it is a preference somebody may change between one message and
  * the next.
  *
@@ -1102,19 +1102,22 @@ async function uploadHost(service: string | undefined, attachmentPath: string): 
     // postimg takes images and nothing else, so a stored choice of it is
     // carried forward for pictures and not for anything else.
     const legacyUsable = legacy === 'postimg' ? kind === 'images' : !!legacy
-    const fallback = kind === 'images' && perService === 'sneedchat' ? 'postimg' : 'catbox'
+    // Sneedchat's own hosting takes pictures and everything else, so it is
+    // the answer for both kinds until somebody chooses otherwise; the old
+    // single setting predates it and does not speak for it.
+    const fallback = perService === 'sneedchat' ? 'native' : 'catbox'
     const chosen =
       (prefs[`uploads.${perService}.${kind}`] as string | undefined) ||
-      (legacyUsable ? legacy : undefined) ||
+      (perService === 'sneedchat' ? undefined : legacyUsable ? legacy : undefined) ||
       fallback
 
     if (await hostAccepts(chosen, attachmentPath, perService)) return chosen
 
     const other = prefs[`uploads.${perService}.media`] as string | undefined
     if (other && other !== chosen && (await hostAccepts(other, attachmentPath, perService))) return other
-    return 'catbox'
+    return perService === 'sneedchat' ? 'native' : 'catbox'
   } catch {
-    return 'catbox'
+    return perService === 'sneedchat' ? 'native' : 'catbox'
   }
 }
 

@@ -19,6 +19,15 @@ Each section has two parts:
 
 ## [Unreleased]
 
+## [1.5.5]
+
+### Fixes, patches and changes
+
+- Sneedchat: attachments go to the chat's own file hosting by default, and the pictures, video and audio it hosts are fetched and shown in the room ([nobilis `7ac3591`](https://github.com/Moho-Chat/nobilis/commit/7ac3591), [moho `6a28a40`](https://github.com/Moho-Chat/moho/commit/6a28a40))
+- Sneedchat: a file the chat is still converting holds its place in a box of its final size, marked as processing, and is attached when it is ready ([nobilis `c1e142a`](https://github.com/Moho-Chat/nobilis/commit/c1e142a), [nobilis `03da0d7`](https://github.com/Moho-Chat/nobilis/commit/03da0d7))
+- Sneedchat: in a whisper or group chat, where the site refuses uploads, an attachment goes to a shared host instead of failing ([nobilis `8f7884c`](https://github.com/Moho-Chat/nobilis/commit/8f7884c), [moho `e27b635`](https://github.com/Moho-Chat/moho/commit/e27b635))
+- Uploads to the chat show a percentage and a speed, and a large file is no longer cut off after a minute ([nobilis `03da0d7`](https://github.com/Moho-Chat/nobilis/commit/03da0d7), [moho `ff858d9`](https://github.com/Moho-Chat/moho/commit/ff858d9))
+
 ## [1.5.4]
 
 ### Fixes, patches and changes
