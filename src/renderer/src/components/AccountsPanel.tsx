@@ -66,7 +66,7 @@ const SERVICE_BLURB: Record<AddableService, string> = {
  */
 const SERVICE_STAGE: Partial<Record<AddableService, { words: string; tone: 'red' | 'green' }>> = {
   signal: { words: '(Alpha) (DANGEROUS)', tone: 'red' },
-  sneedchat: { words: '(Alpha)', tone: 'red' },
+  sneedchat: { words: '(Beta)', tone: 'green' },
   fluxer: { words: '(Beta)', tone: 'green' }
 }
 
