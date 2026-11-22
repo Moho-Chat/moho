@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
 import { useEscapeLayer } from '../lib/layers'
+import { copyPictureEntry, pictureUnderMenu } from '../lib/copyimage'
+import { useStore } from '../state/hooks'
 
 export interface MenuItem {
   label: string
@@ -63,7 +65,16 @@ interface Props {
  * or clipping ancestor, then nudged back inside the viewport once its real
  * size is known.
  */
-export function ContextMenu({ x, y, entries, above, onClose }: Props): JSX.Element {
+export function ContextMenu({ x, y, entries: given, above, onClose }: Props): JSX.Element {
+  const store = useStore()
+  // A menu opened over a picture can copy it, whatever else the menu is for.
+  // Decided once, as the menu opens: the click that opened it is the one
+  // that says which picture it was.
+  const [picture] = useState(pictureUnderMenu)
+  const entries: MenuEntry[] =
+    picture && !given.some((e) => 'label' in e && e.label === 'Copy image')
+      ? [...given, ...(given.length > 0 ? [{ separator: true } as MenuEntry] : []), copyPictureEntry(picture, (m) => store.toast(/^Couldn't/.test(m) ? 'error' : 'info', m))]
+      : given
   const anyIcon = entries.some((e) => 'icon' in e && !!e.icon)
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ x, y })
