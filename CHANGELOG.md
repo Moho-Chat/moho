@@ -19,6 +19,15 @@ Each section has two parts:
 
 ## [Unreleased]
 
+## [1.5.6]
+
+### Fixes, patches and changes
+
+- Sneedchat: a video uploaded to the chat no longer plays for a few seconds and then falls back to a plain link; the window now answers a player's range requests ([moho `ffcc00d`](https://github.com/Moho-Chat/moho/commit/ffcc00d))
+- Sneedchat: an upload is tried even when the chat's uploads bit says away, and a failed send is logged with its reason ([nobilis `f5930cc`](https://github.com/Moho-Chat/nobilis/commit/f5930cc), [nobilis `55ebc64`](https://github.com/Moho-Chat/nobilis/commit/55ebc64))
+- Add Account: Sneedchat is marked Beta, in green ([moho `6a454e5`](https://github.com/Moho-Chat/moho/commit/6a454e5))
+- Sneedchat: the moderator entries in a right-click menu are shown only to somebody who can moderate; the site added permission positions that every member has, and they were read as moderation ([nobilis `34b99bb`](https://github.com/Moho-Chat/nobilis/commit/34b99bb))
+
 ## [1.5.5]
 
 ### Fixes, patches and changes
