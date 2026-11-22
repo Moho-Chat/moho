@@ -19,6 +19,8 @@ Each section has two parts:
 
 ## [Unreleased]
 
+## [1.5.7]
+
 ### Fixes, patches and changes
 
 - IRC and XMPP: a picture or video hosted by the Kiwi Farms chat, linked in a message, is shown as the media it is, fetched through a signed-in Sneedchat account (the chat's gate turns away anything else); with no Sneedchat account connected it stays a link ([nobilis `7a8a957`](https://github.com/Moho-Chat/nobilis/commit/7a8a957))
