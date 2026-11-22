@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEscapeLayer } from '../lib/layers'
 import { createPortal } from 'react-dom'
 import { Icon, IconButton } from './Icon'
+import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { galleryAround, stepIndex } from '../lib/gallery'
 import { actualSize, clampView, FIT, wheelFactor, zoomAt, type View } from '../lib/zoompan'
 
@@ -207,10 +208,33 @@ export function Lightbox({ source: opened, anchor = null, onClose }: Props): JSX
 
   const zoomed = view.scale > 1
 
+  const { menu, open: openMenu, close: closeMenu } = useContextMenu()
+  const menuEntries: MenuEntry[] =
+    source.once || source.kind !== 'image'
+      ? []
+      : [
+          { label: 'Copy image', icon: 'content_copy', onClick: copyImage },
+          { label: 'Save image', icon: 'download', onClick: download },
+          { label: 'Open outside moho', icon: 'open_in_new', onClick: openExternal }
+        ]
+
   return createPortal(
-    // Clicking the backdrop closes; the media and toolbar stop that
-    // themselves, so a click that lands on either is never a dismissal.
-    <div className="lightbox-backdrop" onMouseDown={onClose}>
+    <>
+      {/* Clicking the backdrop closes; the media and toolbar stop that
+          themselves, so a click that lands on either is never a dismissal. */}
+      <div
+        className="lightbox-backdrop"
+        onMouseDown={onClose}
+        // A portal's events travel up the React tree, so without this a right
+        // click here would open the menu of the message the picture came from.
+        onContextMenu={(e) => {
+          if (menuEntries.length > 0 && e.target instanceof HTMLImageElement && e.target.classList.contains('lightbox-media')) openMenu(e)
+          else {
+            e.preventDefault()
+            e.stopPropagation()
+          }
+        }}
+      >
       <div className="lightbox-bar" onMouseDown={(e) => e.stopPropagation()}>
         <span className="lightbox-title ellipsis">
           {source.from && <strong>{source.from}</strong>}
@@ -348,7 +372,10 @@ export function Lightbox({ source: opened, anchor = null, onClose }: Props): JSX
           </button>
         </>
       )}
-    </div>,
+      </div>
+      {/* Beside the backdrop, not inside it, or pressing the menu would count as a click outside. */}
+      {menu && menuEntries.length > 0 && <ContextMenu x={menu.x} y={menu.y} entries={menuEntries} onClose={closeMenu} />}
+    </>,
     document.body
   )
 }
