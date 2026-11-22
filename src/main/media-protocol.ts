@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { Readable } from 'node:stream'
 import os from 'node:os'
 import path from 'node:path'
 import { net, protocol } from 'electron'
@@ -333,6 +334,27 @@ export function installMediaHandler(): void {
     // limited to the roots above.
     const headers = new Headers(response.headers)
     headers.set('Access-Control-Allow-Origin', '*')
-    return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
+    headers.set('Accept-Ranges', 'bytes')
+    // A <video> asks for the file in pieces and seeks by asking for another.
+    // A file: fetch ignores Range and says nothing of the length, so the
+    // answer was always the whole file as a 200, which plays what is buffered
+    // and then fails. Ranges are answered here.
+    const size = fs.statSync(filePath).size
+    headers.set('Content-Length', String(size))
+    const m = /^bytes=(\d*)-(\d*)$/.exec(request.headers.get('range') ?? '')
+    if (m && (m[1] || m[2])) {
+      const start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]))
+      let end = m[1] && m[2] ? Number(m[2]) : size - 1
+      end = Math.min(end, size - 1)
+      if (start >= size || start > end) {
+        headers.set('Content-Range', `bytes */${size}`)
+        return new Response(null, { status: 416, headers })
+      }
+      headers.set('Content-Range', `bytes ${start}-${end}/${size}`)
+      headers.set('Content-Length', String(end - start + 1))
+      const body = Readable.toWeb(fs.createReadStream(filePath, { start, end })) as unknown as ReadableStream
+      return new Response(body, { status: 206, headers })
+    }
+    return new Response(response.body, { status: 200, headers })
   })
 }
