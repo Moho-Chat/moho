@@ -571,6 +571,14 @@ body.resizing-column {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
+  /* The stack spans the log but its cards do not: the empty width beside a
+     card must let a click through to what is under it - the pinned banner's
+     close button sits exactly there. */
+  pointer-events: none;
+}
+
+.poll-stack > * {
+  pointer-events: auto;
 }
 
 /* Rows in the two history panels: the question, and how it went. */
