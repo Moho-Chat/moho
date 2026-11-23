@@ -759,7 +759,8 @@ export interface ChatState {
    */
   discordCameras: Record<string, true>
   /** The stream being watched, if any. One at a time, deliberately. */
-  discordWatching: { accountId: string; streamKey: string; userId: string; nick: string } | null
+  /** Go Live streams currently being watched, keyed by `accountId|userId`. */
+  discordWatching: Record<string, { accountId: string; streamKey: string; userId: string; nick: string }>
   /** Who is in each Stoat conversation's call, by buffer, as the daemon last said. */
   stoatVoice: Record<string, StoatVoiceMember[]>
   activeCall: {
@@ -949,7 +950,7 @@ const INITIAL: ChatState = {
   discordCamera: null,
   discordStreams: {},
   discordCameras: {},
-  discordWatching: null,
+  discordWatching: {},
   ignoredByAccount: {},
   matrixWidgets: {},
   matrixInvites: {},
@@ -2601,11 +2602,31 @@ export class ChatStore {
     return known ?? { accountId: '', bufferId, channelId: '', ringing: false }
   }
 
+  /**
+   * Brings a guild's voice stage into view.
+   *
+   * `CallView` lives above the active conversation of the guild you are in, so
+   * joining a voice channel while looking at another server (or a forum, or a
+   * settings panel) otherwise connects silently with no stage on screen.
+   */
+  focusVoiceStage(accountId: string, guildId: string): void {
+    const groupId = `${accountId}|guild:${guildId}`
+    if (this.state.activePanel) this.set({ activePanel: '' })
+    void window.moho.prefs.set('ui.stageCollapsed', false)
+    const current = this.state.buffers.find((b) => b.id === this.state.activeBufferId)
+    if (current && current.groupId === groupId && !current.forum) return
+    const candidate = [...this.state.buffers]
+      .filter((b) => b.groupId === groupId && !b.forum)
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0]
+    if (candidate) void this.selectBuffer(candidate.id, false)
+  }
+
   async joinVoice(accountId: string, guildId: string, channelId: string): Promise<void> {
     try {
       // soloOnly is off here because a person clicking a channel in a list
       // that shows them who is already in it has chosen to join those people.
       await window.moho.rpc('joinVoiceChannel', { accountId, guildId, channelId, soloOnly: false, transmit: true })
+      this.focusVoiceStage(accountId, guildId)
       await Promise.all([this.refreshVoiceSessions(), this.refreshVoiceChannels(accountId, guildId)])
     } catch (e) {
       this.toast('error', `Couldn't join voice: ${(e as Error).message}`)
@@ -3144,6 +3165,7 @@ export class ChatStore {
       this.discordShare = null
       this.set({ discordSharing: null, discordShareStream: null })
     }
+    void this.stopWatchingDiscordStream(accountId)
     try {
       await window.moho.rpc('leaveVoiceChannel', { accountId })
       await this.refreshVoiceSessions()
@@ -4746,8 +4768,10 @@ export class ChatStore {
         // A stream that ends while being watched leaves a decoder pointed at
         // nothing and a frozen last frame on screen, which reads as a stalled
         // connection rather than as somebody having stopped.
-        if (d.gone && this.state.discordWatching?.streamKey === d.streamKey) {
-          this.stopWatchingDiscordStream()
+        if (d.gone) {
+          for (const w of Object.values(this.state.discordWatching)) {
+            if (w.streamKey === d.streamKey) void this.stopWatchingDiscordStream(w.accountId, w.userId)
+          }
         }
         break
       }
@@ -6622,6 +6646,8 @@ export class ChatStore {
     }
   }
 
+  private watchingPending = new Set<string>()
+
   /**
    * Starts watching somebody else's screen.
    *
@@ -6635,17 +6661,18 @@ export class ChatStore {
     accountId: string,
     userId: string,
     nick: string,
-    where: { channelId: string; guildId?: string }
+    where: { channelId: string; guildId?: string },
+    silent = false
   ): Promise<void> {
+    const key = `${accountId}|${userId}`
+    if (this.state.discordWatching[key] || this.watchingPending.has(key)) return
+    this.watchingPending.add(key)
     // Usually nothing: Discord announces a stream to its owner and tells
     // everybody else only that a voice state has `self_stream` set. So the
     // key is named from where the stream is and whose it is, which the roster
     // knows, and the daemon builds it - one definition of the shape rather
     // than a second one here.
     const streamKey = this.state.discordStreams[userId]
-    // One at a time. Two decoders and two connections would both work, and
-    // the window has one place to draw a picture.
-    if (this.state.discordWatching) await this.stopWatchingDiscordStream()
     try {
       const answer = await window.moho.rpc<{ streamKey: string }>('watchDiscordStream', {
         accountId,
@@ -6654,22 +6681,41 @@ export class ChatStore {
         channelId: where.channelId,
         guildId: where.guildId
       })
-      this.set({ discordWatching: { accountId, streamKey: answer.streamKey, userId, nick } })
+      this.set({
+        discordWatching: {
+          ...this.state.discordWatching,
+          [key]: { accountId, streamKey: answer.streamKey, userId, nick }
+        }
+      })
     } catch (e) {
-      this.toast('error', `Couldn't watch that stream: ${(e as Error).message}`)
+      if (!silent) this.toast('error', `Couldn't watch that stream: ${(e as Error).message}`)
+    } finally {
+      this.watchingPending.delete(key)
     }
   }
 
-  async stopWatchingDiscordStream(): Promise<void> {
-    const watching = this.state.discordWatching
-    this.set({ discordWatching: null })
-    if (!watching) return
-    closeFeeds(feedStreamKey(watching.accountId, watching.streamKey))
-    await window.moho
-      .rpc('stopWatchingDiscordStream', { accountId: watching.accountId, streamKey: watching.streamKey })
-      .catch(() => {
-        /* the connection is going away regardless; nothing here can fix it */
+  async stopWatchingDiscordStream(accountId?: string, userId?: string): Promise<void> {
+    const current = this.state.discordWatching
+    const targets: { key: string; entry: { accountId: string; streamKey: string; userId: string; nick: string } }[] = []
+    for (const [k, entry] of Object.entries(current)) {
+      if (accountId && entry.accountId !== accountId) continue
+      if (userId && entry.userId !== userId) continue
+      targets.push({ key: k, entry })
+    }
+    if (targets.length === 0) return
+    const next = { ...current }
+    for (const { key } of targets) delete next[key]
+    this.set({ discordWatching: next })
+    await Promise.all(
+      targets.map(({ entry }) => {
+        closeFeeds(feedStreamKey(entry.accountId, entry.streamKey))
+        return window.moho
+          .rpc('stopWatchingDiscordStream', { accountId: entry.accountId, streamKey: entry.streamKey })
+          .catch(() => {
+            /* the connection is going away regardless; nothing here can fix it */
+          })
       })
+    )
   }
 
   /**

@@ -6606,6 +6606,18 @@ video.lightbox-media {
   font-size: var(--font-size-xs);
 }
 
+.voice-member-more {
+  background: none;
+  border: none;
+  padding: 2px var(--spacing-s) 2px var(--spacing-xl);
+  text-align: left;
+  cursor: pointer;
+}
+
+.voice-member-more:hover {
+  color: var(--surface-text);
+}
+
 /* The reason an account is not connected, under its name. Constrained rather
    than wrapping: these can be a whole sentence plus a countdown, and a card
    that changes height every retry is worse than one that truncates. */

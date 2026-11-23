@@ -5,6 +5,9 @@ import { useChat, useIdSetPref, useStore } from '../state/hooks'
 import { classes } from '../lib/util'
 import type { RailGroup } from '../lib/groups'
 
+/** How many occupants to show inline before folding the rest behind a toggle. */
+const INLINE_MEMBER_CAP = 12
+
 /**
  * A guild's voice channels, listed under its text ones.
  *
@@ -17,8 +20,18 @@ export function VoiceChannels({ group }: { group: RailGroup }): JSX.Element | nu
   const guildId = useChat((s) => s.voiceGuildId)
   const sessions = useChat((s) => s.voiceSessions)
   const [, toggleFolded, isFolded] = useIdSetPref('collapsedCategories')
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const foldKey = `voice|${group.id}`
   const speaking = useSpeaking(group.accountId, sessions.some((s) => s.accountId === group.accountId))
+
+  const toggleExpanded = (channelId: string): void => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(channelId)) next.delete(channelId)
+      else next.add(channelId)
+      return next
+    })
+  }
 
   // Only Discord guilds have these. The id carries the guild after the pipe -
   // see nobilis's guild_group_id.
@@ -58,6 +71,25 @@ export function VoiceChannels({ group }: { group: RailGroup }): JSX.Element | nu
         const members = c.stage
           ? [...(c.members ?? [])].sort((a, b) => Number(!!a.suppressed) - Number(!!b.suppressed))
           : (c.members ?? [])
+        const crowded = members.length > INLINE_MEMBER_CAP
+        const showAll = !crowded || expanded.has(c.id)
+        // When a channel is crowded, surface yourself, active speakers, and
+        // people sharing a screen or camera before truncating the rest.
+        const visibleMembers = showAll
+          ? members
+          : [...members]
+              .sort((a, b) => {
+                const rank = (m: typeof a): number =>
+                  (m.isSelf ? 16 : 0) +
+                  (speaking.has(m.userId) ? 8 : 0) +
+                  (m.streaming || m.video ? 4 : 0) +
+                  (c.stage && !m.suppressed ? 2 : 0) +
+                  (m.handRaised ? 1 : 0)
+                return rank(b) - rank(a)
+              })
+              .slice(0, INLINE_MEMBER_CAP)
+        const hiddenCount = members.length - visibleMembers.length
+        const showLimit = c.userLimit > 0 && members.length >= c.userLimit - 1
         return (
           <div key={c.id} className={`voice-channel${here ? ' active' : ''}`}>
             {/* The row and the way out of it are siblings: a button inside a
@@ -67,16 +99,21 @@ export function VoiceChannels({ group }: { group: RailGroup }): JSX.Element | nu
               <button
                 type="button"
                 className="voice-channel-main"
-                title={here ? `Connected to ${c.name}` : c.stage ? `Listen to ${c.name}` : `Join ${c.name}`}
-                onClick={() => (here ? void store.leaveVoice(group.accountId) : void store.joinVoice(group.accountId, guild, c.id))}
+                title={here ? `Show ${c.name}` : c.stage ? `Listen to ${c.name}` : `Join ${c.name}`}
+                onClick={() =>
+                  here ? store.focusVoiceStage(group.accountId, guild) : void store.joinVoice(group.accountId, guild, c.id)
+                }
               >
                 <Icon name={c.stage ? 'podium' : 'volume_up'} size={16} />
                 <span className="ellipsis">{c.name}</span>
-                {/* A limit only means something once it is close to being hit. */}
-                {c.userLimit > 0 && members.length >= c.userLimit - 1 && (
+                {/* A limit only means something once it is close to being hit;
+                    for a crowded channel without one, show the total count. */}
+                {showLimit ? (
                   <span className="small muted voice-limit">
                     {members.length}/{c.userLimit}
                   </span>
+                ) : (
+                  crowded && <span className="small muted voice-limit">{members.length}</span>
                 )}
               </button>
               {here && <IconButton name="call_end" size={16} title="Disconnect" onClick={() => void store.leaveVoice(group.accountId)} />}
@@ -84,7 +121,7 @@ export function VoiceChannels({ group }: { group: RailGroup }): JSX.Element | nu
             {/* What a live stage is about. A stage with no topic is not on. */}
             {c.stage && c.topic && <div className="voice-stage-topic small muted ellipsis">{c.topic}</div>}
 
-            {members.map((m) => (
+            {visibleMembers.map((m) => (
               <div key={m.userId} className={classes('voice-member small', speaking.has(m.userId) && 'speaking')}>
                 {/* Their face, ringed in green while they are heard - the thing
                     this list is for when you are in the call. The ring needs
@@ -128,6 +165,15 @@ export function VoiceChannels({ group }: { group: RailGroup }): JSX.Element | nu
                 )}
               </div>
             ))}
+            {crowded && (
+              <button
+                type="button"
+                className="voice-member-more small muted"
+                onClick={() => toggleExpanded(c.id)}
+              >
+                {showAll ? 'Show fewer' : `+${hiddenCount} more`}
+              </button>
+            )}
           </div>
         )
       })}
