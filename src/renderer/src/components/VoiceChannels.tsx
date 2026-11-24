@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Avatar } from './Avatar'
 import { Icon, IconButton } from './Icon'
+import { VoiceMemberRow, type VoiceModAction, type VoiceModPowers } from './VoiceMemberRow'
 import { useChat, useIdSetPref, useStore } from '../state/hooks'
 import { classes } from '../lib/util'
 import type { RailGroup } from '../lib/groups'
@@ -19,8 +19,12 @@ export function VoiceChannels({ group }: { group: RailGroup }): JSX.Element | nu
   const channels = useChat((s) => s.voiceChannels)
   const guildId = useChat((s) => s.voiceGuildId)
   const sessions = useChat((s) => s.voiceSessions)
+  const buffers = useChat((s) => s.buffers)
+  const activeBufferId = useChat((s) => s.activeBufferId)
+  const watching = useChat((s) => s.discordWatching)
   const [, toggleFolded, isFolded] = useIdSetPref('collapsedCategories')
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  const [powers, setPowers] = useState<VoiceModPowers>({})
   const foldKey = `voice|${group.id}`
   const speaking = useSpeaking(group.accountId, sessions.some((s) => s.accountId === group.accountId))
 
@@ -36,6 +40,10 @@ export function VoiceChannels({ group }: { group: RailGroup }): JSX.Element | nu
   // Only Discord guilds have these. The id carries the guild after the pipe -
   // see nobilis's guild_group_id.
   const guild = group.kind === 'guild' ? group.id.split('|guild:')[1] : ''
+  // Any text buffer in this guild anchors profile lookups and guild moderation.
+  const guildBufferId =
+    buffers.find((b) => b.id === activeBufferId && b.groupId === group.id)?.id ??
+    buffers.find((b) => b.groupId === group.id)?.id
 
   useEffect(() => {
     if (!guild) return
@@ -43,11 +51,51 @@ export function VoiceChannels({ group }: { group: RailGroup }): JSX.Element | nu
     void store.refreshVoiceSessions()
   }, [store, group.accountId, guild])
 
+  useEffect(() => {
+    setPowers({})
+    if (!guild || !guildBufferId) return
+    let alive = true
+    void window.moho
+      .rpc<VoiceModPowers>('getDiscordPowers', { bufferId: guildBufferId })
+      .then((p) => {
+        if (alive && p) setPowers(p)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [guild, guildBufferId])
+
   // While a switch is in flight the previous guild's channels are still in the
   // store; showing them under the new guild's name would be a lie.
   if (!guild || guildId !== guild || channels.length === 0) return null
 
   const session = sessions.find((s) => s.accountId === group.accountId)
+
+  const moderateUser = (userId: string, nick: string, action: 'kick' | 'ban' | 'mute' | VoiceModAction): void => {
+    if (!guildBufferId) return
+    void window.moho
+      .rpc('moderateDiscordMember', {
+        bufferId: guildBufferId,
+        userId,
+        action,
+        minutes: action === 'mute' ? 10 : undefined
+      })
+      .then(() => {
+        const verb: Record<string, string> = {
+          kick: 'Kicked',
+          ban: 'Banned',
+          mute: 'Timed out',
+          voice_mute: 'Server muted',
+          voice_unmute: 'Server unmuted',
+          voice_deafen: 'Server deafened',
+          voice_undeafen: 'Server undeafened',
+          voice_disconnect: 'Disconnected'
+        }
+        store.toast('info', `${verb[action] ?? 'Updated'} ${nick}`)
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+  }
 
   return (
     <>
@@ -121,50 +169,99 @@ export function VoiceChannels({ group }: { group: RailGroup }): JSX.Element | nu
             {/* What a live stage is about. A stage with no topic is not on. */}
             {c.stage && c.topic && <div className="voice-stage-topic small muted ellipsis">{c.topic}</div>}
 
-            {visibleMembers.map((m) => (
-              <div key={m.userId} className={classes('voice-member small', speaking.has(m.userId) && 'speaking')}>
-                {/* Their face, ringed in green while they are heard - the thing
-                    this list is for when you are in the call. The ring needs
-                    the daemon's levels, which only exist for a call you are
-                    in; from outside it, who is here is the whole answer. */}
-                <span className="voice-member-face">
-                  <Avatar name={m.nick} url={m.avatarUrl} size={20} accountId={group.accountId} />
-                </span>
-                <span className="ellipsis">{m.nick}</span>
-                {m.isSelf && <span className="muted voice-you">you</span>}
-                {c.stage && m.suppressed && !m.handRaised && <span className="muted voice-you">listening</span>}
-                {c.stage && m.handRaised && (
-                  <span className="muted" title={`${m.nick} has asked to speak`}>
-                    <Icon name="front_hand" size={13} />
-                  </span>
-                )}
-                {/* Here as well as in the call view, because this is the list
-                    you read to decide whether to join at all - and somebody
-                    sharing a screen is the commonest reason to. */}
-                {/* Muted and deafened say so, the way Discord's own list does. */}
-                {m.deafened ? (
-                  <span className="voice-state" title={`${m.nick} has deafened themselves`}>
-                    <Icon name="headset_off" size={13} />
-                  </span>
-                ) : (
-                  m.muted && (
-                    <span className="voice-state" title={`${m.nick} is muted`}>
-                      <Icon name="mic_off" size={13} />
+            {visibleMembers.map((m) => {
+              const streamWatched = !!watching[`${group.accountId}|${m.userId}`]
+              const previewKey = `${group.accountId}|guild:${guild}:${c.id}:${m.userId}`
+              return (
+                <VoiceMemberRow
+                  key={m.userId}
+                  accountId={group.accountId}
+                  service="discord"
+                  userId={m.userId}
+                  nick={m.nick}
+                  avatarUrl={m.avatarUrl}
+                  isSelf={m.isSelf}
+                  speaking={speaking.has(m.userId)}
+                  muted={!!m.muted}
+                  deafened={!!m.deafened}
+                  streaming={!!m.streaming}
+                  video={!!m.video}
+                  channelName={c.name}
+                  inChannel={here}
+                  profileBufferId={guildBufferId}
+                  watchingStream={streamWatched}
+                  supportsUserVolume
+                  streamPreviewKey={previewKey}
+                  fetchStreamPreview={
+                    m.streaming
+                      ? () =>
+                          window.moho
+                            .rpc<{ url?: string | null }>('getDiscordStreamPreview', {
+                              accountId: group.accountId,
+                              guildId: guild,
+                              channelId: c.id,
+                              userId: m.userId
+                            })
+                            .then((r) => r?.url ?? null)
+                            .catch(() => null)
+                      : undefined
+                  }
+                  onWatchStream={
+                    m.streaming && !m.isSelf
+                      ? () => {
+                          const watch = (): void => {
+                            void store.watchDiscordStream(group.accountId, m.userId, m.nick, {
+                              channelId: c.id,
+                              guildId: guild
+                            })
+                            store.focusVoiceStage(group.accountId, guild)
+                          }
+                          if (here) watch()
+                          else void store.joinVoice(group.accountId, guild, c.id).then(watch)
+                        }
+                      : undefined
+                  }
+                  onStopWatching={
+                    streamWatched
+                      ? () => void store.stopWatchingDiscordStream(group.accountId, m.userId)
+                      : undefined
+                  }
+                  onDisconnectSelf={here ? () => void store.leaveVoice(group.accountId) : undefined}
+                  perms={powers}
+                  onModerate={guildBufferId ? (action) => moderateUser(m.userId, m.nick, action) : undefined}
+                  onVoiceModerate={guildBufferId ? (action) => moderateUser(m.userId, m.nick, action) : undefined}
+                >
+                  {c.stage && m.suppressed && !m.handRaised && <span className="muted voice-you">listening</span>}
+                  {c.stage && m.handRaised && (
+                    <span className="muted" title={`${m.nick} has asked to speak`}>
+                      <Icon name="front_hand" size={13} />
                     </span>
-                  )
-                )}
-                {m.streaming && (
-                  <span className="muted" title={`${m.nick} is sharing a screen`}>
-                    <Icon name="screen_share" size={13} />
-                  </span>
-                )}
-                {m.video && (
-                  <span className="muted" title={`${m.nick} has a camera on`}>
-                    <Icon name="videocam" size={13} />
-                  </span>
-                )}
-              </div>
-            ))}
+                  )}
+                  {/* Muted and deafened say so, the way Discord's own list does. */}
+                  {m.deafened ? (
+                    <span className="voice-state" title={`${m.nick} has deafened themselves`}>
+                      <Icon name="headset_off" size={13} />
+                    </span>
+                  ) : (
+                    m.muted && (
+                      <span className="voice-state" title={`${m.nick} is muted`}>
+                        <Icon name="mic_off" size={13} />
+                      </span>
+                    )
+                  )}
+                  {m.streaming && (
+                    <span className="muted" title={`${m.nick} is sharing a screen`}>
+                      <Icon name="screen_share" size={13} />
+                    </span>
+                  )}
+                  {m.video && (
+                    <span className="muted" title={`${m.nick} has a camera on`}>
+                      <Icon name="videocam" size={13} />
+                    </span>
+                  )}
+                </VoiceMemberRow>
+              )
+            })}
             {crowded && (
               <button
                 type="button"

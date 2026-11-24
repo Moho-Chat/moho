@@ -266,6 +266,7 @@ export function CallStage({ mode = 'inline' }: { mode?: 'inline' | 'pip' | 'wind
 export function CallAudio(): JSX.Element | null {
   const store = useStore()
   const call = useChat((s) => s.activeCall)
+  const voicePrefs = useChat((s) => s.voicePrefs)
   const [people, setPeople] = useState<CallTile[]>([])
   const sinks = useRef(new Map<string, HTMLAudioElement>())
 
@@ -284,6 +285,18 @@ export function CallAudio(): JSX.Element | null {
     return () => clearInterval(timer)
   }, [call, store])
 
+  useEffect(() => {
+    const deaf = !!voicePrefs.deafened
+    const master = voicePrefs.outputVolume ?? 1
+    for (const tile of people) {
+      const el = sinks.current.get(tile.id)
+      if (!el) continue
+      const userVol = tile.userId ? (voicePrefs.userVolumes?.[tile.userId] ?? 1) : 1
+      el.muted = deaf || userVol <= 0.001 || master <= 0.001
+      el.volume = Math.min(1, Math.max(0, userVol * master))
+    }
+  }, [people, voicePrefs])
+
   if (!call) return null
   return (
     <>
@@ -294,6 +307,10 @@ export function CallAudio(): JSX.Element | null {
           ref={(el) => {
             if (el) {
               sinks.current.set(tile.id, el)
+              const userVol = tile.userId ? (voicePrefs.userVolumes?.[tile.userId] ?? 1) : 1
+              const master = voicePrefs.outputVolume ?? 1
+              el.muted = !!voicePrefs.deafened || userVol <= 0.001 || master <= 0.001
+              el.volume = Math.min(1, Math.max(0, userVol * master))
               if (tile.stream && el.srcObject !== tile.stream) el.srcObject = tile.stream
             } else sinks.current.delete(tile.id)
           }}

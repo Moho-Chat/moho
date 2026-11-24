@@ -107,6 +107,8 @@ export interface BufferEntry extends WireBuffer {
 /** One person in a call, as the call view draws them. */
 export interface CallTile {
   id: string
+  /** Protocol user id where known, so per-user volume controls apply. */
+  userId?: string
   label: string
   stream: MediaStream | null
   /** Whether there is a live picture, as opposed to a name and a microphone. */
@@ -852,6 +854,7 @@ export interface StoatVoiceMember {
   camera: boolean
   screen: boolean
   muted: boolean
+  isSelf?: boolean
 }
 
 export type Toast = ToastItem
@@ -4137,6 +4140,7 @@ export class ChatStore {
         this.levels.watch(person.key, person.stream)
         tiles.push({
           id: person.key,
+          userId: person.userId,
           label: this.stoatCallName(stoat.bufferId, person.userId),
           stream: person.stream,
           hasVideo: person.hasVideo,

@@ -446,8 +446,10 @@ export function BufferList(): JSX.Element {
       onDragEnd={endDrag}
       filed={folderPage ? !!viewAssignment[b.id] : !!assignment[b.id] && myCategories.some((c) => c.id === assignment[b.id])}
     />
-    {/* Who is in a Stoat voice channel, under it. */}
-    {(b.accountId.startsWith('stoat:') || b.accountId.startsWith('fluxer:')) && b.nameIcon === 'volume_up' && <StoatVoiceWho bufferId={b.id} accountId={b.accountId} />}
+    {/* Who is in a Stoat or Fluxer voice channel, under it. */}
+    {(b.accountId.startsWith('stoat:') || b.accountId.startsWith('fluxer:')) && b.nameIcon === 'volume_up' && (
+      <StoatVoiceWho bufferId={b.id} accountId={b.accountId} channelName={bufferDisplayName(b.name)} />
+    )}
     </Fragment>
   )
 

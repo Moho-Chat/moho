@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Avatar } from './Avatar'
 import { Icon, IconButton } from './Icon'
+import { VoiceMemberRow, type VoiceModPowers } from './VoiceMemberRow'
 import { useChat, useIdSetPref, useStore } from '../state/hooks'
 import { classes } from '../lib/util'
-import { steamGroupOfRail } from '../lib/steamchat'
+import { steamGroupOfRail, type SteamChatGroup } from '../lib/steamchat'
 import type { RailGroup } from '../lib/groups'
 
 /**
@@ -19,17 +19,51 @@ export function SteamVoiceRooms({ group }: { group: RailGroup }): JSX.Element | 
   const groupId = steamGroupOfRail(group.id)
   const rooms = useChat((s) => (groupId ? s.steamVoiceRooms[`${group.accountId}|${groupId}`] : undefined)) ?? []
   const now = useChat((s) => s.steamVoiceNow)
+  const buffers = useChat((s) => s.buffers)
   const [, toggleFolded, isFolded] = useIdSetPref('collapsedCategories')
+  const [powers, setPowers] = useState<VoiceModPowers>({})
   const foldKey = `steamvoice|${group.id}`
   const here = (roomId: string): boolean => now?.target.kind === 'room' && now.accountId === group.accountId && now.target.groupId === groupId && now.target.roomId === roomId
   const inThisGroup = rooms.some((r) => here(r.roomId))
   const live = useLive(inThisGroup)
+  const fallbackBufferId = buffers.find((b) => b.groupId === group.id)?.id
 
   useEffect(() => {
     if (groupId) void store.refreshSteamVoiceRooms(group.accountId, groupId)
   }, [store, group.accountId, groupId])
 
+  useEffect(() => {
+    setPowers({})
+    if (!groupId) return
+    let alive = true
+    void window.moho
+      .rpc<SteamChatGroup[]>('steamChatGroups', { accountId: group.accountId, groupId })
+      .then((g) => {
+        if (alive && g[0]) setPowers({ canKick: g[0].mayModerate, canBan: g[0].mayModerate })
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [group.accountId, groupId])
+
   if (!groupId || rooms.length === 0) return null
+
+  const moderateUser = (userId: string, nick: string, action: 'kick' | 'ban' | 'mute'): void => {
+    void window.moho
+      .rpc('steamChatGroupAction', {
+        accountId: group.accountId,
+        groupId,
+        action,
+        steamid: userId,
+        seconds: action === 'mute' ? 600 : 3600,
+        banned: true
+      })
+      .then(() =>
+        store.toast('info', `${action === 'ban' ? 'Banned' : action === 'mute' ? 'Muted' : 'Removed'} ${nick}`)
+      )
+      .catch((e: Error) => store.toast('error', e.message))
+  }
 
   return (
     <>
@@ -65,12 +99,24 @@ export function SteamVoiceRooms({ group }: { group: RailGroup }): JSX.Element | 
               {r.members.map((m) => {
                 const status = live.statuses.get(m.userId)
                 return (
-                  <div key={m.userId} className={classes('voice-member small', live.speakers.has(m.userId) && 'speaking')}>
-                    <span className="voice-member-face">
-                      <Avatar name={m.nick} url={m.avatarUrl ?? undefined} size={20} accountId={group.accountId} />
-                    </span>
-                    <span className="ellipsis">{m.nick}</span>
-                    {m.isSelf && <span className="muted voice-you">you</span>}
+                  <VoiceMemberRow
+                    key={m.userId}
+                    accountId={group.accountId}
+                    service="steam"
+                    userId={m.userId}
+                    nick={m.nick}
+                    avatarUrl={m.avatarUrl ?? undefined}
+                    isSelf={!!m.isSelf}
+                    speaking={live.speakers.has(m.userId)}
+                    muted={!!(status?.micMuted || status?.noMic)}
+                    deafened={!!status?.outputMuted}
+                    channelName={r.name}
+                    inChannel={connected}
+                    profileBufferId={r.bufferId ?? fallbackBufferId}
+                    onDisconnectSelf={connected ? () => void store.leaveVoice(group.accountId) : undefined}
+                    perms={powers}
+                    onModerate={(action) => moderateUser(m.userId, m.nick, action)}
+                  >
                     {status?.outputMuted ? (
                       <span className="voice-state" title={`${m.nick} has deafened themselves`}>
                         <Icon name="headset_off" size={13} />
@@ -82,7 +128,7 @@ export function SteamVoiceRooms({ group }: { group: RailGroup }): JSX.Element | 
                         </span>
                       )
                     )}
-                  </div>
+                  </VoiceMemberRow>
                 )
               })}
             </div>

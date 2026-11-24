@@ -6579,8 +6579,116 @@ video.lightbox-media {
   display: flex;
   align-items: center;
   gap: var(--spacing-s);
-  padding: 1px var(--spacing-s) 1px var(--spacing-xl);
+  margin: 1px var(--spacing-xs) 1px var(--spacing-l);
+  padding: 2px var(--spacing-s);
+  border-radius: var(--corner-radius-small);
   color: var(--surface-variant-text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.voice-member:hover,
+.voice-member:focus-visible,
+.voice-member.menu-open {
+  background: var(--surface-hover);
+  color: var(--surface-text);
+  outline: none;
+}
+
+/* Stream preview card shown when hovering a streaming participant in the voice rail. */
+.stream-preview-card {
+  position: fixed;
+  z-index: 2100;
+  width: 264px;
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--corner-radius);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42);
+  overflow: hidden;
+  animation: fade-in var(--motion-fast) ease;
+}
+
+.stream-preview-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--surface-container-lowest, #0e1014);
+  overflow: hidden;
+}
+
+.stream-preview-media {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.stream-preview-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 70%);
+}
+
+.stream-preview-fallback.loading {
+  opacity: 0.78;
+}
+
+.stream-preview-live {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--danger, #e53935);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.stream-preview-foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+}
+
+.stream-preview-who {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  min-width: 0;
+}
+
+.stream-preview-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.stream-preview-nick {
+  font-weight: 600;
+  color: var(--surface-text);
+  font-size: var(--font-size-small);
+}
+
+.stream-preview-meta .muted {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.stream-preview-action {
+  width: 100%;
+  justify-content: center;
 }
 
 .voice-member-face {
