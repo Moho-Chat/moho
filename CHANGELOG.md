@@ -19,9 +19,37 @@ Each section has two parts:
 
 ## [Unreleased]
 
+## [1.5.8]
+
 ### Major features
 
 - **Fluxer**: full protocol support on fluxer.com or any self-hosted instance — sign-in by password (with ALTCHA, TOTP/backup codes, and email IP authorization) or session token; servers with synced guild folders and ordering, text/announcement/voice/link/forum/thread channels, direct messages, groups and personal notes; replies, single-line reply previews, edits, deletes, reactions, custom emoji, stickers, GIFs, presigned and multipart attachments, slowmode countdown queueing, silent messages (`SUPPRESS_NOTIFICATIONS`), live-updating invite cards, and system message cards; LiveKit voice, camera, screen sharing, and encrypted call media (`VOICE_E2EE`); presence and custom status sync, per-guild nicknames, private user notes, moderation (kick/ban confirmations, timeout, role and emoji management, audit log); Tor and SOCKS5 routing (with UDP call refusal); and Windows support.
+
+### Fixes, patches and changes
+
+- Fluxer: communities, groups and invite links made and removed from the window, invite links among the invitations, bans and invites lists, hoisted roles in the member list ([moho `ec98548`](https://github.com/Moho-Chat/moho/commit/ec98548), [nobilis `1829eaf`](https://github.com/Moho-Chat/nobilis/commit/1829eaf))
+- Fluxer: friend and block buttons on the profile card, and the card says what the person is to the account even when Fluxer withholds the full profile ([moho `9f7c812`](https://github.com/Moho-Chat/moho/commit/9f7c812), [nobilis `b7d4321`](https://github.com/Moho-Chat/nobilis/commit/b7d4321))
+- Fluxer: per-community nicknames, notes on people, a community's emoji, stickers and GIFs, and starting a thread from a message ([moho `77b58d4`](https://github.com/Moho-Chat/moho/commit/77b58d4), [nobilis `9b7fbdf`](https://github.com/Moho-Chat/nobilis/commit/9b7fbdf))
+- Fluxer: invite cards stay live, kicks and bans ask first, and a call says why the microphone or camera failed ([moho `e6e9cb7`](https://github.com/Moho-Chat/moho/commit/e6e9cb7), [nobilis `792eec4`](https://github.com/Moho-Chat/nobilis/commit/792eec4))
+- Fluxer: single-line reply previews; slow mode shows its countdown and a message sent during it waits, with a cancel ([moho `ff86415`](https://github.com/Moho-Chat/moho/commit/ff86415), [nobilis `8ffec94`](https://github.com/Moho-Chat/nobilis/commit/8ffec94))
+- Fluxer: server folders and order as the account keeps them, and silent messages ([moho `89992ba`](https://github.com/Moho-Chat/moho/commit/89992ba), [nobilis `72c3c45`](https://github.com/Moho-Chat/nobilis/commit/72c3c45))
+- Fluxer: a call's ended card is no longer wiped when the message is updated ([moho `48affae`](https://github.com/Moho-Chat/moho/commit/48affae), [nobilis `d1444c5`](https://github.com/Moho-Chat/nobilis/commit/d1444c5))
+- Fluxer: encrypted call media is offered, and a call that requires it says so ([moho `126f95d`](https://github.com/Moho-Chat/moho/commit/126f95d), [nobilis `19d1eb8`](https://github.com/Moho-Chat/nobilis/commit/19d1eb8))
+- Fluxer: sign-in by code removed; password and session token remain ([moho `a92dd88`](https://github.com/Moho-Chat/moho/commit/a92dd88), [nobilis `308919e`](https://github.com/Moho-Chat/nobilis/commit/308919e))
+- Fluxer: over Tor or a proxy the route is up before connecting or signing in, and calls (UDP) are refused in words ([moho `20145f9`](https://github.com/Moho-Chat/moho/commit/20145f9), [nobilis `795d582`](https://github.com/Moho-Chat/nobilis/commit/795d582))
+- Fluxer: link channels open in the browser; age-restricted conversations are marked 18+ ([moho `7d4b459`](https://github.com/Moho-Chat/moho/commit/7d4b459), [nobilis `e5c07da`](https://github.com/Moho-Chat/nobilis/commit/e5c07da))
+- Stoat and Fluxer calls: the footer's mute and deafen are obeyed, and Fluxer screen shares are previewed ([moho `e8065c9`](https://github.com/Moho-Chat/moho/commit/e8065c9), [nobilis `2d2befc`](https://github.com/Moho-Chat/nobilis/commit/2d2befc))
+- LiveKit calls: out-of-order H.264 is decoded on the GPU instead of showing a black tile ([moho `d1b0602`](https://github.com/Moho-Chat/moho/commit/d1b0602))
+- Discord: voice and stage channels update live, several streams can be watched at once, Go Live in more codecs, and smoother call audio ([moho `466f1be`](https://github.com/Moho-Chat/moho/commit/466f1be), [nobilis `854250d`](https://github.com/Moho-Chat/nobilis/commit/854250d))
+- Voice rail: stream preview cards on hover and participant menus with voice moderation, for Discord, Stoat, Fluxer and Steam ([moho `4491548`](https://github.com/Moho-Chat/moho/commit/4491548), [nobilis `69f7750`](https://github.com/Moho-Chat/nobilis/commit/69f7750))
+- Discord: channel lists are polled and hidden channels pruned across restarts; permission changes resync ([moho `3014762`](https://github.com/Moho-Chat/moho/commit/3014762), [nobilis `f8ccc06`](https://github.com/Moho-Chat/nobilis/commit/f8ccc06))
+- Discord: reading guilds no longer stalls the gateway into reconnect loops ([moho `d00bbc1`](https://github.com/Moho-Chat/moho/commit/d00bbc1), [nobilis `ea597fa`](https://github.com/Moho-Chat/nobilis/commit/ea597fa))
+- Discord: a rate-limited route holds only itself, so sends are not stalled by other routes ([moho `7b0b920`](https://github.com/Moho-Chat/moho/commit/7b0b920), [nobilis `158c156`](https://github.com/Moho-Chat/nobilis/commit/158c156))
+- Discord: fresh sign-ins limited to 10 s apart and 500 a day ([moho `52a1474`](https://github.com/Moho-Chat/moho/commit/52a1474), [nobilis `42f0d7c`](https://github.com/Moho-Chat/nobilis/commit/42f0d7c))
+- Discord: End poll ends the poll; the poll stack no longer blocks the pinned banner's close button ([moho `62cc85f`](https://github.com/Moho-Chat/moho/commit/62cc85f), [nobilis `32b55e7`](https://github.com/Moho-Chat/nobilis/commit/32b55e7))
+- Sneedchat: a room's featured stream plays over the log, Watching on the member list, read positions, group renames and removals, profile changes ([moho `75e18be`](https://github.com/Moho-Chat/moho/commit/75e18be), [nobilis `9602c35`](https://github.com/Moho-Chat/nobilis/commit/9602c35))
+- Sneedchat: mentions, the moderator menu and side rooms follow the chat's latest changes; a message refused for its mentions is sent again with plain names ([moho `c8fdef7`](https://github.com/Moho-Chat/moho/commit/c8fdef7), [nobilis `bc06978`](https://github.com/Moho-Chat/nobilis/commit/bc06978), [nobilis `5856fc1`](https://github.com/Moho-Chat/nobilis/commit/5856fc1))
+- Right-clicking any picture offers Copy image; in the lightbox also Save image and Open outside moho ([moho `9e2265e`](https://github.com/Moho-Chat/moho/commit/9e2265e), [moho `241f267`](https://github.com/Moho-Chat/moho/commit/241f267))
 
 ## [1.5.7]
 
