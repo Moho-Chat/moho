@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Avatar } from './Avatar'
 import { Icon } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
+import { Modal } from './Modal'
 import { useChat, useIdSetPref, useStore } from '../state/hooks'
 import { classes, hasDirectMessages, ignoreLabel } from '../lib/util'
 import { profileHoverProps, releaseProfileHover } from '../lib/profilehover'
@@ -113,6 +114,7 @@ export function VoiceMemberRow({
   const voicePrefs = useChat((s) => s.voicePrefs)
   const [, toggleBlocked, isBlocked] = useIdSetPref('blockedNicks')
   const { menu, open, close } = useContextMenu()
+  const [confirming, setConfirming] = useState<'kick' | 'ban' | null>(null)
 
   const [previewAnchor, setPreviewAnchor] = useState<DOMRect | null>(null)
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -368,7 +370,7 @@ export function VoiceMemberRow({
                       label: 'Kick',
                       icon: 'logout',
                       danger: true,
-                      onClick: () => onModerate('kick')
+                      onClick: () => setConfirming('kick')
                     }
                   ] as MenuEntry[])
                 : []),
@@ -378,7 +380,7 @@ export function VoiceMemberRow({
                       label: 'Ban',
                       icon: 'gavel',
                       danger: true,
-                      onClick: () => onModerate('ban')
+                      onClick: () => setConfirming('ban')
                     }
                   ] as MenuEntry[])
                 : [])
@@ -464,6 +466,37 @@ export function VoiceMemberRow({
       )}
 
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={entries} onClose={close} />}
+      {confirming && onModerate && (
+        <Modal
+          title={`${confirming === 'ban' ? 'Ban' : 'Kick'} ${nick}?`}
+          icon={confirming === 'ban' ? 'gavel' : 'logout'}
+          iconColor="var(--danger)"
+          onClose={() => setConfirming(null)}
+          className="leave-confirm"
+        >
+          <p className="small">
+            {confirming === 'ban'
+              ? `${nick} will be removed and cannot rejoin until the ban is lifted.`
+              : `${nick} will be removed. They can rejoin with an invite.`}
+          </p>
+          <div className="leave-confirm-actions">
+            <button type="button" className="button subtle" onClick={() => setConfirming(null)} autoFocus>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="button danger"
+              onClick={() => {
+                const action = confirming
+                setConfirming(null)
+                onModerate(action)
+              }}
+            >
+              {confirming === 'ban' ? 'Ban' : 'Kick'}
+            </button>
+          </div>
+        </Modal>
+      )}
     </>
   )
 }

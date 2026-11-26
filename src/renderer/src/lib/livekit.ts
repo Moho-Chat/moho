@@ -200,13 +200,21 @@ export class SfuCall {
     // taken (see `route`), so nothing reaches a decoder before it is tidied -
     // including a sender's first keyframe, which may be its only one.
     await this.room.connect(url, token, this.tidy ? { rtcConfig: { encodedInsertableStreams: true } as RTCConfiguration } : undefined)
-    try {
-      if (!muted) await this.room.localParticipant.setMicrophoneEnabled(true)
-      if (video) await this.room.localParticipant.setCameraEnabled(true)
-    } catch (e) {
-      // A machine with no camera still belongs in the call.
-      this.handlers.onError(`Couldn't open the camera: ${(e as Error).message}`)
-      if (!muted) await this.room.localParticipant.setMicrophoneEnabled(true).catch(() => {})
+    if (!muted) {
+      try {
+        await this.room.localParticipant.setMicrophoneEnabled(true)
+      } catch (e) {
+        // A machine with no microphone still belongs in the call as a listener.
+        this.handlers.onError(`Couldn't open the microphone: ${(e as Error).message}`)
+      }
+    }
+    if (video) {
+      try {
+        await this.room.localParticipant.setCameraEnabled(true)
+      } catch (e) {
+        // A machine with no camera still belongs in the call.
+        this.handlers.onError(`Couldn't open the camera: ${(e as Error).message}`)
+      }
     }
     this.local = this.ownStream()
     this.handlers.onConnected(this.room.state === ConnectionState.Connected)

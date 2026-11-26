@@ -10,6 +10,7 @@ import { classes, hasDirectMessages, ignoreLabel, nickColor } from '../lib/util'
 import { TwitchPoints } from './TwitchPoints'
 import { KickPoints } from './KickPoints'
 import { ReasonPrompt } from './ReasonPrompt'
+import { Modal } from './Modal'
 import type { Member } from '../../../shared/wire'
 import { steamRoomIds, type SteamChatGroup } from '../lib/steamchat'
 import { profileHoverProps } from '../lib/profilehover'
@@ -707,6 +708,7 @@ function MemberRow({
 }: MemberRowProps): JSX.Element {
   const { menu, open, close } = useContextMenu()
   const [reporting, setReporting] = useState(false)
+  const [confirming, setConfirming] = useState<'kick' | 'ban' | null>(null)
 
   // Moderation is only *offered* where the cached permissions say it would
   // work; the server is still the actual authority and re-checks regardless.
@@ -772,12 +774,12 @@ function MemberRow({
             label: service === 'kick' ? 'Time out for 10 minutes' : 'Kick',
             icon: 'logout',
             danger: true,
-            onClick: () => onModerate('kick')
+            onClick: () => (service === 'kick' ? onModerate('kick') : setConfirming('kick'))
           }
         ] as MenuEntry[])
       : []),
     ...(perms.canBan
-      ? ([{ label: 'Ban', icon: 'gavel', danger: true, onClick: () => onModerate('ban') }] as MenuEntry[])
+      ? ([{ label: 'Ban', icon: 'gavel', danger: true, onClick: () => setConfirming('ban') }] as MenuEntry[])
       : []),
     // Matrix ranks are a number rather than a flag, so they are offered as
     // the three the protocol's own defaults are built around: 0 is everybody,
@@ -913,6 +915,37 @@ function MemberRow({
         {blocked && <Icon name="block" size={12} />}
       </button>
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={entries} onClose={close} />}
+      {confirming && (
+        <Modal
+          title={`${confirming === 'ban' ? 'Ban' : 'Kick'} ${member.nick}?`}
+          icon={confirming === 'ban' ? 'gavel' : 'logout'}
+          iconColor="var(--danger)"
+          onClose={() => setConfirming(null)}
+          className="leave-confirm"
+        >
+          <p className="small">
+            {confirming === 'ban'
+              ? `${member.nick} will be removed and cannot rejoin until the ban is lifted.`
+              : `${member.nick} will be removed. They can rejoin with an invite.`}
+          </p>
+          <div className="leave-confirm-actions">
+            <button type="button" className="button subtle" onClick={() => setConfirming(null)} autoFocus>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="button danger"
+              onClick={() => {
+                const action = confirming
+                setConfirming(null)
+                onModerate(action)
+              }}
+            >
+              {confirming === 'ban' ? 'Ban' : 'Kick'}
+            </button>
+          </div>
+        </Modal>
+      )}
       {reporting && onReport && (
         <ReasonPrompt
           title={`Report ${member.nick}`}
