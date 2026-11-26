@@ -816,6 +816,8 @@ export interface ChatState {
   steamGroups: Record<string, SteamGroup[]>
   /** Each Telegram account's chat folders as Telegram last said them, in its order; absent until it has. */
   telegramFolders: Record<string, TelegramFolder[]>
+  /** Each Fluxer account's guild folders from `user_settings.guild_folders`. */
+  fluxerFolders: Record<string, { id: string; name: string; colour?: string; members: string[] }[]>
   replyingTo: { id: string; from: string; body: string } | null
   /** Whether answering pings the author (Discord's "@ ON"): on for every new reply. */
   replyPing: boolean
@@ -972,6 +974,7 @@ const INITIAL: ChatState = {
   profileHover: false,
   steamGroups: {},
   telegramFolders: {},
+  fluxerFolders: {},
   replyingTo: null,
   replyPing: true,
   editingId: '',
@@ -1669,6 +1672,12 @@ export class ChatStore {
       if (!this.signalCallsProbed && this.state.accounts.some((a) => a.service === 'signal')) {
         this.signalCallsProbed = true
         void this.probeSignalCalls()
+      }
+      if (this.state.accounts.some((a) => a.service === 'fluxer')) {
+        void window.moho
+          .rpc<Record<string, { id: string; name: string; colour?: string; members: string[] }[]>>('fluxerGuildFolders')
+          .then((fluxerFolders) => this.set({ fluxerFolders: { ...this.state.fluxerFolders, ...fluxerFolders } }))
+          .catch(() => {})
       }
       void this.refreshInvites()
       void this.refreshFriendRequests()
@@ -5055,6 +5064,15 @@ export class ChatStore {
         this.set({ telegramFolders: { ...this.state.telegramFolders, [data.accountId as string]: (data.folders ?? []) as TelegramFolder[] } })
         break
       }
+      case 'fluxerGuildFolders': {
+        this.set({
+          fluxerFolders: {
+            ...this.state.fluxerFolders,
+            [data.accountId as string]: (data.folders ?? []) as { id: string; name: string; colour?: string; members: string[] }[]
+          }
+        })
+        break
+      }
 
       case 'profile': {
         const answer = data as unknown as Profile
@@ -6226,12 +6244,13 @@ export class ChatStore {
     bufferId: string,
     body: string,
     attachmentPath?: string | string[],
-    spoilers?: string[]
+    spoilers?: string[],
+    silent?: boolean
   ): Promise<void> {
     // A fresh send takes its reply target from the composer, and consumes it.
     const reply = this.state.replyingTo ? { ...this.state.replyingTo, ping: this.state.replyPing } : null
     this.set({ replyingTo: null })
-    return this.dispatchSend(bufferId, body, reply, attachmentPath, spoilers)
+    return this.dispatchSend(bufferId, body, reply, attachmentPath, spoilers, silent)
   }
 
   /**
@@ -6248,7 +6267,8 @@ export class ChatStore {
     body: string,
     reply: { id: string; from: string; body: string; thread?: boolean; ping?: boolean } | null,
     attachment?: string | string[],
-    spoilers?: string[]
+    spoilers?: string[],
+    silent?: boolean
   ): Promise<void> {
     // One file, or several that go as one message.
     const paths = attachment === undefined ? [] : Array.isArray(attachment) ? attachment : [attachment]
@@ -6334,7 +6354,8 @@ export class ChatStore {
             : {}),
           ...(replyToId ? { replyToId } : {}),
           ...(reply?.ping === false ? { replyPing: false } : {}),
-          ...(reply?.thread ? { thread: true } : {})
+          ...(reply?.thread ? { thread: true } : {}),
+          ...(silent ? { silent: true } : {})
         })
         const still = this.pendingSends.get(clientId)
         if (still) this.pendingSends.set(clientId, { ...still, inFlight: false, ts: Date.now() })

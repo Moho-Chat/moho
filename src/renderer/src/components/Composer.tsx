@@ -123,6 +123,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const whisperingTo = thread ? null : storedWhisper
   const accounts = useChat((s) => s.accounts)
   const [text, setText] = useState('')
+  const [silent, setSilent] = useState(false)
   const [staged, setStaged] = useState<StagedAttachment[]>([])
   /** Whether the poll dialog is up. */
   const [polling, setPolling] = useState(false)
@@ -561,7 +562,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
 
   /** Sends to where this box answers: the room, or the thread it is the panel's. */
   const post = (body: string, attachment?: string | string[], spoilers?: string[]): Promise<void> =>
-    thread ? store.sendToThread(body, attachment, spoilers) : store.sendMessage(buffer.id, body, attachment, spoilers)
+    thread ? store.sendToThread(body, attachment, spoilers) : store.sendMessage(buffer.id, body, attachment, spoilers, silent)
 
   const submit = (): void => {
     // The text as this service will read it: formatting in the box becomes
@@ -649,6 +650,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
     }
     if (inputRef.current) inputRef.current.replaceChildren()
     setText('')
+    if (silent) setSilent(false)
     // Sending is the clearest possible "no longer writing". Matrix can say
     // so; Discord only expires, and ignores the false.
     typingSentAt.current = 0
@@ -1366,6 +1368,19 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
             </span>
           )}
         </div>
+
+        {!thread && service === 'fluxer' && (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={silent ? 'Silent message on' : 'Send silently'}
+            aria-pressed={silent}
+            title={silent ? 'Sending silently (no notification) — click to notify normally' : 'Send silently (no notification)'}
+            onClick={() => setSilent((v) => !v)}
+          >
+            <Icon name="notifications_off" size={18} color={silent ? 'var(--primary)' : undefined} />
+          </button>
+        )}
 
         <button
           ref={emojiButtonRef}

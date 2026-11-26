@@ -407,6 +407,19 @@ export function ServerRail(): JSX.Element | null {
   const [customIcons] = usePref<Record<string, string>>('groupIcons', {})
   const [mutedGroups, setMutedGroups] = usePref<string[]>('mutedGroups', [])
   const [folders, setFolders] = usePref<RailFolder[]>('railFolders', [])
+  const fluxerFolders = useChat((s) => s.fluxerFolders)
+  // Local folders the user made in moho always win over service-synced ones; Fluxer's guild_folders supply the rest.
+  const effectiveFolders: RailFolder[] = (() => {
+    const claimed = new Set(folders.flatMap((f) => f.members))
+    const synced: RailFolder[] = []
+    for (const list of Object.values(fluxerFolders)) {
+      for (const f of list) {
+        const members = f.members.filter((m) => !claimed.has(m))
+        if (members.length > 0) synced.push({ id: f.id, name: f.name, colour: f.colour, members })
+      }
+    }
+    return [...folders, ...synced]
+  })()
   // Which folder is showing its contents, if any. Remembered: a column that
   // forgets which folders were open and shuts them all on every start is one
   // you re-arrange each morning.
@@ -545,7 +558,7 @@ export function ServerRail(): JSX.Element | null {
   }
 
 
-  const entries = railEntries(ordered, folders)
+  const entries = railEntries(ordered, effectiveFolders)
   /** The entries that can be moved, in the order they are drawn. */
   const movable = ordered.filter((g) => !isFixedEntry(g)).map((g) => g.id)
 
