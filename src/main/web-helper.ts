@@ -144,12 +144,45 @@ async function cookieSession(url: string, cookies: Cookie[], proxy: string | nul
   const ses = await withProxy(session.fromPartition(`page:${++partitions}`), proxy)
   ses.setUserAgent(UA)
   const origin = new URL(url).origin
+  const seeded = new Map<string, string>()
   for (const c of cookies) {
+    const at = origin + (c.path || '/')
     await ses.cookies
-      .set({ url: origin + (c.path || '/'), name: c.name, value: c.value, path: c.path || '/', secure: origin.startsWith('https:'), httpOnly: c.httpOnly ?? true })
+      .set({ url: at, name: c.name, value: c.value, path: c.path || '/', secure: origin.startsWith('https:'), httpOnly: c.httpOnly ?? true })
+      .then(() => seeded.set(c.name, at))
       .catch(() => {})
   }
+  giveWayToSite(ses, seeded)
   return ses
+}
+
+/**
+ * Makes the site's own Set-Cookie replace a cookie the caller seeded.
+ *
+ * The caller's cookies go in host-only, as they have no other scope to give.
+ * A site that sets the same name for its whole domain makes a second cookie
+ * rather than overwriting the first, and both then go out with the seeded -
+ * older - one first. Tartarus began doing that on 2026-11-25: a saved
+ * clearance that had lapsed kept being sent ahead of every fresh one, and the
+ * gate page solved, passed, reloaded and was challenged again until the
+ * daemon gave up. So the first time the site sets a cookie the caller seeded,
+ * the seeded copy is removed before the response's cookies are stored.
+ */
+function giveWayToSite(ses: Session, seeded: Map<string, string>): void {
+  if (seeded.size === 0) return
+  ses.webRequest.onHeadersReceived(async (details, callback) => {
+    for (const [key, values] of Object.entries(details.responseHeaders || {})) {
+      if (key.toLowerCase() !== 'set-cookie') continue
+      for (const line of values) {
+        const name = line.split('=', 1)[0].trim()
+        const at = seeded.get(name)
+        if (at === undefined) continue
+        seeded.delete(name)
+        await ses.cookies.remove(at, name).catch(() => {})
+      }
+    }
+    callback({})
+  })
 }
 
 async function forget(ses: Session): Promise<void> {
