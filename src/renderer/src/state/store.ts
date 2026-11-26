@@ -11,6 +11,7 @@ import type {
   DccTransfer,
   DiscordFriend,
   MatrixInvite,
+  FluxerInviteOffer,
   FriendRequest,
   MatrixVerification,
   Member,
@@ -1713,6 +1714,15 @@ export class ChatStore {
         // Not connected yet: the daemon's own push fills it in.
       }
     }
+    // Fluxer's invitations to a community or a group are links somebody sent the account in a direct message.
+    for (const account of this.state.accounts.filter((a) => a.service === 'fluxer' && a.state === 'connected')) {
+      try {
+        const offers = await window.moho.rpc<FluxerInviteOffer[]>('fluxerInviteOffers', { accountId: account.id })
+        this.set({ matrixInvites: { ...this.state.matrixInvites, [account.id]: offers.map((o) => this.fluxerOffer(account.id, o)) } })
+      } catch {
+        // Not connected yet: the daemon's own push fills it in.
+      }
+    }
     // Signal's are message requests: people, and groups, the account has not accepted and whose messages are held back.
     for (const account of this.state.accounts.filter((a) => a.service === 'signal' && a.state === 'connected')) {
       try {
@@ -1794,6 +1804,23 @@ export class ChatStore {
     }
   }
 
+  /** Where each Fluxer invitation leads (a community's id or a group's channel), by its key, to open it once accepted. */
+  private fluxerTargets = new Map<string, { target: string; group: boolean }>()
+
+  /** A Fluxer link somebody sent, as the tile lists an invitation: its code is what it is answered by. */
+  private fluxerOffer(accountId: string, o: FluxerInviteOffer): MatrixInvite {
+    this.fluxerTargets.set(`${accountId}|${o.code}`, { target: o.target, group: o.group })
+    const size = o.members ? `, ${o.members} ${o.members === 1 ? 'member' : 'members'}` : ''
+    return {
+      roomId: o.code,
+      name: o.name,
+      inviter: o.fromName,
+      avatarUrl: o.iconUrl,
+      isDirect: false,
+      detail: `${o.fromName || 'Somebody'} sent you an invite to ${o.group ? 'this group' : 'this community'}${size}`
+    }
+  }
+
   /** Everything waiting on a yes or a no, as the invitations tile lists it. */
   pendingInvitations(): Invitation[] {
     const s = this.state
@@ -1839,6 +1866,8 @@ export class ChatStore {
         } else {
           await window.moho.rpc('steamAnswerFriendRequest', { accountId, steamid: id, accept })
         }
+      } else if (invitation.service === 'fluxer') {
+        await window.moho.rpc('answerFluxerInvite', { accountId, code: id, accept })
       } else if (invitation.service === 'xmpp') {
         await window.moho.rpc('xmppAnswerInvite', { accountId, roomId: id, accept })
       } else if (invitation.service === 'telegram') {
@@ -1933,10 +1962,16 @@ export class ChatStore {
         return false
       }
     }
+    // A Fluxer invitation is answered by its code, and leads to a community (its first channel) or a group.
+    const fluxer = invitation.service === 'fluxer' ? this.fluxerTargets.get(`${invitation.accountId}|${invitation.id}`) : undefined
     const found = (): BufferEntry | undefined =>
-      this.state.buffers.find(
-        (b) => b.accountId === invitation.accountId && b.remoteId === invitation.id && (invitation.kind === 'room' || b.kind === 'dm')
-      )
+      fluxer
+        ? fluxer.group
+          ? this.state.buffers.find((b) => b.accountId === invitation.accountId && b.remoteId === fluxer.target)
+          : this.state.buffers.find((b) => b.groupId === `${invitation.accountId}|guild:${fluxer.target}` && b.kind === 'channel')
+        : this.state.buffers.find(
+            (b) => b.accountId === invitation.accountId && b.remoteId === invitation.id && (invitation.kind === 'room' || b.kind === 'dm')
+          )
     for (let waited = 0; waited < 8000; waited += 200) {
       const buffer = found()
       if (buffer) {
@@ -4686,6 +4721,16 @@ export class ChatStore {
         this.handleBufferListChange(data)
         break
 
+      // A conversation renamed by its service: the one open goes with it.
+      case 'bufferRenamed': {
+        const from = data.from as string
+        const to = data.to as string
+        if (from && to && this.state.activeBufferId === from) {
+          void this.refreshBuffers().then(() => this.selectBuffer(to))
+        }
+        break
+      }
+
       // Somebody is writing. Discord names one person per event and Matrix
       // sends the whole set, including an empty one to say everybody
       // stopped - so a list replaces, and a single nick is merged in.
@@ -5249,6 +5294,14 @@ export class ChatStore {
         break
       }
 
+      // Fluxer's invitations by link, whenever one arrives or is answered.
+      case 'fluxerInviteOffers': {
+        const accountId = data.accountId as string
+        const offers = (data.offers ?? []) as FluxerInviteOffer[]
+        this.set({ matrixInvites: { ...this.state.matrixInvites, [accountId]: offers.map((o) => this.fluxerOffer(accountId, o)) } })
+        break
+      }
+
       // Signal's message requests, whenever one arrives or is answered (here or on the phone).
       case 'signalRequests': {
         const accountId = data.accountId as string
@@ -5435,6 +5488,8 @@ export class ChatStore {
                 notice: data.notice,
                 syncing: data.syncing,
                 topic: data.topic,
+                // As sent too: a channel taken out from under its heading is sent with none.
+                category: data.category,
                 // As sent: the daemon leaves the default out, so absent has to
                 // mean "back to the default" - a room set to mentions only and
                 // then left alone elsewhere stayed ticked as mentions here.
@@ -5468,6 +5523,8 @@ export class ChatStore {
     const waiting = this.openOnArrival
     if (waiting && waiting.accountId === data.accountId && data.kind !== 'server' && Date.now() < waiting.until) {
       this.openOnArrival = null
+      // The list beside it shows where it is: a community joined shows the community, not the account's own page.
+      if (data.groupId) this.set({ activeGroupId: data.groupId })
       void this.selectBuffer(data.id)
     }
     this.followPeekJoin(data)

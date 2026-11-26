@@ -824,6 +824,13 @@ export interface Member {
   bot?: boolean
   /** The roles this person holds here, by name. Discord only. */
   roles?: string[]
+  /** The highest role they hold that is listed apart, which the list files them under (Fluxer), with its rank: higher first. */
+  hoist?: string | null
+  hoistRank?: number | null
+  /** The colour of their highest coloured role, for their name (Fluxer). */
+  colour?: string | null
+  /** Timed out in this community: they cannot talk until it ends (Fluxer). */
+  timedOut?: boolean
   /** What a room calls them (XMPP hats): titles the room gave this person, drawn as badges. */
   hats?: string[]
   /** What they are to this account where the service keeps friends: "Friend", "Blocked", "None"... Stoat only. */
@@ -949,6 +956,21 @@ export interface MatrixInvite {
   inviter: string | null
   avatarUrl: string | null
   isDirect: boolean
+  /** Says who asks and for what, where the service has more to say than "invited you to this room". */
+  detail?: string
+}
+
+/** A link to a Fluxer community or group that somebody sent the account, offered as an invitation until answered. */
+export interface FluxerInviteOffer {
+  code: string
+  /** The community's id, or the group's channel id. */
+  target: string
+  group: boolean
+  name: string
+  iconUrl: string | null
+  members: number | null
+  fromId: string
+  fromName: string
 }
 
 /**

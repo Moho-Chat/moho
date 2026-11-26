@@ -164,6 +164,9 @@ export default function App(): JSX.Element {
    * composer all belong to a buffer that is not on screen.
    */
   const onMentionsPage = activePanel === '' && activeGroupId === MENTIONS_GROUP_ID
+  // The invitations page likewise stands where a conversation would, so nothing of the last one open is offered there.
+  const onInvitations = activePanel === '' && activeGroupId === INVITATIONS_GROUP_ID
+  const onPage = onMentionsPage || onInvitations
   // A room being looked into stands where the conversation would. It has no
   // buffer, so everything below that acts on the open conversation is off.
   const peek = useChat((s) => s.peek)
@@ -185,7 +188,7 @@ export default function App(): JSX.Element {
       accounts.find((a) => a.id === allBuffers.find((b) => b.id === id)?.accountId)?.service
     const now = watchedKickBuffers(
       allBuffers,
-      activePanel === '' && !onMentionsPage && !peeking ? activeBufferId : '',
+      activePanel === '' && !onPage && !peeking ? activeBufferId : '',
       watching?.bufferId,
       serviceOf
     )
@@ -199,7 +202,7 @@ export default function App(): JSX.Element {
       // daemon answers rather than treats as a failure.
       void window.moho.rpc('setKickWatching', { bufferId, watching: true }).catch(() => {})
     }
-  }, [booted, allBuffers, accounts, activeBufferId, activePanel, onMentionsPage, peeking, watching])
+  }, [booted, allBuffers, accounts, activeBufferId, activePanel, onPage, peeking, watching])
 
   const openThread = useChat((s) => s.openThread)
 
@@ -220,9 +223,9 @@ export default function App(): JSX.Element {
   const streamService = accounts.find((a) => a.id === buffer?.accountId)?.service
   const noMemberList = (streamService === 'kick' || streamService === 'twitch') && nobodyListed
   const showNickList =
-    !userListFolded && !theatreOn && !noMemberList && activePanel === '' && !onMentionsPage && !peeking && buffer?.kind === 'channel'
+    !userListFolded && !theatreOn && !noMemberList && activePanel === '' && !onPage && !peeking && buffer?.kind === 'channel'
 
-  const searchShown = useChat((s) => s.searchPane) && activePanel === '' && !onMentionsPage && !peeking && !!buffer
+  const searchShown = useChat((s) => s.searchPane) && activePanel === '' && !onPage && !peeking && !!buffer
 
   const headerTitle =
     peeking
@@ -233,6 +236,8 @@ export default function App(): JSX.Element {
         ? 'Add or join'
         : onMentionsPage
           ? 'Mentions'
+          : onInvitations
+          ? 'Invitations'
           : buffer
             ? bufferDisplayName(buffer.name)
             : ''
@@ -274,7 +279,7 @@ export default function App(): JSX.Element {
                 somewhere you go to find a conversation; this is where you
                 already are when you want to do something to the one you are
                 reading. */}
-            {activePanel === '' && !onMentionsPage && !peeking && buffer ? (
+            {activePanel === '' && !onPage && !peeking && buffer ? (
               <ConversationMenu buffer={buffer} />
             ) : (
               <span className="main-header-title ellipsis">{headerTitle}</span>
@@ -284,7 +289,7 @@ export default function App(): JSX.Element {
                 conversation, which the mentions page is not showing - leaving
                 them there would offer to search a channel that isn't on
                 screen. */}
-            {activePanel === '' && !onMentionsPage && !peeking && buffer && (
+            {activePanel === '' && !onPage && !peeking && buffer && (
               <ConversationTools buffer={buffer} />
             )}
 
@@ -296,7 +301,7 @@ export default function App(): JSX.Element {
                 direct message. */}
             {activePanel === '' && <MentionsInbox />}
 
-            {activePanel === '' && !onMentionsPage && !peeking && buffer?.kind === 'channel' && (
+            {activePanel === '' && !onPage && !peeking && buffer?.kind === 'channel' && (
               <IconButton
                 name="group"
                 title={noMemberList ? 'Nobody to list yet: it fills as people talk' : userListFolded ? 'Show members' : 'Hide members'}
@@ -310,7 +315,7 @@ export default function App(): JSX.Element {
                 conversation's own tools: both of these are about how this
                 conversation is being shown, not about the conversation. Last,
                 because it is the one that opens something. */}
-            {activePanel === '' && !onMentionsPage && !peeking && buffer && <PopOutButton buffer={buffer} />}
+            {activePanel === '' && !onPage && !peeking && buffer && <PopOutButton buffer={buffer} />}
             {(activePanel !== '' || peeking) && (
               <IconButton
                 name="close"
@@ -337,7 +342,7 @@ export default function App(): JSX.Element {
           {peeking && <PeekBar />}
 
           {/* No box while looking: there is nobody here to say it as. */}
-          {activePanel === '' && !peeking && activeBufferId !== '' && activeGroupId !== MENTIONS_GROUP_ID && (
+          {activePanel === '' && !peeking && activeBufferId !== '' && !onPage && (
             <>
               {/* Above the box, saying why it will not work here yet. */}
               {buffer && <MembershipGate buffer={buffer} />}

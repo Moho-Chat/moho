@@ -436,6 +436,11 @@ function StoatJoin({ account }: { account: Account }): JSX.Element {
   const [busy, setBusy] = useState(false)
   const [people, setPeople] = useState<StoatPeople>({ friends: [], outgoing: [], blocked: [] })
   const connected = account.state === 'connected'
+  const fluxer = account.service === 'fluxer'
+  // Friends picked for a new group, while picking; null when not.
+  const [picking, setPicking] = useState<string[] | null>(null)
+  const [guildName, setGuildName] = useState('')
+  const [making, setMaking] = useState(false)
 
   // Friends, the requests still waiting on the other side, and who is blocked. The daemon says them again
   // whenever any relationship changes, and the first reading is asked for.
@@ -465,6 +470,35 @@ function StoatJoin({ account }: { account: Account }): JSX.Element {
       .catch((e: Error) => store.toast('error', e.message))
   }
   const label = (p: StoatPerson): string => p.name || p.id
+  // A group from the friends picked: Fluxer lets only friends be put in one.
+  const startGroup = (): void => {
+    if (!picking || picking.length === 0) return
+    setMaking(true)
+    void window.moho
+      .rpc<{ bufferId: string }>('openDiscordGroupDm', { accountId: account.id, userIds: picking })
+      .then(async (r) => {
+        setPicking(null)
+        await store.refreshBuffers()
+        await store.selectBuffer(r.bufferId)
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setMaking(false))
+  }
+  const makeGuild = (name: string): void => {
+    if (!name.trim()) return
+    setMaking(true)
+    void window.moho
+      .rpc<{ groupId: string; bufferId: string | null }>('createFluxerGuild', { accountId: account.id, name: name.trim() })
+      .then(async (r) => {
+        setGuildName('')
+        await store.refreshBuffers()
+        store.selectGroup(r.groupId)
+        if (r.bufferId) await store.selectBuffer(r.bufferId)
+        store.toast('info', `Made ${name.trim()}`)
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setMaking(false))
+  }
   const ask = (): void => {
     const typed = friend.trim()
     if (!typed) return
@@ -497,19 +531,53 @@ function StoatJoin({ account }: { account: Account }): JSX.Element {
             onSubmit={ask}
           />
         </JoinAction>
+        {fluxer && people.friends.length > 0 && (
+          <JoinAction
+            icon="group_add"
+            title="Make a group"
+            help="A conversation with several of your friends at once. Pick them below, then start it."
+            aside={
+              picking ? (
+                <>
+                  <button type="button" className="button primary small" disabled={picking.length === 0 || making || !connected} onClick={startGroup}>
+                    {picking.length === 0 ? 'Start group' : `Start group (${picking.length})`}
+                  </button>
+                  <button type="button" className="button quiet small" onClick={() => setPicking(null)}>
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="button quiet small" disabled={!connected} onClick={() => setPicking([])}>
+                  Pick people
+                </button>
+              )
+            }
+          />
+        )}
         {people.friends.length > 0 && (
           <>
             <JoinListHead>Friends</JoinListHead>
-            {people.friends.map((p) => (
-              <JoinRow key={p.id} face={<Initial name={label(p)} />} name={label(p)} sub={p.statusText || (p.online ? 'Online' : 'Offline')}>
-                <button type="button" className="button quiet small" onClick={() => void store.openDirectMessage(account.id, p.id, label(p))}>
-                  Message
-                </button>
-                <button type="button" className="button quiet small" onClick={() => act('answerStoatFriendRequest', { userId: p.id, accept: false }, `Removed ${label(p)}`)}>
-                  Remove
-                </button>
-              </JoinRow>
-            ))}
+            {people.friends.map((p) =>
+              picking ? (
+                <JoinRow
+                  key={p.id}
+                  face={<Icon name={picking.includes(p.id) ? 'check_circle' : 'radio_button_unchecked'} size={18} />}
+                  name={label(p)}
+                  sub={p.statusText || (p.online ? 'Online' : 'Offline')}
+                  picked={picking.includes(p.id)}
+                  onClick={() => setPicking(picking.includes(p.id) ? picking.filter((x) => x !== p.id) : [...picking, p.id])}
+                />
+              ) : (
+                <JoinRow key={p.id} face={<Initial name={label(p)} />} name={label(p)} sub={p.statusText || (p.online ? 'Online' : 'Offline')}>
+                  <button type="button" className="button quiet small" onClick={() => void store.openDirectMessage(account.id, p.id, label(p))}>
+                    Message
+                  </button>
+                  <button type="button" className="button quiet small" onClick={() => act('answerStoatFriendRequest', { userId: p.id, accept: false }, `Removed ${label(p)}`)}>
+                    Remove
+                  </button>
+                </JoinRow>
+              )
+            )}
           </>
         )}
         {people.outgoing.length > 0 && (
@@ -531,6 +599,14 @@ function StoatJoin({ account }: { account: Account }): JSX.Element {
           <ActionField placeholder="An invite link, or its code" verb="Join" onSubmit={(code) => void store.joinAndOpen(account.id, code)} />
         </JoinAction>
       </JoinSection>
+
+      {fluxer && (
+        <JoinSection kind="create">
+          <JoinAction icon="add_circle" title="Make a community" help="You own it. It starts with a general text channel and a General voice channel; delete it from its settings.">
+            <ActionField placeholder="Its name" verb="Make" value={guildName} onChange={setGuildName} keep disabled={!connected} busy={making} onSubmit={makeGuild} />
+          </JoinAction>
+        </JoinSection>
+      )}
     </>
   )
 }

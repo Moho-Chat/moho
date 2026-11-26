@@ -74,13 +74,23 @@ interface Webhook {
   token?: string | null
   url?: string | null
 }
+interface Invite {
+  code: string
+  link: string
+  channel: string
+  by: string
+  uses?: number | null
+  maxUses?: number | null
+  maxAge?: number | null
+  createdAt?: string | null
+}
 interface AuditEntry {
   id: string
   text: string
   ts: number
 }
 
-type Tab = 'overview' | 'channels' | 'roles' | 'webhooks' | 'audit'
+type Tab = 'overview' | 'channels' | 'roles' | 'invites' | 'bans' | 'webhooks' | 'audit'
 type Act = <T>(action: string, extra?: Record<string, unknown>) => Promise<T | undefined>
 type Stance = 'inherit' | 'allow' | 'deny'
 
@@ -126,7 +136,7 @@ export function StoatServerSettings({ bufferId, onClose }: { bufferId: string; o
       setBusy(true)
       try {
         const done = await ask<T>('stoatManage', { bufferId, action, ...extra })
-        if (action !== 'webhooks' && action !== 'auditLog') await reload()
+        if (action !== 'webhooks' && action !== 'auditLog' && action !== 'invites' && action !== 'bans') await reload()
         return done
       } catch (e) {
         store.toast('error', (e as Error).message)
@@ -151,6 +161,7 @@ export function StoatServerSettings({ bufferId, onClose }: { bufferId: string; o
     ['overview', 'Overview'],
     ['channels', 'Channels'],
     ['roles', 'Roles'],
+    ...(bufferId.startsWith('fluxer:') ? ([['invites', 'Invites'], ['bans', 'Bans']] as [Tab, string][]) : []),
     ['webhooks', 'Webhooks'],
     ['audit', 'Audit log']
   ]
@@ -166,7 +177,10 @@ export function StoatServerSettings({ bufferId, onClose }: { bufferId: string; o
           ))}
       </div>
       <div className="room-settings-body steam-group-body">
-        {tab === 'overview' && <Overview server={server} busy={busy} act={act} />}
+        {tab === 'overview' && <Overview server={server} busy={busy} act={act} fluxer={bufferId.startsWith('fluxer:')} />}
+        {tab === 'overview' && bufferId.startsWith('fluxer:') && server.can.owner && <DeleteCommunity bufferId={bufferId} server={server} onDone={onClose} />}
+        {tab === 'invites' && <Invites bufferId={bufferId} server={server} busy={busy} act={act} />}
+        {tab === 'bans' && <Bans bufferId={bufferId} act={act} />}
         {tab === 'channels' && <Channels server={server} busy={busy} act={act} />}
         {tab === 'roles' && <Roles server={server} busy={busy} act={act} />}
         {tab === 'webhooks' && <Webhooks server={server} busy={busy} act={act} />}
@@ -176,7 +190,7 @@ export function StoatServerSettings({ bufferId, onClose }: { bufferId: string; o
   )
 }
 
-function Overview({ server, busy, act }: { server: Overview; busy: boolean; act: Act }): JSX.Element {
+function Overview({ server, busy, act, fluxer }: { server: Overview; busy: boolean; act: Act; fluxer: boolean }): JSX.Element {
   const [name, setName] = useState(server.name)
   const [description, setDescription] = useState(server.description)
   const may = server.can.server
@@ -186,7 +200,7 @@ function Overview({ server, busy, act }: { server: Overview; busy: boolean; act:
         <span className="small muted">Picture</span>
         <div className="field-row steam-group-row">
           {server.iconUrl ? <img className="account-avatar" src={resolveMediaUrl(server.iconUrl)} alt="" /> : <Icon name="dns" size={18} />}
-          <span className="grow small muted">{may ? 'Shown on the rail.' : 'Only those who may manage the server can change it.'}</span>
+          <span className="grow small muted">{may ? 'Shown on the rail.' : `Only those who may manage the ${fluxer ? 'community' : 'server'} can change it.`}</span>
           <button type="button" className="button subtle small" disabled={!may || busy} onClick={() => void window.moho.pickFile(['jpg', 'jpeg', 'png', 'gif', 'webp']).then((path) => path && void act('editServer', { icon: path }))}>
             Change picture
           </button>
@@ -206,7 +220,8 @@ function Overview({ server, busy, act }: { server: Overview; busy: boolean; act:
           </button>
         </div>
       </div>
-      <div className="field">
+      {/* A Fluxer community has no description to set; its PATCH quietly ignores one. */}
+      {!fluxer && <div className="field">
         <span className="small muted">Description</span>
         <textarea className="text-field" rows={3} value={description} disabled={!may || busy} onChange={(e) => setDescription(e.target.value)} />
         <div className="field-row">
@@ -214,9 +229,9 @@ function Overview({ server, busy, act }: { server: Overview; busy: boolean; act:
             Save
           </button>
         </div>
-      </div>
+      </div>}
       <p className="small muted">
-        {server.can.owner ? 'You own this server.' : 'What is offered here is what your roles allow.'} {server.channels.length} of at most {server.limits.channels} channels, {server.roles.length} of at most {server.limits.roles} roles.
+        {server.can.owner ? `You own this ${fluxer ? 'community' : 'server'}.` : 'What is offered here is what your roles allow.'} {server.channels.length} of at most {server.limits.channels} channels, {server.roles.length} of at most {server.limits.roles} roles.
       </p>
     </>
   )
@@ -430,7 +445,15 @@ function ChannelEdit({ channel, categories, busy, act, onMove }: { channel: Chan
   const [description, setDescription] = useState(channel.description)
   const [nsfw, setNsfw] = useState(channel.nsfw)
   const [slowmode, setSlowmode] = useState(channel.slowmode)
-  const changed = name !== channel.name || description !== channel.description || nsfw !== channel.nsfw || slowmode !== channel.slowmode
+  // Where it goes is saved with the rest: moving it at once redrew it under its new heading and lost what was typed.
+  const [under, setUnder] = useState(channel.category ?? '')
+  const edited = name !== channel.name || description !== channel.description || nsfw !== channel.nsfw || slowmode !== channel.slowmode
+  const moved = under !== (channel.category ?? '')
+  const changed = edited || moved
+  const save = async (): Promise<void> => {
+    if (edited) await act('editChannel', { channelId: channel.id, name, description, nsfw, slowmode: channel.voice ? undefined : slowmode })
+    if (moved) onMove(under || null)
+  }
   return (
     <div className="steam-group-perms">
       <input className="text-field" aria-label="Name" value={name} disabled={busy} onChange={(e) => setName(e.target.value)} />
@@ -451,7 +474,7 @@ function ChannelEdit({ channel, categories, busy, act, onMove }: { channel: Chan
       {categories.length > 0 && (
         <div className="field-row steam-group-row">
           <span className="grow">Under</span>
-          <select className="text-field small" aria-label="Heading" value={channel.category ?? ''} onChange={(e) => onMove(e.target.value || null)}>
+          <select className="text-field small" aria-label="Heading" value={under} onChange={(e) => setUnder(e.target.value)}>
             <option value="">No heading</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
@@ -466,7 +489,7 @@ function ChannelEdit({ channel, categories, busy, act, onMove }: { channel: Chan
           type="button"
           className="button"
           disabled={busy || !changed || !name.trim()}
-          onClick={() => void act('editChannel', { channelId: channel.id, name, description, nsfw, slowmode: channel.voice ? undefined : slowmode })}
+          onClick={() => void save()}
         >
           Save
         </button>
@@ -673,6 +696,158 @@ function Webhooks({ server, busy, act }: { server: Overview; busy: boolean; act:
         </button>
       </div>
     </>
+  )
+}
+
+/** How long an invite has left, from when it was made and how long it was made to last. */
+function expiry(i: Invite): string {
+  if (!i.maxAge) return 'never expires'
+  const made = i.createdAt ? Date.parse(i.createdAt) : NaN
+  if (Number.isNaN(made)) return `lasts ${Math.round(i.maxAge / 3600)} h`
+  const left = made + i.maxAge * 1000 - Date.now()
+  if (left <= 0) return 'expired'
+  const hours = left / 3600000
+  return hours >= 24 ? `${Math.round(hours / 24)} d left` : hours >= 1 ? `${Math.round(hours)} h left` : `${Math.max(1, Math.round(left / 60000))} min left`
+}
+
+/** How often an invite has been used, out of how many it may be. */
+function used(i: Invite): string {
+  const n = i.uses ?? 0
+  const times = n === 0 ? 'not used yet' : n === 1 ? 'used once' : `used ${n} times`
+  return i.maxUses ? `${times} of ${i.maxUses}` : times
+}
+
+/** A Fluxer community's invites: who made each and where it leads, how often it was used, and deleting one. */
+function Invites({ bufferId, server, busy, act }: { bufferId: string; server: Overview; busy: boolean; act: Act }): JSX.Element {
+  const store = useStore()
+  const [list, setList] = useState<Invite[] | null>(null)
+  const load = useCallback(() => {
+    void act<{ invites: Invite[] }>('invites').then((r) => setList(r?.invites ?? []))
+  }, [act])
+  useEffect(load, [load])
+  const make = (): void => {
+    void ask<{ link: string }>('createStoatInvite', { bufferId })
+      .then((r) => window.moho.copyText(r.link).then(() => store.toast('info', `Invite made and copied: ${r.link}`)))
+      .then(load)
+      .catch((e: Error) => store.toast('error', e.message))
+  }
+  return (
+    <>
+      <p className="small muted">An invite is a link that lets somebody join. Deleting one stops it working; whoever already joined stays.</p>
+      {list === null && <p className="small muted">Asking…</p>}
+      {list?.length === 0 && <p className="small muted">{server.can.server ? 'There are no invites.' : 'None you can see: only those who may manage the community see every invite.'}</p>}
+      {list?.map((i) => (
+        <div key={i.code} className="field-row steam-group-row">
+          <Icon name="link" size={16} />
+          <span className="grow ellipsis" title={i.link}>
+            <span>{i.code}</span>
+            <span className="small muted">
+              {' '}
+              · #{i.channel}
+              {i.by ? ` · by ${i.by}` : ''} · {used(i)} · {expiry(i)}
+            </span>
+          </span>
+          <button type="button" className="button subtle small" onClick={() => void window.moho.copyText(i.link).then(() => store.toast('info', 'Invite link copied'))}>
+            Copy
+          </button>
+          <ConfirmButton label="Delete" question={`Delete the invite ${i.code}? The link stops working.`} confirmLabel="Delete" danger onConfirm={() => void act('deleteInvite', { code: i.code }).then(load)} />
+        </div>
+      ))}
+      <div className="field-row">
+        <button type="button" className="button" disabled={busy} onClick={make}>
+          Make an invite
+        </button>
+      </div>
+    </>
+  )
+}
+
+/** Who is banned from a Fluxer community, and letting them back in. */
+function Bans({ bufferId, act }: { bufferId: string; act: Act }): JSX.Element {
+  const store = useStore()
+  const [list, setList] = useState<{ userId: string; name: string; reason?: string | null }[] | null>(null)
+  const load = useCallback(() => {
+    void act<{ bans: { userId: string; name: string; reason?: string | null }[] }>('bans').then((r) => setList(r?.bans ?? []))
+  }, [act])
+  useEffect(load, [load])
+  const unban = (userId: string, name: string): void => {
+    void ask('moderateStoatMember', { bufferId, userId, action: 'unban' })
+      .then(() => {
+        store.toast('info', `${name} may join again`)
+        load()
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+  }
+  return (
+    <>
+      <p className="small muted">Somebody banned cannot join again, even with an invite, until the ban is lifted. Ban from a member&apos;s menu in the member list.</p>
+      {list === null && <p className="small muted">Asking…</p>}
+      {list?.length === 0 && <p className="small muted">Nobody is banned.</p>}
+      {list?.map((b) => (
+        <div key={b.userId} className="field-row steam-group-row">
+          <Icon name="gavel" size={16} />
+          <span className="grow ellipsis">
+            {b.name}
+            {b.reason ? <span className="small muted"> · {b.reason}</span> : null}
+          </span>
+          <ConfirmButton label="Lift the ban" question={`Let ${b.name} join again?`} confirmLabel="Lift it" onConfirm={() => unban(b.userId, b.name)} />
+        </div>
+      ))}
+    </>
+  )
+}
+
+/**
+ * Deleting a Fluxer community, for its owner: for good, with everything in it. Fluxer asks for proof it is the owner
+ * at the keyboard - the account's password, or its authenticator's code when it has one - so both are asked here,
+ * with the community's name typed out first.
+ */
+function DeleteCommunity({ bufferId, server, onDone }: { bufferId: string; server: Overview; onDone: () => void }): JSX.Element {
+  const store = useStore()
+  const [open, setOpen] = useState(false)
+  const [typed, setTyped] = useState('')
+  const [password, setPassword] = useState('')
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const accountId = bufferId.split('|')[0]
+  const go = (): void => {
+    setBusy(true)
+    void window.moho
+      .rpc('deleteFluxerGuild', { groupId: `${accountId}|guild:${server.serverId}`, password, code })
+      .then(async () => {
+        store.toast('info', `Deleted ${server.name}`)
+        await store.refreshBuffers()
+        onDone()
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+  return (
+    <div className="field danger-zone">
+      <span className="small muted">Delete this community</span>
+      {!open ? (
+        <div className="field-row">
+          <span className="grow small muted">Everything in it goes with it - channels, messages, roles and invites - and it cannot be brought back.</span>
+          <button type="button" className="button danger small" onClick={() => setOpen(true)}>
+            Delete community…
+          </button>
+        </div>
+      ) : (
+        <>
+          <input className="text-field" placeholder={`Type ${server.name} to confirm`} aria-label="The community's name" value={typed} onChange={(e) => setTyped(e.target.value)} />
+          <input className="text-field" type="password" placeholder="Your Fluxer password" aria-label="Your Fluxer password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <input className="text-field" placeholder="Or your authenticator's code, if the account has one" aria-label="Authenticator code" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} />
+          <div className="field-row">
+            <button type="button" className="button danger" disabled={busy || typed !== server.name || (!password && !code.trim())} onClick={go}>
+              Delete for good
+            </button>
+            <button type="button" className="button quiet" disabled={busy} onClick={() => setOpen(false)}>
+              Keep it
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   )
 }
 

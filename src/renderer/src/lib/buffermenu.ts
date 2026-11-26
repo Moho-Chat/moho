@@ -125,7 +125,10 @@ export function notifyEntries(
 
 /** What leaving is called, which depends on what is being left. */
 export function leaveLabel(buffer: BufferEntry, service?: string): string {
-  if (buffer.kind === 'dm') return service === 'discord' ? 'Close conversation' : 'Leave conversation'
+  // A Discord or Fluxer direct message is only put away, and comes back with the next message.
+  if (buffer.kind === 'dm') return service === 'discord' || service === 'fluxer' ? 'Close conversation' : 'Leave conversation'
+  // A Fluxer group is left: the others are told.
+  if (service === 'fluxer' && buffer.category === 'Groups') return 'Leave group'
   if (service === 'matrix') return 'Leave room'
   if (service === 'irc') return 'Leave channel'
   // A room of a Steam group is left by leaving the group.
