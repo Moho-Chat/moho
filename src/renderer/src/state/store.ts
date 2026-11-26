@@ -123,6 +123,8 @@ export interface CallTile {
 export interface ChatMessage extends Message {
   /** Set on a locally-echoed message that nobilis hasn't confirmed yet. */
   pending?: boolean
+  /** Epoch ms when a slowmode-queued message will be sent; shown as a countdown with cancel. */
+  slowmodeUntil?: number
   /** Set once the send definitively failed or timed out. */
   failed?: boolean
   errorText?: string
@@ -432,6 +434,8 @@ export interface SteamVoiceRoom {
 export interface ChatState {
   /** Who is composing, per buffer, with when to stop believing it. */
   typingByBuffer: Record<string, { nicks: string[]; until: number }>
+  /** Epoch ms when the next message may be sent in a slowmode channel, per buffer. */
+  slowmodeUntil: Record<string, number>
   /**
    * Who has read up to which message, per buffer.
    *
@@ -909,6 +913,7 @@ const INITIAL: ChatState = {
   historyGapAfter: {},
   dividerTsByBuffer: {},
     typingByBuffer: {},
+  slowmodeUntil: {},
   readersByBuffer: {},
   openThread: null,
   matrixPermissions: {},
@@ -1225,6 +1230,10 @@ export class ChatStore {
   private state: ChatState = INITIAL
   private listeners = new Set<() => void>()
   private sendSeq = 0
+  /** Timers for messages queued to send after a channel's slowmode countdown. */
+  private slowmodeTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  /** Actual server cooldown (epoch ms) from the last sent message per buffer, excluding queued slots. */
+  private slowmodeBaseUntil = new Map<string, number>()
   /** clientId -> the optimistic message awaiting its real echo. */
   private pendingSends = new Map<
     string,
@@ -6286,59 +6295,110 @@ export class ChatStore {
     const warning = this.undeliverableNotice(bufferId)
     if (warning) this.appendMessage(bufferId, warning)
 
+    const slowSecs = this.state.buffers.find((b) => b.id === bufferId)?.slowmodeSecs ?? 0
+    const nextAllowed = this.state.slowmodeUntil[bufferId] ?? 0
+    const nowMs = Date.now()
+    const queuedAt = slowSecs > 0 && nextAllowed > nowMs ? nextAllowed : 0
+    if (queuedAt > 0) {
+      echo.slowmodeUntil = queuedAt
+      this.set({ slowmodeUntil: { ...this.state.slowmodeUntil, [bufferId]: queuedAt + slowSecs * 1000 } })
+    }
+
     this.appendMessage(bufferId, echo)
     // The upload is named before the send goes out, so the progress events
     // have somewhere to land even if the first arrives immediately.
     const uploadId = attachmentPath ? `up-${clientId}` : undefined
     this.pendingSends.set(clientId, { bufferId, ts: Date.now(), inFlight: true, uploadId })
-    if (attachmentPath) {
-      this.mapMessage(bufferId, clientId, (m) => ({
-        ...m,
-        upload: { phase: 'preparing', bytes: 0, host: '', since: Date.now(), ...(paths.length > 1 ? { files: paths.length } : {}) }
-      }))
+
+    const dispatch = async (): Promise<void> => {
+      if (!this.pendingSends.has(clientId)) return
+      this.mapMessage(bufferId, clientId, (m) => (m.slowmodeUntil ? { ...m, slowmodeUntil: undefined } : m))
+      if (attachmentPath) {
+        this.mapMessage(bufferId, clientId, (m) => ({
+          ...m,
+          upload: { phase: 'preparing', bytes: 0, host: '', since: Date.now(), ...(paths.length > 1 ? { files: paths.length } : {}) }
+        }))
+      }
+      try {
+        await window.moho.rpc('sendMessage', {
+          bufferId,
+          body,
+          ...(uploadId ? { uploadId } : {}),
+          ...(attachmentPath
+            ? {
+                attachmentPath,
+                ...(paths.length > 1 ? { attachmentPaths: paths } : {}),
+                ...(spoilers?.length ? { spoilerPaths: spoilers } : {}),
+                uploadHost: await uploadHost(account?.service, attachmentPath)
+              }
+            : {}),
+          ...(replyToId ? { replyToId } : {}),
+          ...(reply?.ping === false ? { replyPing: false } : {}),
+          ...(reply?.thread ? { thread: true } : {})
+        })
+        const still = this.pendingSends.get(clientId)
+        if (still) this.pendingSends.set(clientId, { ...still, inFlight: false, ts: Date.now() })
+        this.clearUploadState(clientId)
+        const latestSlow = this.state.buffers.find((b) => b.id === bufferId)?.slowmodeSecs ?? slowSecs
+        if (latestSlow > 0) {
+          const floor = Date.now() + latestSlow * 1000
+          this.slowmodeBaseUntil.set(bufferId, floor)
+          if ((this.state.slowmodeUntil[bufferId] ?? 0) < floor) {
+            this.set({ slowmodeUntil: { ...this.state.slowmodeUntil, [bufferId]: floor } })
+          }
+        }
+      } catch (e) {
+        const msg = (e as Error).message
+        const slowMatch = msg.match(/slowmode.*?wait\s+(\d+)\s+more\s+seconds/i)
+        if (slowMatch && this.pendingSends.has(clientId)) {
+          const waitMs = Math.max(1, Number(slowMatch[1])) * 1000 + 250
+          const retryAt = Date.now() + waitMs
+          this.clearUploadState(clientId)
+          this.mapMessage(bufferId, clientId, (m) => ({ ...m, pending: true, failed: false, slowmodeUntil: retryAt }))
+          this.set({ slowmodeUntil: { ...this.state.slowmodeUntil, [bufferId]: Math.max(this.state.slowmodeUntil[bufferId] ?? 0, retryAt) } })
+          const timer = setTimeout(() => {
+            this.slowmodeTimers.delete(clientId)
+            void dispatch()
+          }, waitMs)
+          this.slowmodeTimers.set(clientId, timer)
+          return
+        }
+        const still = this.pendingSends.get(clientId)
+        if (still) this.pendingSends.set(clientId, { ...still, inFlight: false })
+        this.clearUploadState(clientId)
+        this.markSendFailed(clientId, msg)
+      }
     }
 
-    try {
-      await window.moho.rpc('sendMessage', {
-        bufferId,
-        body,
-        ...(uploadId ? { uploadId } : {}),
-        // Where a file goes on a service that cannot carry one. Read at send
-        // time rather than held in state: it is a preference somebody may
-        // change between one message and the next, and the daemon falls back
-        // to its own default if this is absent or unknown to it.
-        ...(attachmentPath
-          ? {
-              attachmentPath,
-              // Several files that make one message; the daemon reads this
-              // where the service can carry them together.
-              ...(paths.length > 1 ? { attachmentPaths: paths } : {}),
-              // Sent under a name that makes Discord hide them.
-              ...(spoilers?.length ? { spoilerPaths: spoilers } : {}),
-              uploadHost: await uploadHost(account?.service, attachmentPath)
-            }
-          : {}),
-        ...(replyToId ? { replyToId } : {}),
-        // Switched off for this reply: the author is not pinged.
-        ...(reply?.ping === false ? { replyPing: false } : {}),
-        // Into the thread rather than at the message: the daemon needs to be
-        // told which, because Matrix says them with the same field.
-        ...(reply?.thread ? { thread: true } : {})
-      })
-      // Success alone doesn't resolve the echo - only the real message event
-      // does, since that's what carries nobilis's own id and timestamp. What
-      // it does settle is that nothing is in flight any more, which is when
-      // the timeout below becomes meaningful: it is waiting for an echo, not
-      // for an upload.
-      const still = this.pendingSends.get(clientId)
-      if (still) this.pendingSends.set(clientId, { ...still, inFlight: false, ts: Date.now() })
-      this.clearUploadState(clientId)
-    } catch (e) {
-      const still = this.pendingSends.get(clientId)
-      if (still) this.pendingSends.set(clientId, { ...still, inFlight: false })
-      this.clearUploadState(clientId)
-      this.markSendFailed(clientId, (e as Error).message)
+    if (queuedAt > 0) {
+      const timer = setTimeout(() => {
+        this.slowmodeTimers.delete(clientId)
+        void dispatch()
+      }, Math.max(100, queuedAt - nowMs))
+      this.slowmodeTimers.set(clientId, timer)
+      return
     }
+    await dispatch()
+  }
+
+  /** Cancels a message waiting on a slowmode countdown and removes it from the list. */
+  cancelQueuedSend(bufferId: string, clientId: string): void {
+    const timer = this.slowmodeTimers.get(clientId)
+    if (timer) {
+      clearTimeout(timer)
+      this.slowmodeTimers.delete(clientId)
+    }
+    this.pendingSends.delete(clientId)
+    const list = this.state.messagesByBuffer[bufferId] || []
+    const next = list.filter((m) => m.id !== clientId)
+    const slowSecs = this.state.buffers.find((b) => b.id === bufferId)?.slowmodeSecs ?? 0
+    // Recompute the next slot from any remaining queued messages, or fall back to the server cooldown.
+    const latestQueued = next.reduce((max, m) => Math.max(max, m.slowmodeUntil ?? 0), 0)
+    const nextUntil = latestQueued > 0 ? latestQueued + slowSecs * 1000 : (this.slowmodeBaseUntil.get(bufferId) ?? 0)
+    this.set({
+      messagesByBuffer: { ...this.state.messagesByBuffer, [bufferId]: next },
+      slowmodeUntil: { ...this.state.slowmodeUntil, [bufferId]: nextUntil }
+    })
   }
 
   /** Takes the spinner off a row, whichever way its upload ended. */

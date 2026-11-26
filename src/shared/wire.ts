@@ -124,6 +124,8 @@ export interface Buffer {
    * may read but not write in, or Discord's own notices. Absent where it can.
    */
   readOnly?: string
+  /** Seconds between messages when slow mode is enabled and applies to this account. */
+  slowmodeSecs?: number
   /** A Discord forum: a list of posts, each a thread, not a conversation. */
   forum?: boolean
   /**

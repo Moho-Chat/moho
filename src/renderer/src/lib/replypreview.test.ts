@@ -40,6 +40,13 @@ describe('what a reply quotes, as words', () => {
     expect(spoiler).not.toContain('revealed')
   })
 
+  it('collapses multi-line messages and empty lines into a single line like Discord', () => {
+    const html = replyPreviewHtml('first line\n\n\nsecond line\nthird line', { service: 'fluxer' })
+    expect(html).not.toContain('<br')
+    expect(html).not.toContain('\n')
+    expect(html).toBe('first line second line third line')
+  })
+
   it('has nothing for nothing', () => {
     expect(replyPreviewHtml('', {})).toBe('')
   })

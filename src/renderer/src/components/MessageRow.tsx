@@ -1657,6 +1657,9 @@ function MessageRowBody({
             />
           )}
 
+          {message.pending && message.slowmodeUntil && (
+            <SlowmodeQueued until={message.slowmodeUntil} onCancel={() => store.cancelQueuedSend(bufferId, message.id)} />
+          )}
           {message.failed && (
             <div className="send-failed-actions small">
               <button
@@ -2204,6 +2207,25 @@ function DeliveryTick({ delivery }: { delivery: 'sent' | 'delivered' | 'read' })
  * "(edited)", which opens what the message said before each edit, where moho saw them happen (an edit made before
  * moho had the message has no earlier version here).
  */
+function SlowmodeQueued({ until, onCancel }: { until: number; onCancel: () => void }): JSX.Element {
+  const [left, setLeft] = useState(() => Math.max(1, Math.ceil((until - Date.now()) / 1000)))
+  useEffect(() => {
+    const tick = (): void => setLeft(Math.max(1, Math.ceil((until - Date.now()) / 1000)))
+    tick()
+    const id = setInterval(tick, 500)
+    return () => clearInterval(id)
+  }, [until])
+  return (
+    <div className="send-actions slowmode-queued" role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+      <span className="spinner" aria-hidden="true" />
+      <span className="small muted">Slow mode — sending in {left}s…</span>
+      <button type="button" className="send-discard small" onClick={onCancel}>
+        <Icon name="close" size={13} /> Cancel
+      </button>
+    </div>
+  )
+}
+
 function EditedTag({ bufferId, messageId, body, editedTs }: { bufferId: string; messageId: string; body: string; editedTs?: number }): JSX.Element {
   const [versions, setVersions] = useState<{ body: string; replacedAt: number }[] | null>(null)
   const open = (): void => {

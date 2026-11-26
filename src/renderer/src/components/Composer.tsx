@@ -1441,6 +1441,10 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
        </div>
       </div>
 
+      {!thread && buffer.slowmodeSecs && buffer.slowmodeSecs > 0 && (
+        <SlowmodeBar bufferId={buffer.id} seconds={buffer.slowmodeSecs} />
+      )}
+
       {plusMenu && (
         <ContextMenu x={plusMenu.x} y={plusMenu.y} above entries={plusEntries} onClose={() => setPlusMenu(null)} />
       )}
@@ -1576,6 +1580,43 @@ function TypingLine({ bufferId }: { bufferId: string }): JSX.Element {
         <i />
       </span>
       <span className="ellipsis">{who}</span>
+    </div>
+  )
+}
+
+function formatSlowmode(seconds: number): string {
+  if (seconds >= 3600) {
+    const h = Math.round(seconds / 3600)
+    return `${h} ${h === 1 ? 'hour' : 'hours'}`
+  }
+  if (seconds >= 60) {
+    const m = Math.round(seconds / 60)
+    return `${m} ${m === 1 ? 'minute' : 'minutes'}`
+  }
+  return `${seconds} ${seconds === 1 ? 'second' : 'seconds'}`
+}
+
+function SlowmodeBar({ bufferId, seconds }: { bufferId: string; seconds: number }): JSX.Element {
+  const until = useChat((s) => s.slowmodeUntil[bufferId] ?? 0)
+  const [left, setLeft] = useState(() => Math.max(0, Math.ceil((until - Date.now()) / 1000)))
+  useEffect(() => {
+    const tick = (): void => setLeft(Math.max(0, Math.ceil((until - Date.now()) / 1000)))
+    tick()
+    if (until <= Date.now()) return
+    const id = setInterval(tick, 500)
+    return () => clearInterval(id)
+  }, [until])
+  return (
+    <div
+      className="composer-slowmode small muted"
+      role="status"
+      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px 0' }}
+    >
+      <Icon name="schedule" size={14} />
+      <span>
+        Slow mode is on — 1 message every {formatSlowmode(seconds)}
+        {left > 0 ? ` · ${left}s until next send` : ''}
+      </span>
     </div>
   )
 }
