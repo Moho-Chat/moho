@@ -81,6 +81,16 @@ export function StoatVoiceWho({
             profileBufferId={bufferId}
             supportsUserVolume
             liveVideoStream={tile?.stream ?? null}
+            streamPreviewKey={service === 'fluxer' && m.screen ? `${bufferId}|${m.userId}` : undefined}
+            fetchStreamPreview={
+              // Fluxer keeps a picture of every shared screen; Stoat keeps none.
+              service === 'fluxer' && m.screen && !isSelf
+                ? () =>
+                    window.moho
+                      .rpc<{ url?: string | null }>('fluxerStreamPreview', { bufferId, userId: m.userId })
+                      .then((r) => r?.url ?? null)
+                : undefined
+            }
             onWatchStream={
               m.screen && !isSelf
                 ? () => {

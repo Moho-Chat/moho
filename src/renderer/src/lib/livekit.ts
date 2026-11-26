@@ -187,8 +187,11 @@ export class SfuCall {
     await this.keys?.setParticipantKey(identity, index, keyBase64)
   }
 
-  /** Joins the media server and starts sending. */
-  async join(url: string, token: string, video: boolean): Promise<void> {
+  /**
+   * Joins the media server and starts sending. A call joined `muted` does not
+   * open the microphone at all until it is unmuted.
+   */
+  async join(url: string, token: string, video: boolean, muted = false): Promise<void> {
     if (this.shared && this.sharedKey) {
       await this.shared.setKey(this.sharedKey)
       await this.room.setE2EEEnabled(true)
@@ -198,12 +201,12 @@ export class SfuCall {
     // including a sender's first keyframe, which may be its only one.
     await this.room.connect(url, token, this.tidy ? { rtcConfig: { encodedInsertableStreams: true } as RTCConfiguration } : undefined)
     try {
-      await this.room.localParticipant.setMicrophoneEnabled(true)
+      if (!muted) await this.room.localParticipant.setMicrophoneEnabled(true)
       if (video) await this.room.localParticipant.setCameraEnabled(true)
     } catch (e) {
       // A machine with no camera still belongs in the call.
       this.handlers.onError(`Couldn't open the camera: ${(e as Error).message}`)
-      await this.room.localParticipant.setMicrophoneEnabled(true).catch(() => {})
+      if (!muted) await this.room.localParticipant.setMicrophoneEnabled(true).catch(() => {})
     }
     this.local = this.ownStream()
     this.handlers.onConnected(this.room.state === ConnectionState.Connected)
@@ -248,6 +251,13 @@ export class SfuCall {
     const on = this.room.localParticipant.isMicrophoneEnabled
     await this.room.localParticipant.setMicrophoneEnabled(!on)
     return on
+  }
+
+  /** Silences the microphone, or lets it speak, whichever it is now. */
+  async setMuted(muted: boolean): Promise<void> {
+    if (this.room.localParticipant.isMicrophoneEnabled === !muted) return
+    await this.room.localParticipant.setMicrophoneEnabled(!muted)
+    this.local = this.ownStream()
   }
 
   /**

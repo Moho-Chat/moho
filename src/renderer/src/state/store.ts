@@ -2100,12 +2100,33 @@ export class ChatStore {
     // And onto the Steam voice this window holds, which obeys the same buttons.
     this.steamVoice.applyMute()
     this.telegramVoice.applyMute()
+    this.applySfuMute()
     try {
       this.set({ voicePrefs: await window.moho.rpc<VoicePrefs>('setVoiceMuted', next) })
     } catch (e) {
       this.toast('error', `Couldn't change audio: ${(e as Error).message}`)
       await this.refreshVoicePrefs()
     }
+  }
+
+  /** Whether the voice buttons have the microphone silenced: muted, or deafened, which silences it too. */
+  private voiceSilenced(): boolean {
+    return !!(this.state.voicePrefs.micMuted || this.state.voicePrefs.deafened)
+  }
+
+  /** Puts the voice buttons onto a Stoat or Fluxer call this window is in. */
+  private applySfuMute(): void {
+    const call = this.stoatCall
+    if (!call) return
+    const muted = this.voiceSilenced()
+    if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, muted } })
+    void call.sfu
+      .setMuted(muted)
+      .then(() => {
+        if (this.stoatCall === call) call.local = call.sfu.local
+        this.set({})
+      })
+      .catch((e: Error) => this.toast('error', `Couldn't open the microphone: ${e.message}`))
   }
 
   async setVoiceDevice(kind: 'input' | 'output', deviceId: string): Promise<void> {
@@ -3927,7 +3948,7 @@ export class ChatStore {
     }
     this.set({
       callMinimized: false,
-      activeCall: { accountId: account.id, bufferId, phase: 'connecting', video, muted: false, sharingScreen: false, cameraOn: video, onServer: true }
+      activeCall: { accountId: account.id, bufferId, phase: 'connecting', video, muted: this.voiceSilenced(), sharingScreen: false, cameraOn: video, onServer: true }
     })
     try {
       const way = await window.moho.rpc<{ token: string; url: string; note?: string | null; e2eeKey?: string | null }>('joinStoatCall', { bufferId, video })
@@ -3960,7 +3981,8 @@ export class ChatStore {
         way.e2eeKey
       )
       this.stoatCall = { sfu, bufferId, people: [], local: null }
-      await sfu.join(way.url, way.token, video)
+      // The voice buttons hold for this call as for every other: muted there, the microphone is never opened.
+      await sfu.join(way.url, way.token, video, this.voiceSilenced())
       if (this.stoatCall) this.stoatCall.local = sfu.local
       const current = this.state.activeCall as ChatState['activeCall']
       if (current) this.set({ activeCall: { ...current, cameraOn: sfu.cameraOn } })
@@ -3979,11 +4001,11 @@ export class ChatStore {
     return account.startsWith('stoat:') || account.startsWith('fluxer:')
   }
 
-  /** Tells Fluxer the microphone, camera and screen as they are, so the others' apps show them. */
+  /** Tells Fluxer the camera and screen as they are, so the others' apps show them (the daemon adds the voice buttons). */
   private sayFluxerVoice(): void {
     const call = this.state.activeCall
     if (!call || !call.bufferId.startsWith('fluxer:')) return
-    void window.moho.rpc('fluxerVoiceState', { bufferId: call.bufferId, muted: !!call.muted, camera: !!call.cameraOn, screen: !!call.sharingScreen }).catch(() => {})
+    void window.moho.rpc('fluxerVoiceState', { bufferId: call.bufferId, camera: !!call.cameraOn, screen: !!call.sharingScreen }).catch(() => {})
   }
 
   /** Somebody's name in a Stoat call: the daemon's, which knows people the roster has not listed. */
@@ -4244,10 +4266,9 @@ export class ChatStore {
     // Three kinds of call reach this button and the button does not care:
     // one to one, a mesh in a room, and a room call held on a media server.
     if (this.stoatCall) {
-      void this.stoatCall.sfu.toggleMute().then((muted) => {
-        if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, muted } })
-        this.sayFluxerVoice()
-      })
+      // The same mute as the footer's: one microphone, one button state, and the daemon tells Fluxer.
+      const { micMuted, deafened } = this.state.voicePrefs
+      void this.setVoiceMuted(deafened ? { micMuted: false, deafened: false } : { micMuted: !micMuted })
       return
     }
     const group = this.matrixCalls.currentGroup
