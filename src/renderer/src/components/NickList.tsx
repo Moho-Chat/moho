@@ -99,7 +99,8 @@ const XMPP_RANKS: Record<string, { group: string; order: number }> = {
  * under Online. Alphabetical within each.
  */
 function sneedchatGroups(members: Member[]): { label: string; members: Member[] }[] {
-  const labels: Record<string, string> = { staff: 'Staff', moderator: 'Moderators' }
+  // `watching` is the daemon's section for those watching the room's featured stream, after the ranks.
+  const labels: Record<string, string> = { staff: 'Staff', moderator: 'Moderators', watching: 'Watching' }
   const order: string[] = []
   for (const m of members) if (m.prefix && !order.includes(m.prefix)) order.push(m.prefix)
   const byName = (a: Member, b: Member): number => a.nick.localeCompare(b.nick)
@@ -208,6 +209,10 @@ export function NickList(): JSX.Element {
   // could never be taken out again from anywhere. The same test the add side
   // uses: a Discord direct message with more than one other person in it is a
   // group, and a one-to-one is not something anybody can be removed from.
+  const sneedchatPowers = useChat((s) => (buffer ? s.sneedchatPowers[buffer.id] : undefined))
+  useEffect(() => {
+    if (account?.service === 'sneedchat' && buffer) store.ensureSneedchatPowers(buffer.id)
+  }, [account?.service, buffer, store])
   const isGroupDm =
     (account?.service === 'discord' && buffer?.kind === 'dm' && members.filter((m) => m.userId).length > 1) ||
     // A Fluxer group is listed under its own heading; its own row is left without the button.
@@ -368,7 +373,10 @@ export function NickList(): JSX.Element {
                 canSendFile={account?.service === 'irc'}
                 canCall={canCall && !!member.userId}
                 onRemoveFromGroup={
-                  isGroupDm && member.userId && `${account?.service}:${member.userId}` !== account?.id
+                  // A Kiwi Farms group chat: its owner may take people out (one nobody owns, anybody in it).
+                  account?.service === 'sneedchat' && sneedchatPowers?.runGroup && member.nick !== account.currentNick && member.nick !== account.displayName
+                    ? () => buffer && void store.removeSneedchatMember(buffer.id, member.userId || member.nick, member.nick)
+                    : isGroupDm && member.userId && `${account?.service}:${member.userId}` !== account?.id
                     ? () => {
                         if (!buffer || !account) return
                         void window.moho

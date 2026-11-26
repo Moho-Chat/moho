@@ -928,6 +928,23 @@ export interface SneedchatPowers {
   whisper: boolean
   moderate: boolean
   frozen: boolean
+  /** A side room the chat calls a group (absent from an older daemon). */
+  group?: boolean
+  /** This account may rename the group and remove people from it: it owns it, or nobody does. */
+  runGroup?: boolean
+}
+
+/** A Kiwi Farms room's featured stream (`getSneedchatStream`, the `sneedchatStream` event). */
+export interface SneedchatStream {
+  provider: 'youtube' | 'twitch' | 'kick' | 'rumble'
+  providerName: string
+  source: string
+  /** Its page on the provider's site. */
+  url: string
+  /** The provider's player for a frame here, or null where it cannot play in one (Twitch). */
+  player: string | null
+  /** This account is watching it with the room. */
+  watching: boolean
 }
 
 export interface MatrixDevice {

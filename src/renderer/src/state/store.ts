@@ -23,6 +23,7 @@ import type {
   RoomPermissions,
   SneedchatSmilie,
   SneedchatPowers,
+  SneedchatStream,
   VoiceChannel,
   VoicePrefs,
   VoiceSession
@@ -634,6 +635,8 @@ export interface ChatState {
   twitchRights: Record<string, boolean>
   /** What the account may do in each Sneedchat room it has open, as the chat's page said. */
   sneedchatPowers: Record<string, SneedchatPowers>
+  /** Each Kiwi Farms room's featured stream, by conversation: null for none, absent until asked. */
+  sneedchatStreams: Record<string, SneedchatStream | null>
   /** The reactions Kiwi Farms offers, for the reaction picker. */
   sneedchatReactions: CustomEmoji[]
   /** The poll and prediction running in each channel, by `cardSlot`. */
@@ -922,6 +925,7 @@ const INITIAL: ChatState = {
   kickStreams: {},
   twitchRights: {},
   sneedchatPowers: {},
+  sneedchatStreams: {},
   sneedchatReactions: [],
   livePolls: {},
   pinnedByBuffer: {},
@@ -2944,6 +2948,50 @@ export class ChatStore {
       .rpc<SneedchatPowers>('sneedchatPowers', { bufferId })
       .then((p) => this.set({ sneedchatPowers: { ...this.state.sneedchatPowers, [bufferId]: p } }))
       .catch(() => this.sneedchatPowersAsked.delete(bufferId))
+  }
+
+  private sneedchatStreamsAsked = new Set<string>()
+
+  /** Asks once per conversation what a Kiwi Farms room is streaming; the daemon says when it changes. */
+  ensureSneedchatStream(bufferId: string): void {
+    if (this.sneedchatStreamsAsked.has(bufferId)) return
+    this.sneedchatStreamsAsked.add(bufferId)
+    void window.moho
+      .rpc<SneedchatStream | null>('getSneedchatStream', { bufferId })
+      .then((stream) => this.set({ sneedchatStreams: { ...this.state.sneedchatStreams, [bufferId]: stream } }))
+      .catch(() => this.sneedchatStreamsAsked.delete(bufferId))
+  }
+
+  /** Starts or stops watching a room's featured stream with the room. */
+  async watchSneedchatStream(bufferId: string, watching: boolean): Promise<void> {
+    const stream = this.state.sneedchatStreams[bufferId]
+    if (!stream) return
+    // At once, rather than after the daemon answers: the player is ours to open, and the chat is told alongside.
+    this.set({ sneedchatStreams: { ...this.state.sneedchatStreams, [bufferId]: { ...stream, watching } } })
+    try {
+      await window.moho.rpc('sneedchatWatchStream', { bufferId, watching })
+    } catch (e) {
+      if (watching) this.toast('error', (e as Error).message)
+    }
+  }
+
+  /** Names a Kiwi Farms group chat, or (an empty name) clears the name. */
+  async renameSneedchatGroup(bufferId: string, title: string): Promise<void> {
+    try {
+      await window.moho.rpc('sneedchatRenameGroup', { bufferId, title: title.trim() || undefined })
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
+  }
+
+  /** Takes somebody out of a Kiwi Farms group chat. */
+  async removeSneedchatMember(bufferId: string, who: string, name: string): Promise<void> {
+    try {
+      await window.moho.rpc('sneedchatRemoveMember', { bufferId, who })
+      this.toast('info', `Removed ${name} from the conversation`)
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
   }
 
   /** The site's reactions, asked once a connection has read them. */
@@ -5188,6 +5236,10 @@ export class ChatStore {
         for (const bufferId of rooms) this.ensureSneedchatPowers(bufferId)
         break
       }
+      case 'sneedchatStream':
+        // A moderator featured a stream, changed it or took it down - or the room was joined and says what it has.
+        if (data.bufferId) this.set({ sneedchatStreams: { ...this.state.sneedchatStreams, [data.bufferId]: data.stream ?? null } })
+        break
       case 'sneedchatSmilies':
         // The chat revised its emoticons: read the table again.
         this.smiliesFetched = false

@@ -4,6 +4,7 @@ import { Icon } from './Icon'
 import { MessageRow, useRowContext, type MessageMode } from './MessageRow'
 import { LiveCards } from './LiveCards'
 import { PinnedBar } from './PinnedBar'
+import { SneedchatStream } from './SneedchatStream'
 import { CallView } from './CallView'
 import { CallStage, RoomCallBar, StoatCallBar } from './CallStage'
 import { StreamStage } from './StreamStage'
@@ -828,6 +829,8 @@ export function MessageList(): JSX.Element {
       {/* Above the cards, and above the log, because it outlasts both: a poll
           runs for a minute and a pin stays until the channel replaces it. */}
       <PinnedBar bufferId={bufferId} />
+      {/* A Kiwi Farms room's featured stream: the room's pin, watched together. */}
+      <SneedchatStream bufferId={bufferId} />
       {/* The gestures that scroll a list, recorded so that a scroll can be
           told from the page moving underneath one. Every way a person moves
           this view arrives as one of these first: the wheel, a finger, the
