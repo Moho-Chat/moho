@@ -62,6 +62,7 @@ import {
   formatRelativeShort,
   formatTime,
   hasDirectMessages,
+  ignoreLabel,
   isChatKind,
   isNotice,
   isWarning,
@@ -397,6 +398,11 @@ function MessageRowBody({
   const twitchModerator = useChat((s) => s.twitchRights[bufferId] === true)
   const sneedchatModerator = useChat((s) => s.sneedchatPowers[bufferId]?.moderate === true)
   const sneedchatMayReact = useChat((s) => s.sneedchatPowers[bufferId]?.react !== false)
+  const canStartFluxerThread = useChat((s) => {
+    if (service !== 'fluxer') return false
+    const b = s.buffers.find((x) => x.id === bufferId)
+    return !!b && b.kind === 'channel' && !b.forum && !!b.groupId
+  })
   const sneedchatReactions = useChat((s) => s.sneedchatReactions)
   // What the account may do in a Sneedchat room, asked once per room: the menu offers a moderator's actions only
   // to a moderator.
@@ -454,6 +460,7 @@ function MessageRowBody({
   const [sourceOpen, setSourceOpen] = useState(false)
   /** Choosing where to send this message on to. */
   const [forwarding, setForwarding] = useState(false)
+  const [startingThread, setStartingThread] = useState(false)
   const [inviting, setInviting] = useState(false)
   const reactButtonRef = useRef<HTMLButtonElement>(null)
 
@@ -714,6 +721,9 @@ function MessageRowBody({
     ...((service === 'discord' || service === 'matrix' || service === 'telegram') && !isSystem && message.id
       ? ([{ label: 'Forward…', icon: 'forward', onClick: () => setForwarding(true) }] as MenuEntry[])
       : []),
+    ...(canStartFluxerThread && !isSystem && !inThread && message.id
+      ? ([{ label: 'Start a thread…', icon: 'forum', onClick: () => setStartingThread(true) }] as MenuEntry[])
+      : []),
     // Never hearing from them again. What that costs differs by service and
     // the daemon says which: Matrix keeps the list on the homeserver and
     // Discord has a real block, so both hold on every client that account is
@@ -724,7 +734,7 @@ function MessageRowBody({
     ...(!isSystem && !message.isOwn && message.from
       ? ([
           {
-            label: `Ignore ${message.from}`,
+            label: ignoreLabel(store.accountFor(bufferId)?.service, message.from, false),
             icon: 'block',
             danger: true,
             onClick: () => {
@@ -732,7 +742,7 @@ function MessageRowBody({
               // The protocol id where there is one, since a display name can
               // be changed and reused; the name where there is not, which is
               // all IRC ever has.
-              if (account) store.setIgnored(account.id, message.senderId || message.from, true)
+              if (account) store.setIgnored(account.id, message.senderId || message.from, true, message.from)
             }
           }
         ] as MenuEntry[])
@@ -1647,6 +1657,9 @@ function MessageRowBody({
             />
           )}
 
+          {message.pending && message.slowmodeUntil && (
+            <SlowmodeQueued until={message.slowmodeUntil} onCancel={() => store.cancelQueuedSend(bufferId, message.id)} />
+          )}
           {message.failed && (
             <div className="send-failed-actions small">
               <button
@@ -1815,6 +1828,23 @@ function MessageRowBody({
           bufferId={bufferId}
           messageId={message.id}
           onClose={() => setForwarding(false)}
+        />
+      )}
+      {startingThread && (
+        <ReasonPrompt
+          title="Start a thread"
+          detail="Give the thread a name. It will open as a conversation under this channel."
+          placeholder="Thread name"
+          confirmLabel="Create"
+          onCancel={() => setStartingThread(false)}
+          onConfirm={(name) => {
+            setStartingThread(false)
+            if (!name.trim()) return
+            void window.moho
+              .rpc<{ bufferId: string }>('startFluxerThread', { bufferId, messageId: message.id, name })
+              .then((r) => store.selectBuffer(r.bufferId, true))
+              .catch((e: Error) => store.toast('error', e.message))
+          }}
         />
       )}
       {sourceOpen && (
@@ -2177,6 +2207,25 @@ function DeliveryTick({ delivery }: { delivery: 'sent' | 'delivered' | 'read' })
  * "(edited)", which opens what the message said before each edit, where moho saw them happen (an edit made before
  * moho had the message has no earlier version here).
  */
+function SlowmodeQueued({ until, onCancel }: { until: number; onCancel: () => void }): JSX.Element {
+  const [left, setLeft] = useState(() => Math.max(1, Math.ceil((until - Date.now()) / 1000)))
+  useEffect(() => {
+    const tick = (): void => setLeft(Math.max(1, Math.ceil((until - Date.now()) / 1000)))
+    tick()
+    const id = setInterval(tick, 500)
+    return () => clearInterval(id)
+  }, [until])
+  return (
+    <div className="send-actions slowmode-queued" role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+      <span className="spinner" aria-hidden="true" />
+      <span className="small muted">Slow mode — sending in {left}s…</span>
+      <button type="button" className="send-discard small" onClick={onCancel}>
+        <Icon name="close" size={13} /> Cancel
+      </button>
+    </div>
+  )
+}
+
 function EditedTag({ bufferId, messageId, body, editedTs }: { bufferId: string; messageId: string; body: string; editedTs?: number }): JSX.Element {
   const [versions, setVersions] = useState<{ body: string; replacedAt: number }[] | null>(null)
   const open = (): void => {

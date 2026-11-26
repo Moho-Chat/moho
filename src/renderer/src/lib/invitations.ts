@@ -77,7 +77,7 @@ export function listInvitations(sources: InvitationSources, accounts: Account[])
         id: invite.roomId,
         name: invite.name,
         avatarUrl: invite.avatarUrl,
-        detail:
+        detail: invite.detail ? invite.detail :
           account.service === 'telegram'
             ? `${invite.inviter ?? 'Somebody'} asks for a secret chat. It is kept on this device only, encrypted end to end`
             : account.service === 'signal'

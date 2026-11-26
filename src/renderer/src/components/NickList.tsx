@@ -6,10 +6,11 @@ import { Avatar } from './Avatar'
 import { Icon, IconButton } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { useActiveBuffer, useChat, useComfy, useIdSetPref, useStore } from '../state/hooks'
-import { classes, hasDirectMessages, nickColor } from '../lib/util'
+import { classes, hasDirectMessages, ignoreLabel, nickColor } from '../lib/util'
 import { TwitchPoints } from './TwitchPoints'
 import { KickPoints } from './KickPoints'
 import { ReasonPrompt } from './ReasonPrompt'
+import { Modal } from './Modal'
 import type { Member } from '../../../shared/wire'
 import { steamRoomIds, type SteamChatGroup } from '../lib/steamchat'
 import { profileHoverProps } from '../lib/profilehover'
@@ -37,7 +38,7 @@ import { profileHoverProps } from '../lib/profilehover'
  * below the send threshold, on IRC it takes their voice in a moderated
  * channel. Same intent, so the same word, resolved where it is sent.
  */
-export type ModerationAction = 'kick' | 'ban' | 'mute' | 'op' | 'deop' | 'voice'
+export type ModerationAction = 'kick' | 'ban' | 'mute' | 'unmute' | 'op' | 'deop' | 'voice'
 
 /**
  * A rank word shortened to something that fits beside a name.
@@ -98,7 +99,8 @@ const XMPP_RANKS: Record<string, { group: string; order: number }> = {
  * under Online. Alphabetical within each.
  */
 function sneedchatGroups(members: Member[]): { label: string; members: Member[] }[] {
-  const labels: Record<string, string> = { staff: 'Staff', moderator: 'Moderators' }
+  // `watching` is the daemon's section for those watching the room's featured stream, after the ranks.
+  const labels: Record<string, string> = { staff: 'Staff', moderator: 'Moderators', watching: 'Watching' }
   const order: string[] = []
   for (const m of members) if (m.prefix && !order.includes(m.prefix)) order.push(m.prefix)
   const byName = (a: Member, b: Member): number => a.nick.localeCompare(b.nick)
@@ -207,10 +209,14 @@ export function NickList(): JSX.Element {
   // could never be taken out again from anywhere. The same test the add side
   // uses: a Discord direct message with more than one other person in it is a
   // group, and a one-to-one is not something anybody can be removed from.
+  const sneedchatPowers = useChat((s) => (buffer ? s.sneedchatPowers[buffer.id] : undefined))
+  useEffect(() => {
+    if (account?.service === 'sneedchat' && buffer) store.ensureSneedchatPowers(buffer.id)
+  }, [account?.service, buffer, store])
   const isGroupDm =
-    account?.service === 'discord' &&
-    buffer?.kind === 'dm' &&
-    members.filter((m) => m.userId).length > 1
+    (account?.service === 'discord' && buffer?.kind === 'dm' && members.filter((m) => m.userId).length > 1) ||
+    // A Fluxer group is listed under its own heading; its own row is left without the button.
+    (account?.service === 'fluxer' && buffer?.category === 'Groups')
   // Matrix answers this from the server, which is where its power levels live.
   // IRC's answer is already on screen: the member list carries every nick's
   // prefix, including ours, so what we may do is whatever our own prefix says.
@@ -281,8 +287,13 @@ export function NickList(): JSX.Element {
     if (hasPresence) {
       const byPower = (a: Member, b: Member): number =>
         (b.powerLevel ?? 0) - (a.powerLevel ?? 0) || a.nick.localeCompare(b.nick)
+      // Roles listed apart come first, highest first, each with whoever online holds it as their highest; everybody
+      // else is online or offline as usual. A role is only a heading while somebody online is under it.
+      const hoisted = filtered.filter((m) => !m.away && m.hoist)
+      const headings = Array.from(new Map(hoisted.map((m) => [m.hoist as string, m.hoistRank ?? 0])).entries()).sort((a, b) => b[1] - a[1])
       return [
-        { label: 'Online', members: filtered.filter((m) => !m.away).sort(byPower) },
+        ...headings.map(([label]) => ({ label, members: hoisted.filter((m) => m.hoist === label).sort(byPower) })),
+        { label: 'Online', members: filtered.filter((m) => !m.away && !m.hoist).sort(byPower) },
         { label: 'Offline', members: filtered.filter((m) => m.away).sort(byPower) }
       ].filter((g) => g.members.length > 0)
     }
@@ -330,7 +341,7 @@ export function NickList(): JSX.Element {
           // ask for - it is built from who has spoken - and calling that
           // "members" would claim to know something nobody here can know.
           <span className="small muted ellipsis" title={rosterNote(account?.service, total, members.length)}>
-            {total.toLocaleString()} {account?.service === 'kick' || account?.service === 'twitch' ? 'recently talking' : account?.service === 'stoat' && !members.some((m) => m.away) ? 'online' : 'members'}
+            {total.toLocaleString()} {account?.service === 'kick' || account?.service === 'twitch' ? 'recently talking' : account?.service === 'stoat' && !members.some((m) => m.away) ? 'online' : total === 1 ? 'member' : 'members'}
           </span>
         )}
         <IconButton
@@ -362,7 +373,10 @@ export function NickList(): JSX.Element {
                 canSendFile={account?.service === 'irc'}
                 canCall={canCall && !!member.userId}
                 onRemoveFromGroup={
-                  isGroupDm && member.userId
+                  // A Kiwi Farms group chat: its owner may take people out (one nobody owns, anybody in it).
+                  account?.service === 'sneedchat' && sneedchatPowers?.runGroup && member.nick !== account.currentNick && member.nick !== account.displayName
+                    ? () => buffer && void store.removeSneedchatMember(buffer.id, member.userId || member.nick, member.nick)
+                    : isGroupDm && member.userId && `${account?.service}:${member.userId}` !== account?.id
                     ? () => {
                         if (!buffer || !account) return
                         void window.moho
@@ -419,7 +433,7 @@ export function NickList(): JSX.Element {
                   // The protocol id where the service has one - a display
                   // name can be changed and reused, and on IRC it is all
                   // there is.
-                  store.setIgnored(account.id, member.userId || member.nick, ignored)
+                  store.setIgnored(account.id, member.userId || member.nick, ignored, member.nick)
                 }}
                 onMention={() => store.startReply('', member.nick, '')}
                 onModerate={(action) => {
@@ -456,7 +470,7 @@ export function NickList(): JSX.Element {
                     return
                   }
                   if (account.service === 'telegram') {
-                    if (action === 'voice') return
+                    if (action === 'voice' || action === 'unmute') return
                     const said = { ban: 'Banned', mute: 'Muted for 10 minutes', kick: 'Removed', op: 'Made an administrator:', deop: 'No longer an administrator:' }[action]
                     void window.moho
                       .rpc('moderateTelegramMember', { bufferId: buffer.id, userId: member.userId, action })
@@ -498,10 +512,21 @@ export function NickList(): JSX.Element {
                     return
                   }
                   if (account.service === 'stoat' || account.service === 'fluxer') {
-                    if (action !== 'kick' && action !== 'ban' && action !== 'mute') return
+                    if (action !== 'kick' && action !== 'ban' && action !== 'mute' && action !== 'unmute') return
                     void window.moho
                       .rpc('moderateStoatMember', { bufferId: buffer.id, userId: member.userId, action, minutes: 10 })
-                      .then(() => store.toast('info', `${action === 'ban' ? 'Banned' : action === 'mute' ? 'Muted for 10 minutes' : 'Removed'} ${member.nick}`))
+                      .then(() =>
+                        store.toast(
+                          'info',
+                          action === 'ban'
+                            ? `Banned ${member.nick}`
+                            : action === 'mute'
+                              ? `${member.nick} is ${account.service === 'fluxer' ? 'timed out' : 'muted'} for 10 minutes`
+                              : action === 'unmute'
+                                ? `${member.nick} can talk again`
+                                : `Removed ${member.nick}`
+                        )
+                      )
                       .catch((e: Error) => store.toast('error', e.message))
                     return
                   }
@@ -691,6 +716,7 @@ function MemberRow({
 }: MemberRowProps): JSX.Element {
   const { menu, open, close } = useContextMenu()
   const [reporting, setReporting] = useState(false)
+  const [confirming, setConfirming] = useState<'kick' | 'ban' | null>(null)
 
   // Moderation is only *offered* where the cached permissions say it would
   // work; the server is still the actual authority and re-checks regardless.
@@ -719,7 +745,7 @@ function MemberRow({
     // none. The window-local list stays only as the thing that hides what is
     // already on screen.
     {
-      label: blocked ? `Stop ignoring ${member.nick}` : `Ignore ${member.nick}`,
+      label: ignoreLabel(service, member.nick, blocked),
       icon: blocked ? 'check_circle' : 'block',
       danger: !blocked,
       onClick: () => {
@@ -741,7 +767,12 @@ function MemberRow({
         ] as MenuEntry[])
       : []),
     ...(perms.canMute
-      ? ([{ label: 'Mute', icon: 'volume_off', onClick: () => onModerate('mute') }] as MenuEntry[])
+      ? ([
+          // A Fluxer member already timed out is offered the way back instead.
+          member.timedOut
+            ? { label: 'Lift the timeout', icon: 'volume_up', onClick: () => onModerate('unmute') }
+            : { label: service === 'fluxer' ? 'Time out for 10 minutes' : 'Mute', icon: 'volume_off', onClick: () => onModerate('mute') }
+        ] as MenuEntry[])
       : []),
     ...(perms.canKick
       ? ([
@@ -751,12 +782,12 @@ function MemberRow({
             label: service === 'kick' ? 'Time out for 10 minutes' : 'Kick',
             icon: 'logout',
             danger: true,
-            onClick: () => onModerate('kick')
+            onClick: () => (service === 'kick' ? onModerate('kick') : setConfirming('kick'))
           }
         ] as MenuEntry[])
       : []),
     ...(perms.canBan
-      ? ([{ label: 'Ban', icon: 'gavel', danger: true, onClick: () => onModerate('ban') }] as MenuEntry[])
+      ? ([{ label: 'Ban', icon: 'gavel', danger: true, onClick: () => setConfirming('ban') }] as MenuEntry[])
       : []),
     // Matrix ranks are a number rather than a flag, so they are offered as
     // the three the protocol's own defaults are built around: 0 is everybody,
@@ -779,7 +810,8 @@ function MemberRow({
     ...((service === 'discord' || service === 'stoat' || service === 'fluxer') && perms.canAssignRoles && (perms.roles?.length ?? 0) > 0
       ? ([
           { separator: true },
-          ...(perms.roles ?? []).slice(0, 12).map((role) => ({
+          // Only the roles they do not hold already: the ones they hold are offered to take away below.
+          ...(perms.roles ?? []).filter((role) => !(member.roles ?? []).includes(role.name)).slice(0, 12).map((role) => ({
             label: `Give ${role.name}`,
             icon: 'shield',
             onClick: () => onSetRole(role.id, true)
@@ -859,13 +891,13 @@ function MemberRow({
         )}
         {comfy ? (
           <span className="nick-text">
-            <span className="ellipsis" style={{ color: nickColor(member.nick) }}>
+            <span className="ellipsis" style={{ color: member.colour || nickColor(member.nick) }}>
               {member.nick}
             </span>
             {member.activity && <ActivityLine activity={member.activity} />}
           </span>
         ) : (
-          <span className="ellipsis" style={{ color: nickColor(member.nick) }}>
+          <span className="ellipsis" style={{ color: member.colour || nickColor(member.nick) }}>
             {member.nick}
           </span>
         )}
@@ -891,6 +923,37 @@ function MemberRow({
         {blocked && <Icon name="block" size={12} />}
       </button>
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={entries} onClose={close} />}
+      {confirming && (
+        <Modal
+          title={`${confirming === 'ban' ? 'Ban' : 'Kick'} ${member.nick}?`}
+          icon={confirming === 'ban' ? 'gavel' : 'logout'}
+          iconColor="var(--danger)"
+          onClose={() => setConfirming(null)}
+          className="leave-confirm"
+        >
+          <p className="small">
+            {confirming === 'ban'
+              ? `${member.nick} will be removed and cannot rejoin until the ban is lifted.`
+              : `${member.nick} will be removed. They can rejoin with an invite.`}
+          </p>
+          <div className="leave-confirm-actions">
+            <button type="button" className="button subtle" onClick={() => setConfirming(null)} autoFocus>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="button danger"
+              onClick={() => {
+                const action = confirming
+                setConfirming(null)
+                onModerate(action)
+              }}
+            >
+              {confirming === 'ban' ? 'Ban' : 'Kick'}
+            </button>
+          </div>
+        </Modal>
+      )}
       {reporting && onReport && (
         <ReasonPrompt
           title={`Report ${member.nick}`}

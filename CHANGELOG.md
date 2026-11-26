@@ -19,6 +19,10 @@ Each section has two parts:
 
 ## [Unreleased]
 
+### Major features
+
+- **Fluxer**: full protocol support on fluxer.com or any self-hosted instance — sign-in by password (with ALTCHA, TOTP/backup codes, and email IP authorization) or session token; servers with synced guild folders and ordering, text/announcement/voice/link/forum/thread channels, direct messages, groups and personal notes; replies, single-line reply previews, edits, deletes, reactions, custom emoji, stickers, GIFs, presigned and multipart attachments, slowmode countdown queueing, silent messages (`SUPPRESS_NOTIFICATIONS`), live-updating invite cards, and system message cards; LiveKit voice, camera, screen sharing, and encrypted call media (`VOICE_E2EE`); presence and custom status sync, per-guild nicknames, private user notes, moderation (kick/ban confirmations, timeout, role and emoji management, audit log); Tor and SOCKS5 routing (with UDP call refusal); and Windows support.
+
 ## [1.5.7]
 
 ### Fixes, patches and changes

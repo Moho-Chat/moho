@@ -44,7 +44,7 @@ import { rankShortcodes, shortcodeQuery, unicodeTargets, type ShortcodeTarget } 
 const TYPING_REPEAT_MS = 4000
 
 /** The services whose conversations can take a GIF: the picker sends a link, and these show it as the picture. */
-const GIF_SERVICES = new Set(['discord', 'matrix', 'kick'])
+const GIF_SERVICES = new Set(['discord', 'matrix', 'kick', 'fluxer'])
 
 /**
  * What the box holds, as the text that will be sent.
@@ -123,6 +123,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const whisperingTo = thread ? null : storedWhisper
   const accounts = useChat((s) => s.accounts)
   const [text, setText] = useState('')
+  const [silent, setSilent] = useState(false)
   const [staged, setStaged] = useState<StagedAttachment[]>([])
   /** Whether the poll dialog is up. */
   const [polling, setPolling] = useState(false)
@@ -242,7 +243,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const route = useChat((s) => s.route)
   const routed = tunnelAll || !!account?.useTor
   const media = useMediaUrl(account?.id)
-  const hasStickers = service === 'matrix' || service === 'discord' || service === 'steam' || service === 'telegram' || service === 'signal'
+  const hasStickers = service === 'matrix' || service === 'discord' || service === 'steam' || service === 'telegram' || service === 'signal' || service === 'fluxer'
   const formats = formatsFor(service)
   /**
    * The account's stickers, asked for when the picker opens - from either
@@ -253,7 +254,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
     if (!hasStickers || !buffer) return
     void window.moho
       .rpc<StickerEntry[]>(
-        service === 'discord'
+        service === 'discord' || service === 'fluxer'
           ? 'listDiscordStickers'
           : service === 'steam'
             ? 'listSteamStickers'
@@ -561,7 +562,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
 
   /** Sends to where this box answers: the room, or the thread it is the panel's. */
   const post = (body: string, attachment?: string | string[], spoilers?: string[]): Promise<void> =>
-    thread ? store.sendToThread(body, attachment, spoilers) : store.sendMessage(buffer.id, body, attachment, spoilers)
+    thread ? store.sendToThread(body, attachment, spoilers) : store.sendMessage(buffer.id, body, attachment, spoilers, silent)
 
   const submit = (): void => {
     // The text as this service will read it: formatting in the box becomes
@@ -649,6 +650,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
     }
     if (inputRef.current) inputRef.current.replaceChildren()
     setText('')
+    if (silent) setSilent(false)
     // Sending is the clearest possible "no longer writing". Matrix can say
     // so; Discord only expires, and ignores the false.
     typingSentAt.current = 0
@@ -1367,6 +1369,19 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
           )}
         </div>
 
+        {!thread && service === 'fluxer' && (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={silent ? 'Silent message on' : 'Send silently'}
+            aria-pressed={silent}
+            title={silent ? 'Sending silently (no notification) — click to notify normally' : 'Send silently (no notification)'}
+            onClick={() => setSilent((v) => !v)}
+          >
+            <Icon name="notifications_off" size={18} color={silent ? 'var(--primary)' : undefined} />
+          </button>
+        )}
+
         <button
           ref={emojiButtonRef}
           type="button"
@@ -1440,6 +1455,10 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
         )}
        </div>
       </div>
+
+      {!thread && buffer.slowmodeSecs && buffer.slowmodeSecs > 0 && (
+        <SlowmodeBar bufferId={buffer.id} seconds={buffer.slowmodeSecs} />
+      )}
 
       {plusMenu && (
         <ContextMenu x={plusMenu.x} y={plusMenu.y} above entries={plusEntries} onClose={() => setPlusMenu(null)} />
@@ -1576,6 +1595,43 @@ function TypingLine({ bufferId }: { bufferId: string }): JSX.Element {
         <i />
       </span>
       <span className="ellipsis">{who}</span>
+    </div>
+  )
+}
+
+function formatSlowmode(seconds: number): string {
+  if (seconds >= 3600) {
+    const h = Math.round(seconds / 3600)
+    return `${h} ${h === 1 ? 'hour' : 'hours'}`
+  }
+  if (seconds >= 60) {
+    const m = Math.round(seconds / 60)
+    return `${m} ${m === 1 ? 'minute' : 'minutes'}`
+  }
+  return `${seconds} ${seconds === 1 ? 'second' : 'seconds'}`
+}
+
+function SlowmodeBar({ bufferId, seconds }: { bufferId: string; seconds: number }): JSX.Element {
+  const until = useChat((s) => s.slowmodeUntil[bufferId] ?? 0)
+  const [left, setLeft] = useState(() => Math.max(0, Math.ceil((until - Date.now()) / 1000)))
+  useEffect(() => {
+    const tick = (): void => setLeft(Math.max(0, Math.ceil((until - Date.now()) / 1000)))
+    tick()
+    if (until <= Date.now()) return
+    const id = setInterval(tick, 500)
+    return () => clearInterval(id)
+  }, [until])
+  return (
+    <div
+      className="composer-slowmode small muted"
+      role="status"
+      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px 0' }}
+    >
+      <Icon name="schedule" size={14} />
+      <span>
+        Slow mode is on — 1 message every {formatSlowmode(seconds)}
+        {left > 0 ? ` · ${left}s until next send` : ''}
+      </span>
     </div>
   )
 }

@@ -124,8 +124,12 @@ export interface Buffer {
    * may read but not write in, or Discord's own notices. Absent where it can.
    */
   readOnly?: string
+  /** Seconds between messages when slow mode is enabled and applies to this account. */
+  slowmodeSecs?: number
   /** A Discord forum: a list of posts, each a thread, not a conversation. */
   forum?: boolean
+  /** Marked by its service as for adults only (a Fluxer channel's age restriction). */
+  ageRestricted?: boolean
   /**
    * What the service counts as unread here, where it keeps a count this window could not work out (a Telegram topic
    * never opened here): a starting point for the count, which then follows live messages.
@@ -764,6 +768,8 @@ export interface Profile {
   joinedTs?: number
   /** Unix seconds. When they were last seen doing anything. */
   lastActiveTs?: number
+  /** Private note the local account saved on this person (Fluxer). */
+  userNote?: string
   /** Seconds since they last spoke or typed, where the service counts that. */
   idleSeconds?: number
   /** Their standing here, in the service's own words - "Moderator", "Op". */
@@ -789,6 +795,8 @@ export interface Profile {
   /** Their safety number changed after it was verified: sends wait until it is looked at. */
   signalUnconfirmed?: boolean
   signalBlocked?: boolean
+  /** What they are to this account where the service keeps friends: Friend, Blocked, Incoming, Outgoing or None (Fluxer). */
+  relationship?: string
 }
 
 /** What somebody is doing, as a line under their name. */
@@ -824,6 +832,13 @@ export interface Member {
   bot?: boolean
   /** The roles this person holds here, by name. Discord only. */
   roles?: string[]
+  /** The highest role they hold that is listed apart, which the list files them under (Fluxer), with its rank: higher first. */
+  hoist?: string | null
+  hoistRank?: number | null
+  /** The colour of their highest coloured role, for their name (Fluxer). */
+  colour?: string | null
+  /** Timed out in this community: they cannot talk until it ends (Fluxer). */
+  timedOut?: boolean
   /** What a room calls them (XMPP hats): titles the room gave this person, drawn as badges. */
   hats?: string[]
   /** What they are to this account where the service keeps friends: "Friend", "Blocked", "None"... Stoat only. */
@@ -913,6 +928,23 @@ export interface SneedchatPowers {
   whisper: boolean
   moderate: boolean
   frozen: boolean
+  /** A side room the chat calls a group (absent from an older daemon). */
+  group?: boolean
+  /** This account may rename the group and remove people from it: it owns it, or nobody does. */
+  runGroup?: boolean
+}
+
+/** A Kiwi Farms room's featured stream (`getSneedchatStream`, the `sneedchatStream` event). */
+export interface SneedchatStream {
+  provider: 'youtube' | 'twitch' | 'kick' | 'rumble'
+  providerName: string
+  source: string
+  /** Its page on the provider's site. */
+  url: string
+  /** The provider's player for a frame here, or null where it cannot play in one (Twitch). */
+  player: string | null
+  /** This account is watching it with the room. */
+  watching: boolean
 }
 
 export interface MatrixDevice {
@@ -949,6 +981,21 @@ export interface MatrixInvite {
   inviter: string | null
   avatarUrl: string | null
   isDirect: boolean
+  /** Says who asks and for what, where the service has more to say than "invited you to this room". */
+  detail?: string
+}
+
+/** A link to a Fluxer community or group that somebody sent the account, offered as an invitation until answered. */
+export interface FluxerInviteOffer {
+  code: string
+  /** The community's id, or the group's channel id. */
+  target: string
+  group: boolean
+  name: string
+  iconUrl: string | null
+  members: number | null
+  fromId: string
+  fromName: string
 }
 
 /**

@@ -505,6 +505,40 @@ body.resizing-column {
   flex: 0 0 auto;
 }
 
+/* A Kiwi Farms room's featured stream: the bar, and under it the player while
+   watching - capped so the conversation it is watched beside stays on screen. */
+.sneedchat-stream {
+  flex: 0 0 auto;
+}
+
+.sneedchat-stream-bar {
+  align-items: center;
+}
+
+.sneedchat-stream-bar .pinned-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.sneedchat-stream-player {
+  aspect-ratio: 16 / 9;
+  max-height: 45vh;
+  margin: 0 auto;
+  width: 100%;
+  max-width: calc(45vh * 16 / 9);
+  background: #000;
+  border-bottom: 1px solid var(--outline-light);
+}
+
+.sneedchat-stream-player iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
 /* Wraps rather than scrolls, and is capped: a pinned wall of text must not
    push the conversation off the screen, which is the one way this feature
    could be worse than not having it. */
@@ -571,6 +605,14 @@ body.resizing-column {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
+  /* The stack spans the log but its cards do not: the empty width beside a
+     card must let a click through to what is under it - the pinned banner's
+     close button sits exactly there. */
+  pointer-events: none;
+}
+
+.poll-stack > * {
+  pointer-events: auto;
 }
 
 /* Rows in the two history panels: the question, and how it went. */
@@ -6571,8 +6613,116 @@ video.lightbox-media {
   display: flex;
   align-items: center;
   gap: var(--spacing-s);
-  padding: 1px var(--spacing-s) 1px var(--spacing-xl);
+  margin: 1px var(--spacing-xs) 1px var(--spacing-l);
+  padding: 2px var(--spacing-s);
+  border-radius: var(--corner-radius-small);
   color: var(--surface-variant-text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.voice-member:hover,
+.voice-member:focus-visible,
+.voice-member.menu-open {
+  background: var(--surface-hover);
+  color: var(--surface-text);
+  outline: none;
+}
+
+/* Stream preview card shown when hovering a streaming participant in the voice rail. */
+.stream-preview-card {
+  position: fixed;
+  z-index: 2100;
+  width: 264px;
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--corner-radius);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42);
+  overflow: hidden;
+  animation: fade-in var(--motion-fast) ease;
+}
+
+.stream-preview-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--surface-container-lowest, #0e1014);
+  overflow: hidden;
+}
+
+.stream-preview-media {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.stream-preview-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 70%);
+}
+
+.stream-preview-fallback.loading {
+  opacity: 0.78;
+}
+
+.stream-preview-live {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--danger, #e53935);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.stream-preview-foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+}
+
+.stream-preview-who {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  min-width: 0;
+}
+
+.stream-preview-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.stream-preview-nick {
+  font-weight: 600;
+  color: var(--surface-text);
+  font-size: var(--font-size-small);
+}
+
+.stream-preview-meta .muted {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.stream-preview-action {
+  width: 100%;
+  justify-content: center;
 }
 
 .voice-member-face {
@@ -6596,6 +6746,18 @@ video.lightbox-media {
 .voice-you {
   margin-left: auto;
   font-size: var(--font-size-xs);
+}
+
+.voice-member-more {
+  background: none;
+  border: none;
+  padding: 2px var(--spacing-s) 2px var(--spacing-xl);
+  text-align: left;
+  cursor: pointer;
+}
+
+.voice-member-more:hover {
+  color: var(--surface-text);
 }
 
 /* The reason an account is not connected, under its name. Constrained rather
@@ -11789,15 +11951,6 @@ html[data-reduce-motion] *::after {
   box-shadow: var(--shadow-3);
 }
 
-/* The code a Fluxer sign-in shows, to be typed into another Fluxer app: large, spaced, easy to copy by eye. */
-.fluxer-handoff-code {
-  font-family: var(--font-mono, monospace);
-  font-size: 1.8em;
-  letter-spacing: 0.12em;
-  user-select: all;
-  margin: 0.5em 0;
-}
-
 .stoat-server {
   width: 680px;
 }
@@ -15153,4 +15306,17 @@ select.text-field {
 /* The tick is drawn in the colour that reads on the accent: white on the light theme's deeper one. */
 :root[data-theme='light'] :where(input[type='checkbox']):checked {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.6 8.3l2.8 2.8 6-6.2' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* A conversation its service marks as for adults only. */
+.buffer-age-mark {
+  flex: none;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  color: var(--danger-text);
+  background: color-mix(in srgb, var(--danger-text) 14%, transparent);
 }

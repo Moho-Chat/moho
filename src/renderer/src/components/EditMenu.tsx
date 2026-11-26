@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ContextMenu, type MenuEntry } from './ContextMenu'
 import type { EditAction, EditMenuRequest } from '../../../shared/ipc'
 import { usePref } from '../state/hooks'
+import { pictureUnderMenu, watchRightClicks } from '../lib/copyimage'
 import { DEFAULT_SEARCH_ENGINE, engineName, searchUrl, shortened } from '../lib/searchengines'
 
 /**
@@ -13,6 +14,33 @@ import { DEFAULT_SEARCH_ENGINE, engineName, searchUrl, shortened } from '../lib/
  * Pressing a menu item moves focus to the menu, so the field and what was
  * selected in it are remembered when it opens and put back before acting.
  */
+/**
+ * The menu for a picture nothing else has a menu for: a right click that
+ * reached the top of the page unhandled, over an <img>. The pictures that sit
+ * in a message, a profile or a card are handled by their own menus, which
+ * add the same entry - this is for everywhere that has none.
+ */
+export function PictureMenu(): JSX.Element | null {
+  const [at, setAt] = useState<{ x: number; y: number } | null>(null)
+  useEffect(() => {
+    const stop = watchRightClicks()
+    const on = (e: MouseEvent): void => {
+      // Something already answered it.
+      if (e.defaultPrevented) return
+      if (!pictureUnderMenu()) return
+      e.preventDefault()
+      setAt({ x: e.clientX, y: e.clientY })
+    }
+    document.addEventListener('contextmenu', on)
+    return () => {
+      stop()
+      document.removeEventListener('contextmenu', on)
+    }
+  }, [])
+  // An empty list: the menu adds the one entry itself, for the picture that opened it.
+  return at ? <ContextMenu x={at.x} y={at.y} entries={[]} onClose={() => setAt(null)} /> : null
+}
+
 export function EditMenu(): JSX.Element | null {
   const [menu, setMenu] = useState<EditMenuRequest | null>(null)
   const focus = useRef<{ element: HTMLElement | null; range: Range | null }>({ element: null, range: null })

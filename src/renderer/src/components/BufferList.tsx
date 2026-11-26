@@ -446,8 +446,10 @@ export function BufferList(): JSX.Element {
       onDragEnd={endDrag}
       filed={folderPage ? !!viewAssignment[b.id] : !!assignment[b.id] && myCategories.some((c) => c.id === assignment[b.id])}
     />
-    {/* Who is in a Stoat voice channel, under it. */}
-    {(b.accountId.startsWith('stoat:') || b.accountId.startsWith('fluxer:')) && b.nameIcon === 'volume_up' && <StoatVoiceWho bufferId={b.id} accountId={b.accountId} />}
+    {/* Who is in a Stoat or Fluxer voice channel, under it. */}
+    {(b.accountId.startsWith('stoat:') || b.accountId.startsWith('fluxer:')) && b.nameIcon === 'volume_up' && (
+      <StoatVoiceWho bufferId={b.id} accountId={b.accountId} channelName={bufferDisplayName(b.name)} />
+    )}
     </Fragment>
   )
 
@@ -1245,6 +1247,11 @@ function BufferRow({
           </span>
         ) : (
           <span className="ellipsis buffer-name">{rowName}</span>
+        )}
+        {buffer.ageRestricted && (
+          <span className="buffer-age-mark small" title="Age-restricted: for adults only">
+            18+
+          </span>
         )}
         {/* So a conversation with no unread count and no traffic in it is
             explained rather than merely quiet: it is being read elsewhere. */}

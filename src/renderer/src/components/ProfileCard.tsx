@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { SafetyNumberCompare } from './SafetyNumberCompare'
 import { Avatar } from './Avatar'
@@ -278,6 +278,62 @@ export function ProfileCard(): JSX.Element | null {
             </button>
           </div>
         )}
+        {/* Private note the account keeps on this Fluxer user (`PUT /users/@me/notes/{id}`). */}
+        {profile.service === 'fluxer' && profile.id && !profile.pending && profile.userNote !== undefined && (
+          <FluxerUserNote accountId={profile.accountId} userId={profile.id} initial={profile.userNote} />
+        )}
+        {/* Fluxer keeps friends and blocks on the account: what can be done about this person, from their card. */}
+        {profile.service === 'fluxer' && profile.id && !profile.pending && profile.relationship && (
+          <div className="button-row profile-actions">
+            {(() => {
+              const call = (method: string, params: Record<string, unknown>, relationship: string, said: string): void => {
+                void window.moho
+                  .rpc(method, { accountId: profile.accountId, ...params })
+                  .then(() => {
+                    store.patchProfile({ relationship })
+                    store.toast('info', said)
+                  })
+                  .catch((e: Error) => store.toast('error', e.message))
+              }
+              const r = profile.relationship
+              return (
+                <>
+                  {r === 'None' && profile.handle && (
+                    <button type="button" className="button quiet" onClick={() => call('addStoatFriend', { username: profile.handle }, 'Outgoing', `Friend request sent to ${profile.name}`)}>
+                      <Icon name="person_add" size={15} /> Add friend
+                    </button>
+                  )}
+                  {r === 'Incoming' && (
+                    <button type="button" className="button quiet" onClick={() => call('answerStoatFriendRequest', { userId: profile.id, accept: true }, 'Friend', `You and ${profile.name} are friends`)}>
+                      <Icon name="how_to_reg" size={15} /> Accept request
+                    </button>
+                  )}
+                  {r === 'Outgoing' && (
+                    <button type="button" className="button quiet" onClick={() => call('answerStoatFriendRequest', { userId: profile.id, accept: false }, 'None', `Request to ${profile.name} taken back`)}>
+                      <Icon name="person_cancel" size={15} /> Cancel request
+                    </button>
+                  )}
+                  {r === 'Friend' && (
+                    <button type="button" className="button quiet" onClick={() => call('answerStoatFriendRequest', { userId: profile.id, accept: false }, 'None', `${profile.name} is no longer a friend`)}>
+                      <Icon name="person_remove" size={15} /> Remove friend
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="button quiet"
+                    onClick={() =>
+                      r === 'Blocked'
+                        ? call('stoatBlock', { userId: profile.id, block: false }, 'None', `Unblocked ${profile.name}`)
+                        : call('stoatBlock', { userId: profile.id, block: true }, 'Blocked', `Blocked ${profile.name}`)
+                    }
+                  >
+                    <Icon name={r === 'Blocked' ? 'lock_open' : 'block'} size={15} /> {r === 'Blocked' ? 'Unblock' : 'Block'}
+                  </button>
+                </>
+              )
+            })()}
+          </div>
+        )}
         {profile.service === 'signal' && profile.id && !profile.pending && profile.signalVerified !== undefined && (
           <div className="button-row profile-actions">
             <button
@@ -388,6 +444,51 @@ function joinedLabel(service: string): string {
   if (service === 'discord') return 'Joined server'
   if (service === 'fluxer') return 'Joined community'
   return 'Joined'
+}
+
+function FluxerUserNote({ accountId, userId, initial }: { accountId: string; userId: string; initial: string }): JSX.Element {
+  const store = useStore()
+  const [text, setText] = useState(initial)
+  const [saved, setSaved] = useState(initial)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    setText(initial)
+    setSaved(initial)
+  }, [userId, initial])
+  const commit = (): void => {
+    const trimmed = text.trim()
+    if (trimmed === saved.trim() || busy) return
+    setBusy(true)
+    void window.moho
+      .rpc('setFluxerNote', { accountId, userId, note: trimmed })
+      .then(() => {
+        setSaved(trimmed)
+        store.patchProfile({ userNote: trimmed })
+      })
+      .catch((e: Error) => store.toast('error', e.message))
+      .finally(() => setBusy(false))
+  }
+  return (
+    <div className="field" style={{ marginTop: 8 }}>
+      <span className="small muted">Note (only visible to you)</span>
+      <input
+        className="text-field"
+        type="text"
+        maxLength={256}
+        placeholder="Add a note"
+        value={text}
+        disabled={busy}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            commit()
+          }
+        }}
+      />
+    </div>
+  )
 }
 
 /** Idle time in the units a person would say it in. */

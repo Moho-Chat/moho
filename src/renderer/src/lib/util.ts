@@ -503,3 +503,17 @@ export function humanSize(bytes: number): string {
   }
   return unit === 0 ? `${bytes} B` : `${size.toFixed(1)} ${units[unit]}`
 }
+
+/**
+ * Whether "ignore" on this service is the service's own block: told to it, held for the account on every client, and
+ * the other person cannot message it. Those say Block and Unblock; the rest only stop showing what arrives here.
+ */
+export function ignoreIsBlock(service?: string): boolean {
+  return service === 'discord' || service === 'stoat' || service === 'fluxer' || service === 'xmpp'
+}
+
+/** What the menu calls ignoring somebody, or undoing it, on this service. */
+export function ignoreLabel(service: string | undefined, name: string, undo: boolean): string {
+  if (ignoreIsBlock(service)) return undo ? `Unblock ${name}` : `Block ${name}`
+  return undo ? `Stop ignoring ${name}` : `Ignore ${name}`
+}

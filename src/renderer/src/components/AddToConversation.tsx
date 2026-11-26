@@ -36,19 +36,28 @@ export function AddToConversation({ buffer }: { buffer: BufferEntry }): JSX.Elem
   const box = useRef<HTMLDivElement>(null)
 
   const accountId = buffer.accountId
+  // Fluxer's groups take the same two steps as Discord's: a group takes the person, a one-to-one starts a new group.
+  const fluxer = accountId.startsWith('fluxer:')
+  const service = fluxer ? 'Fluxer' : 'Discord'
+  // A Fluxer account's id is its user id behind the service's prefix.
+  const own = fluxer ? accountId.slice('fluxer:'.length) : undefined
   // Everyone already here, this account excluded - the daemon leaves it out
   // of a direct message's roster, which is the same list Discord sends.
-  const present = (roster ?? []).map((m) => m.userId).filter(Boolean) as string[]
-  const isGroup = present.length > 1
+  // Fluxer's roster has the account in it as well, so it is taken out here.
+  const present = (roster ?? []).map((m) => m.userId).filter((u): u is string => !!u && u !== own)
+  const isGroup = fluxer ? buffer.category === 'Groups' : present.length > 1
   const room = GROUP_DM_MAX_OTHERS - present.length
 
   useEffect(() => {
     if (!open) return
-    void window.moho
-      .rpc<DiscordFriend[]>('listDiscordFriends', { accountId })
-      .then(setFriends)
-      .catch((e: Error) => store.toast('error', e.message))
-  }, [open, accountId, store])
+    // Fluxer's friends are on the same page as its requests, one shape for every Discord-like service.
+    const list = fluxer
+      ? window.moho
+          .rpc<{ friends: { id: string; name: string | null; avatarUrl?: string | null; online?: boolean }[] }>('stoatFriendRequests', { accountId })
+          .then((r) => r.friends.map((f): DiscordFriend => ({ userId: f.id, username: f.name || f.id, avatarUrl: f.avatarUrl, status: f.online ? 'online' : 'offline', kind: 'friend' })))
+      : window.moho.rpc<DiscordFriend[]>('listDiscordFriends', { accountId })
+    void list.then(setFriends).catch((e: Error) => store.toast('error', e.message))
+  }, [open, accountId, store, fluxer])
 
   useEscapeLayer(() => setOpen(false), open)
 
@@ -126,10 +135,10 @@ export function AddToConversation({ buffer }: { buffer: BufferEntry }): JSX.Elem
         <HeaderPopover anchor={box.current} width={280} className="add-to-dm-pop" onClose={() => setOpen(false)}>
           <div className="add-to-dm-head small">
             {room <= 0
-              ? `This group is full - Discord allows ${GROUP_DM_MAX_OTHERS + 1} people including you.`
+              ? `This group is full - ${service} allows ${GROUP_DM_MAX_OTHERS + 1} people including you.`
               : isGroup
                 ? 'Add to this group'
-                : 'Discord cannot add to a one-to-one conversation, so this starts a group with the same people.'}
+                : `${service} cannot add to a one-to-one conversation, so this starts a group with the same people.`}
           </div>
 
           {room > 0 && available.length === 0 && (

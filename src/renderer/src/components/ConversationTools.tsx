@@ -1090,7 +1090,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           <>
           {/* Beside the call button, for the same reason it is here: it acts on
               the conversation being read rather than on the window. */}
-          {isDiscord && isDm && <AddToConversation buffer={buffer} />}
+          {(isDiscord && isDm) || (buffer.accountId.startsWith('fluxer:') && (isDm || buffer.category === 'Groups')) ? <AddToConversation buffer={buffer} /> : null}
 
           {/* A Discord channel is joined with a link rather than by being asked,
               so the invite here is a thing to make and paste rather than a person

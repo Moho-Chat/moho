@@ -14,14 +14,18 @@ export function replyPreviewHtml(
   options: { service?: string; smilies?: SmilieIndex | null; channels?: ChannelIndex | null; ircColours?: boolean } = {}
 ): string {
   if (!text) return ''
+  // Reply previews are always a single line (as in Discord): collapse newlines
+  // and empty lines into spaces so multi-line quotes never expand vertically.
+  const singleLine = text.replace(/\r?\n+/g, ' ').replace(/\s{2,}/g, ' ').trim()
+  if (!singleLine) return ''
   const sneedchat = options.service === 'sneedchat'
-  const html = formatMessage(sneedchat ? normalizeBBCode(text) : text, {
+  const html = formatMessage(sneedchat ? normalizeBBCode(singleLine) : singleLine, {
     isSneedchat: sneedchat,
     smilies: options.smilies,
     channels: options.channels,
     markdownEscapes: options.service === 'discord' || options.service === 'fluxer',
     ircFormatting: options.service === 'irc' && options.ircColours ? 'render' : 'strip'
   })
-  // Anchors that are not spoilers: their words, with no link.
-  return html.replace(/<a href="(?!spoiler:)[^"]*"[^>]*>([\s\S]*?)<\/a>/g, '$1')
+  // Anchors that are not spoilers: their words, with no link; strip any line breaks.
+  return html.replace(/<br\s*\/?>/gi, ' ').replace(/<a href="(?!spoiler:)[^"]*"[^>]*>([\s\S]*?)<\/a>/g, '$1')
 }

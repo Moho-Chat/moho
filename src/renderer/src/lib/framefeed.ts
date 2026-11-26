@@ -18,9 +18,11 @@ export interface FeedFrame {
   keyframe?: boolean
   timestampMicros?: number
   ended?: boolean
+  codec?: 'vp8' | 'h264' | 'vp9'
 }
 
 interface Feed {
+  codec: string
   decoder: VideoDecoder
   /** The latest picture, kept for canvases that subscribe later. */
   latest: HTMLCanvasElement
@@ -31,6 +33,31 @@ interface Feed {
 
 const feeds = new Map<string, Feed>()
 
+/**
+ * Extracts the WebCodecs `avc1.PPCCLL` codec string from an H.264 Annex B
+ * keyframe's SPS NAL unit (type 7), falling back to Baseline Level 4.0.
+ */
+function h264CodecString(bytes: Uint8Array): string {
+  for (let i = 0; i + 7 < bytes.length; i++) {
+    let nalAt = -1
+    if (bytes[i] === 0 && bytes[i + 1] === 0) {
+      if (bytes[i + 2] === 1) nalAt = i + 3
+      else if (bytes[i + 2] === 0 && bytes[i + 3] === 1) nalAt = i + 4
+    }
+    if (nalAt >= 0 && nalAt + 3 < bytes.length && (bytes[nalAt] & 0x1f) === 7) {
+      const hex = (n: number): string => n.toString(16).padStart(2, '0').toUpperCase()
+      return `avc1.${hex(bytes[nalAt + 1])}${hex(bytes[nalAt + 2])}${hex(bytes[nalAt + 3])}`
+    }
+  }
+  return 'avc1.42E028'
+}
+
+function decoderCodecFor(codec: FeedFrame['codec'], bytes: Uint8Array): string {
+  if (codec === 'h264') return h264CodecString(bytes)
+  if (codec === 'vp9') return 'vp09.00.41.08'
+  return 'vp8'
+}
+
 function draw(onto: HTMLCanvasElement, from: CanvasImageSource, width: number, height: number): void {
   if (onto.width !== width || onto.height !== height) {
     onto.width = width
@@ -39,9 +66,10 @@ function draw(onto: HTMLCanvasElement, from: CanvasImageSource, width: number, h
   onto.getContext('2d')?.drawImage(from, 0, 0)
 }
 
-function open(key: string): Feed {
+function open(key: string, codec: string): Feed {
   const latest = document.createElement('canvas')
   const feed: Feed = {
+    codec,
     latest,
     canvases: new Set(),
     started: false,
@@ -66,7 +94,7 @@ function open(key: string): Feed {
     })
   }
   // Codec only; the size comes from the keyframe.
-  feed.decoder.configure({ codec: 'vp8', optimizeForLatency: true })
+  feed.decoder.configure({ codec, optimizeForLatency: true, hardwareAcceleration: 'prefer-hardware' })
   feeds.set(key, feed)
   return feed
 }
@@ -90,11 +118,24 @@ export function feedFrame(key: string, d: FeedFrame): void {
     return
   }
   if (!d.frame) return
+  const bytes = fromBase64(d.frame)
+  const wantedCodec = d.keyframe ? decoderCodecFor(d.codec, bytes) : undefined
   let feed = feeds.get(key)
+  if (feed && wantedCodec && feed.codec !== wantedCodec) {
+    // Stream switched codec or H.264 profile: reconfigure cleanly on the keyframe.
+    try {
+      feed.decoder.configure({ codec: wantedCodec, optimizeForLatency: true, hardwareAcceleration: 'prefer-hardware' })
+      feed.codec = wantedCodec
+      feed.started = false
+    } catch {
+      close(key)
+      feed = undefined
+    }
+  }
   if (!feed) {
     // Only a keyframe can begin a picture.
     if (!d.keyframe) return
-    feed = open(key)
+    feed = open(key, wantedCodec ?? 'vp8')
   }
   if (!feed.started) {
     if (!d.keyframe) return
@@ -105,7 +146,7 @@ export function feedFrame(key: string, d: FeedFrame): void {
       new EncodedVideoChunk({
         type: d.keyframe ? 'key' : 'delta',
         timestamp: d.timestampMicros ?? 0,
-        data: fromBase64(d.frame)
+        data: bytes
       })
     )
   } catch (e) {

@@ -1,5 +1,6 @@
 import { SneedchatInvite } from './SneedchatInvite'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { NamePrompt } from './NamePrompt'
 import { HeaderTopic } from './HeaderTopic'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { ExportDialog } from './ExportDialog'
@@ -48,6 +49,8 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
   const [roomDialog, setRoomDialog] = useState(false)
   const [omemoDialog, setOmemoDialog] = useState(false)
   const [inviting, setInviting] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const sneedchatGroup = useChat((s) => s.sneedchatPowers[buffer.id])
   const [, togglePin, isPinned] = useIdSetPref('pinnedBuffers')
   const [hidden, setHidden] = usePref<string[]>('hiddenBuffers', [])
   const [assignment, setAssignment] = useMapPref<string>('channelCategory')
@@ -58,6 +61,10 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
 
   const account = accounts.find((a) => a.id === buffer.accountId)
   const name = bufferDisplayName(buffer.name)
+  const sneedchatSide = account?.service === 'sneedchat' && buffer.kind !== 'server' && !buffer.name.startsWith('#')
+  useEffect(() => {
+    if (sneedchatSide) store.ensureSneedchatPowers(buffer.id)
+  }, [sneedchatSide, buffer.id, store])
   const activity = dmActivity(buffer, presence)
   const statusText = activity ? activityLabel(activity) : undefined
 
@@ -135,6 +142,13 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
     ...(account?.service === 'sneedchat' && buffer.kind !== 'server' && !buffer.name.startsWith('#')
       ? ([{ label: 'Invite someone…', icon: 'group_add', onClick: () => setInviting(true) }] as MenuEntry[])
       : []),
+    // And a group chat can be named by whoever runs it - or the name taken off, so it goes by its people again.
+    ...(sneedchatSide && sneedchatGroup?.group && sneedchatGroup.runGroup
+      ? ([
+          { label: 'Rename group…', icon: 'edit', onClick: () => setRenaming(true) },
+          { label: "Clear the group's name", icon: 'backspace', onClick: () => void store.renameSneedchatGroup(buffer.id, '') }
+        ] as MenuEntry[])
+      : []),
     // An XMPP room has controls of its own: its settings, who holds what standing in it, an invitation, the subject.
     ...(account?.service === 'xmpp' && buffer.kind === 'channel'
       ? ([{ label: buffer.encrypted ? 'Stop encrypting this room' : 'Encrypt this room', icon: buffer.encrypted ? 'lock' : 'lock_open', onClick: () => void window.moho.rpc('xmppSetEncryption', { bufferId: buffer.id, on: !buffer.encrypted }).catch((e: Error) => store.toast('error', e.message)) }] as MenuEntry[])
@@ -180,6 +194,11 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
           />
         ) : null}
         <span className="main-header-title ellipsis">{name}</span>
+        {buffer.ageRestricted && (
+          <span className="buffer-age-mark small" title="Age-restricted: for adults only">
+            18+
+          </span>
+        )}
         {/* What they are doing, beside the name: the game, or a state the dot's
             colour does not tell apart. */}
         {statusText && <span className="header-status small muted ellipsis">{statusText}</span>}
@@ -191,6 +210,20 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
 
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={entries} onClose={close} />}
 
+      {renaming && (
+        <NamePrompt
+          title="Rename group"
+          detail="The name everybody in it sees, on the site and here."
+          placeholder={name}
+          confirmLabel="Rename"
+          icon="edit"
+          onConfirm={(title) => {
+            setRenaming(false)
+            void store.renameSneedchatGroup(buffer.id, title)
+          }}
+          onCancel={() => setRenaming(false)}
+        />
+      )}
       {inviting && <SneedchatInvite accountId={buffer.accountId} roomBufferId={buffer.id} onClose={() => setInviting(false)} />}
       {omemoDialog && buffer.remoteId && <XmppOmemoDialog bufferId={buffer.id} accountId={buffer.accountId} jid={buffer.remoteId} name={name} encrypted={!!buffer.encrypted} onClose={() => setOmemoDialog(false)} />}
 

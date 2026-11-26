@@ -78,6 +78,8 @@ export function CallView({ bufferId }: { bufferId: string }): JSX.Element | null
 export function DiscordStage({ session, where }: { session: VoiceSession; where: 'inline' | 'window' }): JSX.Element {
   const store = useStore()
   const buffers = useChat((s) => s.buffers)
+  const accounts = useChat((s) => s.accounts)
+  const accountConnected = accounts.find((a) => a.id === session.accountId)?.state === 'connected'
   const cameras = useChat((s) => s.discordCameras)
   const sharing = useChat((s) => s.discordSharing) === session.accountId
   const myCamera = useChat((s) => s.discordCamera)
@@ -91,7 +93,16 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
   const voicePrefs = useChat((s) => s.voicePrefs)
   const [members, setMembers] = useState<VoiceMember[]>([])
   const [speaking, setSpeaking] = useState<Record<string, number>>({})
+  /** Streams the user explicitly closed in this call, so auto-watch does not reopen them. */
+  const [dismissed, setDismissed] = useState<Set<string>>(() => new Set())
+  /** Streamers already requested by auto-watch in this call, so errors never retry in a tight loop. */
+  const attemptedRef = useRef<Set<string>>(new Set())
   const { accountId, channelId } = session
+
+  useEffect(() => {
+    setDismissed(new Set())
+    attemptedRef.current.clear()
+  }, [accountId, channelId])
 
   // Who is in it. Re-asked rather than pushed, because arriving and leaving a
   // call are voice-state dispatches this client does not otherwise subscribe
@@ -142,14 +153,122 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
 
   // A stage is listened to, mostly. Only the speakers get tiles - an
   // audience can be hundreds, and a grid of them would bury the people
-  // talking - and the audience is counted instead.
+  // talking - and the audience is counted instead. A crowded ordinary voice
+  // channel has the same problem: put every live stream and camera on stage
+  // first, then yourself and whoever is speaking, and cap the rest so tiles
+  // stay readable instead of shrinking into specks.
+  const MAX_STAGE_TILES = 16
   const stage = !!session.stage
   const me = members.find((m) => m.isSelf)
   const onStage = stage ? members.filter((m) => !m.suppressed) : members
   const audience = stage ? members.length - onStage.length : 0
 
-  const tiles: StageTile[] = []
+  // Play every active screenshare in the channel simultaneously unless the
+  // user explicitly dismissed it, staggered to stay well inside Discord's
+  // gateway rate limit (120 frames/min) and only attempted once per streamer.
+  useEffect(() => {
+    if (!accountConnected || members.length === 0) return
+    const list = stage ? members.filter((m) => !m.suppressed) : members
+    const activeStreamers = new Set<string>()
+    const toWatch: VoiceMember[] = []
+    for (const m of list) {
+      if (!m.streaming || m.isSelf) continue
+      activeStreamers.add(m.userId)
+      if (!dismissed.has(m.userId) && !watching[`${accountId}|${m.userId}`] && !attemptedRef.current.has(m.userId)) {
+        attemptedRef.current.add(m.userId)
+        toWatch.push(m)
+      }
+    }
+    // Allow re-watching later if a streamer stops and starts a fresh stream.
+    for (const uid of [...attemptedRef.current]) {
+      if (!activeStreamers.has(uid)) attemptedRef.current.delete(uid)
+    }
+    for (const w of Object.values(watching)) {
+      if (w.accountId === accountId && !activeStreamers.has(w.userId)) {
+        void store.stopWatchingDiscordStream(w.accountId, w.userId)
+      }
+    }
+    if (toWatch.length === 0) return
+    const timers: number[] = []
+    toWatch.forEach((m, idx) => {
+      const id = window.setTimeout(() => {
+        void store.watchDiscordStream(accountId, m.userId, m.nick, { channelId, guildId: session.guildId }, true)
+      }, idx * 500)
+      timers.push(id)
+    })
+    return () => {
+      for (const id of timers) window.clearTimeout(id)
+    }
+  }, [accountConnected, accountId, channelId, session.guildId, stage, members, watching, dismissed, store])
+
+  const streamTiles: StageTile[] = []
   for (const m of onStage) {
+    if (!m.streaming) continue
+    const watched = watching[`${accountId}|${m.userId}`]
+    streamTiles.push({
+      id: `stream:${m.userId}`,
+      name: m.isSelf ? 'Your screen' : `${m.nick}’s screen`,
+      avatarUrl: m.avatarUrl,
+      live: true,
+      // Your own share drawn from the capture itself: the one way to see
+      // the right window was picked and that it is still moving, without
+      // asking somebody watching.
+      picture:
+        m.isSelf && sharing && shareStream
+          ? () => <LocalPicture stream={shareStream} mirrored={false} />
+          : watched
+            ? () => <FeedPicture feedKey={streamKey(accountId, watched.streamKey)} />
+            : undefined,
+      // This account can be signed in here and in Discord's own client at
+      // once, and then the stream is this account's and there is nothing
+      // here to open.
+      action: m.isSelf
+        ? undefined
+        : {
+            label: 'Watch stream',
+            onClick: () => {
+              setDismissed((prev) => {
+                if (!prev.has(m.userId)) return prev
+                const next = new Set(prev)
+                next.delete(m.userId)
+                return next
+              })
+              void store.watchDiscordStream(accountId, m.userId, m.nick, { channelId, guildId: session.guildId })
+            }
+          },
+      dismiss: watched
+        ? {
+            label: 'Stop watching',
+            onClick: () => {
+              setDismissed((prev) => {
+                const next = new Set(prev)
+                next.add(m.userId)
+                return next
+              })
+              void store.stopWatchingDiscordStream(accountId, m.userId)
+            }
+          }
+        : undefined
+    })
+  }
+
+  const memberLimit = Math.max(0, MAX_STAGE_TILES - streamTiles.length)
+  const shownMembers =
+    onStage.length <= memberLimit
+      ? onStage
+      : [...onStage]
+          .sort((a, b) => {
+            const rank = (m: VoiceMember): number => {
+              const hasCam = m.isSelf ? !!ownCamera : !!cameras[`${accountId}|${m.userId}`]
+              const isTalking = m.isSelf ? speaking.self !== undefined : (speaking[m.userId] ?? 0) > 0
+              return (hasCam ? 16 : 0) + (m.isSelf ? 8 : 0) + (isTalking ? 4 : 0) + (m.streaming ? 2 : 0) + (!m.muted ? 1 : 0)
+            }
+            return rank(b) - rank(a)
+          })
+          .slice(0, memberLimit)
+
+  const tiles: StageTile[] = [...streamTiles]
+  for (const m of shownMembers) {
     const camera = cameras[`${accountId}|${m.userId}`]
     tiles.push({
       id: m.userId,
@@ -190,36 +309,6 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
           ],
       volumeBadge: volumeBadge(voicePrefs.userVolumes?.[m.userId])
     })
-    // A shared screen is a tile of its own, the way Discord shows it: dark
-    // until somebody chooses to watch, because watching opens a connection.
-    if (m.streaming) {
-      const watched = watching?.accountId === accountId && watching.userId === m.userId
-      tiles.push({
-        id: `stream:${m.userId}`,
-        name: m.isSelf ? 'Your screen' : `${m.nick}’s screen`,
-        avatarUrl: m.avatarUrl,
-        live: true,
-        // Your own share drawn from the capture itself: the one way to see
-        // the right window was picked and that it is still moving, without
-        // asking somebody watching.
-        picture:
-          m.isSelf && sharing && shareStream
-            ? () => <LocalPicture stream={shareStream} mirrored={false} />
-            : watched
-              ? () => <FeedPicture feedKey={streamKey(accountId, watching.streamKey)} />
-              : undefined,
-        // This account can be signed in here and in Discord's own client at
-        // once, and then the stream is this account's and there is nothing
-        // here to open.
-        action: m.isSelf
-          ? undefined
-          : {
-              label: 'Watch stream',
-              onClick: () => void store.watchDiscordStream(accountId, m.userId, m.nick, { channelId, guildId: session.guildId })
-            },
-        dismiss: watched ? { label: 'Stop watching', onClick: () => void store.stopWatchingDiscordStream() } : undefined
-      })
-    }
   }
 
   // From this call's own account. The window can be in two accounts' calls,
@@ -355,7 +444,9 @@ export function DiscordStage({ session, where }: { session: VoiceSession; where:
           ? 'Connecting…'
           : stage
             ? `${onStage.length} on stage · ${audience} listening${me?.suppressed ? ' · you are in the audience' : ''}`
-            : `${members.length} in the call`
+            : streamTiles.length > 0
+              ? `${streamTiles.length} live · ${members.length} in the call`
+              : `${members.length} in the call`
       }
       tiles={tiles}
       buttons={buttons}

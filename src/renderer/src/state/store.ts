@@ -11,6 +11,7 @@ import type {
   DccTransfer,
   DiscordFriend,
   MatrixInvite,
+  FluxerInviteOffer,
   FriendRequest,
   MatrixVerification,
   Member,
@@ -22,6 +23,7 @@ import type {
   RoomPermissions,
   SneedchatSmilie,
   SneedchatPowers,
+  SneedchatStream,
   VoiceChannel,
   VoicePrefs,
   VoiceSession
@@ -31,7 +33,7 @@ import { ALL_STATUSES, statusesFor, supportsStatus } from '../lib/status'
 import type { SteamGroup, GroupCall } from '../lib/steamgroups'
 import type { TelegramFolder } from '../lib/telegramfolders'
 import { buildSmilieIndex, fluxerSameText, sneedSameText, steamSameText, stoatSameText, type SmilieEntry, type SmilieIndex } from '../lib/format'
-import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
+import { bufferDisplayName, ignoreIsBlock, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
 import { heldOnAccount, type NotifyLevel } from '../lib/notifylevels'
 import { runExport } from '../lib/exporter'
 import type { ForumPost } from '../lib/forum'
@@ -107,6 +109,8 @@ export interface BufferEntry extends WireBuffer {
 /** One person in a call, as the call view draws them. */
 export interface CallTile {
   id: string
+  /** Protocol user id where known, so per-user volume controls apply. */
+  userId?: string
   label: string
   stream: MediaStream | null
   /** Whether there is a live picture, as opposed to a name and a microphone. */
@@ -120,6 +124,8 @@ export interface CallTile {
 export interface ChatMessage extends Message {
   /** Set on a locally-echoed message that nobilis hasn't confirmed yet. */
   pending?: boolean
+  /** Epoch ms when a slowmode-queued message will be sent; shown as a countdown with cancel. */
+  slowmodeUntil?: number
   /** Set once the send definitively failed or timed out. */
   failed?: boolean
   errorText?: string
@@ -429,6 +435,8 @@ export interface SteamVoiceRoom {
 export interface ChatState {
   /** Who is composing, per buffer, with when to stop believing it. */
   typingByBuffer: Record<string, { nicks: string[]; until: number }>
+  /** Epoch ms when the next message may be sent in a slowmode channel, per buffer. */
+  slowmodeUntil: Record<string, number>
   /**
    * Who has read up to which message, per buffer.
    *
@@ -627,6 +635,8 @@ export interface ChatState {
   twitchRights: Record<string, boolean>
   /** What the account may do in each Sneedchat room it has open, as the chat's page said. */
   sneedchatPowers: Record<string, SneedchatPowers>
+  /** Each Kiwi Farms room's featured stream, by conversation: null for none, absent until asked. */
+  sneedchatStreams: Record<string, SneedchatStream | null>
   /** The reactions Kiwi Farms offers, for the reaction picker. */
   sneedchatReactions: CustomEmoji[]
   /** The poll and prediction running in each channel, by `cardSlot`. */
@@ -759,7 +769,8 @@ export interface ChatState {
    */
   discordCameras: Record<string, true>
   /** The stream being watched, if any. One at a time, deliberately. */
-  discordWatching: { accountId: string; streamKey: string; userId: string; nick: string } | null
+  /** Go Live streams currently being watched, keyed by `accountId|userId`. */
+  discordWatching: Record<string, { accountId: string; streamKey: string; userId: string; nick: string }>
   /** Who is in each Stoat conversation's call, by buffer, as the daemon last said. */
   stoatVoice: Record<string, StoatVoiceMember[]>
   activeCall: {
@@ -808,6 +819,8 @@ export interface ChatState {
   steamGroups: Record<string, SteamGroup[]>
   /** Each Telegram account's chat folders as Telegram last said them, in its order; absent until it has. */
   telegramFolders: Record<string, TelegramFolder[]>
+  /** Each Fluxer account's guild folders from `user_settings.guild_folders`. */
+  fluxerFolders: Record<string, { id: string; name: string; colour?: string; members: string[] }[]>
   replyingTo: { id: string; from: string; body: string } | null
   /** Whether answering pings the author (Discord's "@ ON"): on for every new reply. */
   replyPing: boolean
@@ -851,6 +864,7 @@ export interface StoatVoiceMember {
   camera: boolean
   screen: boolean
   muted: boolean
+  isSelf?: boolean
 }
 
 export type Toast = ToastItem
@@ -904,12 +918,14 @@ const INITIAL: ChatState = {
   historyGapAfter: {},
   dividerTsByBuffer: {},
     typingByBuffer: {},
+  slowmodeUntil: {},
   readersByBuffer: {},
   openThread: null,
   matrixPermissions: {},
   kickStreams: {},
   twitchRights: {},
   sneedchatPowers: {},
+  sneedchatStreams: {},
   sneedchatReactions: [],
   livePolls: {},
   pinnedByBuffer: {},
@@ -949,7 +965,7 @@ const INITIAL: ChatState = {
   discordCamera: null,
   discordStreams: {},
   discordCameras: {},
-  discordWatching: null,
+  discordWatching: {},
   ignoredByAccount: {},
   matrixWidgets: {},
   matrixInvites: {},
@@ -962,6 +978,7 @@ const INITIAL: ChatState = {
   profileHover: false,
   steamGroups: {},
   telegramFolders: {},
+  fluxerFolders: {},
   replyingTo: null,
   replyPing: true,
   editingId: '',
@@ -1220,6 +1237,10 @@ export class ChatStore {
   private state: ChatState = INITIAL
   private listeners = new Set<() => void>()
   private sendSeq = 0
+  /** Timers for messages queued to send after a channel's slowmode countdown. */
+  private slowmodeTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  /** Actual server cooldown (epoch ms) from the last sent message per buffer, excluding queued slots. */
+  private slowmodeBaseUntil = new Map<string, number>()
   /** clientId -> the optimistic message awaiting its real echo. */
   private pendingSends = new Map<
     string,
@@ -1656,6 +1677,12 @@ export class ChatStore {
         this.signalCallsProbed = true
         void this.probeSignalCalls()
       }
+      if (this.state.accounts.some((a) => a.service === 'fluxer')) {
+        void window.moho
+          .rpc<Record<string, { id: string; name: string; colour?: string; members: string[] }[]>>('fluxerGuildFolders')
+          .then((fluxerFolders) => this.set({ fluxerFolders: { ...this.state.fluxerFolders, ...fluxerFolders } }))
+          .catch(() => {})
+      }
       void this.refreshInvites()
       void this.refreshFriendRequests()
     } catch (e) {
@@ -1705,6 +1732,15 @@ export class ChatStore {
       try {
         const r = await window.moho.rpc<{ incoming: FriendRequest[] }>('stoatFriendRequests', { accountId: account.id })
         next[account.id] = r.incoming
+      } catch {
+        // Not connected yet: the daemon's own push fills it in.
+      }
+    }
+    // Fluxer's invitations to a community or a group are links somebody sent the account in a direct message.
+    for (const account of this.state.accounts.filter((a) => a.service === 'fluxer' && a.state === 'connected')) {
+      try {
+        const offers = await window.moho.rpc<FluxerInviteOffer[]>('fluxerInviteOffers', { accountId: account.id })
+        this.set({ matrixInvites: { ...this.state.matrixInvites, [account.id]: offers.map((o) => this.fluxerOffer(account.id, o)) } })
       } catch {
         // Not connected yet: the daemon's own push fills it in.
       }
@@ -1790,6 +1826,23 @@ export class ChatStore {
     }
   }
 
+  /** Where each Fluxer invitation leads (a community's id or a group's channel), by its key, to open it once accepted. */
+  private fluxerTargets = new Map<string, { target: string; group: boolean }>()
+
+  /** A Fluxer link somebody sent, as the tile lists an invitation: its code is what it is answered by. */
+  private fluxerOffer(accountId: string, o: FluxerInviteOffer): MatrixInvite {
+    this.fluxerTargets.set(`${accountId}|${o.code}`, { target: o.target, group: o.group })
+    const size = o.members ? `, ${o.members} ${o.members === 1 ? 'member' : 'members'}` : ''
+    return {
+      roomId: o.code,
+      name: o.name,
+      inviter: o.fromName,
+      avatarUrl: o.iconUrl,
+      isDirect: false,
+      detail: `${o.fromName || 'Somebody'} sent you an invite to ${o.group ? 'this group' : 'this community'}${size}`
+    }
+  }
+
   /** Everything waiting on a yes or a no, as the invitations tile lists it. */
   pendingInvitations(): Invitation[] {
     const s = this.state
@@ -1835,6 +1888,8 @@ export class ChatStore {
         } else {
           await window.moho.rpc('steamAnswerFriendRequest', { accountId, steamid: id, accept })
         }
+      } else if (invitation.service === 'fluxer') {
+        await window.moho.rpc('answerFluxerInvite', { accountId, code: id, accept })
       } else if (invitation.service === 'xmpp') {
         await window.moho.rpc('xmppAnswerInvite', { accountId, roomId: id, accept })
       } else if (invitation.service === 'telegram') {
@@ -1929,10 +1984,16 @@ export class ChatStore {
         return false
       }
     }
+    // A Fluxer invitation is answered by its code, and leads to a community (its first channel) or a group.
+    const fluxer = invitation.service === 'fluxer' ? this.fluxerTargets.get(`${invitation.accountId}|${invitation.id}`) : undefined
     const found = (): BufferEntry | undefined =>
-      this.state.buffers.find(
-        (b) => b.accountId === invitation.accountId && b.remoteId === invitation.id && (invitation.kind === 'room' || b.kind === 'dm')
-      )
+      fluxer
+        ? fluxer.group
+          ? this.state.buffers.find((b) => b.accountId === invitation.accountId && b.remoteId === fluxer.target)
+          : this.state.buffers.find((b) => b.groupId === `${invitation.accountId}|guild:${fluxer.target}` && b.kind === 'channel')
+        : this.state.buffers.find(
+            (b) => b.accountId === invitation.accountId && b.remoteId === invitation.id && (invitation.kind === 'room' || b.kind === 'dm')
+          )
     for (let waited = 0; waited < 8000; waited += 200) {
       const buffer = found()
       if (buffer) {
@@ -2096,12 +2157,33 @@ export class ChatStore {
     // And onto the Steam voice this window holds, which obeys the same buttons.
     this.steamVoice.applyMute()
     this.telegramVoice.applyMute()
+    this.applySfuMute()
     try {
       this.set({ voicePrefs: await window.moho.rpc<VoicePrefs>('setVoiceMuted', next) })
     } catch (e) {
       this.toast('error', `Couldn't change audio: ${(e as Error).message}`)
       await this.refreshVoicePrefs()
     }
+  }
+
+  /** Whether the voice buttons have the microphone silenced: muted, or deafened, which silences it too. */
+  private voiceSilenced(): boolean {
+    return !!(this.state.voicePrefs.micMuted || this.state.voicePrefs.deafened)
+  }
+
+  /** Puts the voice buttons onto a Stoat or Fluxer call this window is in. */
+  private applySfuMute(): void {
+    const call = this.stoatCall
+    if (!call) return
+    const muted = this.voiceSilenced()
+    if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, muted } })
+    void call.sfu
+      .setMuted(muted)
+      .then(() => {
+        if (this.stoatCall === call) call.local = call.sfu.local
+        this.set({})
+      })
+      .catch((e: Error) => this.toast('error', `Couldn't open the microphone: ${e.message}`))
   }
 
   async setVoiceDevice(kind: 'input' | 'output', deviceId: string): Promise<void> {
@@ -2601,11 +2683,31 @@ export class ChatStore {
     return known ?? { accountId: '', bufferId, channelId: '', ringing: false }
   }
 
+  /**
+   * Brings a guild's voice stage into view.
+   *
+   * `CallView` lives above the active conversation of the guild you are in, so
+   * joining a voice channel while looking at another server (or a forum, or a
+   * settings panel) otherwise connects silently with no stage on screen.
+   */
+  focusVoiceStage(accountId: string, guildId: string): void {
+    const groupId = `${accountId}|guild:${guildId}`
+    if (this.state.activePanel) this.set({ activePanel: '' })
+    void window.moho.prefs.set('ui.stageCollapsed', false)
+    const current = this.state.buffers.find((b) => b.id === this.state.activeBufferId)
+    if (current && current.groupId === groupId && !current.forum) return
+    const candidate = [...this.state.buffers]
+      .filter((b) => b.groupId === groupId && !b.forum)
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0]
+    if (candidate) void this.selectBuffer(candidate.id, false)
+  }
+
   async joinVoice(accountId: string, guildId: string, channelId: string): Promise<void> {
     try {
       // soloOnly is off here because a person clicking a channel in a list
       // that shows them who is already in it has chosen to join those people.
       await window.moho.rpc('joinVoiceChannel', { accountId, guildId, channelId, soloOnly: false, transmit: true })
+      this.focusVoiceStage(accountId, guildId)
       await Promise.all([this.refreshVoiceSessions(), this.refreshVoiceChannels(accountId, guildId)])
     } catch (e) {
       this.toast('error', `Couldn't join voice: ${(e as Error).message}`)
@@ -2846,6 +2948,50 @@ export class ChatStore {
       .rpc<SneedchatPowers>('sneedchatPowers', { bufferId })
       .then((p) => this.set({ sneedchatPowers: { ...this.state.sneedchatPowers, [bufferId]: p } }))
       .catch(() => this.sneedchatPowersAsked.delete(bufferId))
+  }
+
+  private sneedchatStreamsAsked = new Set<string>()
+
+  /** Asks once per conversation what a Kiwi Farms room is streaming; the daemon says when it changes. */
+  ensureSneedchatStream(bufferId: string): void {
+    if (this.sneedchatStreamsAsked.has(bufferId)) return
+    this.sneedchatStreamsAsked.add(bufferId)
+    void window.moho
+      .rpc<SneedchatStream | null>('getSneedchatStream', { bufferId })
+      .then((stream) => this.set({ sneedchatStreams: { ...this.state.sneedchatStreams, [bufferId]: stream } }))
+      .catch(() => this.sneedchatStreamsAsked.delete(bufferId))
+  }
+
+  /** Starts or stops watching a room's featured stream with the room. */
+  async watchSneedchatStream(bufferId: string, watching: boolean): Promise<void> {
+    const stream = this.state.sneedchatStreams[bufferId]
+    if (!stream) return
+    // At once, rather than after the daemon answers: the player is ours to open, and the chat is told alongside.
+    this.set({ sneedchatStreams: { ...this.state.sneedchatStreams, [bufferId]: { ...stream, watching } } })
+    try {
+      await window.moho.rpc('sneedchatWatchStream', { bufferId, watching })
+    } catch (e) {
+      if (watching) this.toast('error', (e as Error).message)
+    }
+  }
+
+  /** Names a Kiwi Farms group chat, or (an empty name) clears the name. */
+  async renameSneedchatGroup(bufferId: string, title: string): Promise<void> {
+    try {
+      await window.moho.rpc('sneedchatRenameGroup', { bufferId, title: title.trim() || undefined })
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
+  }
+
+  /** Takes somebody out of a Kiwi Farms group chat. */
+  async removeSneedchatMember(bufferId: string, who: string, name: string): Promise<void> {
+    try {
+      await window.moho.rpc('sneedchatRemoveMember', { bufferId, who })
+      this.toast('info', `Removed ${name} from the conversation`)
+    } catch (e) {
+      this.toast('error', (e as Error).message)
+    }
   }
 
   /** The site's reactions, asked once a connection has read them. */
@@ -3144,6 +3290,7 @@ export class ChatStore {
       this.discordShare = null
       this.set({ discordSharing: null, discordShareStream: null })
     }
+    void this.stopWatchingDiscordStream(accountId)
     try {
       await window.moho.rpc('leaveVoiceChannel', { accountId })
       await this.refreshVoiceSessions()
@@ -3657,7 +3804,10 @@ export class ChatStore {
    * service has one it travels to every client signed in, which is what
    * blocking somebody means, and it agrees with Element.
    */
-  setIgnored(accountId: string, target: string, ignored: boolean): void {
+  setIgnored(accountId: string, target: string, ignored: boolean, name?: string): void {
+    const service = this.state.accounts.find((a) => a.id === accountId)?.service
+    // Said by name where the caller has one: the target is often a number nobody knows them by.
+    const who = name || target
     void window.moho
       .rpc<{ scope?: string }>('setIgnored', { accountId, target, ignored })
       .then((answer) => {
@@ -3666,7 +3816,8 @@ export class ChatStore {
         // signed in; on IRC, Kick and Sneedchat there is nobody to tell, and
         // this is moho refusing to show what still arrives.
         const scope = answer?.scope === 'account' ? '' : ' here'
-        this.toast('info', ignored ? `Ignoring ${target}${scope}` : `No longer ignoring ${target}`)
+        if (ignoreIsBlock(service) && answer?.scope === 'account') this.toast('info', ignored ? `Blocked ${who}` : `Unblocked ${who}`)
+        else this.toast('info', ignored ? `Ignoring ${who}${scope}` : `No longer ignoring ${who}`)
         // Read back rather than patched locally. Matrix pushes its list on
         // sync, but for the services whose list this daemon keeps itself
         // nothing announces a change, so the panel would go on showing what
@@ -3902,7 +4053,7 @@ export class ChatStore {
     }
     this.set({
       callMinimized: false,
-      activeCall: { accountId: account.id, bufferId, phase: 'connecting', video, muted: false, sharingScreen: false, cameraOn: video, onServer: true }
+      activeCall: { accountId: account.id, bufferId, phase: 'connecting', video, muted: this.voiceSilenced(), sharingScreen: false, cameraOn: video, onServer: true }
     })
     try {
       const way = await window.moho.rpc<{ token: string; url: string; note?: string | null; e2eeKey?: string | null }>('joinStoatCall', { bufferId, video })
@@ -3935,7 +4086,8 @@ export class ChatStore {
         way.e2eeKey
       )
       this.stoatCall = { sfu, bufferId, people: [], local: null }
-      await sfu.join(way.url, way.token, video)
+      // The voice buttons hold for this call as for every other: muted there, the microphone is never opened.
+      await sfu.join(way.url, way.token, video, this.voiceSilenced())
       if (this.stoatCall) this.stoatCall.local = sfu.local
       const current = this.state.activeCall as ChatState['activeCall']
       if (current) this.set({ activeCall: { ...current, cameraOn: sfu.cameraOn } })
@@ -3954,11 +4106,11 @@ export class ChatStore {
     return account.startsWith('stoat:') || account.startsWith('fluxer:')
   }
 
-  /** Tells Fluxer the microphone, camera and screen as they are, so the others' apps show them. */
+  /** Tells Fluxer the camera and screen as they are, so the others' apps show them (the daemon adds the voice buttons). */
   private sayFluxerVoice(): void {
     const call = this.state.activeCall
     if (!call || !call.bufferId.startsWith('fluxer:')) return
-    void window.moho.rpc('fluxerVoiceState', { bufferId: call.bufferId, muted: !!call.muted, camera: !!call.cameraOn, screen: !!call.sharingScreen }).catch(() => {})
+    void window.moho.rpc('fluxerVoiceState', { bufferId: call.bufferId, camera: !!call.cameraOn, screen: !!call.sharingScreen }).catch(() => {})
   }
 
   /** Somebody's name in a Stoat call: the daemon's, which knows people the roster has not listed. */
@@ -4115,6 +4267,7 @@ export class ChatStore {
         this.levels.watch(person.key, person.stream)
         tiles.push({
           id: person.key,
+          userId: person.userId,
           label: this.stoatCallName(stoat.bufferId, person.userId),
           stream: person.stream,
           hasVideo: person.hasVideo,
@@ -4218,10 +4371,9 @@ export class ChatStore {
     // Three kinds of call reach this button and the button does not care:
     // one to one, a mesh in a room, and a room call held on a media server.
     if (this.stoatCall) {
-      void this.stoatCall.sfu.toggleMute().then((muted) => {
-        if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, muted } })
-        this.sayFluxerVoice()
-      })
+      // The same mute as the footer's: one microphone, one button state, and the daemon tells Fluxer.
+      const { micMuted, deafened } = this.state.voicePrefs
+      void this.setVoiceMuted(deafened ? { micMuted: false, deafened: false } : { micMuted: !micMuted })
       return
     }
     const group = this.matrixCalls.currentGroup
@@ -4639,6 +4791,16 @@ export class ChatStore {
         this.handleBufferListChange(data)
         break
 
+      // A conversation renamed by its service: the one open goes with it.
+      case 'bufferRenamed': {
+        const from = data.from as string
+        const to = data.to as string
+        if (from && to && this.state.activeBufferId === from) {
+          void this.refreshBuffers().then(() => this.selectBuffer(to))
+        }
+        break
+      }
+
       // Somebody is writing. Discord names one person per event and Matrix
       // sends the whole set, including an empty one to say everybody
       // stopped - so a list replaces, and a single nick is merged in.
@@ -4746,8 +4908,10 @@ export class ChatStore {
         // A stream that ends while being watched leaves a decoder pointed at
         // nothing and a frozen last frame on screen, which reads as a stalled
         // connection rather than as somebody having stopped.
-        if (d.gone && this.state.discordWatching?.streamKey === d.streamKey) {
-          this.stopWatchingDiscordStream()
+        if (d.gone) {
+          for (const w of Object.values(this.state.discordWatching)) {
+            if (w.streamKey === d.streamKey) void this.stopWatchingDiscordStream(w.accountId, w.userId)
+          }
         }
         break
       }
@@ -4948,6 +5112,15 @@ export class ChatStore {
         this.set({ telegramFolders: { ...this.state.telegramFolders, [data.accountId as string]: (data.folders ?? []) as TelegramFolder[] } })
         break
       }
+      case 'fluxerGuildFolders': {
+        this.set({
+          fluxerFolders: {
+            ...this.state.fluxerFolders,
+            [data.accountId as string]: (data.folders ?? []) as { id: string; name: string; colour?: string; members: string[] }[]
+          }
+        })
+        break
+      }
 
       case 'profile': {
         const answer = data as unknown as Profile
@@ -5063,6 +5236,10 @@ export class ChatStore {
         for (const bufferId of rooms) this.ensureSneedchatPowers(bufferId)
         break
       }
+      case 'sneedchatStream':
+        // A moderator featured a stream, changed it or took it down - or the room was joined and says what it has.
+        if (data.bufferId) this.set({ sneedchatStreams: { ...this.state.sneedchatStreams, [data.bufferId]: data.stream ?? null } })
+        break
       case 'sneedchatSmilies':
         // The chat revised its emoticons: read the table again.
         this.smiliesFetched = false
@@ -5197,6 +5374,14 @@ export class ChatStore {
       // Stoat says who has asked an account to be their friend, whenever that changes.
       case 'stoatFriendRequests': {
         this.set({ friendRequests: { ...this.state.friendRequests, [data.accountId as string]: (data.incoming ?? []) as FriendRequest[] } })
+        break
+      }
+
+      // Fluxer's invitations by link, whenever one arrives or is answered.
+      case 'fluxerInviteOffers': {
+        const accountId = data.accountId as string
+        const offers = (data.offers ?? []) as FluxerInviteOffer[]
+        this.set({ matrixInvites: { ...this.state.matrixInvites, [accountId]: offers.map((o) => this.fluxerOffer(accountId, o)) } })
         break
       }
 
@@ -5386,6 +5571,8 @@ export class ChatStore {
                 notice: data.notice,
                 syncing: data.syncing,
                 topic: data.topic,
+                // As sent too: a channel taken out from under its heading is sent with none.
+                category: data.category,
                 // As sent: the daemon leaves the default out, so absent has to
                 // mean "back to the default" - a room set to mentions only and
                 // then left alone elsewhere stayed ticked as mentions here.
@@ -5395,6 +5582,7 @@ export class ChatStore {
                 lowPriority: data.lowPriority ?? false,
                 readOnly: data.readOnly,
                 forum: data.forum ?? false,
+                ageRestricted: data.ageRestricted ?? false,
                 ...seededCount(b, data, this.state.activeBufferId)
               }
             : b
@@ -5419,6 +5607,8 @@ export class ChatStore {
     const waiting = this.openOnArrival
     if (waiting && waiting.accountId === data.accountId && data.kind !== 'server' && Date.now() < waiting.until) {
       this.openOnArrival = null
+      // The list beside it shows where it is: a community joined shows the community, not the account's own page.
+      if (data.groupId) this.set({ activeGroupId: data.groupId })
       void this.selectBuffer(data.id)
     }
     this.followPeekJoin(data)
@@ -5609,6 +5799,11 @@ export class ChatStore {
     // Snapshot the divider before clearing unread, so the "New messages" line
     // lands where the user actually left off rather than at the bottom.
     const buffer = this.state.buffers.find((b) => b.id === bufferId)!
+    // A link channel (Fluxer type 998) has no messages of its own: clicking it opens its URL in the browser.
+    if (buffer.nameIcon === 'open_in_new' && buffer.topic && /^https?:\/\//i.test(buffer.topic)) {
+      window.moho.openExternal(buffer.topic)
+      return
+    }
     // Discord's own notices: cards saved before the card reader knew their
     // shape stay as saved, so the conversation is read again once a run.
     if (buffer.readOnly?.includes('official Discord') && !this.rereadEmbeds.has(bufferId)) {
@@ -6107,12 +6302,13 @@ export class ChatStore {
     bufferId: string,
     body: string,
     attachmentPath?: string | string[],
-    spoilers?: string[]
+    spoilers?: string[],
+    silent?: boolean
   ): Promise<void> {
     // A fresh send takes its reply target from the composer, and consumes it.
     const reply = this.state.replyingTo ? { ...this.state.replyingTo, ping: this.state.replyPing } : null
     this.set({ replyingTo: null })
-    return this.dispatchSend(bufferId, body, reply, attachmentPath, spoilers)
+    return this.dispatchSend(bufferId, body, reply, attachmentPath, spoilers, silent)
   }
 
   /**
@@ -6129,7 +6325,8 @@ export class ChatStore {
     body: string,
     reply: { id: string; from: string; body: string; thread?: boolean; ping?: boolean } | null,
     attachment?: string | string[],
-    spoilers?: string[]
+    spoilers?: string[],
+    silent?: boolean
   ): Promise<void> {
     // One file, or several that go as one message.
     const paths = attachment === undefined ? [] : Array.isArray(attachment) ? attachment : [attachment]
@@ -6176,59 +6373,111 @@ export class ChatStore {
     const warning = this.undeliverableNotice(bufferId)
     if (warning) this.appendMessage(bufferId, warning)
 
+    const slowSecs = this.state.buffers.find((b) => b.id === bufferId)?.slowmodeSecs ?? 0
+    const nextAllowed = this.state.slowmodeUntil[bufferId] ?? 0
+    const nowMs = Date.now()
+    const queuedAt = slowSecs > 0 && nextAllowed > nowMs ? nextAllowed : 0
+    if (queuedAt > 0) {
+      echo.slowmodeUntil = queuedAt
+      this.set({ slowmodeUntil: { ...this.state.slowmodeUntil, [bufferId]: queuedAt + slowSecs * 1000 } })
+    }
+
     this.appendMessage(bufferId, echo)
     // The upload is named before the send goes out, so the progress events
     // have somewhere to land even if the first arrives immediately.
     const uploadId = attachmentPath ? `up-${clientId}` : undefined
     this.pendingSends.set(clientId, { bufferId, ts: Date.now(), inFlight: true, uploadId })
-    if (attachmentPath) {
-      this.mapMessage(bufferId, clientId, (m) => ({
-        ...m,
-        upload: { phase: 'preparing', bytes: 0, host: '', since: Date.now(), ...(paths.length > 1 ? { files: paths.length } : {}) }
-      }))
+
+    const dispatch = async (): Promise<void> => {
+      if (!this.pendingSends.has(clientId)) return
+      this.mapMessage(bufferId, clientId, (m) => (m.slowmodeUntil ? { ...m, slowmodeUntil: undefined } : m))
+      if (attachmentPath) {
+        this.mapMessage(bufferId, clientId, (m) => ({
+          ...m,
+          upload: { phase: 'preparing', bytes: 0, host: '', since: Date.now(), ...(paths.length > 1 ? { files: paths.length } : {}) }
+        }))
+      }
+      try {
+        await window.moho.rpc('sendMessage', {
+          bufferId,
+          body,
+          ...(uploadId ? { uploadId } : {}),
+          ...(attachmentPath
+            ? {
+                attachmentPath,
+                ...(paths.length > 1 ? { attachmentPaths: paths } : {}),
+                ...(spoilers?.length ? { spoilerPaths: spoilers } : {}),
+                uploadHost: await uploadHost(account?.service, attachmentPath)
+              }
+            : {}),
+          ...(replyToId ? { replyToId } : {}),
+          ...(reply?.ping === false ? { replyPing: false } : {}),
+          ...(reply?.thread ? { thread: true } : {}),
+          ...(silent ? { silent: true } : {})
+        })
+        const still = this.pendingSends.get(clientId)
+        if (still) this.pendingSends.set(clientId, { ...still, inFlight: false, ts: Date.now() })
+        this.clearUploadState(clientId)
+        const latestSlow = this.state.buffers.find((b) => b.id === bufferId)?.slowmodeSecs ?? slowSecs
+        if (latestSlow > 0) {
+          const floor = Date.now() + latestSlow * 1000
+          this.slowmodeBaseUntil.set(bufferId, floor)
+          if ((this.state.slowmodeUntil[bufferId] ?? 0) < floor) {
+            this.set({ slowmodeUntil: { ...this.state.slowmodeUntil, [bufferId]: floor } })
+          }
+        }
+      } catch (e) {
+        const msg = (e as Error).message
+        const slowMatch = msg.match(/slowmode.*?wait\s+(\d+)\s+more\s+seconds/i)
+        if (slowMatch && this.pendingSends.has(clientId)) {
+          const waitMs = Math.max(1, Number(slowMatch[1])) * 1000 + 250
+          const retryAt = Date.now() + waitMs
+          this.clearUploadState(clientId)
+          this.mapMessage(bufferId, clientId, (m) => ({ ...m, pending: true, failed: false, slowmodeUntil: retryAt }))
+          this.set({ slowmodeUntil: { ...this.state.slowmodeUntil, [bufferId]: Math.max(this.state.slowmodeUntil[bufferId] ?? 0, retryAt) } })
+          const timer = setTimeout(() => {
+            this.slowmodeTimers.delete(clientId)
+            void dispatch()
+          }, waitMs)
+          this.slowmodeTimers.set(clientId, timer)
+          return
+        }
+        const still = this.pendingSends.get(clientId)
+        if (still) this.pendingSends.set(clientId, { ...still, inFlight: false })
+        this.clearUploadState(clientId)
+        this.markSendFailed(clientId, msg)
+      }
     }
 
-    try {
-      await window.moho.rpc('sendMessage', {
-        bufferId,
-        body,
-        ...(uploadId ? { uploadId } : {}),
-        // Where a file goes on a service that cannot carry one. Read at send
-        // time rather than held in state: it is a preference somebody may
-        // change between one message and the next, and the daemon falls back
-        // to its own default if this is absent or unknown to it.
-        ...(attachmentPath
-          ? {
-              attachmentPath,
-              // Several files that make one message; the daemon reads this
-              // where the service can carry them together.
-              ...(paths.length > 1 ? { attachmentPaths: paths } : {}),
-              // Sent under a name that makes Discord hide them.
-              ...(spoilers?.length ? { spoilerPaths: spoilers } : {}),
-              uploadHost: await uploadHost(account?.service, attachmentPath)
-            }
-          : {}),
-        ...(replyToId ? { replyToId } : {}),
-        // Switched off for this reply: the author is not pinged.
-        ...(reply?.ping === false ? { replyPing: false } : {}),
-        // Into the thread rather than at the message: the daemon needs to be
-        // told which, because Matrix says them with the same field.
-        ...(reply?.thread ? { thread: true } : {})
-      })
-      // Success alone doesn't resolve the echo - only the real message event
-      // does, since that's what carries nobilis's own id and timestamp. What
-      // it does settle is that nothing is in flight any more, which is when
-      // the timeout below becomes meaningful: it is waiting for an echo, not
-      // for an upload.
-      const still = this.pendingSends.get(clientId)
-      if (still) this.pendingSends.set(clientId, { ...still, inFlight: false, ts: Date.now() })
-      this.clearUploadState(clientId)
-    } catch (e) {
-      const still = this.pendingSends.get(clientId)
-      if (still) this.pendingSends.set(clientId, { ...still, inFlight: false })
-      this.clearUploadState(clientId)
-      this.markSendFailed(clientId, (e as Error).message)
+    if (queuedAt > 0) {
+      const timer = setTimeout(() => {
+        this.slowmodeTimers.delete(clientId)
+        void dispatch()
+      }, Math.max(100, queuedAt - nowMs))
+      this.slowmodeTimers.set(clientId, timer)
+      return
     }
+    await dispatch()
+  }
+
+  /** Cancels a message waiting on a slowmode countdown and removes it from the list. */
+  cancelQueuedSend(bufferId: string, clientId: string): void {
+    const timer = this.slowmodeTimers.get(clientId)
+    if (timer) {
+      clearTimeout(timer)
+      this.slowmodeTimers.delete(clientId)
+    }
+    this.pendingSends.delete(clientId)
+    const list = this.state.messagesByBuffer[bufferId] || []
+    const next = list.filter((m) => m.id !== clientId)
+    const slowSecs = this.state.buffers.find((b) => b.id === bufferId)?.slowmodeSecs ?? 0
+    // Recompute the next slot from any remaining queued messages, or fall back to the server cooldown.
+    const latestQueued = next.reduce((max, m) => Math.max(max, m.slowmodeUntil ?? 0), 0)
+    const nextUntil = latestQueued > 0 ? latestQueued + slowSecs * 1000 : (this.slowmodeBaseUntil.get(bufferId) ?? 0)
+    this.set({
+      messagesByBuffer: { ...this.state.messagesByBuffer, [bufferId]: next },
+      slowmodeUntil: { ...this.state.slowmodeUntil, [bufferId]: nextUntil }
+    })
   }
 
   /** Takes the spinner off a row, whichever way its upload ended. */
@@ -6622,6 +6871,8 @@ export class ChatStore {
     }
   }
 
+  private watchingPending = new Set<string>()
+
   /**
    * Starts watching somebody else's screen.
    *
@@ -6635,17 +6886,18 @@ export class ChatStore {
     accountId: string,
     userId: string,
     nick: string,
-    where: { channelId: string; guildId?: string }
+    where: { channelId: string; guildId?: string },
+    silent = false
   ): Promise<void> {
+    const key = `${accountId}|${userId}`
+    if (this.state.discordWatching[key] || this.watchingPending.has(key)) return
+    this.watchingPending.add(key)
     // Usually nothing: Discord announces a stream to its owner and tells
     // everybody else only that a voice state has `self_stream` set. So the
     // key is named from where the stream is and whose it is, which the roster
     // knows, and the daemon builds it - one definition of the shape rather
     // than a second one here.
     const streamKey = this.state.discordStreams[userId]
-    // One at a time. Two decoders and two connections would both work, and
-    // the window has one place to draw a picture.
-    if (this.state.discordWatching) await this.stopWatchingDiscordStream()
     try {
       const answer = await window.moho.rpc<{ streamKey: string }>('watchDiscordStream', {
         accountId,
@@ -6654,22 +6906,41 @@ export class ChatStore {
         channelId: where.channelId,
         guildId: where.guildId
       })
-      this.set({ discordWatching: { accountId, streamKey: answer.streamKey, userId, nick } })
+      this.set({
+        discordWatching: {
+          ...this.state.discordWatching,
+          [key]: { accountId, streamKey: answer.streamKey, userId, nick }
+        }
+      })
     } catch (e) {
-      this.toast('error', `Couldn't watch that stream: ${(e as Error).message}`)
+      if (!silent) this.toast('error', `Couldn't watch that stream: ${(e as Error).message}`)
+    } finally {
+      this.watchingPending.delete(key)
     }
   }
 
-  async stopWatchingDiscordStream(): Promise<void> {
-    const watching = this.state.discordWatching
-    this.set({ discordWatching: null })
-    if (!watching) return
-    closeFeeds(feedStreamKey(watching.accountId, watching.streamKey))
-    await window.moho
-      .rpc('stopWatchingDiscordStream', { accountId: watching.accountId, streamKey: watching.streamKey })
-      .catch(() => {
-        /* the connection is going away regardless; nothing here can fix it */
+  async stopWatchingDiscordStream(accountId?: string, userId?: string): Promise<void> {
+    const current = this.state.discordWatching
+    const targets: { key: string; entry: { accountId: string; streamKey: string; userId: string; nick: string } }[] = []
+    for (const [k, entry] of Object.entries(current)) {
+      if (accountId && entry.accountId !== accountId) continue
+      if (userId && entry.userId !== userId) continue
+      targets.push({ key: k, entry })
+    }
+    if (targets.length === 0) return
+    const next = { ...current }
+    for (const { key } of targets) delete next[key]
+    this.set({ discordWatching: next })
+    await Promise.all(
+      targets.map(({ entry }) => {
+        closeFeeds(feedStreamKey(entry.accountId, entry.streamKey))
+        return window.moho
+          .rpc('stopWatchingDiscordStream', { accountId: entry.accountId, streamKey: entry.streamKey })
+          .catch(() => {
+            /* the connection is going away regardless; nothing here can fix it */
+          })
       })
+    )
   }
 
   /**

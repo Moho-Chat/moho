@@ -49,7 +49,7 @@ stream's chat going past at forty lines a minute you're able to be part of the c
 - **Sneedchat** direct messages are the site's side rooms, and reactions are the site's own set.
 - **Telegram** voice is its group voice chats, and encryption is its secret chats (one-to-one only). Its one-to-one calls and video are not built.
 - **Signal** calls are one-to-one; group calls are not built.
-- **Fluxer** voice and video are in a server's voice channels; its one-to-one calls are refused.
+- **Fluxer** voice and video work in a community's voice channels and in direct messages; peer-to-peer calls are refused.
 - **XMPP** calls are refused on an account routed through Tor, since their media would go around it.
 
 Every protocol gets the same window, mentions inbox, search and per-account Tor or SOCKS5 routing.

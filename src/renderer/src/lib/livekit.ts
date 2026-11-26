@@ -21,6 +21,7 @@ import {
   BaseKeyProvider,
   ConnectionState,
   ExternalE2EEKeyProvider,
+  ParticipantEvent,
   Room,
   RoomEvent,
   Track,
@@ -28,6 +29,7 @@ import {
   type RemoteTrackPublication
 } from 'livekit-client'
 import E2EEWorker from 'livekit-client/e2ee-worker?worker'
+import H264TidyWorker from './h264tidy.worker?worker'
 
 /** One person on the media server, and what they are sending. */
 export interface SfuParticipant {
@@ -105,6 +107,15 @@ export class SfuCall {
   /** A room key the server handed out (Fluxer's encrypted call media), set once the room is joined. */
   private sharedKey: string | null = null
   private shared: ExternalE2EEKeyProvider | null = null
+  /**
+   * Where every sender's and receiver's encoded frames pass, so received H.264
+   * can be tidied for the hardware decoder (h264tidy.ts). Absent in an
+   * encrypted call, where LiveKit's own worker has the frames, and where the
+   * browser has no encoded streams.
+   */
+  private tidy: Worker | null = null
+  /** The senders and receivers already routed: each gives up its encoded streams once, and LiveKit reuses them. */
+  private routed = new WeakSet<RTCRtpSender | RTCRtpReceiver>()
 
   constructor(handlers: SfuHandlers, encrypted: boolean, sharedKey?: string | null) {
     this.handlers = handlers
@@ -126,9 +137,16 @@ export class SfuCall {
           ? { e2ee: { keyProvider: this.shared, worker: new E2EEWorker() } }
           : {})
     })
+    if (!this.keys && !this.shared && 'createEncodedStreams' in RTCRtpSender.prototype) {
+      this.tidy = new H264TidyWorker()
+      this.room.localParticipant.on(ParticipantEvent.LocalSenderCreated, (sender) => this.route(sender, false))
+    }
     const announce = (): void => this.handlers.onParticipants(this.people())
     this.room
-      .on(RoomEvent.TrackSubscribed, announce)
+      .on(RoomEvent.TrackSubscribed, (track) => {
+        if (track.receiver) this.route(track.receiver, track.kind === Track.Kind.Video)
+        announce()
+      })
       .on(RoomEvent.TrackUnsubscribed, announce)
       .on(RoomEvent.ParticipantConnected, announce)
       .on(RoomEvent.ParticipantDisconnected, announce)
@@ -169,20 +187,34 @@ export class SfuCall {
     await this.keys?.setParticipantKey(identity, index, keyBase64)
   }
 
-  /** Joins the media server and starts sending. */
-  async join(url: string, token: string, video: boolean): Promise<void> {
+  /**
+   * Joins the media server and starts sending. A call joined `muted` does not
+   * open the microphone at all until it is unmuted.
+   */
+  async join(url: string, token: string, video: boolean, muted = false): Promise<void> {
     if (this.shared && this.sharedKey) {
       await this.shared.setKey(this.sharedKey)
       await this.room.setE2EEEnabled(true)
     }
-    await this.room.connect(url, token)
-    try {
-      await this.room.localParticipant.setMicrophoneEnabled(true)
-      if (video) await this.room.localParticipant.setCameraEnabled(true)
-    } catch (e) {
-      // A machine with no camera still belongs in the call.
-      this.handlers.onError(`Couldn't open the camera: ${(e as Error).message}`)
-      await this.room.localParticipant.setMicrophoneEnabled(true).catch(() => {})
+    // With encoded streams on, the browser holds every frame until it is
+    // taken (see `route`), so nothing reaches a decoder before it is tidied -
+    // including a sender's first keyframe, which may be its only one.
+    await this.room.connect(url, token, this.tidy ? { rtcConfig: { encodedInsertableStreams: true } as RTCConfiguration } : undefined)
+    if (!muted) {
+      try {
+        await this.room.localParticipant.setMicrophoneEnabled(true)
+      } catch (e) {
+        // A machine with no microphone still belongs in the call as a listener.
+        this.handlers.onError(`Couldn't open the microphone: ${(e as Error).message}`)
+      }
+    }
+    if (video) {
+      try {
+        await this.room.localParticipant.setCameraEnabled(true)
+      } catch (e) {
+        // A machine with no camera still belongs in the call.
+        this.handlers.onError(`Couldn't open the camera: ${(e as Error).message}`)
+      }
     }
     this.local = this.ownStream()
     this.handlers.onConnected(this.room.state === ConnectionState.Connected)
@@ -227,6 +259,13 @@ export class SfuCall {
     const on = this.room.localParticipant.isMicrophoneEnabled
     await this.room.localParticipant.setMicrophoneEnabled(!on)
     return on
+  }
+
+  /** Silences the microphone, or lets it speak, whichever it is now. */
+  async setMuted(muted: boolean): Promise<void> {
+    if (this.room.localParticipant.isMicrophoneEnabled === !muted) return
+    await this.room.localParticipant.setMicrophoneEnabled(!muted)
+    this.local = this.ownStream()
   }
 
   /**
@@ -310,6 +349,30 @@ export class SfuCall {
   async leave(): Promise<void> {
     await this.room.disconnect()
     this.local = null
+    this.tidy?.terminate()
+    this.tidy = null
+  }
+
+  /**
+   * Hands a sender's or receiver's encoded frames to the tidy worker: somebody
+   * else's video to be tidied, everything else straight through. Every one of
+   * them must come here once encoded streams are on, or its media stops.
+   *
+   * Why not an RTCRtpScriptTransform on the receiver: on a LiveKit server's
+   * receivers, whose streams are not named in the SDP until their first packet,
+   * Chromium sends the frames around it - not one reached the worker, however
+   * early it was set - while these streams carry every frame.
+   */
+  private route(endpoint: RTCRtpSender | RTCRtpReceiver, video: boolean): void {
+    if (!this.tidy || this.routed.has(endpoint)) return
+    this.routed.add(endpoint)
+    try {
+      const { readable, writable } = (endpoint as unknown as { createEncodedStreams(): { readable: ReadableStream; writable: WritableStream } }).createEncodedStreams()
+      this.tidy.postMessage({ readable, writable, video }, [readable, writable])
+    } catch {
+      // Already given up (a reused receiver keeps its first pipe), or the
+      // browser will not: it decodes as it always did.
+    }
   }
 
   /**

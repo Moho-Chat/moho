@@ -12,15 +12,22 @@ import type { Embed } from '../../../shared/wire'
 export function InviteCard({ embed, accountId }: { embed: Embed; accountId: string }): JSX.Element {
   const store = useStore()
   const groups = useChat((s) => s.groups)
+  const buffers = useChat((s) => s.buffers)
   const [asked, setAsked] = useState(false)
-  const joined = embed.target ? groups.some((g) => g.id === `${accountId}|server:${embed.target}`) : embed.cta?.label === 'Joined'
+  const group = embed.target
+    ? groups.find((g) => g.id === `${accountId}|server:${embed.target}` || g.id === `${accountId}|guild:${embed.target}`)
+    : undefined
+  const buffer = !group && embed.target ? buffers.find((b) => b.accountId === accountId && b.remoteId === embed.target) : undefined
+  const joined = embed.target ? Boolean(group || buffer) : embed.cta?.label === 'Joined'
+  const title = group?.name ?? buffer?.name ?? embed.title
+  const imageUrl = group?.iconUrl ?? buffer?.avatarUrl ?? embed.imageUrl
   const link = embed.cta?.url ?? embed.url
   return (
     <div className="invite-card selectable">
-      <Avatar name={embed.title ?? '?'} url={embed.imageUrl} size={48} accountId={accountId} />
+      <Avatar name={title ?? '?'} url={imageUrl} size={48} accountId={accountId} />
       <div className="invite-card-text">
-        <div className="invite-card-name ellipsis" title={embed.title}>
-          {embed.title}
+        <div className="invite-card-name ellipsis" title={title}>
+          {title}
         </div>
         {embed.description && <div className="small muted ellipsis">{embed.description}</div>}
       </div>
