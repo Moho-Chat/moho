@@ -1400,7 +1400,7 @@ function FluxerSettings(): JSX.Element {
     <>
       <SettingsSection
         title="Fluxer"
-        description="An account names its instance (fluxer.com, or one you or a friend host) and signs in once: with a code you approve in a Fluxer app where you are already signed in, with your password, or with a session token pasted from another app. moho keeps the session, never the password, and does not make accounts. A password sign-in includes the small proof of work Fluxer asks every app to do, which takes moho a moment and you nothing. Add an account from the Accounts pane."
+        description="An account names its instance (fluxer.com, or one you or a friend host) and signs in once: with your password, or with a session token pasted from another app. moho keeps the session, never the password, and does not make accounts. A password sign-in includes the small proof of work Fluxer asks every app to do, which takes moho a moment and you nothing. Add an account from the Accounts pane."
       />
 
       <SettingsSection

@@ -53,7 +53,7 @@ const SERVICE_BLURB: Record<AddableService, string> = {
   twitch: 'Stream chat and whispers',
   telegram: 'A phone number, or a QR code',
   stoat: 'Any instance, by email or token',
-  fluxer: 'Any instance: a code from your Fluxer app, or a password',
+  fluxer: 'Any instance: username or email and password, or a session token',
   xmpp: 'An address on any server',
   signal: 'Linked to the Signal on your phone'
 }
@@ -2455,7 +2455,7 @@ function StoatForm({ onDone }: { onDone: () => void }): JSX.Element {
 function FluxerForm({ onDone }: { onDone: () => void }): JSX.Element {
   const store = useStore()
   const [instance, setInstance] = useState('')
-  const [method, setMethod] = useState<'handoff' | 'password' | 'token'>('handoff')
+  const [method, setMethod] = useState<'password' | 'token'>('password')
   const [login, setLogin] = useState('')
   const [password, setPassword] = useState('')
   const [token, setToken] = useState('')
@@ -2516,9 +2516,7 @@ function FluxerForm({ onDone }: { onDone: () => void }): JSX.Element {
     const call =
       method === 'password'
         ? window.moho.rpc<{ loginId: string }>('addFluxerAccount', { instance: instance.trim(), login: login.trim(), password, useTor })
-        : method === 'token'
-          ? window.moho.rpc<{ loginId: string }>('addFluxerAccountToken', { instance: instance.trim(), token: token.trim(), useTor })
-          : window.moho.rpc<{ loginId: string }>('addFluxerAccountHandoff', { instance: instance.trim(), useTor })
+        : window.moho.rpc<{ loginId: string }>('addFluxerAccountToken', { instance: instance.trim(), token: token.trim(), useTor })
     void call
       .then((r) => setId(r.loginId))
       .catch((e: Error) => {
@@ -2542,26 +2540,6 @@ function FluxerForm({ onDone }: { onDone: () => void }): JSX.Element {
     setNeeds(null)
     setDetail('')
     setBusy(false)
-  }
-
-  if (needs?.step === 'handoff') {
-    return (
-      <div className="add-form">
-        <p>
-          In a Fluxer app where you are already signed in, open <strong>User Settings → Devices</strong> and choose to sign in
-          another device, then type this code there and approve it.
-        </p>
-        <p className="fluxer-handoff-code" aria-label="Code to type into Fluxer">
-          {needs.code}
-        </p>
-        <p className="small muted">Waiting for the approval. The code lasts five minutes.</p>
-        <div className="field-row">
-          <button type="button" className="button" onClick={cancel}>
-            Cancel sign-in
-          </button>
-        </div>
-      </div>
-    )
   }
 
   if (needs?.step === 'email') {
@@ -2614,7 +2592,7 @@ function FluxerForm({ onDone }: { onDone: () => void }): JSX.Element {
     )
   }
 
-  const ready = method === 'password' ? login.trim() !== '' && password !== '' : method === 'token' ? token.trim() !== '' : true
+  const ready = method === 'password' ? login.trim() !== '' && password !== '' : token.trim() !== ''
   return (
     <div className="add-form">
       <p className="small muted">
@@ -2641,9 +2619,6 @@ function FluxerForm({ onDone }: { onDone: () => void }): JSX.Element {
         />
       </label>
       <div className="segmented">
-        <button type="button" className={method === 'handoff' ? 'active' : undefined} disabled={busy} onClick={() => setMethod('handoff')}>
-          Code from your Fluxer app
-        </button>
         <button type="button" className={method === 'password' ? 'active' : undefined} disabled={busy} onClick={() => setMethod('password')}>
           Password
         </button>
@@ -2651,9 +2626,6 @@ function FluxerForm({ onDone }: { onDone: () => void }): JSX.Element {
           Session token
         </button>
       </div>
-      {method === 'handoff' && (
-        <p className="small muted">moho shows a code, you approve it in Fluxer on your phone or computer, and nothing secret is typed here.</p>
-      )}
       {method === 'password' && (
         <div className="field-row">
           <label className="field">
@@ -2695,7 +2667,7 @@ function FluxerForm({ onDone }: { onDone: () => void }): JSX.Element {
       )}
       <div className="field-row">
         <button type="button" className="button primary" disabled={busy || !ready} onClick={begin}>
-          {busy ? 'Signing in…' : method === 'handoff' ? 'Get a code' : 'Sign in'}
+          {busy ? 'Signing in…' : 'Sign in'}
         </button>
         {busy && (
           <button type="button" className="button" onClick={cancel}>
