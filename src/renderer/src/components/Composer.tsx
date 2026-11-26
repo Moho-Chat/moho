@@ -44,7 +44,7 @@ import { rankShortcodes, shortcodeQuery, unicodeTargets, type ShortcodeTarget } 
 const TYPING_REPEAT_MS = 4000
 
 /** The services whose conversations can take a GIF: the picker sends a link, and these show it as the picture. */
-const GIF_SERVICES = new Set(['discord', 'matrix', 'kick'])
+const GIF_SERVICES = new Set(['discord', 'matrix', 'kick', 'fluxer'])
 
 /**
  * What the box holds, as the text that will be sent.
@@ -242,7 +242,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const route = useChat((s) => s.route)
   const routed = tunnelAll || !!account?.useTor
   const media = useMediaUrl(account?.id)
-  const hasStickers = service === 'matrix' || service === 'discord' || service === 'steam' || service === 'telegram' || service === 'signal'
+  const hasStickers = service === 'matrix' || service === 'discord' || service === 'steam' || service === 'telegram' || service === 'signal' || service === 'fluxer'
   const formats = formatsFor(service)
   /**
    * The account's stickers, asked for when the picker opens - from either
@@ -253,7 +253,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
     if (!hasStickers || !buffer) return
     void window.moho
       .rpc<StickerEntry[]>(
-        service === 'discord'
+        service === 'discord' || service === 'fluxer'
           ? 'listDiscordStickers'
           : service === 'steam'
             ? 'listSteamStickers'

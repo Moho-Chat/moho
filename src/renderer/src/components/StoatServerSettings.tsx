@@ -60,7 +60,8 @@ interface Overview {
   name: string
   description: string
   iconUrl?: string | null
-  can: { owner: boolean; server: boolean; channels: boolean; roles: boolean; permissions: boolean; webhooks: boolean; audit: boolean }
+  ownNick?: string
+  can: { owner: boolean; server: boolean; channels: boolean; roles: boolean; permissions: boolean; webhooks: boolean; audit: boolean; nickname?: boolean; emojis?: boolean; manageEmojis?: boolean }
   categories: Category[]
   channels: Channel[]
   roles: Role[]
@@ -90,7 +91,14 @@ interface AuditEntry {
   ts: number
 }
 
-type Tab = 'overview' | 'channels' | 'roles' | 'invites' | 'bans' | 'webhooks' | 'audit'
+interface GuildEmoji {
+  id: string
+  name: string
+  animated: boolean
+  url?: string | null
+}
+
+type Tab = 'overview' | 'channels' | 'roles' | 'emojis' | 'invites' | 'bans' | 'webhooks' | 'audit'
 type Act = <T>(action: string, extra?: Record<string, unknown>) => Promise<T | undefined>
 type Stance = 'inherit' | 'allow' | 'deny'
 
@@ -136,7 +144,7 @@ export function StoatServerSettings({ bufferId, onClose }: { bufferId: string; o
       setBusy(true)
       try {
         const done = await ask<T>('stoatManage', { bufferId, action, ...extra })
-        if (action !== 'webhooks' && action !== 'auditLog' && action !== 'invites' && action !== 'bans') await reload()
+        if (action !== 'webhooks' && action !== 'auditLog' && action !== 'invites' && action !== 'bans' && action !== 'emojis') await reload()
         return done
       } catch (e) {
         store.toast('error', (e as Error).message)
@@ -161,7 +169,7 @@ export function StoatServerSettings({ bufferId, onClose }: { bufferId: string; o
     ['overview', 'Overview'],
     ['channels', 'Channels'],
     ['roles', 'Roles'],
-    ...(bufferId.startsWith('fluxer:') ? ([['invites', 'Invites'], ['bans', 'Bans']] as [Tab, string][]) : []),
+    ...(bufferId.startsWith('fluxer:') ? ([['emojis', 'Emoji'], ['invites', 'Invites'], ['bans', 'Bans']] as [Tab, string][]) : []),
     ['webhooks', 'Webhooks'],
     ['audit', 'Audit log']
   ]
@@ -179,6 +187,7 @@ export function StoatServerSettings({ bufferId, onClose }: { bufferId: string; o
       <div className="room-settings-body steam-group-body">
         {tab === 'overview' && <Overview server={server} busy={busy} act={act} fluxer={bufferId.startsWith('fluxer:')} />}
         {tab === 'overview' && bufferId.startsWith('fluxer:') && server.can.owner && <DeleteCommunity bufferId={bufferId} server={server} onDone={onClose} />}
+        {tab === 'emojis' && <Emojis server={server} busy={busy} act={act} />}
         {tab === 'invites' && <Invites bufferId={bufferId} server={server} busy={busy} act={act} />}
         {tab === 'bans' && <Bans bufferId={bufferId} act={act} />}
         {tab === 'channels' && <Channels server={server} busy={busy} act={act} />}
@@ -193,7 +202,10 @@ export function StoatServerSettings({ bufferId, onClose }: { bufferId: string; o
 function Overview({ server, busy, act, fluxer }: { server: Overview; busy: boolean; act: Act; fluxer: boolean }): JSX.Element {
   const [name, setName] = useState(server.name)
   const [description, setDescription] = useState(server.description)
+  const [nick, setNick] = useState(server.ownNick ?? '')
+  useEffect(() => setNick(server.ownNick ?? ''), [server.ownNick])
   const may = server.can.server
+  const mayNick = !!(server.can.nickname || server.can.owner)
   return (
     <>
       <div className="field">
@@ -221,6 +233,22 @@ function Overview({ server, busy, act, fluxer }: { server: Overview; busy: boole
         </div>
       </div>
       {/* A Fluxer community has no description to set; its PATCH quietly ignores one. */}
+      {fluxer && (
+        <div className="field">
+          <span className="small muted">Your nickname in this community</span>
+          <div className="field-row">
+            <input className="text-field" placeholder="Your account display name is shown if empty" value={nick} maxLength={32} disabled={!mayNick || busy} onChange={(e) => setNick(e.target.value)} />
+            <button type="button" className="button" disabled={!mayNick || busy || nick.trim() === (server.ownNick ?? '').trim()} onClick={() => void act('setNickname', { nick: nick.trim() })}>
+              Save
+            </button>
+            {(server.ownNick ?? '') !== '' && (
+              <button type="button" className="button subtle" disabled={!mayNick || busy} onClick={() => void act('setNickname', { nick: '' })}>
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       {!fluxer && <div className="field">
         <span className="small muted">Description</span>
         <textarea className="text-field" rows={3} value={description} disabled={!may || busy} onChange={(e) => setDescription(e.target.value)} />
@@ -848,6 +876,69 @@ function DeleteCommunity({ bufferId, server, onDone }: { bufferId: string; serve
         </>
       )}
     </div>
+  )
+}
+
+function Emojis({ server, busy, act }: { server: Overview; busy: boolean; act: Act }): JSX.Element {
+  const store = useStore()
+  const [list, setList] = useState<GuildEmoji[] | null>(null)
+  const [name, setName] = useState('')
+  const load = useCallback(() => {
+    void act<{ emojis: GuildEmoji[] }>('emojis').then((r) => setList(r?.emojis ?? []))
+  }, [act])
+  useEffect(() => load(), [load])
+  const mayAdd = !!(server.can.emojis || server.can.owner)
+  const mayDelete = !!(server.can.manageEmojis || server.can.owner)
+  const upload = async (): Promise<void> => {
+    const clean = name.trim().replace(/[^a-zA-Z0-9_]/g, '')
+    if (clean.length < 2) {
+      store.toast('error', 'Give the emoji a name of at least two letters, digits or underscores first')
+      return
+    }
+    const path = await window.moho.pickFile(['png', 'jpg', 'jpeg', 'gif', 'webp'])
+    if (!path) return
+    const ok = await act('createEmoji', { name: clean, path })
+    if (ok) {
+      setName('')
+      store.toast('info', `Added :${clean}:`)
+      load()
+    }
+  }
+  return (
+    <>
+      {mayAdd && (
+        <div className="field">
+          <span className="small muted">Add custom emoji</span>
+          <div className="field-row">
+            <input className="text-field" placeholder="emoji_name" value={name} maxLength={32} disabled={busy} onChange={(e) => setName(e.target.value)} />
+            <button type="button" className="button primary" disabled={busy || name.trim().length < 2} onClick={() => void upload()}>
+              Choose image…
+            </button>
+          </div>
+        </div>
+      )}
+      {list === null ? (
+        <p className="small muted">Asking…</p>
+      ) : list.length === 0 ? (
+        <p className="small muted">This community has no custom emoji yet.</p>
+      ) : (
+        list.map((e) => (
+          <div key={e.id} className="field-row steam-group-row">
+            {e.url && <img src={resolveMediaUrl(e.url)} alt={`:${e.name}:`} style={{ width: 24, height: 24, objectFit: 'contain' }} />}
+            <span className="grow">:{e.name}:</span>
+            {mayDelete && (
+              <ConfirmButton
+                label="Delete"
+                question={`Delete :${e.name}:?`}
+                confirmLabel="Delete"
+                danger
+                onConfirm={() => void act('deleteEmoji', { emojiId: e.id }).then(() => load())}
+              />
+            )}
+          </div>
+        ))
+      )}
+    </>
   )
 }
 

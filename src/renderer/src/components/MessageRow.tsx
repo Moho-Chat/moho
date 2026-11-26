@@ -398,6 +398,11 @@ function MessageRowBody({
   const twitchModerator = useChat((s) => s.twitchRights[bufferId] === true)
   const sneedchatModerator = useChat((s) => s.sneedchatPowers[bufferId]?.moderate === true)
   const sneedchatMayReact = useChat((s) => s.sneedchatPowers[bufferId]?.react !== false)
+  const canStartFluxerThread = useChat((s) => {
+    if (service !== 'fluxer') return false
+    const b = s.buffers.find((x) => x.id === bufferId)
+    return !!b && b.kind === 'channel' && !b.forum && !!b.groupId
+  })
   const sneedchatReactions = useChat((s) => s.sneedchatReactions)
   // What the account may do in a Sneedchat room, asked once per room: the menu offers a moderator's actions only
   // to a moderator.
@@ -455,6 +460,7 @@ function MessageRowBody({
   const [sourceOpen, setSourceOpen] = useState(false)
   /** Choosing where to send this message on to. */
   const [forwarding, setForwarding] = useState(false)
+  const [startingThread, setStartingThread] = useState(false)
   const [inviting, setInviting] = useState(false)
   const reactButtonRef = useRef<HTMLButtonElement>(null)
 
@@ -714,6 +720,9 @@ function MessageRowBody({
     // Anywhere else it would be a copy posted as you, which is not a forward.
     ...((service === 'discord' || service === 'matrix' || service === 'telegram') && !isSystem && message.id
       ? ([{ label: 'Forward…', icon: 'forward', onClick: () => setForwarding(true) }] as MenuEntry[])
+      : []),
+    ...(canStartFluxerThread && !isSystem && !inThread && message.id
+      ? ([{ label: 'Start a thread…', icon: 'forum', onClick: () => setStartingThread(true) }] as MenuEntry[])
       : []),
     // Never hearing from them again. What that costs differs by service and
     // the daemon says which: Matrix keeps the list on the homeserver and
@@ -1816,6 +1825,23 @@ function MessageRowBody({
           bufferId={bufferId}
           messageId={message.id}
           onClose={() => setForwarding(false)}
+        />
+      )}
+      {startingThread && (
+        <ReasonPrompt
+          title="Start a thread"
+          detail="Give the thread a name. It will open as a conversation under this channel."
+          placeholder="Thread name"
+          confirmLabel="Create"
+          onCancel={() => setStartingThread(false)}
+          onConfirm={(name) => {
+            setStartingThread(false)
+            if (!name.trim()) return
+            void window.moho
+              .rpc<{ bufferId: string }>('startFluxerThread', { bufferId, messageId: message.id, name })
+              .then((r) => store.selectBuffer(r.bufferId, true))
+              .catch((e: Error) => store.toast('error', e.message))
+          }}
         />
       )}
       {sourceOpen && (

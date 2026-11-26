@@ -764,6 +764,8 @@ export interface Profile {
   joinedTs?: number
   /** Unix seconds. When they were last seen doing anything. */
   lastActiveTs?: number
+  /** Private note the local account saved on this person (Fluxer). */
+  userNote?: string
   /** Seconds since they last spoke or typed, where the service counts that. */
   idleSeconds?: number
   /** Their standing here, in the service's own words - "Moderator", "Op". */
