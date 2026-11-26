@@ -789,6 +789,8 @@ export interface Profile {
   /** Their safety number changed after it was verified: sends wait until it is looked at. */
   signalUnconfirmed?: boolean
   signalBlocked?: boolean
+  /** What they are to this account where the service keeps friends: Friend, Blocked, Incoming, Outgoing or None (Fluxer). */
+  relationship?: string
 }
 
 /** What somebody is doing, as a line under their name. */

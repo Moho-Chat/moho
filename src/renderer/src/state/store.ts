@@ -32,7 +32,7 @@ import { ALL_STATUSES, statusesFor, supportsStatus } from '../lib/status'
 import type { SteamGroup, GroupCall } from '../lib/steamgroups'
 import type { TelegramFolder } from '../lib/telegramfolders'
 import { buildSmilieIndex, fluxerSameText, sneedSameText, steamSameText, stoatSameText, type SmilieEntry, type SmilieIndex } from '../lib/format'
-import { bufferDisplayName, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
+import { bufferDisplayName, ignoreIsBlock, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
 import { heldOnAccount, type NotifyLevel } from '../lib/notifylevels'
 import { runExport } from '../lib/exporter'
 import type { ForumPost } from '../lib/forum'
@@ -3738,7 +3738,10 @@ export class ChatStore {
    * service has one it travels to every client signed in, which is what
    * blocking somebody means, and it agrees with Element.
    */
-  setIgnored(accountId: string, target: string, ignored: boolean): void {
+  setIgnored(accountId: string, target: string, ignored: boolean, name?: string): void {
+    const service = this.state.accounts.find((a) => a.id === accountId)?.service
+    // Said by name where the caller has one: the target is often a number nobody knows them by.
+    const who = name || target
     void window.moho
       .rpc<{ scope?: string }>('setIgnored', { accountId, target, ignored })
       .then((answer) => {
@@ -3747,7 +3750,8 @@ export class ChatStore {
         // signed in; on IRC, Kick and Sneedchat there is nobody to tell, and
         // this is moho refusing to show what still arrives.
         const scope = answer?.scope === 'account' ? '' : ' here'
-        this.toast('info', ignored ? `Ignoring ${target}${scope}` : `No longer ignoring ${target}`)
+        if (ignoreIsBlock(service) && answer?.scope === 'account') this.toast('info', ignored ? `Blocked ${who}` : `Unblocked ${who}`)
+        else this.toast('info', ignored ? `Ignoring ${who}${scope}` : `No longer ignoring ${who}`)
         // Read back rather than patched locally. Matrix pushes its list on
         // sync, but for the services whose list this daemon keeps itself
         // nothing announces a change, so the panel would go on showing what

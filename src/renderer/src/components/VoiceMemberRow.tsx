@@ -4,7 +4,7 @@ import { Avatar } from './Avatar'
 import { Icon } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { useChat, useIdSetPref, useStore } from '../state/hooks'
-import { classes, hasDirectMessages } from '../lib/util'
+import { classes, hasDirectMessages, ignoreLabel } from '../lib/util'
 import { profileHoverProps, releaseProfileHover } from '../lib/profilehover'
 import { useEscapeLayer } from '../lib/layers'
 
@@ -386,12 +386,12 @@ export function VoiceMemberRow({
           : []),
         { separator: true },
         {
-          label: blocked ? `Stop ignoring ${nick}` : `Ignore ${nick}`,
+          label: ignoreLabel(accountId.split(':')[0], nick, blocked),
           icon: blocked ? 'check_circle' : 'block',
           danger: !blocked,
           onClick: () => {
             toggleBlocked(blockKey)
-            store.setIgnored(accountId, userId || nick, !blocked)
+            store.setIgnored(accountId, userId || nick, !blocked, nick)
           }
         },
         { label: 'Copy User ID', icon: 'badge', onClick: copyId }

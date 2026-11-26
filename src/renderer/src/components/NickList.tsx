@@ -6,7 +6,7 @@ import { Avatar } from './Avatar'
 import { Icon, IconButton } from './Icon'
 import { ContextMenu, useContextMenu, type MenuEntry } from './ContextMenu'
 import { useActiveBuffer, useChat, useComfy, useIdSetPref, useStore } from '../state/hooks'
-import { classes, hasDirectMessages, nickColor } from '../lib/util'
+import { classes, hasDirectMessages, ignoreLabel, nickColor } from '../lib/util'
 import { TwitchPoints } from './TwitchPoints'
 import { KickPoints } from './KickPoints'
 import { ReasonPrompt } from './ReasonPrompt'
@@ -424,7 +424,7 @@ export function NickList(): JSX.Element {
                   // The protocol id where the service has one - a display
                   // name can be changed and reused, and on IRC it is all
                   // there is.
-                  store.setIgnored(account.id, member.userId || member.nick, ignored)
+                  store.setIgnored(account.id, member.userId || member.nick, ignored, member.nick)
                 }}
                 onMention={() => store.startReply('', member.nick, '')}
                 onModerate={(action) => {
@@ -735,7 +735,7 @@ function MemberRow({
     // none. The window-local list stays only as the thing that hides what is
     // already on screen.
     {
-      label: blocked ? `Stop ignoring ${member.nick}` : `Ignore ${member.nick}`,
+      label: ignoreLabel(service, member.nick, blocked),
       icon: blocked ? 'check_circle' : 'block',
       danger: !blocked,
       onClick: () => {

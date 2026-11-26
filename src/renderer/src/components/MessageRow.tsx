@@ -62,6 +62,7 @@ import {
   formatRelativeShort,
   formatTime,
   hasDirectMessages,
+  ignoreLabel,
   isChatKind,
   isNotice,
   isWarning,
@@ -724,7 +725,7 @@ function MessageRowBody({
     ...(!isSystem && !message.isOwn && message.from
       ? ([
           {
-            label: `Ignore ${message.from}`,
+            label: ignoreLabel(store.accountFor(bufferId)?.service, message.from, false),
             icon: 'block',
             danger: true,
             onClick: () => {
@@ -732,7 +733,7 @@ function MessageRowBody({
               // The protocol id where there is one, since a display name can
               // be changed and reused; the name where there is not, which is
               // all IRC ever has.
-              if (account) store.setIgnored(account.id, message.senderId || message.from, true)
+              if (account) store.setIgnored(account.id, message.senderId || message.from, true, message.from)
             }
           }
         ] as MenuEntry[])
