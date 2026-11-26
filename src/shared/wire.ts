@@ -128,6 +128,8 @@ export interface Buffer {
   slowmodeSecs?: number
   /** A Discord forum: a list of posts, each a thread, not a conversation. */
   forum?: boolean
+  /** Marked by its service as for adults only (a Fluxer channel's age restriction). */
+  ageRestricted?: boolean
   /**
    * What the service counts as unread here, where it keeps a count this window could not work out (a Telegram topic
    * never opened here): a starting point for the count, which then follows live messages.

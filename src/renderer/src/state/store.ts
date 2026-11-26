@@ -5530,6 +5530,7 @@ export class ChatStore {
                 lowPriority: data.lowPriority ?? false,
                 readOnly: data.readOnly,
                 forum: data.forum ?? false,
+                ageRestricted: data.ageRestricted ?? false,
                 ...seededCount(b, data, this.state.activeBufferId)
               }
             : b
@@ -5746,6 +5747,11 @@ export class ChatStore {
     // Snapshot the divider before clearing unread, so the "New messages" line
     // lands where the user actually left off rather than at the bottom.
     const buffer = this.state.buffers.find((b) => b.id === bufferId)!
+    // A link channel (Fluxer type 998) has no messages of its own: clicking it opens its URL in the browser.
+    if (buffer.nameIcon === 'open_in_new' && buffer.topic && /^https?:\/\//i.test(buffer.topic)) {
+      window.moho.openExternal(buffer.topic)
+      return
+    }
     // Discord's own notices: cards saved before the card reader knew their
     // shape stay as saved, so the conversation is read again once a run.
     if (buffer.readOnly?.includes('official Discord') && !this.rereadEmbeds.has(bufferId)) {

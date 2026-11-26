@@ -1248,6 +1248,11 @@ function BufferRow({
         ) : (
           <span className="ellipsis buffer-name">{rowName}</span>
         )}
+        {buffer.ageRestricted && (
+          <span className="buffer-age-mark small" title="Age-restricted: for adults only">
+            18+
+          </span>
+        )}
         {/* So a conversation with no unread count and no traffic in it is
             explained rather than merely quiet: it is being read elsewhere. */}
         {/* Still filling in - a Matrix room between joining it and the server

@@ -180,6 +180,11 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
           />
         ) : null}
         <span className="main-header-title ellipsis">{name}</span>
+        {buffer.ageRestricted && (
+          <span className="buffer-age-mark small" title="Age-restricted: for adults only">
+            18+
+          </span>
+        )}
         {/* What they are doing, beside the name: the game, or a state the dot's
             colour does not tell apart. */}
         {statusText && <span className="header-status small muted ellipsis">{statusText}</span>}
