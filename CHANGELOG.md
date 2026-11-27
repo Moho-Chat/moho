@@ -17,12 +17,22 @@ Each section has two parts:
   that made it, including dependency updates
   (`node scripts/changelog-deps.mjs <previous tag>` lists those).
 
-## [Unreleased]
+## [1.6.0]
 
 ### Major features
 
-- Mattermost: any server, signed in by password (with a second factor), a personal access token or the server's own sign-in page for single sign-on; teams and their channels under the person's own categories, direct and group messages, threads, GitHub Markdown with tables, files, reactions and custom emoji, search, pins, saved posts, drafts on the account, slash commands, presence and custom statuses, mutes kept on the account, channel and team administration, and calls through the Calls plugin (issue #25, on the `protocol/mattermost` branch)
+- **Mattermost** (Beta): any server, signed in by password (with a second factor), a personal access token or the server's own sign-in page for single sign-on; teams and their channels under the person's own categories, direct and group messages, threads, GitHub Markdown with tables, files, reactions and custom emoji, search, pins, saved posts, drafts on the account, slash commands, presence and custom statuses, mutes kept on the account, channel and team administration, and calls through the Calls plugin (issue #25)
 - **Rocket.Chat**: full protocol support for self-hosted and cloud Rocket.Chat workspaces — REST API v1 + persistent Meteor DDP WebSocket; sign-in by username/email + password with TOTP/email 2FA, Personal Access Token (`X-Auth-Token` + `X-User-Id`), or isolated SSO browser login (`Meteor.loginToken`); 1:1 & multi-user DMs, Public Channels, Private Groups, Teams, Discussions, and optional Omnichannel/Livechat; threads (`tmid`/`tshow`), quoted permalinks, edits, deletes, reactions, custom server emoji, multipart file & voice-note uploads, pins, stars, read receipts, and server-side search; presence & custom status, typing indicators, profiles, favorites, notification preferences, and user ignores; pure-Rust Rocket.Chat E2EE (2048-bit RSA-OAEP, PBKDF2-SHA256 v1/v2 private key backup/unlock, AES-CBC `rc.v1.aes-sha2` & AES-GCM `rc.v2.aes-sha2` messages, `A256CTR` E2EE file encryption, key distribution & reset); video-conference capabilities & native WebRTC signaling; room settings, roles, invite links, message reporting & moderation queue; slash commands, Matrix Federation badges, OTR notices, Rocket.Chat Settings page, and SOCKS5/Tor routing (issue #31).
+
+### Fixes, patches and changes
+
+- Server rail: each protocol's servers sit in a folder badged with its mark, Discord's included, and folders can hold folders (#344) ([moho `db9752b`](https://github.com/Moho-Chat/moho/commit/db9752b), [moho `7b277b8`](https://github.com/Moho-Chat/moho/commit/7b277b8), [moho `1a6040a`](https://github.com/Moho-Chat/moho/commit/1a6040a))
+- Server rail: dropping a server lands where the blue insertion line shows ([moho `6014e56`](https://github.com/Moho-Chat/moho/commit/6014e56))
+- Disconnected accounts are hidden from the rails and stay disconnected across restarts ([moho `db1dce0`](https://github.com/Moho-Chat/moho/commit/db1dce0), [nobilis `28cfcd8`](https://github.com/Moho-Chat/nobilis/commit/28cfcd8))
+- Add account page: a one-line description of each service ([moho `b652a80`](https://github.com/Moho-Chat/moho/commit/b652a80))
+- Protocol marks: official Signal logo; updated Stoat, XMPP and Rocket.Chat marks; Kick and Sneedchat in monochrome ([moho `6383c91`](https://github.com/Moho-Chat/moho/commit/6383c91), [moho `1e8e508`](https://github.com/Moho-Chat/moho/commit/1e8e508))
+- Log export scrubs Mattermost account ids and session cookies ([moho `5fac820`](https://github.com/Moho-Chat/moho/commit/5fac820))
+- Added Rust crate pulldown-cmark 0.13.6 ([nobilis `bddb894`](https://github.com/Moho-Chat/nobilis/commit/bddb894))
 
 ## [1.5.10]
 
