@@ -34,6 +34,13 @@ export const IPC = {
   writeClipboardText: 'moho:writeClipboardText',
   restartDaemon: 'moho:restartDaemon',
   daemonStatus: 'moho:daemonStatus',
+  logsPreview: 'moho:logs:preview',
+  logsSave: 'moho:logs:save',
+  logsUpload: 'moho:logs:upload',
+  logsList: 'moho:logs:list',
+  logsCheck: 'moho:logs:check',
+  logsDelete: 'moho:logs:delete',
+  logsForget: 'moho:logs:forget',
   smiliesDir: 'moho:smiliesDir',
   /** Chromium's own HTTP cache: its size, and emptying it. */
   webCacheSize: 'moho:webCacheSize',
@@ -128,4 +135,17 @@ export interface EditMenuRequest {
   hasSelection: boolean
   /** What is selected, for searching the web for it. */
   selection: string
+}
+
+/** Renderer-facing record of one anonymized log uploaded to paste.gg. */
+export interface LogUploadInfo {
+  id: string
+  url: string
+  createdAt: string
+  expiresAt: string
+  sizeBytes: number
+  linesOmitted: number
+  status: 'active' | 'expired'
+  goneAt?: string
+  goneReason?: 'deleted' | 'expired'
 }

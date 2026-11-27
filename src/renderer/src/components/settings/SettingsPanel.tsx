@@ -21,6 +21,7 @@ import { DownloadsPanel } from '../DownloadsPanel'
 import { humanBytes, serviceIcon, classes } from '../../lib/util'
 import { DEFAULT_SEARCH_ENGINE, SEARCH_ENGINES, validTemplate } from '../../lib/searchengines'
 import { TunnelAllSwitch, useNetSettings } from './Tunnel'
+import { DebugSettings } from './DebugSettings'
 import type { Account, DccPrefs } from '../../../../shared/wire'
 
 /**
@@ -133,6 +134,7 @@ const CATEGORIES: { id: string; label: string; group: string; icon?: string; ser
   { id: 'telegram', label: 'Telegram', group: 'Networks', service: 'telegram' },
   { id: 'stoat', label: 'Stoat', group: 'Networks', service: 'stoat' },
   { id: 'fluxer', label: 'Fluxer', group: 'Networks', service: 'fluxer' },
+  { id: 'debug', label: 'Debug', group: 'About', icon: 'bug_report' },
   { id: 'about', label: 'About', group: 'About', icon: 'info' }
 ]
 
@@ -260,6 +262,8 @@ function Page({ id }: { id: string }): JSX.Element | null {
       return <StoatSettings />
     case 'fluxer':
       return <FluxerSettings />
+    case 'debug':
+      return <DebugSettings />
     case 'about':
       return <AboutSettings />
     default:

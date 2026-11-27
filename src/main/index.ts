@@ -38,9 +38,14 @@ import { readCapped, pictureNamedIn } from './imagepage'
 import { DEEP_LINK_SCHEMES, isDeepLink } from '../shared/deeplink'
 import { allowPickedFile, allowRoot, attachmentName, installMediaHandler, isCachedFile, registerMediaScheme } from './media-protocol'
 import { installScreenShare } from './screenshare'
-import { defaultDownloadDir, readMedia, saveMedia } from './downloads'
+import { defaultDownloadDir, readMedia, saveMedia, uniquePath } from './downloads'
+import { buildLogExport, currentOsInfo, exportFilename, PASTE_GG_MAX_BYTES, readLogLines } from './log-export'
+import { checkPasteGg, deleteFromPasteGg, LogUploadStore, toPublicUpload, uploadToPasteGg, type PasteGgFetch } from './paste-gg'
 import type { Buffer as ChatBuffer } from '../shared/wire'
 import { log } from './log'
+
+declare const __APP_VERSION__: string
+declare const __BUILD_COMMIT__: string
 import { SignalCalls } from './signal-calls'
 import { applyPolicy, applyTunnel } from './tunnel'
 import { installRoutedHandler, resetRoute } from './routed'
@@ -1353,6 +1358,104 @@ function wireIpc(): void {
     available: nobilis.available(),
     linkUp: client.linkUp
   }))
+
+  // Anonymized log export (Downloads & paste.gg) - issue #343.
+  const logUploads = new LogUploadStore(path.join(app.getPath('userData'), 'log-uploads.json'))
+  const pasteFetch: PasteGgFetch = async (url, init) => {
+    const res = await net.fetch(url, init)
+    return { ok: res.ok, status: res.status, text: () => res.text() }
+  }
+  const collectLogs = async (maxBytes?: number) => {
+    let nobilisVersion = client.linkUp ? 'not reported' : 'not connected'
+    let nobilisBuild = client.linkUp ? 'unknown' : 'not connected'
+    if (client.linkUp) {
+      try {
+        const v = (await client.request('version', {})) as { version?: string; commit?: string } | null
+        if (v?.version) nobilisVersion = v.version
+        if (v?.commit) nobilisBuild = v.commit
+      } catch {
+        // An older daemon may not answer `version`; keep the fallback.
+      }
+    }
+    const rawLines = await readLogLines(log.dir())
+    return buildLogExport(
+      rawLines,
+      {
+        mohoVersion: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : app.getVersion(),
+        mohoBuild: typeof __BUILD_COMMIT__ === 'string' ? __BUILD_COMMIT__ : 'unknown',
+        nobilisVersion,
+        nobilisBuild,
+        ...currentOsInfo(),
+        exportedAt: new Date().toISOString()
+      },
+      { maxBytes }
+    )
+  }
+
+  ipcMain.handle(IPC.logsPreview, async () => {
+    const res = await collectLogs()
+    return { text: res.text, sizeBytes: res.sizeBytes, linesOmitted: res.linesOmitted }
+  })
+
+  ipcMain.handle(IPC.logsSave, async () => {
+    try {
+      const res = await collectLogs()
+      const dir = String(prefs.get('downloads.directory', '') || defaultDownloadDir(app.getPath('downloads')))
+      await fsp.mkdir(dir, { recursive: true })
+      const target = uniquePath(path.join(dir, exportFilename()))
+      await fsp.writeFile(target, res.text, 'utf8')
+      return { path: target, sizeBytes: res.sizeBytes }
+    } catch (e) {
+      return { error: (e as Error).message }
+    }
+  })
+
+  ipcMain.handle(IPC.logsUpload, async () => {
+    try {
+      const res = await collectLogs(PASTE_GG_MAX_BYTES)
+      const uploaded = await uploadToPasteGg(res.text, pasteFetch)
+      const record = {
+        id: uploaded.id,
+        url: uploaded.url,
+        deletionKey: uploaded.deletionKey,
+        createdAt: uploaded.createdAt,
+        expiresAt: uploaded.expiresAt,
+        sizeBytes: res.sizeBytes,
+        linesOmitted: res.linesOmitted,
+        status: 'active' as const
+      }
+      const uploads = logUploads.add(record)
+      return { upload: toPublicUpload(record), uploads }
+    } catch (e) {
+      return { error: (e as Error).message }
+    }
+  })
+
+  ipcMain.handle(IPC.logsList, () => logUploads.publicList())
+
+  ipcMain.handle(IPC.logsCheck, async () => {
+    const active = logUploads.all().filter((u) => u.status === 'active')
+    await Promise.all(
+      active.map(async (u) => {
+        const state = await checkPasteGg(u.id, pasteFetch)
+        if (state === 'expired') {
+          logUploads.markExpired(u.id, 'expired')
+        }
+      })
+    )
+    return logUploads.publicList()
+  })
+
+  ipcMain.handle(IPC.logsDelete, async (_e, id: string) => {
+    const rec = logUploads.get(String(id))
+    if (!rec) return { uploads: logUploads.publicList(), error: 'upload not found' }
+    const outcome = await deleteFromPasteGg(rec.id, rec.deletionKey, pasteFetch)
+    if (!outcome.ok) return { uploads: logUploads.publicList(), error: outcome.error }
+    logUploads.markExpired(rec.id, 'deleted')
+    return { uploads: logUploads.publicList() }
+  })
+
+  ipcMain.handle(IPC.logsForget, (_e, id: string) => logUploads.forget(String(id)))
   /**
    * Sign in through the service's own login page.
    *
