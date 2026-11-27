@@ -87,6 +87,24 @@ try {
   await a.rpc('mattermost', { action: 'callHand', bufferId: da.id, raised: true })
   const hand = await until(async () => ((await b.rpc('listStoatVoice', { accountId: b.account.id }))[db.id] ?? []).find((m) => m.userId === me.id && m.raisedHand))
   check('a raised hand is seen by the other side', !!hand)
+  // A screen: the harness cannot pick one, so a fake camera's stream stands in, through the same path a shared screen takes.
+  await a.ev(`navigator.mediaDevices.getUserMedia({ video: true }).then((s) => window.__mohoShots.store.stoatCall.sfu.setScreen(s))`)
+  const shared = await until(async () => ((await b.rpc('listStoatVoice', { accountId: b.account.id }))[db.id] ?? []).find((m) => m.userId === me.id && m.screen))
+  check('a shared screen is seen as shared by the other side', !!shared)
+  const picture = await until(() => b.ev('window.__mohoShots.store.stoatCall?.people?.some((p) => p.hasVideo && p.stream.getVideoTracks().length > 0)'), 20000)
+  check('and its picture arrives there', !!picture)
+  const frames = await until(
+    () =>
+      b.ev(`window.__mohoShots.store.stoatCall.sfu.pc.getStats().then((r) => { let n = 0; r.forEach((x) => { if (x.type === 'inbound-rtp' && x.kind === 'video') n += x.framesDecoded || 0 }); return n > 10 ? n : 0 })`),
+    20000
+  )
+  check('and its frames decode there', !!frames, String(frames))
+  await sleep(1500)
+  const { data: shot2 } = await b.page.call('Page.captureScreenshot', { format: 'png' })
+  fs.writeFileSync(path.join(out, 'mattermost-call-screen.png'), Buffer.from(shot2, 'base64'))
+  await a.ev('window.__mohoShots.store.stoatCall.sfu.setScreen(null)')
+  const stopped = await until(async () => ((await b.rpc('listStoatVoice', { accountId: b.account.id }))[db.id] ?? []).find((m) => m.userId === me.id && !m.screen))
+  check('stopping it is seen', !!stopped)
   await a.ev('window.__mohoShots.store.hangUpMatrixCall()')
   await b.ev('window.__mohoShots.store.hangUpMatrixCall()')
   const ended = await until(async () => {
