@@ -222,6 +222,23 @@ export function fluxerSameText(sent: string, logged: string): boolean {
 }
 
 /**
+ * Whether what was typed into a Mattermost conversation is what the server logged: an emoji typed by name (`:smile:`)
+ * comes back drawn - as its character, or as the daemon's picture token for one of the server's own - so each name typed
+ * stands for whatever one thing is in its place.
+ */
+export function mattermostSameText(sent: string, logged: string): boolean {
+  const s = sent.trim()
+  const l = logged.trim()
+  if (s === l) return true
+  if (!/:[a-z0-9_+-]{1,64}:/.test(s)) return false
+  const pattern = s
+    .split(/(:[a-z0-9_+-]{1,64}:)/)
+    .map((part, i) => (i % 2 === 1 ? `(?:${part.replace(/[+]/g, '\\+')}|\\[mattermost:emoji:[^\\]]+\\]|\\S{1,16})` : part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+    .join('')
+  return new RegExp(`^${pattern}$`, 'u').test(l)
+}
+
+/**
  * Whether what was typed into a Steam conversation is what Steam logged.
  *
  * They are never spelled alike when a message holds an emoticon or a bracket:
@@ -652,6 +669,11 @@ export function formatMessage(text: string, opts: FormatOptions = {}): string {
   // Stoat's custom emoji, which the daemon writes as `[stoat:emoji:name:file://...]`: the picture is a file it has named in
   // its own cache (and fetches when this draws it), and only that folder is accepted, so a message cannot name another.
   out = out.replace(/\[(?:stoat|fluxer):emoji:([A-Za-z0-9_]{1,32}):(file:\/\/[^\]\s]*[\\/](?:stoat|fluxer)-media[\\/][A-Za-z0-9._-]+)\]/g, (_m, name: string, src: string) =>
+    stow(`<img src="${src}" class="custom-emoji" alt=":${name}:">`)
+  )
+
+  // Mattermost's custom emoji, written the same way by the daemon; its names may hold `+` and `-` as well.
+  out = out.replace(/\[mattermost:emoji:([A-Za-z0-9_+-]{1,64}):(file:\/\/[^\]\s]*[\\/]mattermost-media[\\/][A-Za-z0-9._-]+)\]/g, (_m, name: string, src: string) =>
     stow(`<img src="${src}" class="custom-emoji" alt=":${name}:">`)
   )
 

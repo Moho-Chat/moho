@@ -160,6 +160,58 @@ const DISCORD = `(() => {
   return true
 })()`
 
+/**
+ * A Stoat account with notes of its own and two servers: its badge is the
+ * folder those servers land in.
+ */
+const STOAT = `(() => {
+  const shots = window.__mohoShots
+  const s = shots.state()
+  const acc = 'stoat:shots'
+  const head = 'account:' + acc
+  const now = Math.floor(Date.now() / 1000)
+  const buf = (id, name, groupId, extra = {}) => ({ id: acc + '|' + id, accountId: acc, kind: 'channel', name, lastActivityTs: now, groupId, unread: 0, highlight: false, mentions: 0, ...extra })
+  shots.patch({
+    accounts: [...s.accounts.filter((a) => a.id !== acc), {
+      id: acc, service: 'stoat', displayName: 'Salastil', state: 'connected', autojoin: '',
+      currentNick: 'Salastil', status: 'online', useTor: false, ssl: true
+    }],
+    groups: [
+      ...s.groups.filter((g) => g.accountId !== acc),
+      { id: head, accountId: acc, service: 'stoat', kind: 'account', name: 'Stoat', position: 5 },
+      { id: acc + '|server:1', accountId: acc, service: 'stoat', kind: 'guild', name: 'Knitting Circle', position: 6 },
+      { id: acc + '|server:2', accountId: acc, service: 'stoat', kind: 'guild', name: 'Yarn Swap', position: 7 }
+    ],
+    buffers: [...s.buffers.filter((b) => b.accountId !== acc),
+      buf('notes', 'Saved Notes', head),
+      buf('k1', 'Knitting Circle/#general', acc + '|server:1', { unread: 4 }),
+      buf('y1', 'Yarn Swap/#trades', acc + '|server:2', { unread: 1, highlight: true, mentions: 1 })]
+  })
+  return true
+})()`
+
+/** Discord and Stoat together, put back after whatever a preference change made the window ask the daemon. */
+const withStoat = async (p) => {
+  await discord(false)(p)
+  await p.evaluate(STOAT)
+  await sleep(900)
+  await p.evaluate(DISCORD)
+  await p.evaluate(STOAT)
+  await sleep(700)
+}
+
+/** The rail with these folders saved, after a reload so it starts from them. */
+const railWith = (folders, open) => async (p) => {
+  await p.evaluate(`window.moho.prefs.set('railFolders', ${JSON.stringify(folders)})`)
+  await p.evaluate(`window.moho.prefs.set('ui.railFolderOpen', ${JSON.stringify(open)})`)
+  await sleep(300)
+  await p.call('Page.reload')
+  await until(p, 'window.__mohoShots && document.querySelector(".buffer-row")', 'the window after a reload')
+  await p.call('Emulation.setDeviceMetricsOverride', { ...SIZE, deviceScaleFactor: 1, mobile: false })
+  await sleep(500)
+  await withStoat(p)
+}
+
 const VOICE = `window.__mohoShots.patch(window.__shotsVoice), true`
 const NO_CALL = `window.__mohoShots.patch({ ...window.__shotsVoice, voiceSessions: [] }), true`
 
@@ -1238,6 +1290,54 @@ const SCENES = [
       await sleep(900)
     },
     clip: { x: 0, y: 44, width: 280, height: 360 }
+  },
+  {
+    // Servers the Stoat account joined, filed under its badge on their own; closed.
+    name: 'rail-badge-folder-closed',
+    setup: withStoat,
+    clip: { x: 0, y: 44, width: 280, height: 360 }
+  },
+  {
+    // The badge clicked: its own page (the notes) and its servers underneath.
+    name: 'rail-badge-folder-open',
+    setup: async (p) => {
+      await withStoat(p)
+      await p.evaluate(click('[aria-label="Stoat"]', ''))
+      await sleep(600)
+    },
+    clip: { x: 0, y: 44, width: 280, height: 420 }
+  },
+  {
+    // The badge, with its servers, nested inside a folder of the user's own; both open.
+    name: 'rail-folder-nested',
+    setup: railWith(
+      [
+        { id: 'f1', name: 'Mine', colour: '#5865f2', members: ['discord:shots|guild:2', 'folder:badge:account:stoat:shots'] },
+        { id: 'badge:account:stoat:shots', name: 'Stoat', members: ['stoat:shots|server:1', 'stoat:shots|server:2'], head: 'account:stoat:shots' }
+      ],
+      'badge:account:stoat:shots'
+    ),
+    clip: { x: 0, y: 44, width: 280, height: 420 }
+  },
+  {
+    // Discord's badge, though every guild was placed before badges existed:
+    // it has no page of its own and holds nothing yet, but is still there to
+    // drop guilds into.
+    name: 'rail-badge-discord',
+    setup: async (p) => {
+      const DISCORD_HEAD = `window.__mohoShots.patch({ groups: [...window.__mohoShots.state().groups.filter((g) => g.id !== 'account:discord:shots'), { id: 'account:discord:shots', accountId: 'discord:shots', service: 'discord', kind: 'account', name: 'Salastil', iconUrl: '/avatar-the-daemon-gives-it.png', position: 4 }] }), true`
+      await p.evaluate(`window.moho.prefs.set('ui.railOrder', ['discord:shots|guild:1', 'discord:shots|guild:2'])`)
+      await railWith([], '')(p)
+      for (let i = 0; i < 2; i++) {
+        await p.evaluate(DISCORD_HEAD)
+        await sleep(900)
+        await p.evaluate(DISCORD)
+        await p.evaluate(STOAT)
+      }
+      await p.evaluate(DISCORD_HEAD)
+      await sleep(600)
+    },
+    clip: { x: 0, y: 44, width: 280, height: 420 }
   },
   {
     // The pointer over the close button (#291): red, and the maximise glyph.

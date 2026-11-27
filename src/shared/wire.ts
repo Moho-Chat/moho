@@ -3,7 +3,7 @@
 
 export interface Account {
   id: string
-  service: 'irc' | 'discord' | 'sneedchat' | 'matrix' | 'kick' | 'steam' | 'twitch' | 'telegram' | 'stoat' | 'fluxer' | 'xmpp' | 'signal' | 'jabber' | 'slack'
+  service: 'irc' | 'discord' | 'sneedchat' | 'matrix' | 'kick' | 'steam' | 'twitch' | 'telegram' | 'stoat' | 'fluxer' | 'mattermost' | 'rocketchat' | 'xmpp' | 'signal' | 'jabber' | 'slack'
   displayName: string
   /**
    * How the user is presenting: "online" | "idle". Distinct from
@@ -18,6 +18,8 @@ export interface Account {
    */
   autoIdle?: boolean
   state: string
+  /** Whether the user explicitly disconnected this account, persisted across restarts. */
+  disconnected?: boolean
   autojoin: string
   hasNickservPassword: boolean
   saslEnabled: boolean

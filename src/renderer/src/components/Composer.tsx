@@ -240,6 +240,34 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const account = buffer && accounts.find((a) => a.id === buffer.accountId)
   const service = account?.service
   const tunnelAll = useChat((s) => s.tunnelAll)
+
+  // Mattermost keeps unsent words on the account, for its other apps: what is typed here is kept there a moment after
+  // typing stops (and taken off when it is sent or cleared), and words left in another app fill an empty box here.
+  const threadRootId = useChat((s) => (thread ? s.openThread?.rootId : undefined))
+  const draftSent = useRef('')
+  useEffect(() => {
+    if (service !== 'mattermost' || !buffer) return
+    const words = text.trim()
+    if (words === draftSent.current) return
+    const timer = setTimeout(() => {
+      draftSent.current = words
+      void window.moho.rpc('mattermost', { action: 'saveDraft', bufferId: buffer.id, rootId: threadRootId ?? '', text: words }).catch(() => {})
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [text, service, buffer?.id, threadRootId])
+  useEffect(() => {
+    if (service !== 'mattermost' || !buffer) return
+    return window.moho.onEvent((e) => {
+      if (e.event !== 'serviceDraft') return
+      const d = e.data as { bufferId?: string; rootId?: string; text?: string }
+      if (d.bufferId !== buffer.id || (d.rootId || '') !== (threadRootId ?? '') || !d.text) return
+      const el = inputRef.current
+      if (!el || (el.textContent ?? '').trim() !== '') return
+      el.textContent = d.text
+      draftSent.current = d.text.trim()
+      setText(d.text)
+    })
+  }, [service, buffer?.id, threadRootId])
   const route = useChat((s) => s.route)
   const routed = tunnelAll || !!account?.useTor
   const media = useMediaUrl(account?.id)
@@ -274,7 +302,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   // here rather than left as the one service where the button is dead.
   // Steam takes a picture or a short video, and says which and how big.
   const supportsAttachments =
-    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'xmpp' || service === 'signal'
+    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost' || service === 'xmpp' || service === 'signal'
 
   // Starting a reply puts the cursor in the box: the next thing anybody does
   // is write the answer.
@@ -348,17 +376,46 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
     }
   }, [thread])
 
+  // Mattermost's own completion: the server is asked who matches what is typed after "@", so somebody not in the loaded
+  // list of people can be named too.
+  const [serverPeople, setServerPeople] = useState<MentionTarget[]>([])
+  const typedMention = mention?.query ?? null
+  useEffect(() => {
+    if (service !== 'mattermost' || !buffer || typedMention === null || typedMention.length < 1) {
+      setServerPeople([])
+      return
+    }
+    let live = true
+    const timer = setTimeout(() => {
+      void window.moho
+        .rpc<{ username: string; id: string; name: string; avatarUrl?: string }[]>('mattermost', { action: 'autocomplete', bufferId: buffer.id, teamId: (buffer.groupId ?? '').split('|team:')[1] ?? '', query: typedMention })
+        .then((list) => live && setServerPeople(list.map((u) => ({ name: u.username, ...(u.name ? { detail: u.name } : {}), kind: 'member' as const, userId: u.id, avatarUrl: u.avatarUrl }))))
+        .catch(() => live && setServerPeople([]))
+    }, 200)
+    return () => {
+      live = false
+      clearTimeout(timer)
+    }
+  }, [service, buffer?.id, typedMention])
+
   /**
    * Everything that can be tagged here: the people in the conversation, the
    * roles the service lets anybody ping, and its whole-room keywords.
    */
   const mentionTargets = useMemo((): MentionTarget[] => {
-    const members: MentionTarget[] = (roster ?? []).map((m) => ({
-      name: m.nick,
-      kind: 'member' as const,
-      userId: m.userId,
-      avatarUrl: m.avatarUrl
-    }))
+    // Mattermost reads a mention by username, whatever name it shows: the name goes beside it.
+    const members: MentionTarget[] = (roster ?? []).map((m) => {
+      const username = (m as { username?: string }).username
+      return {
+        name: service === 'mattermost' && username ? username : m.nick,
+        ...(service === 'mattermost' && username && username !== m.nick ? { detail: m.nick } : {}),
+        kind: 'member' as const,
+        userId: m.userId,
+        avatarUrl: m.avatarUrl
+      }
+    })
+    // And the people of the team the list here has not got, as the server finds them for what was typed.
+    for (const p of serverPeople) if (!members.some((m) => m.userId === p.userId)) members.push(p)
     const roleTargets: MentionTarget[] = roles.map((r) => ({
       name: r.name,
       detail: 'Role',
@@ -371,7 +428,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
       kind: 'keyword' as const
     }))
     return [...members, ...roleTargets, ...keywords]
-  }, [roster, roles, service])
+  }, [roster, roles, service, serverPeople])
 
   const suggestions = useMemo(
     () => (mention ? rankMentions(mentionTargets, mention.query) : []),
@@ -615,11 +672,12 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
           staged.map((att) => att.path),
           staged.filter((att) => att.spoiler).map((att) => att.path)
         )
-      } else if (service === 'stoat' || service === 'fluxer') {
-        // Stoat and Fluxer carry several files in one message (Stoat up to five, Fluxer ten; the daemon says if the account is allowed fewer), and
-        // names a spoiler by the file's name, so each file's mark has to go with it.
-        for (let i = 0; i < staged.length; i += 5) {
-          const batch = staged.slice(i, i + 5)
+      } else if (service === 'stoat' || service === 'fluxer' || service === 'mattermost') {
+        // Stoat, Fluxer and Mattermost carry several files in one message (Stoat up to five, Fluxer and Mattermost ten; the daemon says if the account
+        // is allowed fewer), and Stoat and Fluxer name a spoiler by the file's name, so each file's mark has to go with it.
+        const per = service === 'stoat' ? 5 : 10
+        for (let i = 0; i < staged.length; i += per) {
+          const batch = staged.slice(i, i + per)
           void post(
             i === 0 ? body : '',
             batch.map((att) => att.path),
@@ -1315,7 +1373,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
                 !e.altKey &&
                 !e.metaKey &&
                 !text &&
-                (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'xmpp' || service === 'signal')
+                (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost' || service === 'xmpp' || service === 'signal')
               ) {
                 const last = store.lastEditableOwn(buffer.id)
                 if (last) {

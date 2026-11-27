@@ -1,5 +1,5 @@
 import { useMediaUrl } from '../lib/route'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ContextMenu, useContextMenu } from './ContextMenu'
 import { railConnecting } from '../lib/bufferlink'
@@ -8,7 +8,7 @@ import { Modal } from './Modal'
 import { Avatar } from './Avatar'
 import { LeaveConfirm } from './LeaveConfirm'
 import { ircNetworkFor } from '../lib/networks'
-import { useChat, useInvitations, usePref, useStore } from '../state/hooks'
+import { useChat, useInvitations, usePref, usePrefsReady, useStore } from '../state/hooks'
 import { RAIL_TIP, hideRailTip, showRailTip, type RailTipDetail } from '../lib/railtip'
 import { bufferDisplayName, classes, resolveMediaUrl, serviceIcon, spreadColor } from '../lib/util'
 import { SpaceRooms } from './SpaceRooms'
@@ -16,20 +16,35 @@ import { SteamGroupSettings } from './SteamGroupSettings'
 import { StoatServerSettings } from './StoatServerSettings'
 import { steamGroupOfRail } from '../lib/steamchat'
 import {
+  disconnectedAccountIds,
   isFixedEntry,
   invitationsGroup,
   orderedGroups,
   railEntries,
-  fileInFolder,
   foldTogether,
-  removeFromFolders,
+  moveInRail,
+  dissolveFolder,
+  fileNewServers,
+  withBadgeFolder,
+  withSynced,
+  badgesShown,
+  normalizedFolders,
+  ancestorsOf,
+  parentOf,
+  folderRef,
+  folderIdOf,
+  canDropOn,
+  resolveGapDrop,
   FOLDER_COLOURS,
+  type DropZone,
+  type RailDropTarget,
+  type RailSlot,
   type RailFolder,
+  type RailEntry,
+  type RailFolderEntry,
+  type RailLayout,
   PINNED_GROUP_ID,
   pinnedGroup,
-  reorder,
-  reorderFolder,
-  FOLDER_DRAG_PREFIX,
   visibleGroups,
   countedFor,
   isMutedBuffer,
@@ -67,11 +82,10 @@ interface TileProps {
   /** How many unread messages mention this account: the number the tile shows. */
   mentions: number
   draggable: boolean
-  dropTarget: boolean
+  /** Where a drop here would land, while something is held over it. */
+  dropAt: DropZone | null
   /** Being dragged right now: it leaves a gap where it was. */
   lifted: boolean
-  /** A drop here would fold the two together rather than reorder. */
-  mergeTarget: boolean
   muted: boolean
   onToggleMute: () => void
   /** Absent where there is nothing to leave - an account's own entry. */
@@ -84,8 +98,8 @@ interface TileProps {
   onSettings?: () => void
   onSelect: () => void
   onDragStart: () => void
-  onDragOver: (merge: boolean) => void
-  onDrop: (merge: boolean) => void
+  onDragOver: (zone: DropZone) => void
+  onDrop: (zone: DropZone) => void
   onDragEnd: () => void
 }
 
@@ -166,32 +180,72 @@ function GroupFace({ group, customIcon }: { group: RailGroup; customIcon?: strin
 /**
  * Whether a drop on this tile means "fold these together" or "put it here".
  *
- * The middle of the tile merges, the top and bottom thirds reorder - the same
- * split Discord uses, and the reason dragging onto an icon can create a folder
- * without taking away the ability to rearrange the column.
+ * The middle of the tile merges - or, on a folder, files it inside - and the
+ * top and bottom thirds put it above or below: the same split Discord uses,
+ * and the reason dragging onto an icon can create a folder without taking
+ * away the ability to rearrange the column.
  */
-/**
- * The folder being dragged, if what is being dragged is one.
- *
- * Folders and servers travel through the same one-string handle, so a folder
- * says so in the string rather than by being looked up and hoped for - a
- * folder id and a group id are both opaque, and mistaking one for the other
- * files a folder inside itself.
- */
-function folderBeingDragged(dragged: string, folders: RailFolder[]): RailFolder | null {
-  if (!dragged.startsWith(FOLDER_DRAG_PREFIX)) return null
-  const id = dragged.slice(FOLDER_DRAG_PREFIX.length)
-  return folders.find((f) => f.id === id) ?? null
-}
-
-function isMerge(e: React.DragEvent): boolean {
+function dropZone(e: React.DragEvent): DropZone {
   const r = e.currentTarget.getBoundingClientRect()
   const y = (e.clientY - r.top) / r.height
-  return y > 0.33 && y < 0.67
+  return y <= 0.33 ? 'before' : y >= 0.67 ? 'after' : 'merge'
+}
+
+/** Collects the vertical bounds of direct movable entries inside a rail container. */
+function collectSlots(container: Element, skipFirst = false): RailSlot[] {
+  const slots: RailSlot[] = []
+  const kids = Array.from(container.children)
+  for (let i = skipFirst ? 1 : 0; i < kids.length; i++) {
+    const el = kids[i]
+    const tile = el.matches('[data-rail-ref]') ? el : el.querySelector(':scope > [data-rail-ref]')
+    const ref = tile?.getAttribute('data-rail-ref')
+    if (!ref) continue
+    const r = el.getBoundingClientRect()
+    slots.push({
+      ref,
+      top: r.top,
+      bottom: r.bottom,
+      openFolder: tile?.getAttribute('data-rail-open') === 'true'
+    })
+  }
+  return slots
+}
+
+/**
+ * Resolves a drag-over event that landed on the gap between tiles (either in
+ * `.rail-scroll` or inside `.rail-folder-group.open`) or in the open space
+ * below the column.
+ */
+function resolveRailContainerDrop(
+  scrollEl: HTMLElement,
+  target: EventTarget | null,
+  clientY: number,
+  dragging: string
+): RailDropTarget {
+  const openFolderEl = target instanceof Element ? target.closest('.rail-folder-group.open') : null
+  if (openFolderEl && scrollEl.contains(openFolderEl)) {
+    const header = openFolderEl.querySelector(':scope > [data-rail-ref]')
+    const ref = header?.getAttribute('data-rail-ref')
+    if (!ref || !header) return null
+    const hr = header.getBoundingClientRect()
+    return resolveGapDrop(collectSlots(openFolderEl, true), clientY, dragging, {
+      folderRef: ref,
+      headerTop: hr.top,
+      headerBottom: hr.bottom
+    })
+  }
+  return resolveGapDrop(collectSlots(scrollEl), clientY, dragging, { allowTail: true })
+}
+
+function sameDrop(a: RailDropTarget, b: RailDropTarget): boolean {
+  if (a === b) return true
+  if (!a || !b || a.kind !== b.kind) return false
+  if (a.kind === 'tail' && b.kind === 'tail') return true
+  return a.kind === 'tile' && b.kind === 'tile' && a.ref === b.ref && a.zone === b.zone
 }
 
 function RailTile(props: TileProps): JSX.Element {
-  const { group, active, unread, highlight, mentions, draggable, dropTarget, customIcon, muted, lifted, mergeTarget } = props
+  const { group, active, unread, highlight, mentions, draggable, dropAt, customIcon, muted, lifted } = props
   const { menu, open, close } = useContextMenu()
   const store = useStore()
   // What is waiting inside this server, for "Mark as read".
@@ -215,8 +269,9 @@ function RailTile(props: TileProps): JSX.Element {
       className={classes(
         'rail-tile',
         active && 'active',
-        dropTarget && 'drop-target',
-        mergeTarget && 'merge-target',
+        dropAt === 'merge' && 'merge-target',
+        dropAt === 'before' && 'drop-before',
+        dropAt === 'after' && 'drop-after',
         lifted && 'lifted',
         muted && 'muted',
         connecting && 'connecting'
@@ -227,6 +282,7 @@ function RailTile(props: TileProps): JSX.Element {
       onBlur={hideRailTip}
       aria-label={group.name}
       aria-current={active}
+      data-rail-ref={draggable ? group.id : undefined}
       draggable={draggable}
       onClick={props.onSelect}
       onContextMenu={open}
@@ -237,13 +293,17 @@ function RailTile(props: TileProps): JSX.Element {
         props.onDragStart()
       }}
       onDragOver={(e) => {
+        if (!draggable) return
         // Without preventDefault the browser refuses the drop outright.
         e.preventDefault()
-        props.onDragOver(isMerge(e))
+        e.stopPropagation()
+        props.onDragOver(dropZone(e))
       }}
       onDrop={(e) => {
+        if (!draggable) return
         e.preventDefault()
-        props.onDrop(isMerge(e))
+        e.stopPropagation()
+        props.onDrop(dropZone(e))
       }}
       onDragEnd={props.onDragEnd}
     >
@@ -396,10 +456,17 @@ export function ServerRail(): JSX.Element | null {
   // the selector's result by identity, so returning a new object each render
   // reports a change every time and loops until React gives up.
   const groups = useChat((s) => s.groups)
+  const accounts = useChat((s) => s.accounts)
   const invitations = useInvitations()
   const activeGroupId = useChat((s) => s.activeGroupId)
   const activeBufferId = useChat((s) => s.activeBufferId)
   const buffers = useChat((s) => s.buffers)
+  const disconnected = useMemo(() => disconnectedAccountIds(accounts), [accounts])
+  const activeGroups = useMemo(() => groups.filter((g) => !disconnected.has(g.accountId)), [groups, disconnected])
+  const activeBuffers = useMemo(
+    () => (buffers as BufferEntry[]).filter((b) => !disconnected.has(b.accountId)),
+    [buffers, disconnected]
+  )
   const [railOrder, setRailOrder] = usePref<string[]>('ui.railOrder', [])
   const [pinned] = usePref<string[]>('pinnedBuffers', [])
   const [muted] = usePref<string[]>('mutedBuffers', [])
@@ -408,30 +475,47 @@ export function ServerRail(): JSX.Element | null {
   const [mutedGroups, setMutedGroups] = usePref<string[]>('mutedGroups', [])
   const [folders, setFolders] = usePref<RailFolder[]>('railFolders', [])
   const fluxerFolders = useChat((s) => s.fluxerFolders)
-  // Local folders the user made in moho always win over service-synced ones; Fluxer's guild_folders supply the rest.
-  const effectiveFolders: RailFolder[] = (() => {
-    const claimed = new Set(folders.flatMap((f) => f.members))
-    const synced: RailFolder[] = []
-    for (const list of Object.values(fluxerFolders)) {
-      for (const f of list) {
-        const members = f.members.filter((m) => !claimed.has(m))
-        if (members.length > 0) synced.push({ id: f.id, name: f.name, colour: f.colour, members })
-      }
-    }
-    return [...folders, ...synced]
-  })()
-  // Which folder is showing its contents, if any. Remembered: a column that
-  // forgets which folders were open and shuts them all on every start is one
-  // you re-arrange each morning.
+  // What a service keeps for the account - Fluxer's guild_folders. Local folders the user made in moho always win
+  // over these: they only get what nothing local has claimed.
+  const synced = useMemo(
+    () =>
+      Object.entries(fluxerFolders)
+        .filter(([accountId]) => !disconnected.has(accountId))
+        .flatMap(([, list]) =>
+          list.map((f): RailFolder => ({ id: f.id, name: f.name, colour: f.colour, members: f.members }))
+        ),
+    [fluxerFolders, disconnected]
+  )
+  const effectiveFolders = normalizedFolders(withSynced(folders, synced))
+  // Which folder is showing its contents, if any - the innermost, when folders
+  // are open inside each other, so the ones around it count as open too.
+  // Remembered: a column that forgets which folders were open and shuts them
+  // all on every start is one you re-arrange each morning.
   const [expanded, setExpanded] = usePref<string>('ui.railFolderOpen', '')
-  const isFolderOpen = (id: string): boolean => expanded === id
-  const toggleFolder = (id: string): void => setExpanded(expanded === id ? '' : id)
-  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; folder: RailFolder } | null>(null)
+  const openPath = expanded ? [expanded, ...ancestorsOf(effectiveFolders, folderRef(expanded))] : []
+  const isFolderOpen = (id: string): boolean => openPath.includes(id)
+  // Shutting one shuts what is open inside it; opening one shuts its
+  // neighbours but not the folders around it.
+  const toggleFolder = (id: string): void =>
+    setExpanded(isFolderOpen(id) ? (parentOf(effectiveFolders, folderRef(id))?.id ?? '') : id)
+  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; entry: RailFolderEntry } | null>(null)
   const [settings, setSettings] = useState<RailFolder | null>(null)
 
-  /** Every buffer belonging to any server in this folder. */
-  const buffersInFolder = (folder: RailFolder): string[] =>
-    (buffers as BufferEntry[]).filter((b) => b.groupId && folder.members.includes(b.groupId)).map((b) => b.id)
+  /** Every buffer belonging to a badge or any server under a folder. */
+  const buffersUnder = (entry: RailFolderEntry): string[] => {
+    const ids = new Set([...(entry.head ? [entry.head.id] : []), ...entry.members.map((m) => m.id)])
+    return (buffers as BufferEntry[]).filter((b) => b.groupId && ids.has(b.groupId)).map((b) => b.id)
+  }
+
+  // A server the account joins lands in its badge's folder rather than loose
+  // at the foot of the column. Not before the preferences have loaded: with
+  // the saved order still empty, every server would look new and be filed away.
+  const prefsReady = usePrefsReady()
+  useEffect(() => {
+    if (!prefsReady) return
+    const filed = fileNewServers(activeGroups, { order: railOrder, folders }, synced)
+    if (filed) setFolders(filed)
+  }, [prefsReady, activeGroups, railOrder, folders, synced, setFolders])
 
   // The authoritative dragged id lives in a ref, not in state: dragstart and
   // drop are separate events, and reading it from state means depending on a
@@ -440,9 +524,20 @@ export function ServerRail(): JSX.Element | null {
   // it purely so the tiles restyle while dragging.
   const draggingRef = useRef('')
   const [dragging, setDragging] = useState('')
-  const [over, setOver] = useState('')
-  // The tile a drop would merge into, as opposed to land beside.
-  const [merging, setMerging] = useState('')
+  // Single authoritative drop target (both ref and state) so whatever the blue
+  // marker shows is always the exact placement committed on drop.
+  const activeDropRef = useRef<RailDropTarget>(null)
+  const [activeDrop, setActiveDrop] = useState<RailDropTarget>(null)
+  const setDrop = (next: RailDropTarget): void => {
+    const valid = canDropOn(effectiveFolders, draggingRef.current, next) ? next : null
+    activeDropRef.current = valid
+    setActiveDrop((prev) => (sameDrop(prev, valid) ? prev : valid))
+  }
+  const dropAt = (ref: string): DropZone | null =>
+    activeDrop?.kind === 'tile' && activeDrop.ref === ref && dragging !== '' && dragging !== ref
+      ? activeDrop.zone
+      : null
+  const tailTarget = activeDrop?.kind === 'tail'
   /** The rail entry a leave has been asked about, pending confirmation. */
   const leaving = useChat((s) => s.leaveRequest)
   const setLeaving = (g: { id: string; name: string; kind: string } | null): void => store.requestLeave(g)
@@ -451,19 +546,16 @@ export function ServerRail(): JSX.Element | null {
   /** The Steam chat group whose settings are open, if any. */
   const [configuring, setConfiguring] = useState<RailGroup | null>(null)
   const [stoatSettings, setStoatSettings] = useState<RailGroup | null>(null)
-  /** Hovering the space below the column, which means "put it last". */
-  const [tailTarget, setTailTarget] = useState(false)
 
   const beginDrag = (id: string): void => {
     draggingRef.current = id
     setDragging(id)
   }
   const endDrag = (): void => {
-    setTailTarget(false)
     draggingRef.current = ''
+    activeDropRef.current = null
     setDragging('')
-    setOver('')
-    setMerging('')
+    setActiveDrop(null)
   }
 
   // Unread rolls up from the buffers under each entry, so a guild whose
@@ -482,7 +574,7 @@ export function ServerRail(): JSX.Element | null {
     t.mentions += waiting
     totals.set(key, t)
   }
-  const all = buffers as BufferEntry[]
+  const all = activeBuffers
   for (const b of all) {
     // A hidden buffer has no row to reach.
     if (hidden.includes(b.id)) continue
@@ -493,14 +585,18 @@ export function ServerRail(): JSX.Element | null {
     if (pinned.includes(b.id)) bump(PINNED_GROUP_ID, b)
   }
 
-  const shown = visibleGroups(groups, all)
+  // What the rail can select, and the account entries it shows besides only
+  // as badges - Discord's, which has no page of its own.
+  const selectable = visibleGroups(activeGroups, all)
+  const selectableIds = new Set(selectable.map((g) => g.id))
+  const shown = [...selectable, ...badgesShown(activeGroups, selectable, effectiveFolders)]
   const extras: RailGroup[] = []
   // Only worth a tile once there is something on it.
   if (all.some(isDirectMessage)) extras.push(dmGroup())
   // No tile for mentions. It is not a place you keep - it is reached from the
   // inbox in the header, which is where the unread count already is, and a
   // permanent tile for it only competed with the servers this column is for.
-  if (pinned.length > 0) extras.push(pinnedGroup())
+  if (all.some((b) => !hidden.includes(b.id) && pinned.includes(b.id))) extras.push(pinnedGroup())
   // Invitations from every service share one tile, which is there while
   // anything waits on an answer and gone once nothing does.
   if (invitations.length > 0) extras.push(invitationsGroup(invitations.length))
@@ -515,52 +611,55 @@ export function ServerRail(): JSX.Element | null {
   // only route to the screen where an account gets added - exactly when it is
   // the one thing the user needs.
 
+  const layout: RailLayout = { order: railOrder, folders }
+  const apply = (next: RailLayout): void => {
+    if (next.order !== railOrder) setRailOrder(next.order)
+    if (next.folders !== folders) setFolders(next.folders)
+  }
+
   /**
-   * Dropping one server onto another.
-   *
-   * Onto the middle of a tile makes a folder of the two, which is the gesture
-   * people know from Discord. Near its top or bottom edge it still means
-   * "put it here", so reordering does not disappear the moment folders exist.
+   * Commits whatever drop target the blue indicator is showing (or a fallback
+   * target when a drop arrives without a preceding dragover).
    */
-  const onDrop = (targetId: string, merge: boolean): void => {
+  const commitDrop = (fallback?: RailDropTarget): void => {
     const from = draggingRef.current
-    if (from && from !== targetId) {
-      const movingFolder = folderBeingDragged(from, folders)
-      if (movingFolder) {
-        // A folder is always placed, never merged: dropping one onto a server
-        // has no second meaning the way dropping a server onto one does.
-        setRailOrder(reorderFolder(ordered, movingFolder, targetId))
-      } else if (merge && !isFixedEntry(ordered.find((g) => g.id === targetId) ?? ordered[0])) {
-        setFolders(foldTogether(folders, targetId, from))
+    const target = activeDropRef.current ?? fallback ?? null
+    if (from && target && canDropOn(effectiveFolders, from, target)) {
+      if (target.kind === 'tail') {
+        apply(moveInRail(ordered, layout, from, { kind: 'end' }, synced))
       } else {
-        setRailOrder(reorder(ordered, from, targetId))
+        const { ref, zone } = target
+        const folderId = folderIdOf(ref)
+        if (folderId !== null) {
+          apply(
+            moveInRail(
+              ordered,
+              layout,
+              from,
+              zone === 'merge' ? { kind: 'into', folder: folderId } : { kind: 'beside', target: ref, after: zone === 'after' },
+              synced
+            )
+          )
+        } else {
+          const group = ordered.find((g) => g.id === ref)
+          if (group && !isFixedEntry(group)) {
+            if (zone === 'merge' && group.kind === 'account') {
+              const withBadge = withBadgeFolder(folders, group)
+              const badge = withBadge.find((f) => f.head === group.id)!
+              apply(moveInRail(ordered, { order: railOrder, folders: withBadge }, from, { kind: 'into', folder: badge.id }, synced))
+            } else if (zone === 'merge') {
+              apply(foldTogether(ordered, layout, group.id, from, synced))
+            } else {
+              apply(moveInRail(ordered, layout, from, { kind: 'beside', target: group.id, after: zone === 'after' }, synced))
+            }
+          }
+        }
       }
     }
     endDrag()
   }
 
-  // Dropping a server onto a folder files it there rather than reordering
-  // the column, which is the whole gesture: folders are made by dragging
-  // things into them.
-  const onDropInFolder = (folderId: string): void => {
-    const from = draggingRef.current
-    const movingFolder = folderBeingDragged(from, folders)
-    if (movingFolder && movingFolder.id !== folderId) {
-      // One folder onto another means "put it here", not "put it inside":
-      // folders do not nest, and filing a folder into a folder would lose it.
-      const target = folders.find((f) => f.id === folderId)
-      const landOn = target?.members[0]
-      if (landOn) setRailOrder(reorderFolder(ordered, movingFolder, landOn))
-    } else if (from && !movingFolder) {
-      setFolders(fileInFolder(folders, folderId, from))
-    }
-    endDrag()
-  }
-
-
   const entries = railEntries(ordered, effectiveFolders)
-  /** The entries that can be moved, in the order they are drawn. */
-  const movable = ordered.filter((g) => !isFixedEntry(g)).map((g) => g.id)
 
   /**
    * Conversations with something waiting, most recent first.
@@ -622,67 +721,84 @@ export function ServerRail(): JSX.Element | null {
         // Direct messages and pinned lead the rail by definition, so
         // there is nowhere for them to be dragged to.
         draggable={!isFixedEntry(g)}
-        dropTarget={over === g.id && dragging !== '' && dragging !== g.id}
+        dropAt={dropAt(g.id)}
         lifted={dragging === g.id}
-        mergeTarget={merging === g.id}
         onSelect={() => store.selectGroup(g.id)}
         onDragStart={() => beginDrag(g.id)}
-        onDragOver={(wantsMerge) => {
+        onDragOver={(zone) => {
           if (isFixedEntry(g)) return
-          setOver(g.id)
-          setMerging(wantsMerge && dragging !== g.id ? g.id : '')
+          setDrop({ kind: 'tile', ref: g.id, zone })
         }}
-        onDrop={(wantsMerge) => onDrop(g.id, wantsMerge)}
+        onDrop={(zone) => commitDrop({ kind: 'tile', ref: g.id, zone })}
         onDragEnd={endDrag}
       />
     )
   }
 
-  const renderEntry = (entry: (typeof entries)[number]): JSX.Element => {
-        if (entry.kind === 'folder') {
-          const open = isFolderOpen(entry.id)
-          return (
-            /* Expanded, the folder and its servers sit in one panel - the
-               border and lighter ground are what say where the folder ends,
-               now that its contents are no longer indented. */
-            <div
-              key={entry.id}
-              className={classes('rail-folder-group', open && 'open')}
-              // The chosen colour tints the panel and its border rather than
-              // flooding it: these sit behind a grid of other people's icons,
-              // which have to stay readable.
-              style={
-                open && entry.folder.colour
-                  ? { background: `${entry.folder.colour}22`, borderColor: `${entry.folder.colour}66` }
-                  : undefined
-              }
-            >
-            <FolderTile
-              key={entry.id}
-              folder={entry.folder}
-              members={entry.members}
-              customIcons={customIcons}
-              dropTarget={over === entry.id && dragging !== ''}
-              open={open}
-              unread={entry.members.reduce((n, m) => n + (totals.get(m.id)?.unread ?? 0), 0)}
-              highlight={entry.members.some((m) => totals.get(m.id)?.highlight)}
-              mentions={entry.members.reduce((n, m) => n + (totals.get(m.id)?.mentions ?? 0), 0)}
-              onToggle={() => toggleFolder(entry.id)}
-              lifted={dragging === `${FOLDER_DRAG_PREFIX}${entry.id}`}
-              onDragStart={() => beginDrag(`${FOLDER_DRAG_PREFIX}${entry.id}`)}
-              onContextMenu={(e) => {
-                e.preventDefault()
-                setFolderMenu({ x: e.clientX, y: e.clientY, folder: entry.folder })
-              }}
-              onDragOver={() => setOver(entry.id)}
-              onDrop={() => onDropInFolder(entry.id)}
-              onDragEnd={endDrag}
-            />
-            {open && entry.members.map((m) => renderTile(m))}
-            </div>
-          )
+  const renderEntry = (entry: RailEntry): JSX.Element => {
+    if (entry.kind === 'group') return renderTile(entry.group)
+    const open = isFolderOpen(entry.id)
+    const head = entry.head
+    // A badge counts what its own account page holds as well as its servers.
+    const counted = [...(head ? [head] : []), ...entry.members]
+    const self = folderRef(entry.id)
+    return (
+      /* Expanded, the folder and what it holds sit in one panel - the border
+         and lighter ground are what say where the folder ends, now that its
+         contents are no longer indented. A folder open inside another draws
+         its panel inside that one's. */
+      <div
+        key={entry.id}
+        className={classes('rail-folder-group', open && 'open')}
+        // The chosen colour tints the panel and its border rather than
+        // flooding it: these sit behind a grid of other people's icons,
+        // which have to stay readable.
+        style={
+          open && entry.folder.colour
+            ? { background: `${entry.folder.colour}22`, borderColor: `${entry.folder.colour}66` }
+            : undefined
         }
-        return renderTile(entry.group)
+      >
+        <FolderTile
+          folder={entry.folder}
+          head={head}
+          headIcon={head ? customIcons[head.id] : undefined}
+          members={entry.members}
+          customIcons={customIcons}
+          dropAt={dropAt(self)}
+          open={open}
+          active={!!head && head.id === activeGroupId}
+          muted={!!head && mutedGroups.includes(head.id)}
+          unread={counted.reduce((n, m) => n + (totals.get(m.id)?.unread ?? 0), 0)}
+          highlight={counted.some((m) => totals.get(m.id)?.highlight)}
+          mentions={counted.reduce((n, m) => n + (totals.get(m.id)?.mentions ?? 0), 0)}
+          onToggle={() => {
+            // A badge is its account's page as well as a folder: the first
+            // click goes to the page, and opens the folder on the way.
+            if (head && selectableIds.has(head.id) && activeGroupId !== head.id) {
+              store.selectGroup(head.id)
+              if (!open && entry.children.length > 0) setExpanded(entry.id)
+            } else if (!head || open || entry.children.length > 0 || !selectableIds.has(head.id)) {
+              // A badge with no page and nothing in it still opens, empty:
+              // a click that did nothing would read as a broken tile.
+              toggleFolder(entry.id)
+            }
+          }}
+          lifted={dragging === self}
+          onDragStart={() => beginDrag(self)}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            setFolderMenu({ x: e.clientX, y: e.clientY, entry })
+          }}
+          // Open, the foot of the folder's tile is the top of what it holds:
+          // a drop there goes inside, not below the whole folder.
+          onDragOver={(zone) => setDrop({ kind: 'tile', ref: self, zone: open && zone === 'after' ? 'merge' : zone })}
+          onDrop={(zone) => commitDrop({ kind: 'tile', ref: self, zone: open && zone === 'after' ? 'merge' : zone })}
+          onDragEnd={endDrag}
+        />
+        {open && entry.children.map(renderEntry)}
+      </div>
+    )
   }
 
   return (
@@ -700,30 +816,25 @@ export function ServerRail(): JSX.Element | null {
       <div
         className={classes('rail-scroll', tailTarget && 'tail-target')}
         onDragOver={(e) => {
-          if (e.target !== e.currentTarget) return
-          e.preventDefault()
-          if (draggingRef.current) setTailTarget(true)
-        }}
-        onDragLeave={(e) => e.target === e.currentTarget && setTailTarget(false)}
-        onDrop={(e) => {
-          setTailTarget(false)
-          if (e.target !== e.currentTarget) return
-          const from = draggingRef.current
-          if (from) {
-            const movingFolder = folderBeingDragged(from, folders)
-            const last = movable.at(-1)
-            if (movingFolder) {
-              if (last) setRailOrder(reorderFolder(ordered, movingFolder, last))
-            } else {
-              // Out of whatever folder it was in first: dropping into open
-              // space is how something leaves one, and it cannot be both last
-              // in the column and still filed away.
-              const freed = removeFromFolders(folders, from)
-              setFolders(freed)
-              if (last && last !== from) setRailOrder(reorder(ordered, from, last))
-            }
+          if (!draggingRef.current) return
+          const next = resolveRailContainerDrop(e.currentTarget, e.target, e.clientY, draggingRef.current)
+          if (next && canDropOn(effectiveFolders, draggingRef.current, next)) {
+            e.preventDefault()
+            setDrop(next)
+          } else {
+            setDrop(null)
           }
-          endDrag()
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrop(null)
+        }}
+        onDrop={(e) => {
+          if (activeDropRef.current) {
+            e.preventDefault()
+            commitDrop()
+          } else {
+            endDrag()
+          }
         }}
       >
       {leading.map(renderEntry)}
@@ -751,36 +862,63 @@ export function ServerRail(): JSX.Element | null {
 
       </div>
 
-      {folderMenu && (
-        <ContextMenu
-          x={folderMenu.x}
-          y={folderMenu.y}
-          entries={[
-            {
-              label: 'Mark Folder As Read',
-              icon: 'mark_chat_read',
-              onClick: () => void store.markBuffersRead(buffersInFolder(folderMenu.folder))
-            },
-            { label: 'Folder Settings', icon: 'settings', onClick: () => setSettings(folderMenu.folder) },
-            // Closes them; it does not remove them. Removing is below, and
-            // marked as the destructive thing it is.
-            { label: 'Close All Folders', icon: 'folder', onClick: () => setExpanded('') },
-            { separator: true },
-            {
-              label: 'Remove folder',
-              icon: 'delete',
-              danger: true,
-              // The servers stay in the rail; only the folder goes.
-              onClick: () => setFolders(folders.filter((f) => f.id !== folderMenu.folder.id))
-            }
-          ]}
-          onClose={() => setFolderMenu(null)}
-        />
-      )}
+      {folderMenu && (() => {
+        const { entry } = folderMenu
+        const head = entry.head
+        const headMuted = !!head && mutedGroups.includes(head.id)
+        return (
+          <ContextMenu
+            x={folderMenu.x}
+            y={folderMenu.y}
+            entries={[
+              {
+                label: 'Mark Folder As Read',
+                icon: 'mark_chat_read',
+                onClick: () => void store.markBuffersRead(buffersUnder(entry))
+              },
+              // A badge is still its account's tile, and mutes like one.
+              ...(head
+                ? [
+                    {
+                      label: headMuted ? `Unmute ${head.name}` : `Mute ${head.name}`,
+                      icon: headMuted ? 'notifications_active' : 'notifications_off',
+                      onClick: () =>
+                        setMutedGroups(headMuted ? mutedGroups.filter((x) => x !== head.id) : [...mutedGroups, head.id])
+                    } as const
+                  ]
+                : []),
+              { label: 'Folder Settings', icon: 'settings', onClick: () => setSettings(entry.folder) },
+              // Closes them; it does not remove them. Removing is below, and
+              // marked as the destructive thing it is.
+              { label: 'Close All Folders', icon: 'folder', onClick: () => setExpanded('') },
+              { separator: true },
+              // What it held stays in the rail, where the folder was; only the
+              // folder goes. A badge stays too - it is the account's tile - so
+              // for one this only empties it.
+              head
+                ? {
+                    label: 'Take Everything Out',
+                    icon: 'folder_off',
+                    disabled: entry.folder.members.length === 0,
+                    onClick: () => apply(dissolveFolder(ordered, layout, entry.id, synced))
+                  }
+                : {
+                    label: 'Remove folder',
+                    icon: 'delete',
+                    danger: true,
+                    onClick: () => apply(dissolveFolder(ordered, layout, entry.id, synced))
+                  }
+            ]}
+            onClose={() => setFolderMenu(null)}
+          />
+        )
+      })()}
 
       {settings && (
         <FolderSettings
           folder={settings}
+          // A badge goes by its account's name.
+          named={!settings.head}
           onSave={(name, colour) => {
             setFolders(folders.map((f) => (f.id === settings.id ? { ...f, name, colour } : f)))
             setSettings(null)
@@ -845,16 +983,25 @@ export function ServerRail(): JSX.Element | null {
  * A folder tile: several servers behind one square.
  *
  * Closed, it shows a grid of what is inside, which is how you recognise a
- * folder you made without opening it. Open, it becomes a plain marker and the
- * servers themselves are drawn underneath.
+ * folder you made without opening it. Open, its contents are drawn underneath.
+ *
+ * A protocol badge's folder keeps the badge as its face instead - it is still
+ * the account's tile, and still opens the account's own page - with the folder
+ * mark in its corner to say it holds the account's servers.
  */
 function FolderTile(props: {
   folder: RailFolder
+  /** The account entry, for a badge's folder. */
+  head?: RailGroup
+  headIcon?: string
   members: RailGroup[]
   customIcons: Record<string, string>
-  dropTarget: boolean
+  dropAt: DropZone | null
   lifted: boolean
   open: boolean
+  /** The badge's account page is the one being shown. */
+  active: boolean
+  muted: boolean
   /** What is waiting in the servers inside, so a closed folder can say so. */
   unread: number
   highlight: boolean
@@ -862,18 +1009,29 @@ function FolderTile(props: {
   onToggle: () => void
   onContextMenu: (e: React.MouseEvent) => void
   onDragStart: () => void
-  onDragOver: () => void
-  onDrop: () => void
+  onDragOver: (zone: DropZone) => void
+  onDrop: (zone: DropZone) => void
   onDragEnd: () => void
 }): JSX.Element {
-  const { folder, members, customIcons, dropTarget, lifted, open, unread, mentions } = props
+  const { folder, head, members, customIcons, dropAt, lifted, open, active, muted, unread, mentions } = props
   // Open, its servers show their own; closed, what is inside would be
   // invisible without this.
   const waiting = !open && unread > 0
+  const name = head?.name ?? folder.name
+  const holding = members.length > 0
   return (
     <button
       type="button"
-      className={classes('rail-tile', 'rail-folder', dropTarget && 'drop-target', lifted && 'lifted')}
+      className={classes(
+        'rail-tile',
+        head ? 'rail-badge-folder' : 'rail-folder',
+        active && 'active',
+        muted && 'muted',
+        dropAt === 'merge' && 'merge-target',
+        dropAt === 'before' && 'drop-before',
+        dropAt === 'after' && 'drop-after',
+        lifted && 'lifted'
+      )}
       // A folder moves like the servers around it. Without this it could be
       // dropped into but never picked up, which reads as the column having
       // decided where it lives.
@@ -885,57 +1043,80 @@ function FolderTile(props: {
         props.onDragStart()
       }}
       onMouseEnter={(e) =>
-        showRailTip(e.currentTarget, `${folder.name} — ${members.length} ${members.length === 1 ? 'server' : 'servers'}`)
+        showRailTip(
+          e.currentTarget,
+          head && !holding ? name : `${name} — ${members.length} ${members.length === 1 ? 'server' : 'servers'}`
+        )
       }
       onMouseLeave={hideRailTip}
-      aria-label={folder.name}
+      aria-label={name}
+      aria-expanded={open}
+      aria-current={active}
+      data-rail-ref={folderRef(folder.id)}
+      data-rail-open={open ? 'true' : undefined}
       onClick={props.onToggle}
       onContextMenu={props.onContextMenu}
       onDragOver={(e) => {
         e.preventDefault()
-        props.onDragOver()
+        e.stopPropagation()
+        props.onDragOver(dropZone(e))
       }}
       onDrop={(e) => {
         e.preventDefault()
-        props.onDrop()
+        e.stopPropagation()
+        props.onDrop(dropZone(e))
       }}
       onDragEnd={props.onDragEnd}
     >
-      <span className={`rail-pill${open ? ' active' : waiting ? ' unread' : ''}`} />
-      {/* The same face whether or not it is showing its contents: a folder
-          is a folder, and an icon that changes underfoot is one more thing to
-          read. Empty it is just a folder; once there is something in it, the
-          faces of what is inside - up to four, which is as many as read at
-          this size. */}
-      <span
-        className="rail-face folder-face"
-        // The chosen colour is on the tile itself, not only on the panel it
-        // opens into. Closed is how a folder spends most of its life, and a
-        // colour you picked to tell two folders apart is no use only once one
-        // of them is open. Tinted rather than filled: four other people's
-        // icons sit on top of it and have to stay readable.
-        style={
-          folder.colour
-            ? { color: folder.colour, background: `${folder.colour}5c` }
-            : undefined
-        }
-      >
-        {members.length === 0 ? (
-          <Icon name="folder" size={26} />
-        ) : (
-          members.slice(0, 4).map((m) => (
-            <span key={m.id} className="folder-chip">
-              <GroupFace group={m} customIcon={customIcons[m.id]} />
-            </span>
-          ))
-        )}
-      </span>
-      {/* Once the face is a grid of other people's icons, nothing says it is
-          a folder any more - so it takes the same corner badge a guild uses
-          to name its service. An empty folder is already unmistakably one. */}
-      {members.length > 0 && !(!open && mentions > 0) && (
+      <span className={`rail-pill${active || open ? ' active' : waiting ? ' unread' : ''}`} />
+      {head ? (
+        // The badge, as it looks loose in the column. The chosen colour rings
+        // it rather than tinting it: a service's own mark is not ours to recolour.
+        <span
+          className="rail-face"
+          style={folder.colour ? { boxShadow: `0 0 0 2px ${folder.colour}` } : undefined}
+        >
+          <GroupFace group={head} customIcon={props.headIcon} />
+        </span>
+      ) : (
+        /* The same face whether or not it is showing its contents: a folder
+           is a folder, and an icon that changes underfoot is one more thing
+           to read. Empty it is just a folder; once there is something in it,
+           the faces of what is inside - up to four, which is as many as read
+           at this size. */
+        <span
+          className="rail-face folder-face"
+          // The chosen colour is on the tile itself, not only on the panel it
+          // opens into. Closed is how a folder spends most of its life, and a
+          // colour you picked to tell two folders apart is no use only once one
+          // of them is open. Tinted rather than filled: four other people's
+          // icons sit on top of it and have to stay readable.
+          style={folder.colour ? { color: folder.colour, background: `${folder.colour}5c` } : undefined}
+        >
+          {!holding ? (
+            <Icon name="folder" size={26} />
+          ) : (
+            members.slice(0, 4).map((m) => (
+              <span key={m.id} className="folder-chip">
+                <GroupFace group={m} customIcon={customIcons[m.id]} />
+              </span>
+            ))
+          )}
+        </span>
+      )}
+      {muted && (
+        <span className="rail-muted" title="Muted">
+          <Icon name="notifications_off" size={11} />
+        </span>
+      )}
+      {/* Once the face is a grid of other people's icons, nothing says it is a
+          folder any more, so it takes the same corner badge a guild uses to
+          name its service. A protocol badge always does, empty or not: its face
+          is the same mark an account's tile has, and this is what says it is a
+          folder. An empty folder of the user's own is already unmistakably one. */}
+      {(holding || head) && !(!open && mentions > 0) && (
         <span className="rail-service">
-          <Icon name="folder" size={11} />
+          <Icon name={open ? 'folder_open' : 'folder'} size={11} />
         </span>
       )}
       {!open && mentions > 0 && (
@@ -955,10 +1136,13 @@ function FolderTile(props: {
  */
 function FolderSettings({
   folder,
+  named,
   onSave,
   onClose
 }: {
   folder: RailFolder
+  /** Whether it has a name of its own to edit; a badge's folder goes by its account's. */
+  named: boolean
   onSave: (name: string, colour?: string) => void
   onClose: () => void
 }): JSX.Element {
@@ -968,16 +1152,18 @@ function FolderSettings({
   return (
     <Modal title="Folder Settings" icon="folder" className="modal folder-settings" onClose={onClose}>
 
-        <label className="folder-field">
-          <span className="small muted">Folder Name</span>
-          <input
-            autoFocus
-            className="text-field"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && onSave(name.trim() || folder.name, colour)}
-          />
-        </label>
+        {named && (
+          <label className="folder-field">
+            <span className="small muted">Folder Name</span>
+            <input
+              autoFocus
+              className="text-field"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && onSave(name.trim() || folder.name, colour)}
+            />
+          </label>
+        )}
 
         <div className="folder-field">
           <span className="small muted">Folder Colour</span>

@@ -382,6 +382,20 @@ function MessageRowBody({
   const media = useMediaUrl()
   const strictRoute = useStrictRoute()
   const store = useStore()
+  // A quote's "go to the message" (Mattermost's permalinks): the conversation opened at that message.
+  const jumpTo = (link: string): void => {
+    const q = new URLSearchParams(link.slice(link.indexOf('?') + 1))
+    const target = q.get('buffer') ?? ''
+    const id = q.get('message') ?? ''
+    if (!target || !id) return
+    void store.selectBuffer(target).then(() =>
+      store.jumpToMessage(target, id).then((there) => {
+        if (there) store.setJumpTarget(id)
+        else store.toast('info', 'That message could not be reached')
+      })
+    )
+  }
+  const mattermostSaved = useChat((s) => (s.mattermostSaved[bufferId.split('|')[0]] ?? []).includes(message.id))
   const { menu, open, close } = useContextMenu()
   // Which picture or video the right click was on, if it was on one: the menu then offers to hide it.
   const mediaClicked = useRef<string | null>(null)
@@ -480,7 +494,7 @@ function MessageRowBody({
   // Discord, Sneedchat and Matrix support editing and deleting your own
   // messages; IRC has no such concept.
   const canEditDelete =
-    !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'xmpp' || service === 'signal')
+    !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost' || service === 'xmpp' || service === 'signal')
   const beginEdit = (): void => {
     setDraft(message.body)
     setEditing(true)
@@ -489,7 +503,7 @@ function MessageRowBody({
   // server gave an id - a reaction names its message by that id.
   // Sneedchat where the room lets this account react (a guest or a muted member may not).
   const canReact =
-    service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'xmpp' || service === 'signal' ||
+    service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost' || service === 'xmpp' || service === 'signal' ||
     (service === 'sneedchat' && sneedchatMayReact) ||
     (service === 'irc' && ircReactions && !isLocalIrcId(message.id))
   // Steam's stickers, asked for when the reaction picker opens: it reacts with them too.
@@ -617,7 +631,7 @@ function MessageRowBody({
           isSneedchat,
           smilies: smilieIndex,
           channels,
-          markdownEscapes: service === 'discord' || service === 'fluxer',
+          markdownEscapes: service === 'discord' || service === 'fluxer' || service === 'mattermost',
           xmppStyling: service === 'xmpp',
           // Only IRC's own traffic is drawn with IRC's codes. Elsewhere they
           // are stripped, which is what the formatter does when not told.
@@ -721,6 +735,43 @@ function MessageRowBody({
     ...((service === 'discord' || service === 'matrix' || service === 'telegram') && !isSystem && message.id
       ? ([{ label: 'Forward…', icon: 'forward', onClick: () => setForwarding(true) }] as MenuEntry[])
       : []),
+    // A post kept for later on the account (Mattermost's Saved), and acknowledging one whose sender asked for it.
+    ...(service === 'mattermost' && !isSystem && message.id
+      ? ([
+          {
+            label: mattermostSaved ? 'Unsave' : 'Save for later',
+            icon: mattermostSaved ? 'bookmark_remove' : 'bookmark_add',
+            onClick: () =>
+              void window.moho
+                .rpc('mattermost', { action: 'setSaved', bufferId, messageId: message.id, saved: !mattermostSaved })
+                .then(() => store.toast('info', mattermostSaved ? 'Unsaved' : 'Saved for later'))
+                .catch((e: Error) => store.toast('error', e.message))
+          },
+          ...(/acknowledgement requested/i.test(message.body.split('\n')[0] ?? '') && !message.isOwn
+            ? [
+                {
+                  label: 'Acknowledge',
+                  icon: 'task_alt',
+                  onClick: () =>
+                    void window.moho
+                      .rpc('mattermost', { action: 'acknowledge', bufferId, messageId: message.id, ack: true })
+                      .then(() => store.toast('info', 'Acknowledged'))
+                      .catch((e: Error) => store.toast('error', e.message))
+                }
+              ]
+            : [])
+        ] as MenuEntry[])
+      : []),
+    // Every answer on Mattermost is a thread: the post's own, opened beside the channel to read and answer there.
+    ...(service === 'mattermost' && !isSystem && !inThread && message.id
+      ? ([
+          {
+            label: 'Reply in thread',
+            icon: 'forum',
+            onClick: () => void store.openThreadPanel(bufferId, message.replyTo?.thread ? message.replyTo.id : message.id)
+          }
+        ] as MenuEntry[])
+      : []),
     ...(canStartFluxerThread && !isSystem && !inThread && message.id
       ? ([{ label: 'Start a thread…', icon: 'forum', onClick: () => setStartingThread(true) }] as MenuEntry[])
       : []),
@@ -751,7 +802,7 @@ function MessageRowBody({
     // rather than gated on a power level read here: the server decides, and
     // it refuses in words worth showing - hiding the action from somebody who
     // could have used it is the worse mistake.
-    ...((service === 'matrix' || service === 'discord' || service === 'telegram' || service === 'stoat' || service === 'fluxer') && !isSystem
+    ...((service === 'matrix' || service === 'discord' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost') && !isSystem
       ? ([
           {
             label: pinned ? 'Unpin from this conversation' : 'Pin to this conversation',
@@ -1502,7 +1553,7 @@ function MessageRowBody({
                   type="button"
                   className={classes('rich-embed-cta', embed.color === 0xda373c && 'danger')}
                   disabled={!embed.cta.url}
-                  onClick={() => embed.cta?.url && void window.moho.openExternal(embed.cta.url)}
+                  onClick={() => embed.cta?.url && (embed.cta.url.startsWith('moho:jump') ? jumpTo(embed.cta.url) : void window.moho.openExternal(embed.cta.url))}
                 >
                   {embed.cta.label}
                 </button>

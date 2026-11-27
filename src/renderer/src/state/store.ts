@@ -1,3 +1,4 @@
+import { MattermostCall } from '../lib/mattermostcall'
 import type {
   SignalCallState,
   SignalGroupCallState,
@@ -32,7 +33,7 @@ import { addToast, type ToastAction, type ToastItem } from '../lib/toasts'
 import { ALL_STATUSES, statusesFor, supportsStatus } from '../lib/status'
 import type { SteamGroup, GroupCall } from '../lib/steamgroups'
 import type { TelegramFolder } from '../lib/telegramfolders'
-import { buildSmilieIndex, fluxerSameText, sneedSameText, steamSameText, stoatSameText, type SmilieEntry, type SmilieIndex } from '../lib/format'
+import { buildSmilieIndex, fluxerSameText, mattermostSameText, sneedSameText, steamSameText, stoatSameText, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { bufferDisplayName, ignoreIsBlock, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
 import { heldOnAccount, type NotifyLevel } from '../lib/notifylevels'
 import { runExport } from '../lib/exporter'
@@ -659,6 +660,10 @@ export interface ChatState {
   pinnedMessages: Record<string, string[]>
   /** How many replies or comments a message has, where the service says so (Telegram): by conversation, then message. */
   threadCounts: Record<string, Record<string, number>>
+  /** What each Mattermost account's server offers and how it reads threads, by account id (the daemon's `mattermostServer`). */
+  mattermostServers: Record<string, MattermostServer>
+  /** The posts each Mattermost account has saved, by account id. */
+  mattermostSaved: Record<string, string[]>
   /**
    * The pinned messages themselves, once somebody has asked for them. The ids
    * above say that something is pinned; these say what, for the banner over
@@ -933,6 +938,8 @@ const INITIAL: ChatState = {
   viewOnce: null,
   pinnedMessages: {},
   threadCounts: {},
+  mattermostServers: {},
+  mattermostSaved: {},
   pinnedRows: {},
   forumPages: {},
   discordFriends: {},
@@ -1019,12 +1026,29 @@ const INITIAL: ChatState = {
  * typed - so an unrelated message that happens to share a suffix cannot
  * swallow somebody's pending send.
  */
+/** What a Mattermost server offers, and how the account reads threads there. */
+export interface MattermostServer {
+  version?: string
+  siteName?: string
+  /** Replies kept out of the channel and read in their threads (Collapsed Reply Threads). */
+  collapsedOn?: boolean
+  collapsedThreads?: string
+  calls?: boolean
+  customStatuses?: boolean
+  priority?: boolean
+  scheduled?: boolean
+  /** Whether the server has a licence: bookmarks, scheduled posts, priority and group calls need one. */
+  licensed?: boolean
+  teams?: { id: string; name: string }[]
+}
+
 function echoMatches(echo: ChatMessage, real: Message): boolean {
   if (echo.pendingBody === real.body) return true
   if (real.bufferId.startsWith('steam:') && echo.pendingBody !== undefined && steamSameText(echo.pendingBody, real.body)) return true
   if (real.bufferId.startsWith('sneedchat:') && echo.pendingBody !== undefined && sneedSameText(echo.pendingBody, real.body)) return true
   if (real.bufferId.startsWith('stoat:') && echo.pendingBody !== undefined && stoatSameText(echo.pendingBody, real.body)) return true
   if (real.bufferId.startsWith('fluxer:') && echo.pendingBody !== undefined && fluxerSameText(echo.pendingBody, real.body)) return true
+  if (real.bufferId.startsWith('mattermost:') && echo.pendingBody !== undefined && mattermostSameText(echo.pendingBody, real.body)) return true
   // A file is posted as markup the daemon builds - a BBCode image tag on
   // Sneedchat, a bare link on IRC - so what comes back is never what was
   // typed, and usually nothing was typed at all. Matching on the whole body
@@ -1266,7 +1290,7 @@ export class ChatStore {
   /** Who is talking in a call this window is holding. */
   private levels = new Levels()
   /** The Stoat call this window is in, which is held on a media server like Element's. */
-  private stoatCall: { sfu: SfuCall; bufferId: string; people: SfuParticipant[]; local: MediaStream | null } | null = null
+  private stoatCall: { sfu: SfuCall | MattermostCall; bufferId: string; people: SfuParticipant[]; local: MediaStream | null } | null = null
   /**
    * The Discord screen share, while one is running.
    *
@@ -1645,6 +1669,12 @@ export class ChatStore {
     // The open conversation is read again, and subscribed to again, where it is.
     // Not followed to its server: a refresh is not somebody choosing it, and
     // the rail may have been moved to another since.
+    if (!this.state.pinnedBufferId && this.state.activeBufferId) {
+      const active = this.state.buffers.find((b) => b.id === this.state.activeBufferId)
+      if (active && this.state.accounts.some((a) => a.id === active.accountId && a.disconnected)) {
+        this.set({ activeBufferId: '' })
+      }
+    }
     if (this.state.activeBufferId) await this.selectBuffer(this.state.activeBufferId, false)
   }
 
@@ -1665,7 +1695,12 @@ export class ChatStore {
 
   async refreshAccounts(): Promise<void> {
     try {
-      this.set({ accounts: await window.moho.rpc<Account[]>('listAccounts') })
+      const accounts = await window.moho.rpc<Account[]>('listAccounts')
+      const disconnected = new Set(accounts.filter((a) => a.disconnected).map((a) => a.id))
+      const activeBuffer = this.state.buffers.find((b) => b.id === this.state.activeBufferId)
+      const clearActive =
+        !this.state.pinnedBufferId && !!activeBuffer && disconnected.has(activeBuffer.accountId)
+      this.set({ accounts, ...(clearActive ? { activeBufferId: '' } : {}) })
       // RingRTC is loaded only once there is a Signal account to call from.
       for (const a of this.state.accounts.filter((x) => x.service === 'signal')) {
         void window.moho
@@ -1676,6 +1711,16 @@ export class ChatStore {
       if (!this.signalCallsProbed && this.state.accounts.some((a) => a.service === 'signal')) {
         this.signalCallsProbed = true
         void this.probeSignalCalls()
+      }
+      for (const a of this.state.accounts.filter((x) => x.service === 'mattermost' && x.state === 'connected')) {
+        void window.moho
+          .rpc<MattermostServer>('mattermost', { action: 'server', accountId: a.id })
+          .then((server) => this.set({ mattermostServers: { ...this.state.mattermostServers, [a.id]: server } }))
+          .catch(() => {})
+        void window.moho
+          .rpc<{ ids: string[] }>('mattermost', { action: 'saved', accountId: a.id })
+          .then((saved) => this.set({ mattermostSaved: { ...this.state.mattermostSaved, [a.id]: saved.ids } }))
+          .catch(() => {})
       }
       if (this.state.accounts.some((a) => a.service === 'fluxer')) {
         void window.moho
@@ -2551,7 +2596,8 @@ export class ChatStore {
       return
     }
     try {
-      await window.moho.rpc(this.onMediaServer(bufferId) ? 'declineStoatCall' : 'declineCall', { bufferId })
+      if (bufferId.startsWith('mattermost:')) await window.moho.rpc('mattermost', { action: 'callDecline', bufferId })
+      else await window.moho.rpc(this.onMediaServer(bufferId) ? 'declineStoatCall' : 'declineCall', { bufferId })
     } catch (e) {
       this.toast('error', `Couldn't decline: ${(e as Error).message}`)
     }
@@ -3483,6 +3529,13 @@ export class ChatStore {
       (m) => m.id === rootId || (m.replyTo?.thread && m.replyTo.id === rootId) || m.replyTo?.threadRoot === rootId
     )
     this.set({ openThread: { bufferId, rootId, messages: known, loading: true } })
+    // A Mattermost thread opened is a thread read, on the account's other apps too.
+    if (bufferId.startsWith('mattermost:')) {
+      const group = this.state.buffers.find((b) => b.id === bufferId)?.groupId ?? ''
+      const accountId = bufferId.split('|')[0]
+      const teamId = group.includes('|team:') ? group.split('|team:')[1] : (this.state.mattermostServers[accountId]?.teams?.[0]?.id ?? '')
+      if (teamId) void window.moho.rpc('mattermost', { action: 'readThread', accountId, teamId, threadId: rootId }).catch(() => {})
+    }
     try {
       const result = (await window.moho.rpc('fetchThread', { bufferId, rootId })) as {
         messages?: ChatMessage[]
@@ -4046,6 +4099,10 @@ export class ChatStore {
    */
   async joinStoatCall(bufferId: string, video: boolean): Promise<void> {
     const account = this.accountFor(bufferId)
+    if (account?.service === 'mattermost') {
+      await this.joinMattermostCall(bufferId)
+      return
+    }
     if (!account || (account.service !== 'stoat' && account.service !== 'fluxer')) return
     if (this.state.activeCall || this.stoatCall) {
       this.toast('info', 'Leave the call you are in first')
@@ -4100,10 +4157,62 @@ export class ChatStore {
     }
   }
 
+  /**
+   * Joins (or starts) a Mattermost call: the Calls plugin's media server, reached by this window's own connection with
+   * the daemon carrying the signalling (lib/mattermostcall.ts). The call bar, tiles, mute and hang-up are the same as for
+   * Stoat's and Fluxer's calls.
+   */
+  async joinMattermostCall(bufferId: string): Promise<void> {
+    const account = this.accountFor(bufferId)
+    if (!account) return
+    if (this.state.activeCall || this.stoatCall) {
+      this.toast('info', 'Leave the call you are in first')
+      return
+    }
+    this.set({
+      callMinimized: false,
+      activeCall: { accountId: account.id, bufferId, phase: 'connecting', video: false, muted: this.voiceSilenced(), sharingScreen: false, cameraOn: false, onServer: true }
+    })
+    let wasConnected = false
+    const call = new MattermostCall(
+      bufferId,
+      {
+        onParticipants: (people) => {
+          if (this.stoatCall) this.stoatCall.people = people
+          this.set({})
+        },
+        onConnected: (connected) => {
+          if (!this.stoatCall) return
+          if (connected) wasConnected = true
+          if (!connected && wasConnected && this.state.activeCall?.bufferId === bufferId) {
+            void this.stoatCall.sfu.leave().catch(() => {})
+            this.stoatCall = null
+            this.levels.dispose()
+            this.set({ activeCall: null })
+            return
+          }
+          if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, phase: connected ? 'connected' : 'connecting' } })
+        },
+        onError: (message) => this.toast('error', message)
+      },
+      () => Object.fromEntries((this.state.stoatVoice[bufferId] ?? []).map((m) => [(m as StoatVoiceMember & { sessionId?: string }).sessionId ?? '', m.userId]))
+    )
+    this.stoatCall = { sfu: call, bufferId, people: [], local: null }
+    try {
+      await call.join(this.voiceSilenced())
+      if (this.stoatCall?.sfu === call) this.stoatCall.local = call.local
+    } catch (e) {
+      void call.leave().catch(() => {})
+      this.stoatCall = null
+      this.set({ activeCall: null })
+      this.toast('error', `Couldn't join the call: ${(e as Error).message}`)
+    }
+  }
+
   /** Whether a conversation's calls are held on a media server the window joins (Stoat's and Fluxer's). */
   private onMediaServer(bufferId: string): boolean {
     const account = this.state.buffers.find((b) => b.id === bufferId)?.accountId ?? ''
-    return account.startsWith('stoat:') || account.startsWith('fluxer:')
+    return account.startsWith('stoat:') || account.startsWith('fluxer:') || account.startsWith('mattermost:')
   }
 
   /** Tells Fluxer the camera and screen as they are, so the others' apps show them (the daemon adds the voice buttons). */
@@ -4774,6 +4883,18 @@ export class ChatStore {
       case 'messageModerated':
         this.mapMessage(data.bufferId, data.id, (m) => ({ ...m, moderated: data.moderated ?? {} }))
         break
+
+      case 'mattermostSaved': {
+        const d = data as unknown as { accountId: string; ids: string[] }
+        this.set({ mattermostSaved: { ...this.state.mattermostSaved, [d.accountId]: d.ids } })
+        break
+      }
+
+      case 'mattermostServer': {
+        const d = data as unknown as MattermostServer & { accountId: string }
+        this.set({ mattermostServers: { ...this.state.mattermostServers, [d.accountId]: d } })
+        break
+      }
 
       case 'threadCount': {
         const d = data as unknown as { bufferId: string; id: string; count: number }
@@ -5639,6 +5760,7 @@ export class ChatStore {
   private handleConnectionState(data: {
     accountId: string
     state: string
+    disconnected?: boolean
     error?: string
     detail?: string
     retryAt?: number
@@ -5660,8 +5782,22 @@ export class ChatStore {
     // added elsewhere (nobilis reconnecting saved accounts at startup, another
     // client) that this session's list never had to begin with.
     if (accounts.some((a) => a.id === data.accountId)) {
+      const activeBuffer = this.state.buffers.find((b) => b.id === this.state.activeBufferId)
+      const clearActive =
+        data.disconnected === true &&
+        !this.state.pinnedBufferId &&
+        activeBuffer?.accountId === data.accountId
       this.set({
-        accounts: accounts.map((a) => (a.id === data.accountId ? { ...a, state: data.state } : a))
+        accounts: accounts.map((a) =>
+          a.id === data.accountId
+            ? {
+                ...a,
+                state: data.state,
+                ...(data.disconnected !== undefined ? { disconnected: data.disconnected } : {})
+              }
+            : a
+        ),
+        ...(clearActive ? { activeBufferId: '' } : {})
       })
     } else {
       void this.refreshAccounts()

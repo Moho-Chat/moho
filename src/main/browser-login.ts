@@ -163,6 +163,31 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
   }
 }
 
+/**
+ * Signing in to a Mattermost server on its own page: the way in for single sign-on (GitLab, SAML, OpenID, LDAP), whose
+ * pages moho cannot stand in for. Once signed in the server keeps the session in its `MMAUTHTOKEN` cookie, which is
+ * what this takes - the same session token a password sign-in would have been given. `null` for an address that is
+ * not a web server's.
+ */
+export function mattermostFlow(server: string): LoginFlow | null {
+  let url: URL
+  try {
+    url = new URL(/^[a-z]+:\/\//i.test(server.trim()) ? server.trim() : `https://${server.trim()}`)
+  } catch {
+    return null
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null
+  const base = `${url.origin}${url.pathname.replace(/\/+$/, '')}`
+  return {
+    label: 'Mattermost',
+    url: `${base}/login`,
+    // Nothing is read off a request: the session is a cookie the server sets.
+    watch: [],
+    capture: { kind: 'cookie', name: 'MMAUTHTOKEN', url: `${base}/` },
+    finish: { method: 'addMattermostAccountToken', param: 'token' }
+  }
+}
+
 export interface LoginOutcome {
   ok: boolean
   /** Present only on success. A credential: never log it, never persist it. */
@@ -197,9 +222,11 @@ export async function browserLogin(
     hold?: (value: string, win: BrowserWindow) => Promise<void>
     /** Said at each step, without any credential in it, for the log. */
     trace?: (message: string) => void
+    /** The flow, where it is made for one server rather than listed: a Mattermost server is wherever the person says. */
+    flow?: LoginFlow
   }
 ): Promise<LoginOutcome> {
-  const flow = LOGIN_FLOWS[service]
+  const flow = options?.flow ?? LOGIN_FLOWS[service]
   if (!flow) return { ok: false, error: `No browser sign-in is defined for ${service}` }
   if (openWindow && !openWindow.isDestroyed()) {
     openWindow.focus()
@@ -428,4 +455,84 @@ function detach(ses: Session): void {
   ses.webRequest.onBeforeSendHeaders(null)
   ses.webRequest.onBeforeRequest(null)
   ses.cookies.removeAllListeners('changed')
+}
+
+/**
+ * Isolated SSO browser login for self-hosted Rocket.Chat servers (OAuth, SAML, OIDC, LDAP).
+ * Opens the server's own login page in a memory-only partition and captures `Meteor.loginToken`
+ * (and `Meteor.userId`) from `localStorage` once signed in, then discards the session.
+ */
+export async function rocketchatSsoLogin(
+  rawServerUrl: string
+): Promise<{ ok: boolean; token?: string; userId?: string; error?: string }> {
+  const base = rawServerUrl.trim().replace(/\/+$/, '')
+  if (!/^https?:\/\//i.test(base)) {
+    return { ok: false, error: 'Rocket.Chat server URL must start with http:// or https://' }
+  }
+  if (openWindow && !openWindow.isDestroyed()) {
+    openWindow.focus()
+    return { ok: false, error: 'A sign-in window is already open' }
+  }
+
+  const partition = `moho-login-rocketchat-${Date.now()}`
+  const ses = session.fromPartition(partition)
+  await routeSession(ses)
+
+  const win = new BrowserWindow({
+    width: 540,
+    height: 760,
+    title: 'Sign in to Rocket.Chat',
+    autoHideMenuBar: true,
+    backgroundColor: '#101418',
+    webPreferences: {
+      partition,
+      preload: undefined,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true
+    }
+  })
+  openWindow = win
+
+  return await new Promise((resolve) => {
+    let settled = false
+    const finish = (out: { ok: boolean; token?: string; userId?: string; error?: string }): void => {
+      if (settled) return
+      settled = true
+      clearInterval(timer)
+      if (!win.isDestroyed()) win.close()
+      if (openWindow === win) openWindow = null
+      void ses.clearStorageData().catch(() => {})
+      resolve(out)
+    }
+
+    const poll = async (): Promise<void> => {
+      if (settled || win.isDestroyed()) return
+      try {
+        const res = (await win.webContents.executeJavaScript(
+          `(() => {
+            try {
+              const token = window.localStorage.getItem('Meteor.loginToken');
+              const userId = window.localStorage.getItem('Meteor.userId') || '';
+              return token ? { token, userId } : null;
+            } catch { return null; }
+          })()`,
+          true
+        )) as { token: string; userId: string } | null
+        if (res?.token) {
+          finish({ ok: true, token: res.token, userId: res.userId })
+        }
+      } catch {
+        /* page still navigating */
+      }
+    }
+
+    const timer = setInterval(() => void poll(), 700)
+    win.webContents.on('did-finish-load', () => void poll())
+    win.on('closed', () => finish({ ok: false, error: 'Sign-in cancelled' }))
+    void win.loadURL(`${base}/home`).catch((err: unknown) => {
+      finish({ ok: false, error: `Could not open Rocket.Chat login page: ${String(err)}` })
+    })
+  })
 }

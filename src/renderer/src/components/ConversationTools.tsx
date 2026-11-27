@@ -10,6 +10,8 @@ import { TelegramSecretTools } from './TelegramSecretTools'
 import { TelegramVoiceChat } from './TelegramVoiceChat'
 import { HeaderPopover } from './HeaderPopover'
 import { SearchPane } from './SearchPane'
+import { MattermostTools } from './MattermostTools'
+import { MattermostSettings } from './MattermostSettings'
 import { useChat, useStore } from '../state/hooks'
 import { classes, formatFullTime } from '../lib/util'
 import { shortCount } from '../lib/streamplayer'
@@ -676,6 +678,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
   const isXmppCalls = buffer.accountId.startsWith('xmpp:') && (buffer.kind === 'dm' || buffer.kind === 'channel')
   const isTelegram = buffer.accountId.startsWith('telegram:')
   const isStoat = buffer.accountId.startsWith('stoat:') || buffer.accountId.startsWith('fluxer:')
+  const isMattermost = buffer.accountId.startsWith('mattermost:')
   const isSteam = buffer.accountId.startsWith('steam:')
   const stream = useChat((s) => s.kickStreams)[buffer.id]
   // Whether this window is the one playing this channel. Per window rather
@@ -750,11 +753,11 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
                 if (filtered) setResults([])
               })
           }
-          if (!isMatrix && !isTelegram && !isStoat) return
+          if (!isMatrix && !isTelegram && !isStoat && !isMattermost) return
           // Then the server, which has what this client never downloaded
           // - including everything said before this account joined.
           return window.moho
-            .rpc<MatrixSearch>(isTelegram ? 'searchTelegramMessages' : isStoat ? 'searchStoatMessages' : 'searchMatrixMessages', {
+            .rpc<MatrixSearch>(isTelegram ? 'searchTelegramMessages' : isStoat ? 'searchStoatMessages' : isMattermost ? 'searchMattermostMessages' : 'searchMatrixMessages', {
               bufferId: buffer.id,
               query: text,
               scope,
@@ -779,7 +782,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
         .finally(() => setSearching(false))
     }, 250)
     return () => clearTimeout(timer)
-  }, [query, buffer.id, store, isMatrix, isTelegram, isStoat, isDiscord, scope])
+  }, [query, buffer.id, store, isMatrix, isTelegram, isStoat, isMattermost, isDiscord, scope])
 
   // A viewer count that never moves is worse than none, and Kick pushes a
   // stream starting and stopping but never the count. The followed channels
@@ -1106,7 +1109,9 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
 
           {isMatrix && buffer.kind !== 'server' && <ThreadList buffer={buffer} />}
           {(isDiscord || buffer.accountId.startsWith('fluxer:')) && buffer.kind === 'channel' && !buffer.forum && <DiscordThreads buffer={buffer} />}
-          {(isMatrix || isDiscord || buffer.accountId.startsWith('telegram:') || isStoat) && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
+          {(isMatrix || isDiscord || buffer.accountId.startsWith('telegram:') || isStoat || isMattermost) && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
+          {isMattermost && <MattermostTools buffer={buffer} />}
+          {isMattermost && <MattermostSettings buffer={buffer} />}
 
           {/* Beside the pins, because it is the same kind of fact about a room:
               something the room keeps, rather than something said in it. */}
@@ -1234,7 +1239,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           {/* Where to look. Only on Matrix, because it is the only protocol
               here whose server will answer the question - and the room is
               often exactly what somebody searching has forgotten. */}
-          {(isMatrix || isTelegram) && (
+          {(isMatrix || isTelegram || isMattermost) && (
             <div className="search-scope small">
               <button
                 type="button"

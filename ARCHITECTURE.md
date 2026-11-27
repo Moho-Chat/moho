@@ -16,7 +16,7 @@ Keeping the protocol work in a separate long-lived daemon means connections, Tor
 Matrix sync survive the UI being closed, restarted, or reloaded during development.
 
 ```
-nobilis/src/backend/    one module per protocol (irc, discord, sneedchat, matrix, kick)
+nobilis/src/backend/    one module per protocol (irc, discord, sneedchat, matrix, kick, steam, twitch, telegram, stoat, fluxer, signal, xmpp, rocketchat)
 nobilis/src/rpc/        the Unix-socket JSON-RPC server
 nobilis/src/store.rs    SQLite-backed scrollback persistence
 nobilis/src/runtime.rs  protocol-agnostic connection/buffer/message state
@@ -268,6 +268,26 @@ called `subscribe` for that buffer.
   as Stoat's); and calls on LiveKit through the same client (rings both ways; peer-to-peer calls are left to Fluxer's
   app). The code is `nobilis/src/backend/fluxer/`; the verification scripts run it against a self-hosted instance in
   docker (`scripts/probe-fluxer-local.mjs`, `probe-fluxer-voice.mjs`).
+
+- **Mattermost** (on the `protocol/mattermost` branch, not yet released) - REST v4 and the websocket of a server the
+  account names (`mattermost:<host>:<user id>`), self-hosted or not. Sign-in by username or email and password with a TOTP
+  second factor, a personal access token, or the server's own sign-in page in a window for single sign-on (the
+  `MMAUTHTOKEN` session taken from it); a session moho made is ended when the account is removed, a token is left alone.
+  The websocket is resumed with its connection id and the next sequence number (a resumed connection is sent no `hello`,
+  only what it missed, and is resumed only when its session is in the upgrade's header); a revoked session stops the
+  account. Teams are groups on the rail with their channels under the person's own sidebar categories, named
+  `Team/Channel`; direct and group messages under their own headings. Posts with GitHub's Markdown (what the window does
+  not draw - tables, task lists, headings, lists - drawn as HTML by the daemon), emoji names both ways, integrations'
+  cards, link previews, permalinks quoted from the server, files fetched with the account's session; threads collapsed
+  or not as the server and person choose, read in the thread panel; reactions, edits, deletions, read marks, typing,
+  presence and custom statuses (the server tells only the person of their own status: others are read when a list of
+  people is opened), mutes in `notify_props`, permissions from the account's roles (a channel without `create_post` is
+  read-only), search, pins, saved posts, followed threads, drafts kept on the account, slash commands, channel and team
+  administration, and calls through the Calls plugin - this window's own WebRTC connection to its media server, the
+  daemon carrying the signalling on a websocket of the call's own (`calls`). Licensed features (priority and
+  acknowledgements, scheduled posts, bookmarks, channel moderation, group calls) are offered where the server's licence
+  has them. The code is `nobilis/src/backend/mattermost/`; the plan and what has been run is issue #25, against a local
+  `mattermost-preview` server (`scripts/check-mattermost-ui.mjs`, `scripts/probe-mattermost-call.mjs`).
 
 - **XMPP** (on the `protocol/xmpp` branch, not yet released) - an account is an address on a server of its own choosing, over the
   xmpp-rs stack (`tokio-xmpp`, `xmpp-parsers`; MPL-2.0), which carries the stanza stream and stream management. What it does not do is

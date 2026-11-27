@@ -61,6 +61,8 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
 
   const account = accounts.find((a) => a.id === buffer.accountId)
   const name = bufferDisplayName(buffer.name)
+  // A Mattermost server calls only where the Calls plugin runs.
+  const mattermostCalls = useChat((s) => !!s.mattermostServers[buffer.accountId]?.calls)
   const sneedchatSide = account?.service === 'sneedchat' && buffer.kind !== 'server' && !buffer.name.startsWith('#')
   useEffect(() => {
     if (sneedchatSide) store.ensureSneedchatPowers(buffer.id)
@@ -76,7 +78,7 @@ export function ConversationMenu({ buffer }: { buffer: BufferEntry }): JSX.Eleme
       filed: !!assignment[buffer.id],
       inCall: voiceSessions.some((s) => s.bufferId === buffer.id),
       poppedOut: popouts.open.includes(buffer.id),
-      canCall: (account?.service === 'discord' || account?.service === 'steam' || account?.service === 'stoat' || account?.service === 'fluxer') && buffer.kind === 'dm',
+      canCall: (account?.service === 'discord' || account?.service === 'steam' || account?.service === 'stoat' || account?.service === 'fluxer' || (account?.service === 'mattermost' && mattermostCalls)) && buffer.kind === 'dm',
       live,
       watched,
       autojoins: store.autojoins(buffer.accountId, name),

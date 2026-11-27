@@ -136,7 +136,7 @@ export function wrap(service: string | undefined, kind: FormatKind, inner: strin
   const trail = inner.match(/\s*$/)?.[0] ?? ''
   const core = inner.slice(lead.length, inner.length - trail.length)
   const marked = (open: string, close = open): string => `${lead}${open}${core}${close}${trail}`
-  const markdown = service === 'discord' || service === 'fluxer' || service === 'matrix' || service === 'telegram' || service === 'stoat'
+  const markdown = service === 'discord' || service === 'fluxer' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'mattermost'
 
   if (service === 'sneedchat') {
     switch (kind) {

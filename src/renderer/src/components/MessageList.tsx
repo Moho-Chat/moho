@@ -246,6 +246,7 @@ export function MessageList(): JSX.Element {
 
   const accountId = buffers.find((b) => b.id === bufferId)?.accountId || ''
   const strictRoute = useStrictRoute(accountId || undefined)
+  const collapsedThreads = useChat((s) => !!s.mattermostServers[accountId]?.collapsedOn)
   const syncing = !!buffers.find((b) => b.id === bufferId)?.syncing
   const all = messagesByBuffer[bufferId] || []
 
@@ -290,6 +291,8 @@ export function MessageList(): JSX.Element {
     return applyRemoved(
       all.filter((m) => {
         if (accountId && blockedNicks.includes(`${accountId}|${m.from}`)) return false
+        // A Mattermost account reading threads collapsed keeps replies out of the channel: they are in their thread.
+        if (collapsedThreads && m.replyTo?.thread) return false
         const kind = m.kind || 'chat'
         if (isChatKind(kind) || kind === 'system') return true
         return allowed[kind] !== false
@@ -297,7 +300,7 @@ export function MessageList(): JSX.Element {
       removedMode
     )
   }, [
-    all, accountId, blockedNicks, removedMode,
+    all, accountId, blockedNicks, removedMode, collapsedThreads,
     showJoin, showPart, showNick, showTopic, showMode,
     showMxJoin, showMxInvite, showMxKick, showMxQuit,
     showRedemptions, showSubs, showRaids, showPolls, showStream, showKickMod

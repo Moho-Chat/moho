@@ -26,6 +26,7 @@ import { NamePrompt } from './NamePrompt'
 import { useChat, useComfy, useIdSetPref, useInvitations, useMapPref, usePref, useStore } from '../state/hooks'
 import {
   compareInBand,
+  disconnectedAccountIds,
   dmGroup,
   DM_GROUP_ID,
   isDirectMessage,
@@ -103,17 +104,25 @@ export function BufferList(): JSX.Element {
   const [, toggleCollapsed, isCollapsed] = useIdSetPref('collapsedCategories')
   const [, setHidden] = usePref<string[]>('hiddenBuffers', [])
 
-  const visible = useMemo(() => buffers.filter((b) => !hidden.includes(b.id)), [buffers, hidden])
+  const disconnected = useMemo(() => disconnectedAccountIds(accounts), [accounts])
+  const visible = useMemo(
+    () => buffers.filter((b) => !hidden.includes(b.id) && !disconnected.has(b.accountId)),
+    [buffers, hidden, disconnected]
+  )
+  const activeGroups = useMemo(
+    () => groups.filter((g) => !disconnected.has(g.accountId)),
+    [groups, disconnected]
+  )
 
   // A stale selection (a guild that went away, a first run) resolves to the
   // first entry rather than an empty pane. The pinned page is added the same
   // way the rail adds it, so both agree on what is selectable.
   const shownGroups = useMemo(() => {
-    const list: RailGroup[] = [...visibleGroups(groups, visible)]
+    const list: RailGroup[] = [...visibleGroups(activeGroups, visible)]
     if (visible.some(isDirectMessage)) list.push(dmGroup())
-    if (pinned.length > 0) list.push(pinnedGroup())
+    if (visible.some((b) => pinned.includes(b.id))) list.push(pinnedGroup())
     return list
-  }, [groups, visible, pinned])
+  }, [activeGroups, visible, pinned])
   /**
    * The mentions page has no rail tile and belongs to no server, so there is
    * no group for this pane to show.
@@ -141,10 +150,10 @@ export function BufferList(): JSX.Element {
    * with the page that replaced it.
    */
   const openBufferGroup = useMemo(() => {
-    const open = buffers.find((b) => b.id === activeBufferId)
+    const open = buffers.find((b) => b.id === activeBufferId && !disconnected.has(b.accountId))
     if (!open) return undefined
     return isDirectMessage(open) ? DM_GROUP_ID : open.groupId
-  }, [buffers, activeBufferId])
+  }, [buffers, activeBufferId, disconnected])
 
   // The invitations page is selected the same way the mentions page is: a rail
   // entry with no group behind it. Without this the lookup below fails to find
@@ -207,7 +216,8 @@ export function BufferList(): JSX.Element {
       ? undefined
       : (accounts.find((a) => a.id === activeGroup?.accountId) ??
         (onInvite ? accounts.find((a) => a.id === shownInvitation?.accountId) : undefined) ??
-        accounts.find((a) => a.id === activeBuffer?.accountId) ??
+        accounts.find((a) => a.id === activeBuffer?.accountId && !a.disconnected) ??
+        accounts.find((a) => !a.disconnected) ??
         accounts[0])
 
   /**
@@ -1155,10 +1165,12 @@ function BufferRow({
   const shownName = bufferDisplayName(buffer.name)
   const rowName = hashGlyph && shownName.length > 1 ? shownName.replace(/^#/, '') : shownName
 
+  // A Mattermost server calls only where the Calls plugin runs.
+  const mattermostCalls = useChat((s) => !!s.mattermostServers[buffer.accountId]?.calls)
   // Calling from the row it belongs to, as well as from the header of the
   // conversation once it is open - the list is where you look for somebody
   // you want to reach, so it is where reaching them should be offered.
-  const canCall = (account?.service === 'discord' || account?.service === 'steam' || account?.service === 'stoat' || account?.service === 'fluxer') && buffer.kind === 'dm'
+  const canCall = (account?.service === 'discord' || account?.service === 'steam' || account?.service === 'stoat' || account?.service === 'fluxer' || (account?.service === 'mattermost' && mattermostCalls)) && buffer.kind === 'dm'
 
   // The same entries the header's nameplate opens - see lib/buffermenu.ts for
   // why they live there rather than here.

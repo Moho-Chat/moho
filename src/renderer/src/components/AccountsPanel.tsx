@@ -1,9 +1,11 @@
+import { MattermostAccountTools } from './MattermostAccountTools'
 import { SwitchRow } from './Switch'
 import { useEffect, useRef, useState } from 'react'
 import { Icon, ServiceMark } from './Icon'
 import { AccountFace, AccountList, MasterDetail, StatePill, Tabs, accountState, accountWhere, takeAccountsAsk } from './AccountList'
 import { SavedMark, useSavedFlash } from './settings/controls'
 import { MatrixAccountTools } from './MatrixAccountTools'
+import { RocketChatAccountTools } from './RocketChatAccountTools'
 import { StoatAccountTools } from './StoatAccountTools'
 import { TelegramAccountTools } from './TelegramAccountTools'
 import { SignalAccountTools } from './SignalAccountTools'
@@ -32,7 +34,7 @@ import type { Account } from '../../../shared/wire'
  * that gains a backend appears here as soon as it gains a form, and one the
  * daemon stops offering disappears without this file being touched.
  */
-const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram', 'stoat', 'fluxer', 'xmpp', 'signal'] as const
+const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram', 'stoat', 'fluxer', 'mattermost', 'rocketchat', 'xmpp', 'signal'] as const
 type AddableService = (typeof FORMS)[number]
 
 /** What `listProtocols` answers with. */
@@ -42,20 +44,22 @@ interface Protocol {
   available: boolean
 }
 
-/** What signing in to each service takes, in a line: what somebody choosing one wants to know first. */
+/** Single-line description of each service: what somebody choosing one wants to know first. */
 const SERVICE_BLURB: Record<AddableService, string> = {
-  irc: 'Any network, by its server and a nick',
-  discord: 'A QR code from your phone, or a token',
-  sneedchat: 'Kiwi Farms chat, signed in on the site',
-  matrix: 'Any homeserver: password, code or SSO',
-  kick: 'Stream chat, signed in or just reading',
-  steam: 'Friends and group chats',
-  twitch: 'Stream chat and whispers',
-  telegram: 'A phone number, or a QR code',
-  stoat: 'Any instance, by email or token',
-  fluxer: 'Any instance: username or email and password, or a session token',
-  xmpp: 'An address on any server',
-  signal: 'Linked to the Signal on your phone'
+  irc: 'A classic well proven protocol',
+  discord: 'Popular chat service for gamers and communities',
+  sneedchat: 'Kiwi Farms live chat service',
+  matrix: 'Decentralized, secure, and encrypted messaging protocol',
+  kick: 'Live streaming platform with interactive chat',
+  steam: 'Gaming platform for friends and group chats',
+  twitch: 'Live streaming platform for gaming and entertainment',
+  telegram: 'Cloud-based messaging with channels and groups',
+  stoat: 'Self hosted chat service designed to be an alternative to Discord',
+  fluxer: 'Self hosted chat service designed to be an alternative to Discord',
+  mattermost: 'Open-source, self-hosted team collaboration and chat',
+  xmpp: 'Open, federated instant messaging protocol',
+  signal: 'Privacy-focused messaging with end-to-end encryption',
+  rocketchat: 'Open-source, self-hosted team communication platform'
 }
 
 /**
@@ -67,7 +71,8 @@ const SERVICE_BLURB: Record<AddableService, string> = {
 const SERVICE_STAGE: Partial<Record<AddableService, { words: string; tone: 'red' | 'green' }>> = {
   signal: { words: '(Alpha) (DANGEROUS)', tone: 'red' },
   sneedchat: { words: '(Beta)', tone: 'green' },
-  fluxer: { words: '(Beta)', tone: 'green' }
+  fluxer: { words: '(Beta)', tone: 'green' },
+  mattermost: { words: '(Beta)', tone: 'green' }
 }
 
 function ServiceStage({ service }: { service: AddableService }): JSX.Element | null {
@@ -224,9 +229,8 @@ export function AccountsPanel(): JSX.Element {
  * Adding an account: which service, then that service's own form.
  *
  * Two steps rather than a row of chips with a form opening under it. The
- * services need a line each to say what signing in takes - a token, a phone,
- * an address - and the form deserves the page to itself rather than the gap
- * between the chips and the list.
+ * services have a line each describing what they are, and the form deserves
+ * the page to itself rather than the gap between the chips and the list.
  */
 function AddAccount({
   service,
@@ -320,8 +324,10 @@ function AddAccount({
         {service === 'telegram' && <TelegramForm onDone={onDone} />}
         {service === 'stoat' && <StoatForm onDone={onDone} />}
         {service === 'fluxer' && <FluxerForm onDone={onDone} />}
+        {service === 'mattermost' && <MattermostForm onDone={onDone} />}
         {service === 'signal' && <SignalForm onDone={onDone} />}
         {service === 'xmpp' && <XmppForm onDone={onDone} />}
+        {service === 'rocketchat' && <RocketChatForm onDone={onDone} />}
       </div>
       {onCancel && (
         <div className="page-foot">
@@ -470,11 +476,13 @@ const SERVICE_TAB: Partial<Record<Account['service'], string>> = {
   steam: 'What Steam says about the account, and where it is signed in',
   stoat: 'Your profile and sessions on this instance',
   fluxer: 'Your profile on this instance',
+  mattermost: 'Your profile, status, threads and sessions on this server',
   telegram: 'Your profile and where the account is signed in',
   signal: 'Linked devices, your username, stories and call links',
   xmpp: 'The server, your profile, and what it publishes for you',
   twitch: 'Video, moderation and whispers',
-  kick: 'The channels you follow'
+  kick: 'The channels you follow',
+  rocketchat: 'Server, E2EE keys, presence and Omnichannel'
 }
 
 /**
@@ -753,6 +761,8 @@ function AccountPage({ account, serviceName }: { account: Account; serviceName: 
               {(account.service === 'stoat' || account.service === 'fluxer') && <StoatAccountTools account={account} />}
               {account.service === 'twitch' && <TwitchAccountTools account={account} />}
               {account.service === 'kick' && <KickFollowSync account={account} />}
+              {account.service === 'mattermost' && <MattermostAccountTools account={account} />}
+              {account.service === 'rocketchat' && <RocketChatAccountTools account={account} />}
             </div>
           </section>
         )}
@@ -2445,6 +2455,257 @@ function StoatForm({ onDone }: { onDone: () => void }): JSX.Element {
 }
 
 /**
+ * Adding a Mattermost account. A Mattermost server is anybody's, so its address comes first; then one of three ways in:
+ * a username or email and password (then the six-digit code if the account has a second factor), a personal access
+ * token made in the account's own settings (Profile → Security), or the server's own sign-in page in a window - the way
+ * for single sign-on (GitLab, SAML, OpenID, LDAP), whose session moho takes when the page is done.
+ *
+ * Nothing typed here is kept but the token the server issues, and moho does not make accounts.
+ */
+function MattermostForm({ onDone }: { onDone: () => void }): JSX.Element {
+  const store = useStore()
+  const [server, setServer] = useState('')
+  const [method, setMethod] = useState<'password' | 'token' | 'page'>('password')
+  const [login, setLogin] = useState('')
+  const [password, setPassword] = useState('')
+  const [token, setToken] = useState('')
+  const [useTor, setUseTor] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [loginId, setLoginId] = useState('')
+  const [detail, setDetail] = useState('')
+  const [needs, setNeeds] = useState<{ error?: string } | null>(null)
+  const [typed, setTyped] = useState('')
+
+  const current = useRef('')
+  const setId = (id: string): void => {
+    current.current = id
+    setLoginId(id)
+  }
+
+  useEffect(() => {
+    const off = window.moho.onEvent((e) => {
+      const d = e.data as { loginId?: string; text?: string; error?: string; success?: boolean }
+      if (!e.event.startsWith('mattermostLogin')) return
+      if (current.current && d.loginId !== current.current) return
+      if (e.event === 'mattermostLoginStatus') {
+        setDetail(d.text || '')
+      } else if (e.event === 'mattermostLoginNeeds') {
+        if (d.loginId) setId(d.loginId)
+        setNeeds({ error: d.error ?? undefined })
+        setTyped('')
+        setDetail('')
+      } else if (e.event === 'mattermostLoginResult') {
+        setNeeds(null)
+        setId('')
+        setBusy(false)
+        setDetail('')
+        if (d.success) {
+          setPassword('')
+          setToken('')
+          void store.refreshAccounts()
+          onDone()
+        } else {
+          store.toast('error', d.error || 'Mattermost sign-in failed')
+        }
+      }
+    })
+    return off
+  }, [onDone, store])
+
+  useEffect(
+    () => () => {
+      if (current.current) void window.moho.rpc('cancelMattermostLogin', { loginId: current.current }).catch(() => {})
+    },
+    []
+  )
+
+  const begin = (): void => {
+    setBusy(true)
+    setDetail('')
+    setNeeds(null)
+    current.current = ''
+    if (method === 'page') {
+      // The server's own page in a window; what it leaves behind goes from that window to the daemon, never through here.
+      setDetail('Waiting for the sign-in window')
+      void window.moho
+        .browserLogin('mattermost', undefined, { useTor, server: server.trim() })
+        .then((r) => {
+          if (!r.ok) {
+            setBusy(false)
+            setDetail('')
+            if (r.error) store.toast('error', r.error)
+          }
+        })
+        .catch((e: Error) => {
+          setBusy(false)
+          store.toast('error', e.message)
+        })
+      return
+    }
+    const call =
+      method === 'password'
+        ? window.moho.rpc<{ loginId: string }>('addMattermostAccount', { server: server.trim(), login: login.trim(), password, useTor })
+        : window.moho.rpc<{ loginId: string }>('addMattermostAccountToken', { server: server.trim(), token: token.trim(), useTor })
+    void call
+      .then((r) => setId(r.loginId))
+      .catch((e: Error) => {
+        setBusy(false)
+        store.toast('error', e.message)
+      })
+  }
+
+  const send = (): void => {
+    const value = typed.trim()
+    if (!value || !loginId || !needs) return
+    void window.moho
+      .rpc('submitMattermostCode', { loginId, value })
+      .then(() => setDetail('Checking'))
+      .catch((e: Error) => store.toast('error', e.message))
+  }
+
+  const cancel = (): void => {
+    if (current.current) void window.moho.rpc('cancelMattermostLogin', { loginId: current.current }).catch(() => {})
+    setId('')
+    setNeeds(null)
+    setDetail('')
+    setBusy(false)
+  }
+
+  if (needs) {
+    return (
+      <div className="add-form">
+        <p>This account has a second factor. Type the six-digit code from your authenticator app.</p>
+        <label className="field">
+          <span className="small muted">Code</span>
+          <input
+            className="text-field"
+            autoFocus
+            autoComplete="off"
+            spellCheck={false}
+            inputMode="numeric"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') send()
+            }}
+          />
+        </label>
+        {needs.error && (
+          <div className="warning-note">
+            <Icon name="warning" size={16} />
+            <span>{needs.error}</span>
+          </div>
+        )}
+        {detail && <p className="small muted">{detail}…</p>}
+        <div className="field-row">
+          <button type="button" className="button primary" disabled={!typed.trim()} onClick={send}>
+            Submit code
+          </button>
+          <button type="button" className="button" onClick={cancel}>
+            Cancel sign-in
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const ready = server.trim() !== '' && (method === 'page' || (method === 'password' ? login.trim() !== '' && password !== '' : token.trim() !== ''))
+  return (
+    <div className="add-form">
+      <p className="small muted">
+        Sign in to your account on a Mattermost server. Making an account is done on the server first. moho keeps only the
+        session or token the server issues, never the password.
+      </p>
+      <p className="small muted">
+        A password or the sign-in page makes a session of moho&apos;s own, listed among the account&apos;s sessions, which
+        moho ends when the account is removed here. A personal access token is the account&apos;s to keep: removing the
+        account here leaves it working.
+      </p>
+      <TorSwitch service="mattermost" on={useTor} onChange={setUseTor} />
+      <label className="field">
+        <span className="small muted">Server address</span>
+        <input
+          className="text-field"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="https://chat.example.org"
+          value={server}
+          disabled={busy}
+          onChange={(e) => setServer(e.target.value)}
+        />
+      </label>
+      <div className="segmented">
+        <button type="button" className={method === 'password' ? 'active' : undefined} disabled={busy} onClick={() => setMethod('password')}>
+          Password
+        </button>
+        <button type="button" className={method === 'token' ? 'active' : undefined} disabled={busy} onClick={() => setMethod('token')}>
+          Access token
+        </button>
+        <button type="button" className={method === 'page' ? 'active' : undefined} disabled={busy} onClick={() => setMethod('page')}>
+          Sign-in page (SSO)
+        </button>
+      </div>
+      {method === 'password' && (
+        <div className="field-row">
+          <label className="field">
+            <span className="small muted">Username or email</span>
+            <input className="text-field" autoComplete="off" spellCheck={false} value={login} disabled={busy} onChange={(e) => setLogin(e.target.value)} />
+          </label>
+          <label className="field">
+            <span className="small muted">Password</span>
+            <input
+              className="text-field"
+              type="password"
+              autoComplete="off"
+              value={password}
+              disabled={busy}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && ready && !busy) begin()
+              }}
+            />
+          </label>
+        </div>
+      )}
+      {method === 'token' && (
+        <label className="field">
+          <span className="small muted">Personal access token (Profile → Security in Mattermost)</span>
+          <input
+            className="text-field"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={token}
+            disabled={busy}
+            onChange={(e) => setToken(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && ready && !busy) begin()
+            }}
+          />
+        </label>
+      )}
+      {method === 'page' && (
+        <p className="small muted">
+          The server&apos;s own sign-in page opens in a window of its own: sign in there however the server asks (GitLab,
+          SAML, OpenID, LDAP or a password), and the window closes by itself when it is done.
+        </p>
+      )}
+      <div className="field-row">
+        <button type="button" className="button primary" disabled={busy || !ready} onClick={begin}>
+          {busy ? 'Signing in…' : method === 'page' ? 'Open the sign-in page' : 'Sign in'}
+        </button>
+        {busy && (
+          <button type="button" className="button" onClick={cancel}>
+            Cancel
+          </button>
+        )}
+      </div>
+      {busy && detail && <p className="small muted">{detail}…</p>}
+    </div>
+  )
+}
+
+/**
  * Adding a Fluxer account. Three ways: a code shown here and approved in a Fluxer app where the person is already
  * signed in (nothing secret is typed into moho); a username or email and password, then the code of an authenticator or
  * a backup code if the account has a second factor; or a session token pasted from another app.
@@ -3648,6 +3909,245 @@ function MatrixForm(): JSX.Element {
         New sessions start unverified. Once logged in, verify this device from another signed-in
         session so encrypted history decrypts.
       </p>
+    </div>
+  )
+}
+
+function RocketChatForm({ onDone }: { onDone: () => void }): JSX.Element {
+  const store = useStore()
+  const [serverUrl, setServerUrl] = useState('')
+  const [mode, setMode] = useState<'password' | 'pat' | 'sso'>('password')
+  const [user, setUser] = useState('')
+  const [password, setPassword] = useState('')
+  const [totpCode, setTotpCode] = useState('')
+  const [needsTotp, setNeedsTotp] = useState(false)
+  const [patUserId, setPatUserId] = useState('')
+  const [patToken, setPatToken] = useState('')
+  const [e2eePassphrase, setE2eePassphrase] = useState('')
+  const [useTor, setUseTor] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [discovered, setDiscovered] = useState<{
+    site_name?: string
+    version?: { raw?: string }
+    e2ee_enabled?: boolean
+    sso_providers?: { id: string; name: string; kind: string }[]
+  } | null>(null)
+
+  const discover = async (): Promise<void> => {
+    if (!serverUrl.trim()) return
+    setBusy(true)
+    try {
+      const res = await window.moho.rpc<typeof discovered>('rocketchatDiscover', {
+        serverUrl: serverUrl.trim(),
+        useTor
+      })
+      setDiscovered(res)
+    } catch (e) {
+      store.toast('error', String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const submitPassword = async (): Promise<void> => {
+    if (!serverUrl.trim() || !user.trim() || !password) return
+    setBusy(true)
+    try {
+      const res = await window.moho.rpc<{ ok?: boolean; totpRequired?: boolean; method?: string }>(
+        'addRocketChatAccount',
+        {
+          serverUrl: serverUrl.trim(),
+          user: user.trim(),
+          password,
+          code: totpCode.trim() || undefined,
+          e2eePassphrase: e2eePassphrase.trim() || undefined,
+          useTor
+        }
+      )
+      if (res.totpRequired) {
+        setNeedsTotp(true)
+        store.toast('info', `Enter your ${res.method || '2FA'} verification code to complete sign-in.`)
+      } else {
+        store.toast('info', 'Rocket.Chat account added.')
+        onDone()
+      }
+    } catch (e) {
+      store.toast('error', String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const submitPat = async (): Promise<void> => {
+    if (!serverUrl.trim() || !patUserId.trim() || !patToken.trim()) return
+    setBusy(true)
+    try {
+      await window.moho.rpc('addRocketChatAccountToken', {
+        serverUrl: serverUrl.trim(),
+        userId: patUserId.trim(),
+        authToken: patToken.trim(),
+        e2eePassphrase: e2eePassphrase.trim() || undefined,
+        useTor
+      })
+      store.toast('info', 'Rocket.Chat account added.')
+      onDone()
+    } catch (e) {
+      store.toast('error', String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const launchSso = async (): Promise<void> => {
+    if (!serverUrl.trim()) return
+    setBusy(true)
+    try {
+      const res = await window.moho.rocketchatSsoLogin(serverUrl.trim(), { useTor })
+      if (!res.ok) {
+        store.toast('error', res.error || 'Rocket.Chat SSO sign-in failed')
+      } else {
+        store.toast('info', 'Rocket.Chat SSO account added.')
+        onDone()
+      }
+    } catch (e) {
+      store.toast('error', String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="form-stack">
+      <p className="small muted">
+        Connect to any self-hosted or cloud Rocket.Chat workspace. Credentials and optional E2EE passphrases are stored
+        locally in 0600 storage and never logged.
+      </p>
+      <TorSwitch service="rocketchat" on={useTor} onChange={setUseTor} />
+      <label className="field-label">
+        <span className="small muted">Server URL</span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            type="text"
+            placeholder="https://open.rocket.chat"
+            value={serverUrl}
+            onChange={(e) => setServerUrl(e.target.value)}
+            disabled={busy}
+          />
+          <button type="button" className="button subtle" onClick={() => void discover()} disabled={busy || !serverUrl.trim()}>
+            Check server
+          </button>
+        </div>
+      </label>
+      {discovered && (
+        <p className="small muted">
+          Connected to <strong>{discovered.site_name || 'Rocket.Chat'}</strong>
+          {discovered.version?.raw ? ` v${discovered.version.raw}` : ''}
+          {discovered.e2ee_enabled ? ' · E2EE enabled' : ''}
+          {discovered.sso_providers?.length
+            ? ` · SSO: ${discovered.sso_providers.map((p) => p.name).join(', ')}`
+            : ''}
+        </p>
+      )}
+      <div className="segmented-row" style={{ display: 'flex', gap: 6 }}>
+        <button type="button" className={classes('button', mode === 'password' ? 'primary' : 'subtle')} onClick={() => setMode('password')}>
+          Password + 2FA
+        </button>
+        <button type="button" className={classes('button', mode === 'pat' ? 'primary' : 'subtle')} onClick={() => setMode('pat')}>
+          Personal Access Token
+        </button>
+        <button type="button" className={classes('button', mode === 'sso' ? 'primary' : 'subtle')} onClick={() => setMode('sso')}>
+          SSO / OAuth / SAML
+        </button>
+      </div>
+
+      {mode === 'password' && (
+        <>
+          <label className="field-label">
+            <span className="small muted">Username or email</span>
+            <input type="text" value={user} onChange={(e) => setUser(e.target.value)} disabled={busy} />
+          </label>
+          <label className="field-label">
+            <span className="small muted">Password</span>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
+          </label>
+          {needsTotp && (
+            <label className="field-label">
+              <span className="small muted">2FA / TOTP / Email code</span>
+              <input type="text" value={totpCode} onChange={(e) => setTotpCode(e.target.value)} disabled={busy} />
+            </label>
+          )}
+          <label className="field-label">
+            <span className="small muted">E2EE passphrase (optional, for encrypted rooms)</span>
+            <input
+              type="password"
+              value={e2eePassphrase}
+              onChange={(e) => setE2eePassphrase(e.target.value)}
+              disabled={busy}
+            />
+          </label>
+          <div className="form-actions">
+            <button
+              type="button"
+              className="button primary"
+              onClick={() => void submitPassword()}
+              disabled={busy || !serverUrl.trim() || !user.trim() || !password}
+            >
+              Sign in
+            </button>
+          </div>
+        </>
+      )}
+
+      {mode === 'pat' && (
+        <>
+          <label className="field-label">
+            <span className="small muted">User ID (X-User-Id)</span>
+            <input type="text" value={patUserId} onChange={(e) => setPatUserId(e.target.value)} disabled={busy} />
+          </label>
+          <label className="field-label">
+            <span className="small muted">Auth Token (X-Auth-Token)</span>
+            <input type="password" value={patToken} onChange={(e) => setPatToken(e.target.value)} disabled={busy} />
+          </label>
+          <label className="field-label">
+            <span className="small muted">E2EE passphrase (optional)</span>
+            <input
+              type="password"
+              value={e2eePassphrase}
+              onChange={(e) => setE2eePassphrase(e.target.value)}
+              disabled={busy}
+            />
+          </label>
+          <div className="form-actions">
+            <button
+              type="button"
+              className="button primary"
+              onClick={() => void submitPat()}
+              disabled={busy || !serverUrl.trim() || !patUserId.trim() || !patToken.trim()}
+            >
+              Connect with token
+            </button>
+          </div>
+        </>
+      )}
+
+      {mode === 'sso' && (
+        <>
+          <p className="small muted">
+            Opens an isolated, memory-only browser window to your Rocket.Chat server&apos;s OAuth, SAML, OIDC, or LDAP
+            login page and captures the session token automatically.
+          </p>
+          <div className="form-actions">
+            <button
+              type="button"
+              className="button primary"
+              onClick={() => void launchSso()}
+              disabled={busy || !serverUrl.trim()}
+            >
+              Open SSO sign-in window
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

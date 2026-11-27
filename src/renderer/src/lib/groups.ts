@@ -120,6 +120,11 @@ export function pinnedGroup(): RailGroup {
   }
 }
 
+/** Account ids the user has explicitly disconnected. */
+export function disconnectedAccountIds(accounts: { id: string; disconnected?: boolean }[]): Set<string> {
+  return new Set(accounts.filter((a) => a.disconnected).map((a) => a.id))
+}
+
 /**
  * The rail entries worth drawing.
  *
@@ -190,54 +195,6 @@ export function orderedGroups(groups: RailGroup[], order: string[]): RailGroup[]
 }
 
 /**
- * The order to persist after dragging `draggedId` onto `targetId`.
- *
- * Returns the full sequence of movable entries rather than a sparse edit, so
- * the saved order stays meaningful even as guilds come and go.
- */
-export function reorder(groups: RailGroup[], draggedId: string, targetId: string): string[] {
-  const movable = groups.filter((g) => !isFixedEntry(g)).map((g) => g.id)
-  const from = movable.indexOf(draggedId)
-  const to = movable.indexOf(targetId)
-  if (from === -1 || to === -1 || from === to) return movable
-  movable.splice(to, 0, movable.splice(from, 1)[0])
-  return movable
-}
-
-
-/** How a folder names itself while being dragged, so it is not read as a server. */
-export const FOLDER_DRAG_PREFIX = 'folder:'
-
-/**
- * The order to persist after dragging a whole folder onto `targetId`.
- *
- * A folder has no place of its own in the saved order - that list holds
- * servers, and a folder is drawn wherever the first of its members falls. So
- * moving one means moving its members as a block, which is also what keeps the
- * folder from being torn in half by the move.
- */
-export function reorderFolder(
-  groups: RailGroup[],
-  folder: RailFolder,
-  targetId: string
-): string[] {
-  const movable = groups.filter((g) => !isFixedEntry(g)).map((g) => g.id)
-  // In the folder's own order, which is the one somebody set by filling it.
-  const block = folder.members.filter((id) => movable.includes(id))
-  if (block.length === 0) return movable
-
-  const rest = movable.filter((id) => !block.includes(id))
-  // Dropping a folder onto something inside itself would mean inserting the
-  // block relative to a member of the block, which has no answer.
-  if (block.includes(targetId)) return movable
-
-  const at = rest.indexOf(targetId)
-  if (at === -1) return movable
-  rest.splice(at, 0, ...block)
-  return rest
-}
-
-/**
  * Whether a buffer is muted, on its own account or by the rail entry it sits
  * under.
  *
@@ -298,23 +255,6 @@ export function countedFor(
 
 
 /**
- * A folder in the rail: several servers behind one tile.
- *
- * Entirely this client's idea. Discord has folders of its own, but they are
- * per-account and say nothing about the Matrix spaces or IRC networks sitting
- * beside them in the same column - and the point of the rail is that those all
- * live together. So a folder here can hold anything the rail can show.
- */
-export interface RailFolder {
-  id: string
-  name: string
-  /** Group ids, in the order they were put in. */
-  members: string[]
-  /** A colour, so one folder is told from another at a glance. */
-  colour?: string
-}
-
-/**
  * The colours a folder can be given.
  *
  * A fixed set rather than a picker: these have to stay legible against the
@@ -333,81 +273,562 @@ export const FOLDER_COLOURS: { name: string; value: string }[] = [
   { name: 'Slate', value: '#95a5a6' }
 ]
 
-/** What the rail draws, top to bottom: loose entries and folders, in order. */
-export type RailEntry =
-  | { kind: 'group'; id: string; group: RailGroup }
-  | { kind: 'folder'; id: string; folder: RailFolder; members: RailGroup[] }
+/**
+ * A folder in the rail: several entries behind one tile.
+ *
+ * Entirely this client's idea. Discord has folders of its own, but they are
+ * per-account and say nothing about the Matrix spaces or IRC networks sitting
+ * beside them in the same column - and the point of the rail is that those all
+ * live together. So a folder here can hold anything the rail can show,
+ * including other folders.
+ */
+export interface RailFolder {
+  id: string
+  name: string
+  /**
+   * What it holds, in the order it was put in: group ids, and the folders
+   * nested inside it as {@link folderRef}s.
+   */
+  members: string[]
+  /** A colour, so one folder is told from another at a glance. */
+  colour?: string
+  /**
+   * The account entry this folder belongs to, on a protocol badge's folder.
+   *
+   * The badge is the folder's face and opens the account's own page (Stoat's
+   * notes and direct messages) as well as holding its servers - which is where
+   * a server the account joins lands, so a new one does not turn up loose at
+   * the foot of a column somebody arranged.
+   */
+  head?: string
+}
 
 /**
- * Folds the ordered groups into the rail's real layout.
+ * How a folder is named wherever a group id could also stand: among another
+ * folder's members, and while it is being dragged.
  *
- * A folder takes the position of its first member, so putting servers into one
- * does not also reshuffle the column - the folder appears where the topmost of
- * them already was. Its members come back attached to it rather than spliced
- * into the list, because the rail draws an expanded folder and its servers
- * inside one container.
+ * Said in the string rather than looked up and hoped for - a folder id and a
+ * group id are both opaque, and mistaking one for the other files a folder
+ * inside itself.
  */
-export function railEntries(ordered: RailGroup[], folders: RailFolder[]): RailEntry[] {
-  const owner = new Map<string, RailFolder>()
-  for (const f of folders) {
-    for (const id of f.members) owner.set(id, f)
-  }
+export const FOLDER_DRAG_PREFIX = 'folder:'
 
-  const out: RailEntry[] = []
-  const placed = new Set<string>()
-  for (const g of ordered) {
-    const folder = owner.get(g.id)
-    if (!folder) {
-      out.push({ kind: 'group', id: g.id, group: g })
-      continue
+export const folderRef = (id: string): string => `${FOLDER_DRAG_PREFIX}${id}`
+
+export function folderIdOf(ref: string): string | null {
+  return ref.startsWith(FOLDER_DRAG_PREFIX) ? ref.slice(FOLDER_DRAG_PREFIX.length) : null
+}
+
+/** The folder a protocol badge heads: derived from the account's entry, so it only ever has one. */
+export const badgeFolderId = (accountGroupId: string): string => `badge:${accountGroupId}`
+
+/** What the rail draws, top to bottom: loose entries and folders, in order. */
+export type RailEntry = { kind: 'group'; id: string; group: RailGroup } | RailFolderEntry
+
+export interface RailFolderEntry {
+  kind: 'folder'
+  id: string
+  folder: RailFolder
+  /** The protocol badge heading it, when it is one and its account is here. */
+  head?: RailGroup
+  /** What is drawn inside it when it is open, the folders nested in it included. */
+  children: RailEntry[]
+  /**
+   * Every server anywhere inside, the badges of nested folders included and its
+   * own not: what its face shows and what its counts add up.
+   */
+  members: RailGroup[]
+}
+
+/** The ref an entry is dragged and filed by. */
+export const refOf = (e: RailEntry): string => (e.kind === 'group' ? e.id : folderRef(e.id))
+
+/**
+ * Folders with each member written as what it is drawn as.
+ *
+ * An account's entry filed into a folder before its badge had a folder of its
+ * own is that folder once it has one: the badge and what it holds move
+ * together. Anything claimed twice stays with the first folder to claim it, so
+ * nothing is drawn in two places.
+ */
+export function normalizedFolders(folders: RailFolder[]): RailFolder[] {
+  const headed = new Map<string, string>()
+  for (const f of folders) if (f.head && !headed.has(f.head)) headed.set(f.head, f.id)
+  const claimed = new Set<string>()
+  return folders.map((f) => {
+    const members: string[] = []
+    for (const m of f.members) {
+      const ref = headed.has(m) ? folderRef(headed.get(m)!) : m
+      if (ref === folderRef(f.id) || claimed.has(ref)) continue
+      claimed.add(ref)
+      members.push(ref)
     }
-    if (placed.has(folder.id)) continue
-    placed.add(folder.id)
-    // In the folder's own order, not the rail's: that order is the one the
-    // person set by dropping them in.
-    const members = folder.members
-      .map((id) => ordered.find((x) => x.id === id))
-      .filter((x): x is RailGroup => !!x)
-    out.push({ kind: 'folder', id: folder.id, folder, members })
-  }
+    return { ...f, members }
+  })
+}
 
-  // A folder with nothing in it still draws, at the foot of the column. A
-  // new one is empty by definition, and a folder that only appears once it
-  // has members can never be given any.
-  for (const f of folders) {
-    if (!placed.has(f.id)) out.push({ kind: 'folder', id: f.id, folder: f, members: [] })
+/** The folder holding `ref` directly, if one does. */
+export function parentOf(folders: RailFolder[], ref: string): RailFolder | undefined {
+  return folders.find((f) => f.members.includes(ref))
+}
+
+/** The folders around `ref`, innermost first. */
+export function ancestorsOf(folders: RailFolder[], ref: string): string[] {
+  const out: string[] = []
+  let at = parentOf(folders, ref)
+  while (at && !out.includes(at.id)) {
+    out.push(at.id)
+    at = parentOf(folders, folderRef(at.id))
   }
   return out
 }
 
 /**
- * Makes a folder out of two servers, the way dropping one onto another does.
- *
- * The new folder takes the place of the one that was already there, so the
- * column does not rearrange itself around the gesture.
+ * The local folders plus whatever a service keeps for the account (Fluxer's
+ * guild folders), which only get what nothing local has claimed.
  */
-export function foldTogether(folders: RailFolder[], ontoId: string, draggedId: string): RailFolder[] {
-  const existing = folders.find((f) => f.members.includes(ontoId))
-  if (existing) return fileInFolder(folders, existing.id, draggedId)
-  return [
-    ...folders.map((f) => ({ ...f, members: f.members.filter((m) => m !== draggedId) })),
-    { id: `folder-${Date.now().toString(36)}`, name: 'New folder', members: [ontoId, draggedId] }
-  ]
+export function withSynced(local: RailFolder[], synced: RailFolder[]): RailFolder[] {
+  if (synced.length === 0) return local
+  const claimed = new Set(local.flatMap((f) => f.members))
+  const rest = synced
+    .map((f) => ({ ...f, members: f.members.filter((m) => !claimed.has(m)) }))
+    .filter((f) => f.members.length > 0)
+  return [...local, ...rest]
 }
 
-/** Puts a group in a folder, taking it out of any other. */
-export function fileInFolder(folders: RailFolder[], folderId: string, groupId: string): RailFolder[] {
-  return folders.map((f) => {
-    if (f.id === folderId) {
-      return f.members.includes(groupId) ? f : { ...f, members: [...f.members, groupId] }
+/**
+ * Folds the ordered groups into the rail's real layout.
+ *
+ * A folder takes the position of the first thing inside it - its badge, or
+ * its topmost server - so putting servers into one does not also reshuffle the
+ * column. What it holds comes back attached to it rather than spliced into the
+ * list, folders inside folders included, because the rail draws an expanded
+ * folder and its contents inside one container.
+ */
+export function railEntries(ordered: RailGroup[], given: RailFolder[]): RailEntry[] {
+  const folders = normalizedFolders(given)
+  const byId = new Map(folders.map((f) => [f.id, f]))
+  const present = new Map(ordered.map((g) => [g.id, g]))
+  const parent = new Map<string, string>()
+  for (const f of folders) for (const m of f.members) parent.set(m, f.id)
+  const headed = new Map<string, string>()
+  for (const f of folders) if (f.head && !headed.has(f.head)) headed.set(f.head, f.id)
+
+  const build = (f: RailFolder, seen: Set<string>): RailFolderEntry => {
+    seen.add(f.id)
+    const children: RailEntry[] = []
+    // In the folder's own order, not the rail's: that order is the one the
+    // person set by dropping things in.
+    for (const m of f.members) {
+      const inner = folderIdOf(m)
+      if (inner !== null) {
+        const child = byId.get(inner)
+        if (child && !seen.has(inner)) children.push(build(child, seen))
+        continue
+      }
+      const g = present.get(m)
+      if (g) children.push({ kind: 'group', id: g.id, group: g })
     }
-    return { ...f, members: f.members.filter((m) => m !== groupId) }
-  })
+    const members = children.flatMap((c) =>
+      c.kind === 'group' ? [c.group] : [...(c.head ? [c.head] : []), ...c.members]
+    )
+    const found = f.head ? present.get(f.head) : undefined
+    // A badge is the protocol's mark, not the account's picture: the daemon
+    // gives an account's entry its avatar, and Discord's then read as one more
+    // server rather than as Discord. Wherever a badge is drawn - its own tile,
+    // or a chip in the face of a folder holding it - it says which service.
+    const head = found && { ...found, iconUrl: undefined }
+    return { kind: 'folder', id: f.id, folder: f, head, children, members }
+  }
+
+  // The outermost thing a ref is drawn inside of.
+  const topOf = (ref: string): string => {
+    const seen = new Set<string>()
+    let at = ref
+    while (parent.has(at) && !seen.has(at)) {
+      seen.add(at)
+      at = folderRef(parent.get(at)!)
+    }
+    return at
+  }
+
+  const out: RailEntry[] = []
+  const placed = new Set<string>()
+  for (const g of ordered) {
+    const top = topOf(headed.has(g.id) ? folderRef(headed.get(g.id)!) : g.id)
+    const id = folderIdOf(top)
+    if (id === null) {
+      out.push({ kind: 'group', id: g.id, group: g })
+      continue
+    }
+    if (placed.has(id)) continue
+    placed.add(id)
+    out.push(build(byId.get(id)!, new Set()))
+  }
+
+  // A folder with nothing in it still draws, at the foot of the column. A
+  // new one is empty by definition, and a folder that only appears once it
+  // has members can never be given any. Not a badge's: that one is its
+  // account's tile, and with the account gone there is nothing for it to be.
+  for (const f of folders) {
+    if (placed.has(f.id) || parent.has(folderRef(f.id)) || f.head) continue
+    out.push(build(f, new Set()))
+  }
+  return out
 }
 
-/** Takes a group out of whatever folder holds it. */
-export function removeFromFolders(folders: RailFolder[], groupId: string): RailFolder[] {
-  return folders.map((f) => ({ ...f, members: f.members.filter((m) => m !== groupId) }))
+/** Where the rail keeps its arrangement: the order of the column, and the folders in it. */
+export interface RailLayout {
+  order: string[]
+  folders: RailFolder[]
+}
+
+/** Where on a tile something is being dropped. */
+export type DropZone = 'before' | 'merge' | 'after'
+
+/** What the rail's drag indicator is pointing at, and what a drop will commit. */
+export type RailDropTarget =
+  | { kind: 'tile'; ref: string; zone: DropZone }
+  | { kind: 'tail' }
+  | null
+
+/** Vertical bounds of one draggable entry in a rail container. */
+export interface RailSlot {
+  ref: string
+  top: number
+  bottom: number
+  openFolder?: boolean
+}
+
+/**
+ * Whether dropping `from` onto `target` is valid (never onto itself or a
+ * folder into one of its own descendants).
+ */
+export function canDropOn(folders: RailFolder[], from: string, target: RailDropTarget): boolean {
+  if (!from || !target) return false
+  if (target.kind === 'tail') return true
+  if (target.ref === from) return false
+  const moving = folderIdOf(from)
+  if (moving !== null && ancestorsOf(folders, target.ref).includes(moving)) return false
+  return true
+}
+
+/**
+ * Resolves a drag-over position in the gap between tiles (or below the column)
+ * to the exact drop target matching the blue insertion line.
+ *
+ * Without this, hovering the 4px gap where the blue line is drawn fell through
+ * to the scroll container's "put it last" handler (or got rejected inside an
+ * open folder), sending the icon to the bottom while the blue line sat between
+ * two icons.
+ */
+export function resolveGapDrop(
+  items: RailSlot[],
+  clientY: number,
+  dragging: string,
+  options: {
+    allowTail?: boolean
+    folderRef?: string
+    headerTop?: number
+    headerBottom?: number
+  } = {}
+): RailDropTarget {
+  const { allowTail = false, folderRef: openFolderRef, headerTop, headerBottom } = options
+
+  if (openFolderRef !== undefined && headerTop !== undefined && headerBottom !== undefined) {
+    if (clientY < headerTop) {
+      return openFolderRef === dragging ? null : { kind: 'tile', ref: openFolderRef, zone: 'before' }
+    }
+    if (items.length === 0) {
+      return clientY >= headerBottom && openFolderRef !== dragging
+        ? { kind: 'tile', ref: openFolderRef, zone: 'merge' }
+        : null
+    }
+    if (clientY >= headerBottom && clientY <= items[0].top) {
+      return items[0].ref === dragging ? null : { kind: 'tile', ref: items[0].ref, zone: 'before' }
+    }
+    for (let i = 0; i < items.length - 1; i++) {
+      if (clientY >= items[i].bottom && clientY <= items[i + 1].top) {
+        if (items[i + 1].ref !== dragging) return { kind: 'tile', ref: items[i + 1].ref, zone: 'before' }
+        if (!items[i].openFolder && items[i].ref !== dragging) return { kind: 'tile', ref: items[i].ref, zone: 'after' }
+        return null
+      }
+    }
+    const last = items[items.length - 1]
+    if (clientY > last.bottom) {
+      if (!last.openFolder && last.ref !== dragging) return { kind: 'tile', ref: last.ref, zone: 'after' }
+      if (last.openFolder && openFolderRef !== dragging) return { kind: 'tile', ref: openFolderRef, zone: 'merge' }
+    }
+    return null
+  }
+
+  if (items.length === 0) return null
+  if (clientY > items[items.length - 1].bottom) {
+    return allowTail ? { kind: 'tail' } : null
+  }
+  if (clientY < items[0].top) {
+    if (items[0].top - clientY <= 8 && items[0].ref !== dragging) {
+      return { kind: 'tile', ref: items[0].ref, zone: 'before' }
+    }
+    return null
+  }
+  for (let i = 0; i < items.length - 1; i++) {
+    if (clientY >= items[i].bottom && clientY <= items[i + 1].top) {
+      if (items[i + 1].ref !== dragging) return { kind: 'tile', ref: items[i + 1].ref, zone: 'before' }
+      if (!items[i].openFolder && items[i].ref !== dragging) return { kind: 'tile', ref: items[i].ref, zone: 'after' }
+      return null
+    }
+  }
+  return null
+}
+
+/** Where something dragged was let go. */
+export type RailDrop =
+  /** Above or below an entry, at whatever depth that entry is. */
+  | { kind: 'beside'; target: string; after: boolean }
+  /** On a folder: last inside it. */
+  | { kind: 'into'; folder: string }
+  /** The open space under the column: last in it, and out of any folder. */
+  | { kind: 'end' }
+
+/** Every server under an entry, its badge first: the run it takes up in the saved order. */
+function idsUnder(e: RailEntry): string[] {
+  return e.kind === 'group' ? [e.id] : [...(e.head ? [e.head.id] : []), ...e.children.flatMap(idsUnder)]
+}
+
+/** Whether `ref` is this entry or anywhere inside it. */
+function holds(e: RailEntry, ref: string): boolean {
+  if (refOf(e) === ref) return true
+  if (e.kind === 'group') return false
+  return e.head?.id === ref || e.children.some((c) => holds(c, ref))
+}
+
+function topLevel(ordered: RailGroup[], folders: RailFolder[]): RailEntry[] {
+  return railEntries(ordered, folders).filter((e) => !(e.kind === 'group' && isFixedEntry(e.group)))
+}
+
+/**
+ * The order to save for a column whose top level reads `refs`.
+ *
+ * Written out in full rather than as an edit, so the saved order stays
+ * meaningful as servers come and go. What the rail cannot see right now - an
+ * account still connecting - keeps its place at the end instead of being
+ * dropped: a server missing from the order is one the rail has never placed,
+ * and would be filed away under its badge as if it had just been joined.
+ */
+function orderFor(
+  ordered: RailGroup[],
+  folders: RailFolder[],
+  refs: string[],
+  previous: string[],
+  keep: string[] = []
+): string[] {
+  const entries = topLevel(ordered, folders)
+  const byRef = new Map(entries.map((e) => [refOf(e), e]))
+  const tops = [...refs.filter((r) => byRef.has(r)), ...entries.map(refOf).filter((r) => !refs.includes(r))]
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const id of [...tops.flatMap((r) => idsUnder(byRef.get(r)!)), ...previous, ...keep]) {
+    if (folderIdOf(id) !== null || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
+}
+
+/**
+ * Moves a server or a folder - a badge with everything under it - to where it
+ * was dropped.
+ *
+ * Beside something inside a folder puts it in that folder, beside that thing;
+ * beside something at the top puts it at the top. A folder never goes inside
+ * itself, however deep the place it was dropped.
+ */
+export function moveInRail(
+  ordered: RailGroup[],
+  layout: RailLayout,
+  ref: string,
+  to: RailDrop,
+  synced: RailFolder[] = []
+): RailLayout {
+  const folders = normalizedFolders(layout.folders)
+  if (to.kind === 'beside' && to.target === ref) return layout
+  const host =
+    to.kind === 'into'
+      ? folders.find((f) => f.id === to.folder)
+      : to.kind === 'beside'
+        ? parentOf(folders, to.target)
+        : undefined
+  // A folder the service keeps is not this client's to fill.
+  if (to.kind === 'into' && !host) return layout
+  const moving = folderIdOf(ref)
+  if (moving !== null && host && (host.id === moving || ancestorsOf(folders, folderRef(host.id)).includes(moving))) {
+    return layout
+  }
+
+  const before = topLevel(ordered, withSynced(folders, synced)).map(refOf)
+  let next = folders.map((f) => ({ ...f, members: f.members.filter((m) => m !== ref) }))
+  if (host) {
+    next = next.map((f) => {
+      if (f.id !== host.id) return f
+      const members = [...f.members]
+      const i = to.kind === 'beside' ? members.indexOf(to.target) : -1
+      members.splice(i === -1 ? members.length : i + (to.kind === 'beside' && to.after ? 1 : 0), 0, ref)
+      return { ...f, members }
+    })
+  }
+
+  const after = topLevel(ordered, withSynced(next, synced))
+  const tops = after.map(refOf)
+  const refs = before.filter((r) => r !== ref && tops.includes(r))
+  if (!host && tops.includes(ref)) {
+    let at = refs.length
+    if (to.kind === 'beside') {
+      const i = refs.findIndex((r) => {
+        const e = after.find((x) => refOf(x) === r)
+        return !!e && holds(e, to.target)
+      })
+      if (i !== -1) at = i + (to.after ? 1 : 0)
+    }
+    refs.splice(at, 0, ref)
+  }
+  return { order: orderFor(ordered, withSynced(next, synced), refs, layout.order), folders: next }
+}
+
+/**
+ * Makes a folder of two things, the way dropping one onto another does.
+ *
+ * The new folder takes the place of the one that was already there - at the
+ * top of the column or inside whatever folder held it - so nothing around the
+ * gesture moves.
+ */
+export function foldTogether(
+  ordered: RailGroup[],
+  layout: RailLayout,
+  ontoId: string,
+  ref: string,
+  synced: RailFolder[] = [],
+  id = `folder-${Date.now().toString(36)}`
+): RailLayout {
+  if (ontoId === ref) return layout
+  const folders = normalizedFolders(layout.folders)
+  const moving = folderIdOf(ref)
+  if (moving !== null && ancestorsOf(folders, ontoId).includes(moving)) return layout
+  const host = parentOf(folders, ontoId)
+  const before = topLevel(ordered, withSynced(folders, synced)).map(refOf)
+  const made = folderRef(id)
+  const next: RailFolder[] = [
+    ...folders.map((f) => ({
+      ...f,
+      members: f.members.filter((m) => m !== ref).map((m) => (m === ontoId ? made : m))
+    })),
+    { id, name: 'New folder', members: [ontoId, ref] }
+  ]
+  const tops = topLevel(ordered, withSynced(next, synced)).map(refOf)
+  const refs = before
+    .filter((r) => r !== ref)
+    .map((r) => (r === ontoId && !host ? made : r))
+    .filter((r) => tops.includes(r))
+  return { order: orderFor(ordered, withSynced(next, synced), refs, layout.order), folders: next }
+}
+
+/** The folders with `head`'s badge given a folder of its own, if it has none yet. */
+export function withBadgeFolder(folders: RailFolder[], head: Pick<RailGroup, 'id' | 'name'>): RailFolder[] {
+  if (folders.some((f) => f.head === head.id)) return folders
+  return [...folders, { id: badgeFolderId(head.id), name: head.name, members: [], head: head.id }]
+}
+
+/**
+ * Takes a folder apart, leaving what it held where it was.
+ *
+ * Its contents take its place - at the top of the column, or inside the folder
+ * it sat in. A badge's folder is emptied rather than removed: the badge is its
+ * account's tile, and stays.
+ */
+export function dissolveFolder(
+  ordered: RailGroup[],
+  layout: RailLayout,
+  folderId: string,
+  synced: RailFolder[] = []
+): RailLayout {
+  const folders = normalizedFolders(layout.folders)
+  const f = folders.find((x) => x.id === folderId)
+  if (!f) return layout
+  const self = folderRef(f.id)
+  const host = parentOf(folders, self)
+  const spill = (r: string): string[] => (r !== self ? [r] : f.head ? [r, ...f.members] : f.members)
+  const before = topLevel(ordered, withSynced(folders, synced)).map(refOf)
+  const next = folders
+    .filter((x) => x.id !== f.id || f.head)
+    .map((x) =>
+      x.id === f.id ? { ...x, members: [] } : x.id === host?.id ? { ...x, members: x.members.flatMap(spill) } : x
+    )
+  const tops = topLevel(ordered, withSynced(next, synced)).map(refOf)
+  const refs = (host ? before : before.flatMap(spill)).filter((r) => tops.includes(r))
+  // Its servers that are not here right now are remembered as placed, or they
+  // would be filed straight back under their badge when they reappear.
+  return { order: orderFor(ordered, withSynced(next, synced), refs, layout.order, f.members), folders: next }
+}
+
+/**
+ * Files each server the rail has never placed under its account's badge, and
+ * gives every account that has servers a badge to file them under.
+ *
+ * "Never placed" is neither in the saved order nor in any folder: a server
+ * somebody took out of its badge's folder is in the order from that moment, so
+ * it stays where it was put. Returns null when there is nothing new.
+ */
+export function fileNewServers(
+  groups: RailGroup[],
+  layout: RailLayout,
+  synced: RailFolder[] = []
+): RailFolder[] | null {
+  const known = new Set(layout.order)
+  for (const f of [...layout.folders, ...synced]) for (const m of f.members) known.add(m)
+  let folders = layout.folders
+  for (const g of groups) {
+    if (g.kind !== 'guild' && g.kind !== 'space') continue
+    const head = groups.find((h) => h.kind === 'account' && h.accountId === g.accountId)
+    if (!head) continue
+    // Every account with servers has its badge, even when all of them were
+    // placed elsewhere: it is where they go back to.
+    folders = withBadgeFolder(folders, head)
+    if (known.has(g.id)) continue
+    folders = folders.map((f) => (f.head === head.id ? { ...f, members: [...f.members, g.id] } : f))
+    known.add(g.id)
+  }
+  return folders === layout.folders ? null : folders
+}
+
+/**
+ * The account entries the rail has to show as badges, though the account has
+ * nothing of its own to open.
+ *
+ * Discord's account entry would open an empty pane - all its channels live in
+ * guilds - so it is no page. But it is the folder its guilds are filed in, and
+ * the place to drop one back into, so it shows for as long as the account has
+ * servers, or its badge holds anything at all.
+ */
+export function badgesShown(groups: RailGroup[], shown: RailGroup[], given: RailFolder[]): RailGroup[] {
+  const folders = normalizedFolders(given)
+  const here = new Set(shown.map((g) => g.id))
+  const byId = new Map(folders.map((f) => [f.id, f]))
+  const holdsAny = (f: RailFolder, seen: Set<string>): boolean => {
+    seen.add(f.id)
+    return f.members.some((m) => {
+      const inner = folderIdOf(m)
+      if (inner === null) return here.has(m)
+      const child = byId.get(inner)
+      return !!child && !seen.has(inner) && (here.has(child.head ?? '') || holdsAny(child, seen))
+    })
+  }
+  const withServers = new Set(groups.filter((g) => g.kind === 'guild' || g.kind === 'space').map((g) => g.accountId))
+  return groups.filter(
+    (g) =>
+      g.kind === 'account' &&
+      !here.has(g.id) &&
+      folders.some((f) => f.head === g.id && (withServers.has(g.accountId) || holdsAny(f, new Set())))
+  )
 }
 
 /**

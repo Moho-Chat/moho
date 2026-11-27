@@ -8,7 +8,9 @@ import telegramSvg from '../assets/telegram-mark.svg'
 import signalSvg from '../assets/signal-mark.svg'
 import stoatSvg from '../assets/stoat-mark.svg'
 import fluxerSvg from '../assets/fluxer-mark.svg'
+import mattermostSvg from '../assets/mattermost-mark.svg'
 import xmppSvg from '../assets/xmpp-mark.svg'
+import rocketchatSvg from '../assets/rocketchat-mark.svg'
 
 /**
  * Discord channel buffers are named "GuildName/#channel" internally - that's
@@ -67,7 +69,7 @@ export interface ServiceIcon {
  * the same menus, as "Whisper".
  */
 export function hasDirectMessages(service: string | undefined): boolean {
-  return service === 'irc' || service === 'discord' || service === 'matrix' || service === 'twitch' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'xmpp' || service === 'signal'
+  return service === 'irc' || service === 'discord' || service === 'matrix' || service === 'twitch' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost' || service === 'rocketchat' || service === 'xmpp' || service === 'signal'
 }
 
 export function serviceIcon(service: string): ServiceIcon {
@@ -86,8 +88,12 @@ export function serviceIcon(service: string): ServiceIcon {
       return { mark: stoatSvg }
     case 'fluxer':
       return { mark: fluxerSvg }
+    case 'mattermost':
+      return { mark: mattermostSvg }
     case 'signal':
       return { mark: signalSvg }
+    case 'rocketchat':
+      return { mark: rocketchatSvg }
     case 'irc':
       return { glyph: 'tag' }
     case 'slack':
@@ -97,12 +103,9 @@ export function serviceIcon(service: string): ServiceIcon {
     case 'jabber':
       return { glyph: 'forum' }
     case 'sneedchat':
-      return { mark: sneedchatMark, colour: true }
-    // Coloured, like Sneedchat's: the mark is a green K on its own dark
-    // ground, and drawing it as a monochrome mask would throw away the one
-    // thing that makes it recognisable at rail size.
+      return { mark: sneedchatMark }
     case 'kick':
-      return { mark: kickSvg, colour: true }
+      return { mark: kickSvg }
     default:
       return { glyph: 'chat' }
   }
@@ -130,8 +133,12 @@ export function serviceLabel(service: string): string {
       return 'Stoat'
     case 'fluxer':
       return 'Fluxer'
+    case 'mattermost':
+      return 'Mattermost'
     case 'signal':
       return 'Signal'
+    case 'rocketchat':
+      return 'Rocket.Chat'
     case 'slack':
       return 'Slack'
     case 'jabber':

@@ -3,7 +3,7 @@ import { accountOfBuffer } from '../lib/route'
 import { Icon, IconButton, ServiceMark } from './Icon'
 import { Avatar } from './Avatar'
 import { useChat, usePref, useStore } from '../state/hooks'
-import { isMutedBuffer } from '../lib/groups'
+import { disconnectedAccountIds, isMutedBuffer } from '../lib/groups'
 import { isUnreadMention, withRead } from '../lib/mentioninbox'
 import { bufferDisplayName, classes, dayLabel, dayOf, formatFullTime, formatTime, resolveMediaUrl, serviceIcon, serviceLabel } from '../lib/util'
 import type { Message } from '../../../shared/wire'
@@ -50,8 +50,10 @@ export function MentionsPage(): JSX.Element {
   // A muted conversation was told not to ask for attention. Collecting its
   // mentions into a page whose entire purpose is asking for attention would
   // be the one place that instruction is ignored.
+  const disconnected = useMemo(() => disconnectedAccountIds(accounts), [accounts])
   const live = rows.filter((m) => {
     const buffer = buffers.find((b) => b.id === m.bufferId)
+    if (buffer && disconnected.has(buffer.accountId)) return false
     return (!buffer || !isMutedBuffer(buffer, muted, mutedGroups)) && !dismissed.includes(m.id)
   })
   /** Where a mention came from: its server, or its account where it is in no server. */

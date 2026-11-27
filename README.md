@@ -38,7 +38,9 @@ stream's chat going past at forty lines a minute you're able to be part of the c
 | **Signal** | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | ✅ | ✅ |
 | **Fluxer** | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | - | ✅ |
 | **Stoat** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - | ✅ |
+| **Mattermost** | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | - | ✅ |
 | **XMPP** | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | ✅ | ✅ |
+| **Rocket.Chat** | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | ✅ | ✅ |
 
 ✅ supported in moho  ·  ❌ the service has it and moho does not yet  ·  `-` the service has nothing of the kind
 
@@ -51,6 +53,8 @@ stream's chat going past at forty lines a minute you're able to be part of the c
 - **Signal** calls are one-to-one; group calls are not built.
 - **Fluxer** voice and video work in a community's voice channels and in direct messages; peer-to-peer calls are refused.
 - **XMPP** calls are refused on an account routed through Tor, since their media would go around it.
+- **Mattermost** calls are the Calls plugin's, where the server runs it: voice and screen sharing, no camera. An unlicensed server holds them in direct messages only.
+- **Rocket.Chat** supports pure-Rust RSA-OAEP + AES-CBC/AES-GCM E2EE (with local scrollback search fallback for encrypted rooms), video-conference provider capabilities (Jitsi/BigBlueButton/Meet/Pexip) and native 1:1 WebRTC signaling.
 
 Every protocol gets the same window, mentions inbox, search and per-account Tor or SOCKS5 routing.
 How much of each service's own feature set a protocol has is as far as its service lets a

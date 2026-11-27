@@ -29,7 +29,7 @@ import { Prefs } from './prefs'
 import { Notifier } from './notifications'
 import { IdleWatcher } from './idle'
 import { NOTHING_WAITING, PAUSED_FOREVER, isPaused, pauseEnd, trayIconFile, trayMenu, trayTooltip, type TrayMode, type TrayState, type TrayStatus, type TrayWaiting } from './tray'
-import { browserLogin, LOGIN_FLOWS } from './browser-login'
+import { browserLogin, LOGIN_FLOWS, mattermostFlow, rocketchatSsoLogin } from './browser-login'
 import { feedTwitchSignIn, twitchSignIn } from './twitch-signin'
 import { answerIntegrity, mintIntegrity } from './twitch-integrity'
 import { EDIT_ACTIONS, IPC, POPOUT_FLAG, UI_SHOTS_FLAG, type EditAction, type EditMenuRequest, type PopoutState } from '../shared/ipc'
@@ -1570,10 +1570,12 @@ function wireIpc(): void {
    * whether it worked comes back. Nothing in this path is logged: an error
    * from the daemon is passed through, but the token never appears in one.
    */
-  ipcMain.handle(IPC.browserLogin, async (_e, service: string, accountId?: string, options?: { useTor?: boolean }) => {
-    const flow = LOGIN_FLOWS[service]
-    if (!flow) return { ok: false, error: `No browser sign-in is defined for ${service}` }
-    const outcome = await browserLogin(service)
+  ipcMain.handle(IPC.browserLogin, async (_e, service: string, accountId?: string, options?: { useTor?: boolean; server?: string }) => {
+    // A Mattermost server is wherever the person says, so its flow is made for that server.
+    const server = service === 'mattermost' && typeof options?.server === 'string' ? options.server : ''
+    const flow = service === 'mattermost' ? mattermostFlow(server) : LOGIN_FLOWS[service]
+    if (!flow) return { ok: false, error: service === 'mattermost' ? 'Type the address of the Mattermost server first' : `No browser sign-in is defined for ${service}` }
+    const outcome = await browserLogin(service, { flow })
     if (!outcome.ok || !outcome.value) return { ok: false, error: outcome.error }
     try {
       await client.request(flow.finish.method, {
@@ -1583,6 +1585,8 @@ function wireIpc(): void {
         ...(typeof options?.useTor === 'boolean' ? { useTor: options.useTor } : {}),
         [flow.finish.param]: outcome.value,
         ...(outcome.extra ? { [outcome.extra.param]: outcome.extra.value } : {}),
+        // The session the server's page made is this client's own, and is ended at the server when the account goes.
+        ...(service === 'mattermost' ? { server, madeHere: true } : {}),
         ...(accountId ? { accountId } : {})
       })
       return { ok: true }
@@ -1596,6 +1600,27 @@ function wireIpc(): void {
     twitchSignIn((method, params) => client.request(method, params), {
       useTor: typeof options?.useTor === 'boolean' ? options.useTor : undefined
     })
+  )
+
+  // Rocket.Chat OAuth / SAML / OIDC / LDAP SSO browser sign-in capturing Meteor.loginToken.
+  ipcMain.handle(
+    IPC.rocketchatSsoLogin,
+    async (_e, serverUrl: string, options?: { useTor?: boolean }) => {
+      const outcome = await rocketchatSsoLogin(serverUrl)
+      if (!outcome.ok || !outcome.token) return { ok: false, error: outcome.error }
+      try {
+        await client.request('addRocketChatAccountToken', {
+          serverUrl,
+          authToken: outcome.token,
+          userId: outcome.userId ?? '',
+          madeHere: true,
+          ...(typeof options?.useTor === 'boolean' ? { useTor: options.useTor } : {})
+        })
+        return { ok: true }
+      } catch (e) {
+        return { ok: false, error: (e as Error).message }
+      }
+    }
   )
 
   ipcMain.handle(IPC.smiliesDir, () => smiliesPath())

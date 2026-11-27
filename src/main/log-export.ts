@@ -80,6 +80,8 @@ const KNOWN_STOPWORDS = new Set([
   'steam',
   'stoat',
   'fluxer',
+  'mattermost',
+  'rocketchat',
   'kick',
   'twitch',
   'jabber',
@@ -271,7 +273,7 @@ export class Anonymizer {
     //   xmpp[xmpp:alice@example.org] or xmpp[alice@example.org]
     //   sneedchat[sneedchat:Some User]
     s = s.replace(
-      /\b(discord|irc|matrix|sneedchat|xmpp|telegram|signal|steam|stoat|fluxer|kick|twitch)\[([^\]]+)\]/gi,
+      /\b(discord|irc|matrix|sneedchat|xmpp|telegram|signal|steam|stoat|fluxer|mattermost|rocketchat|kick|twitch)\[([^\]]+)\]/gi,
       (_m, proto: string, inner: string) => {
         const lower = proto.toLowerCase()
         // Strip leading "<proto>:" if present.
@@ -283,7 +285,7 @@ export class Anonymizer {
           const srv = this.tag('server', stripped.slice(at + 1).split('/')[0])
           return `${proto}[${u}@${srv}]`
         }
-        const kind = lower === 'discord' || lower === 'stoat' || lower === 'fluxer' ? 'account' : 'user'
+        const kind = lower === 'discord' || lower === 'stoat' || lower === 'fluxer' || lower === 'rocketchat' ? 'account' : 'user'
         return `${proto}[${this.tag(kind, kind === 'user' ? stripped : inner)}]`
       }
     )
@@ -291,7 +293,7 @@ export class Anonymizer {
     // Buffer IDs with pipe separator: discord:12345|Guild Name/#channel-name
     // Negative lookbehind/lookahead on `:` avoids Rust module paths like `nobilis::backend::xmpp::connect:`.
     s = s.replace(
-      /(?<!:)\b(discord|irc|matrix|sneedchat|xmpp|telegram|signal|steam|stoat|fluxer|kick|twitch):(?!:)([^|\s"']+)(?:\|([^/\s"'][^/\n"']*)\/(#?[^\s"',;:)]+))?/gi,
+      /(?<!:)\b(discord|irc|matrix|sneedchat|xmpp|telegram|signal|steam|stoat|fluxer|mattermost|kick|twitch):(?!:)([^|\s"']+)(?:\|([^/\s"'][^/\n"']*)\/(#?[^\s"',;:)]+))?/gi,
       (m, proto: string, acct: string, guild?: string, chan?: string) => {
         // Don't clobber already-tagged placeholders or plain "discord: rate limited" (space after colon).
         if (/^(account|user)#\d+$/.test(acct)) return m
@@ -320,7 +322,7 @@ export class Anonymizer {
       return this.tag('room', raw)
     }
     s = s.replace(
-      /(\b(?:(discord|irc|matrix|sneedchat|xmpp|telegram|signal|steam|stoat|fluxer|kick|twitch):)?account#\d+:?\s+(?:moving\s+)?)"([^"\n]+)"(\s+(?:is now|to)\s+)"([^"\n]+)"/gi,
+      /(\b(?:(discord|irc|matrix|sneedchat|xmpp|telegram|signal|steam|stoat|fluxer|mattermost|kick|twitch):)?account#\d+:?\s+(?:moving\s+)?)"([^"\n]+)"(\s+(?:is now|to)\s+)"([^"\n]+)"/gi,
       (_m, pre: string, proto: string | undefined, from: string, mid: string, to: string) =>
         `${pre}"${scrubQuotedBuffer(proto, from)}"${mid}"${scrubQuotedBuffer(proto, to)}"`
     )
