@@ -44,22 +44,22 @@ interface Protocol {
   available: boolean
 }
 
-/** What signing in to each service takes, in a line: what somebody choosing one wants to know first. */
+/** Single-line description of each service: what somebody choosing one wants to know first. */
 const SERVICE_BLURB: Record<AddableService, string> = {
-  irc: 'Any network, by its server and a nick',
-  discord: 'A QR code from your phone, or a token',
-  sneedchat: 'Kiwi Farms chat, signed in on the site',
-  matrix: 'Any homeserver: password, code or SSO',
-  kick: 'Stream chat, signed in or just reading',
-  steam: 'Friends and group chats',
-  twitch: 'Stream chat and whispers',
-  telegram: 'A phone number, or a QR code',
-  stoat: 'Any instance, by email or token',
-  fluxer: 'Any instance: username or email and password, or a session token',
-  mattermost: 'Any server: password, access token or single sign-on',
-  xmpp: 'An address on any server',
-  signal: 'Linked to the Signal on your phone',
-  rocketchat: 'Any self-hosted server: password + 2FA, personal access token, or SSO'
+  irc: 'A classic well proven protocol',
+  discord: 'Popular chat service for gamers and communities',
+  sneedchat: 'Kiwi Farms live chat service',
+  matrix: 'Decentralized, secure, and encrypted messaging protocol',
+  kick: 'Live streaming platform with interactive chat',
+  steam: 'Gaming platform for friends and group chats',
+  twitch: 'Live streaming platform for gaming and entertainment',
+  telegram: 'Cloud-based messaging with channels and groups',
+  stoat: 'Self hosted chat service designed to be an alternative to Discord',
+  fluxer: 'Self hosted chat service designed to be an alternative to Discord',
+  mattermost: 'Open-source, self-hosted team collaboration and chat',
+  xmpp: 'Open, federated instant messaging protocol',
+  signal: 'Privacy-focused messaging with end-to-end encryption',
+  rocketchat: 'Open-source, self-hosted team communication platform'
 }
 
 /**
@@ -229,9 +229,8 @@ export function AccountsPanel(): JSX.Element {
  * Adding an account: which service, then that service's own form.
  *
  * Two steps rather than a row of chips with a form opening under it. The
- * services need a line each to say what signing in takes - a token, a phone,
- * an address - and the form deserves the page to itself rather than the gap
- * between the chips and the list.
+ * services have a line each describing what they are, and the form deserves
+ * the page to itself rather than the gap between the chips and the list.
  */
 function AddAccount({
   service,
