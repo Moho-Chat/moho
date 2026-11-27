@@ -85,6 +85,16 @@ try {
   await shot('mattermost-thread.png')
   await ev('window.__mohoShots.store.closeThreadPanel()')
 
+  // The account's own tab: profile, custom status, threads, sessions.
+  await ev(`window.__mohoShots.store.setActivePanel('accounts')`)
+  await sleep(800)
+  await ev(`[...document.querySelectorAll('button, [role="button"], li')].find((x) => x.textContent.trim().startsWith('mohoa') && x.closest('nav, aside, .account-list, [class*="list"]'))?.click()`)
+  await sleep(800)
+  await ev(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim().endsWith('Mattermost') && b.closest('[role="tablist"], .page-tabs, .tabs, nav'))?.click() ?? [...document.querySelectorAll('button')].filter((b) => b.textContent.trim().endsWith('Mattermost')).pop()?.click()`)
+  await until(() => ev('!!document.querySelector(".account-tools")'), 10000)
+  await shot('mattermost-account.png')
+  await ev(`window.__mohoShots.store.setActivePanel?.('chat')`)
+
   // A direct message.
   const direct = await until(async () => (await rpc('listBuffers')).find((b) => b.accountId === account.id && b.remoteId === dm.id))
   await ev(`window.__mohoShots.store.selectBuffer(${JSON.stringify(direct.id)})`)

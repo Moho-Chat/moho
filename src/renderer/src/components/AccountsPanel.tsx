@@ -1,3 +1,4 @@
+import { MattermostAccountTools } from './MattermostAccountTools'
 import { SwitchRow } from './Switch'
 import { useEffect, useRef, useState } from 'react'
 import { Icon, ServiceMark } from './Icon'
@@ -473,6 +474,7 @@ const SERVICE_TAB: Partial<Record<Account['service'], string>> = {
   steam: 'What Steam says about the account, and where it is signed in',
   stoat: 'Your profile and sessions on this instance',
   fluxer: 'Your profile on this instance',
+  mattermost: 'Your profile, status, threads and sessions on this server',
   telegram: 'Your profile and where the account is signed in',
   signal: 'Linked devices, your username, stories and call links',
   xmpp: 'The server, your profile, and what it publishes for you',
@@ -756,6 +758,7 @@ function AccountPage({ account, serviceName }: { account: Account; serviceName: 
               {(account.service === 'stoat' || account.service === 'fluxer') && <StoatAccountTools account={account} />}
               {account.service === 'twitch' && <TwitchAccountTools account={account} />}
               {account.service === 'kick' && <KickFollowSync account={account} />}
+              {account.service === 'mattermost' && <MattermostAccountTools account={account} />}
             </div>
           </section>
         )}
