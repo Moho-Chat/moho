@@ -82,6 +82,7 @@ const KNOWN_STOPWORDS = new Set([
   'fluxer',
   'mattermost',
   'rocketchat',
+  'googlechat',
   'kick',
   'twitch',
   'jabber',
@@ -273,7 +274,7 @@ export class Anonymizer {
     //   xmpp[xmpp:alice@example.org] or xmpp[alice@example.org]
     //   sneedchat[sneedchat:Some User]
     s = s.replace(
-      /\b(discord|irc|matrix|sneedchat|xmpp|telegram|signal|steam|stoat|fluxer|mattermost|rocketchat|kick|twitch)\[([^\]]+)\]/gi,
+      /\b(discord|irc|matrix|sneedchat|xmpp|telegram|signal|steam|stoat|fluxer|mattermost|rocketchat|googlechat|kick|twitch)\[([^\]]+)\]/gi,
       (_m, proto: string, inner: string) => {
         const lower = proto.toLowerCase()
         // Strip leading "<proto>:" if present.
@@ -285,7 +286,7 @@ export class Anonymizer {
           const srv = this.tag('server', stripped.slice(at + 1).split('/')[0])
           return `${proto}[${u}@${srv}]`
         }
-        const kind = lower === 'discord' || lower === 'stoat' || lower === 'fluxer' || lower === 'rocketchat' ? 'account' : 'user'
+        const kind = lower === 'discord' || lower === 'stoat' || lower === 'fluxer' || lower === 'rocketchat' || lower === 'googlechat' ? 'account' : 'user'
         return `${proto}[${this.tag(kind, kind === 'user' ? stripped : inner)}]`
       }
     )

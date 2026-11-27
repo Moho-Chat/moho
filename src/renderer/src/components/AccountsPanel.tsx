@@ -34,7 +34,7 @@ import type { Account } from '../../../shared/wire'
  * that gains a backend appears here as soon as it gains a form, and one the
  * daemon stops offering disappears without this file being touched.
  */
-const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram', 'stoat', 'fluxer', 'mattermost', 'rocketchat', 'xmpp', 'signal'] as const
+const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram', 'stoat', 'fluxer', 'mattermost', 'rocketchat', 'googlechat', 'xmpp', 'signal'] as const
 type AddableService = (typeof FORMS)[number]
 
 /** What `listProtocols` answers with. */
@@ -59,7 +59,8 @@ const SERVICE_BLURB: Record<AddableService, string> = {
   mattermost: 'Open-source, self-hosted team collaboration and chat',
   xmpp: 'Open, federated instant messaging protocol',
   signal: 'Privacy-focused messaging with end-to-end encryption',
-  rocketchat: 'Open-source, self-hosted team communication platform'
+  rocketchat: 'Open-source, self-hosted team communication platform',
+  googlechat: "Google's messaging for Gmail and Google Workspace"
 }
 
 /**
@@ -72,7 +73,8 @@ const SERVICE_STAGE: Partial<Record<AddableService, { words: string; tone: 'red'
   signal: { words: '(Alpha) (DANGEROUS)', tone: 'red' },
   sneedchat: { words: '(Beta)', tone: 'green' },
   fluxer: { words: '(Beta)', tone: 'green' },
-  mattermost: { words: '(Beta)', tone: 'green' }
+  mattermost: { words: '(Beta)', tone: 'green' },
+  googlechat: { words: '(Alpha)', tone: 'red' }
 }
 
 function ServiceStage({ service }: { service: AddableService }): JSX.Element | null {
@@ -328,6 +330,7 @@ function AddAccount({
         {service === 'signal' && <SignalForm onDone={onDone} />}
         {service === 'xmpp' && <XmppForm onDone={onDone} />}
         {service === 'rocketchat' && <RocketChatForm onDone={onDone} />}
+        {service === 'googlechat' && <GoogleChatForm onDone={onDone} />}
       </div>
       {onCancel && (
         <div className="page-foot">
@@ -1517,6 +1520,58 @@ function KickForm({ onDone }: { onDone: () => void }): JSX.Element {
       <p className="small muted">
         Signing in opens Kick&apos;s own page in a browser window. Your password goes into their
         form and never passes through moho, and the window is thrown away afterwards.
+      </p>
+    </div>
+  )
+}
+
+/**
+ * Google Chat: signing in on Google's own pages in a window of its own, which is the only way in. Google gives a
+ * client like this no OAuth for Chat - its public Chat API is for Workspace apps with a Cloud project of their own -
+ * so the account is the session that sign-in leaves, as the web app itself uses it. 2-Step Verification, passkeys
+ * and a Workspace's single sign-on all happen in that window, on Google's pages.
+ */
+function GoogleChatForm({ onDone }: { onDone: () => void }): JSX.Element {
+  const store = useStore()
+  const [busy, setBusy] = useState(false)
+  const [useTor, setUseTor] = useState(false)
+  return (
+    <div className="add-form">
+      <p className="small muted">
+        Works with a personal Gmail account and with Google Workspace. moho speaks the protocol the Google Chat web app
+        speaks; Google offers no other way in for a client like this one.
+      </p>
+      <TorSwitch service="googlechat" on={useTor} onChange={setUseTor} />
+      <div className="field-row">
+        <button
+          type="button"
+          className="button primary"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true)
+            void window.moho
+              .browserLogin('googlechat', undefined, { useTor })
+              .then((r) => {
+                setBusy(false)
+                if (r.ok) {
+                  store.toast('info', 'Google Chat account added.')
+                  onDone()
+                } else if (r.error && r.error !== 'cancelled') store.toast('error', r.error)
+              })
+              .catch((e: Error) => {
+                setBusy(false)
+                store.toast('error', e.message)
+              })
+          }}
+        >
+          {busy ? 'Waiting…' : 'Sign in with Google'}
+        </button>
+      </div>
+      <p className="small muted">
+        Opens Google&apos;s own sign-in page in a browser window. Your password and second factor go into Google&apos;s
+        form and never pass through moho; what moho keeps is the session that window ends up with, and the window is
+        thrown away afterwards. Signing out of that session elsewhere (Google Account → Security → Your devices) signs
+        moho out too.
       </p>
     </div>
   )
@@ -3378,6 +3433,9 @@ function TorWarning({ service }: { service: Account['service'] }): JSX.Element |
   } else if (service === 'telegram') {
     text =
       "Telegram often challenges or limits a sign-in that comes from Tor or a VPN, and signing in from a new address can put the account's other sessions on alert. Sign in once from your usual connection, then route it if you need to."
+  } else if (service === 'googlechat') {
+    text =
+      'Google often challenges, or signs out, a session that is suddenly used from Tor or a proxy. The session is made in the sign-in window over your own connection, so using it from Tor afterwards may end it.'
   } else if (service === 'irc' || service === 'matrix') {
     text = `Each ${service === 'irc' ? 'network' : 'homeserver'} has its own policy on Tor, and many block its exit points. A SOCKS5 proxy you host yourself may be accepted where Tor is not.`
   } else {
@@ -3388,7 +3446,7 @@ function TorWarning({ service }: { service: Account['service'] }): JSX.Element |
       <Icon name="warning" size={16} />
       <span>
         {text}
-        {(service === 'discord' || service === 'kick') &&
+        {(service === 'discord' || service === 'kick' || service === 'googlechat') &&
           ' The sign-in window is not routed unless everything is tunnelled in Settings → Tor.'}
       </span>
     </div>

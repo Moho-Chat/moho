@@ -84,6 +84,20 @@ export interface LoginFlow {
    * a second parameter; a page that does not answer simply sends nothing.
    */
   alsoRead?: { param: string; script: string }
+  /**
+   * Present the window as the Chromium it is, without the `Electron/` and `moho/` words Electron adds to the user
+   * agent. Google refuses to sign anybody in from a page whose user agent names an embedded browser ("This browser or
+   * app may not be secure"), whatever the browser underneath.
+   */
+  plainUserAgent?: boolean
+}
+
+/** The user agent Chromium itself would send: Electron's, without the words naming Electron and the app. */
+export function plainUserAgent(ua: string): string {
+  return ua
+    .replace(/\s(Electron|moho)\/\S+/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
 }
 
 /**
@@ -145,6 +159,25 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     // (made for chat and the official API) is not. It goes straight to the daemon, for the account named.
     capture: { kind: 'cookie', name: 'auth-token', url: 'https://www.twitch.tv', fallback: { name: 'twilight-user', key: 'authToken' } },
     finish: { method: 'setTwitchWebToken', param: 'token' }
+  },
+  googlechat: {
+    label: 'Google',
+    // chat.google.com sends a signed-out visitor to Google's sign-in page and brings them back once signed in.
+    url: 'https://chat.google.com/',
+    // Nothing is read off a request: the session is the cookies Google sets.
+    watch: [],
+    // Every cookie the web app sends to chat.google.com (Google's own, set on .google.com, and the app's COMPASS and
+    // OSID) - but only once the page is the web app with somebody signed in, not a sign-in step along the way.
+    capture: {
+      kind: 'cookies',
+      url: 'https://chat.google.com/u/0/',
+      signedIn:
+        "(() => { try { const w = window.WIZ_global_data; return location.hostname === 'chat.google.com' && !(w && w.qwAQke === 'AccountsSignInUi') } catch (e) { return false } })()"
+    },
+    finish: { method: 'addGoogleChatAccount', param: 'cookies' },
+    // The daemon's requests carry the window's own user agent, so Google sees the session used by one browser.
+    alsoRead: { param: 'userAgent', script: 'navigator.userAgent' },
+    plainUserAgent: true
   },
   kick: {
     label: 'Kick',
@@ -241,6 +274,7 @@ export async function browserLogin(
   const ses = session.fromPartition(partition)
   // Through Tor or the proxy when everything is tunnelled, like the window.
   await routeSession(ses)
+  if (flow.plainUserAgent) ses.setUserAgent(plainUserAgent(ses.getUserAgent()))
 
   const win = new BrowserWindow({
     width: 520,
