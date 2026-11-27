@@ -24,6 +24,15 @@ const SAMPLE_HEADER: LogExportHeader = {
 }
 
 describe('Anonymizer', () => {
+  it('scrubs a Mattermost account, whose id names its server, and its session cookie', () => {
+    const a = new Anonymizer()
+    // A Mattermost account names its server, which is as private as the account.
+    const mm = a.line('mattermost[mattermost:chat.example.org:bx955xywntf83q76gx1ost4pkr]: connected as bx955xywntf83q76gx1ost4pkr (resuming)')
+    expect(mm).not.toContain('chat.example.org')
+    expect(mm).not.toContain('bx955xywntf83q76gx1ost4pkr')
+    expect(a.line('Cookie: MMAUTHTOKEN=abcdefghijklmnop')).not.toContain('abcdefghijklmnop')
+  })
+
   it('removes passwords, tokens, cookies, auth headers and JWTs', () => {
     const a = new Anonymizer()
     expect(a.line('[nobilis] matrix @Mohouser:matrix.org login token=syt_TW9ob3VzZXI ok')).toBe(
