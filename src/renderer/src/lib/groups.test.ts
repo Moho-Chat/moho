@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BufferEntry } from '../state/store'
 import {
-  badgesHolding,
+  badgesShown,
   compareInBand,
   countedFor,
   dissolveFolder,
@@ -164,11 +164,22 @@ describe('protocol badges as folders', () => {
     expect(outline(railEntries(groups, folders))).toEqual(['n[a account:stoat:badge:account:stoat[s1 s2]]'])
   })
 
-  it('is shown while it holds something, though its account has nothing of its own', () => {
+  it('is shown while the account has servers, though it has nothing of its own', () => {
     const folders = fileNewServers(groups, { order: [], folders: [] })!
     const shown = groups.filter((g) => g.kind !== 'account')
-    expect(badgesHolding(groups, shown, folders).map((g) => g.id)).toEqual(['account:stoat'])
-    expect(badgesHolding(groups, [group('a')], folders)).toEqual([])
+    expect(badgesShown(groups, shown, folders).map((g) => g.id)).toEqual(['account:stoat'])
+    // With nothing in it, and every server placed elsewhere: still its badge.
+    const placed = moveInRail(groups, { order: [], folders }, 's1', { kind: 'end' })
+    const emptied = moveInRail(groups, placed, 's2', { kind: 'end' })
+    expect(badgesShown(groups, shown, emptied.folders).map((g) => g.id)).toEqual(['account:stoat'])
+    // An account with no servers and nothing of its own has no tile at all.
+    expect(badgesShown([group('a'), acct], [group('a')], [])).toEqual([])
+  })
+
+  it('is made for an account whose servers were all placed before badges existed', () => {
+    const folders = fileNewServers(groups, { order: ['s1', 's2'], folders: [] })!
+    expect(folders).toEqual([{ id: 'badge:account:stoat', name: 'account:stoat', members: [], head: 'account:stoat' }])
+    expect(outline(railEntries(groups, folders))).toEqual(['a', 'account:stoat:badge:account:stoat[]', 's1', 's2'])
   })
 
   it('is emptied, not removed, when everything is taken out', () => {

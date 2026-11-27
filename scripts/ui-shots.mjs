@@ -1320,6 +1320,26 @@ const SCENES = [
     clip: { x: 0, y: 44, width: 280, height: 420 }
   },
   {
+    // Discord's badge, though every guild was placed before badges existed:
+    // it has no page of its own and holds nothing yet, but is still there to
+    // drop guilds into.
+    name: 'rail-badge-discord',
+    setup: async (p) => {
+      const DISCORD_HEAD = `window.__mohoShots.patch({ groups: [...window.__mohoShots.state().groups.filter((g) => g.id !== 'account:discord:shots'), { id: 'account:discord:shots', accountId: 'discord:shots', service: 'discord', kind: 'account', name: 'Salastil', position: 4 }] }), true`
+      await p.evaluate(`window.moho.prefs.set('ui.railOrder', ['discord:shots|guild:1', 'discord:shots|guild:2'])`)
+      await railWith([], '')(p)
+      for (let i = 0; i < 2; i++) {
+        await p.evaluate(DISCORD_HEAD)
+        await sleep(900)
+        await p.evaluate(DISCORD)
+        await p.evaluate(STOAT)
+      }
+      await p.evaluate(DISCORD_HEAD)
+      await sleep(600)
+    },
+    clip: { x: 0, y: 44, width: 280, height: 420 }
+  },
+  {
     // The pointer over the close button (#291): red, and the maximise glyph.
     name: 'titlebar-close-hover',
     setup: async (p) => {

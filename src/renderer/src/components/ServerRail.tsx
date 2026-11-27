@@ -26,7 +26,7 @@ import {
   fileNewServers,
   withBadgeFolder,
   withSynced,
-  badgesHolding,
+  badgesShown,
   normalizedFolders,
   ancestorsOf,
   parentOf,
@@ -507,10 +507,10 @@ export function ServerRail(): JSX.Element | null {
   }
 
   // What the rail can select, and the account entries it shows besides only
-  // because their badge holds servers.
+  // as badges - Discord's, which has no page of its own.
   const selectable = visibleGroups(groups, all)
   const selectableIds = new Set(selectable.map((g) => g.id))
-  const shown = [...selectable, ...badgesHolding(groups, selectable, effectiveFolders)]
+  const shown = [...selectable, ...badgesShown(groups, selectable, effectiveFolders)]
   const extras: RailGroup[] = []
   // Only worth a tile once there is something on it.
   if (all.some(isDirectMessage)) extras.push(dmGroup())
@@ -701,7 +701,9 @@ export function ServerRail(): JSX.Element | null {
             if (head && selectableIds.has(head.id) && activeGroupId !== head.id) {
               store.selectGroup(head.id)
               if (!open && entry.children.length > 0) setExpanded(entry.id)
-            } else if (!head || open || entry.children.length > 0) {
+            } else if (!head || open || entry.children.length > 0 || !selectableIds.has(head.id)) {
+              // A badge with no page and nothing in it still opens, empty:
+              // a click that did nothing would read as a broken tile.
               toggleFolder(entry.id)
             }
           }}

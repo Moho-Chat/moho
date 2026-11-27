@@ -661,7 +661,8 @@ export function dissolveFolder(
 }
 
 /**
- * Files each server the rail has never placed under its account's badge.
+ * Files each server the rail has never placed under its account's badge, and
+ * gives every account that has servers a badge to file them under.
  *
  * "Never placed" is neither in the saved order nor in any folder: a server
  * somebody took out of its badge's folder is in the order from that moment, so
@@ -676,26 +677,29 @@ export function fileNewServers(
   for (const f of [...layout.folders, ...synced]) for (const m of f.members) known.add(m)
   let folders = layout.folders
   for (const g of groups) {
-    if ((g.kind !== 'guild' && g.kind !== 'space') || known.has(g.id)) continue
+    if (g.kind !== 'guild' && g.kind !== 'space') continue
     const head = groups.find((h) => h.kind === 'account' && h.accountId === g.accountId)
     if (!head) continue
-    folders = withBadgeFolder(folders, head).map((f) =>
-      f.head === head.id ? { ...f, members: [...f.members, g.id] } : f
-    )
+    // Every account with servers has its badge, even when all of them were
+    // placed elsewhere: it is where they go back to.
+    folders = withBadgeFolder(folders, head)
+    if (known.has(g.id)) continue
+    folders = folders.map((f) => (f.head === head.id ? { ...f, members: [...f.members, g.id] } : f))
     known.add(g.id)
   }
   return folders === layout.folders ? null : folders
 }
 
 /**
- * The account entries the rail has to show because their badge holds something
- * here, though the account has nothing of its own to open.
+ * The account entries the rail has to show as badges, though the account has
+ * nothing of its own to open.
  *
- * Discord's account entry is hidden while all its channels live in guilds - it
- * would open an empty pane - but as the folder its guilds were filed into it is
- * the way to them.
+ * Discord's account entry would open an empty pane - all its channels live in
+ * guilds - so it is no page. But it is the folder its guilds are filed in, and
+ * the place to drop one back into, so it shows for as long as the account has
+ * servers, or its badge holds anything at all.
  */
-export function badgesHolding(groups: RailGroup[], shown: RailGroup[], given: RailFolder[]): RailGroup[] {
+export function badgesShown(groups: RailGroup[], shown: RailGroup[], given: RailFolder[]): RailGroup[] {
   const folders = normalizedFolders(given)
   const here = new Set(shown.map((g) => g.id))
   const byId = new Map(folders.map((f) => [f.id, f]))
@@ -708,8 +712,12 @@ export function badgesHolding(groups: RailGroup[], shown: RailGroup[], given: Ra
       return !!child && !seen.has(inner) && (here.has(child.head ?? '') || holdsAny(child, seen))
     })
   }
+  const withServers = new Set(groups.filter((g) => g.kind === 'guild' || g.kind === 'space').map((g) => g.accountId))
   return groups.filter(
-    (g) => g.kind === 'account' && !here.has(g.id) && folders.some((f) => f.head === g.id && holdsAny(f, new Set()))
+    (g) =>
+      g.kind === 'account' &&
+      !here.has(g.id) &&
+      folders.some((f) => f.head === g.id && (withServers.has(g.accountId) || holdsAny(f, new Set())))
   )
 }
 
