@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import type { BufferEntry } from '../state/store'
 import {
+  badgesHolding,
   compareInBand,
   countedFor,
-  fileInFolder,
+  dissolveFolder,
+  fileNewServers,
+  folderRef,
   foldTogether,
+  moveInRail,
   orderedGroups,
   railEntries,
-  removeFromFolders,
-  reorder,
-  reorderFolder,
   waitingCount,
+  type RailEntry,
   type RailFolder,
   type RailGroup
 } from './groups'
@@ -31,22 +33,35 @@ describe('the server rail', () => {
 
   it('moves a dragged group to where it was dropped, never moving the fixed ones', () => {
     const ordered = orderedGroups(groups, [])
-    expect(reorder(ordered, 'c', 'a')).toEqual(['c', 'a', 'b'])
-    expect(reorder(ordered, 'dm', 'a')).toEqual(['a', 'b', 'c'])
-    expect(reorder(ordered, 'a', 'a')).toEqual(['a', 'b', 'c'])
+    const layout = { order: [], folders: [] }
+    expect(moveInRail(ordered, layout, 'c', { kind: 'beside', target: 'a', after: false }).order).toEqual(['c', 'a', 'b'])
+    expect(moveInRail(ordered, layout, 'a', { kind: 'beside', target: 'c', after: true }).order).toEqual(['b', 'c', 'a'])
+    expect(moveInRail(ordered, layout, 'a', { kind: 'beside', target: 'a', after: false })).toBe(layout)
+  })
+
+  it('remembers where servers it cannot see right now were', () => {
+    const ordered = orderedGroups(groups, ['offline', 'a', 'b', 'c'])
+    expect(moveInRail(ordered, { order: ['offline', 'a', 'b', 'c'], folders: [] }, 'c', { kind: 'beside', target: 'a', after: false }).order).toEqual(['c', 'a', 'b', 'offline'])
   })
 
   it('moves a folder as one block', () => {
     const ordered = orderedGroups(groups, [])
-    const folder: RailFolder = { id: 'f', name: 'F', members: ['b', 'c'] }
-    expect(reorderFolder(ordered, folder, 'a')).toEqual(['b', 'c', 'a'])
-    // Dropped onto one of its own members: nothing moves.
-    expect(reorderFolder(ordered, folder, 'c')).toEqual(['a', 'b', 'c'])
+    const folders: RailFolder[] = [{ id: 'f', name: 'F', members: ['b', 'c'] }]
+    const moved = moveInRail(ordered, { order: [], folders }, folderRef('f'), { kind: 'beside', target: 'a', after: false })
+    expect(moved.order).toEqual(['b', 'c', 'a'])
+    expect(railEntries(orderedGroups(groups, moved.order), moved.folders).map((e) => e.id)).toEqual(['dm', 'pin', 'f', 'a'])
   })
 })
 
+/** The rail as an outline: a folder is its id with what it holds in brackets. */
+const outline = (entries: RailEntry[]): string[] =>
+  entries.map((e) =>
+    e.kind === 'group' ? e.id : `${e.head ? `${e.head.id}:` : ''}${e.id}[${outline(e.children).join(' ')}]`
+  )
+
 describe('folders', () => {
   const ordered = [group('a'), group('b'), group('c'), group('d')]
+  const layoutOf = (folders: RailFolder[], order: string[] = []) => ({ order, folders })
 
   it('sits where its first member is, and keeps the rest of the column in order', () => {
     const entries = railEntries(ordered, [{ id: 'f', name: 'F', members: ['c', 'b'] }])
@@ -59,13 +74,15 @@ describe('folders', () => {
     expect(railEntries([], [{ id: 'f', name: 'F', members: ['gone'] }]).map((e) => e.id)).toEqual(['f'])
   })
 
-  it('makes a folder of two, or adds to the folder already there', () => {
-    const made = foldTogether([], 'a', 'b')
-    expect(made).toHaveLength(1)
-    expect(made[0].members).toEqual(['a', 'b'])
-    const added = foldTogether(made, 'a', 'c')
-    expect(added).toHaveLength(1)
-    expect(added[0].members).toEqual(['a', 'b', 'c'])
+  it('makes a folder of two, in the place of the one already there', () => {
+    const made = foldTogether(ordered, layoutOf([]), 'b', 'd', [], 'n')
+    expect(made.folders).toEqual([{ id: 'n', name: 'New folder', members: ['b', 'd'] }])
+    expect(outline(railEntries(orderedGroups(ordered, made.order), made.folders))).toEqual(['a', 'n[b d]', 'c'])
+  })
+
+  it('makes a folder inside a folder when two inside it are dropped together', () => {
+    const made = foldTogether(ordered, layoutOf([{ id: 'f', name: 'F', members: ['a', 'b', 'c'] }]), 'b', 'c', [], 'n')
+    expect(outline(railEntries(ordered, made.folders))).toEqual(['f[a n[b c]]', 'd'])
   })
 
   it('keeps a server in one folder at a time', () => {
@@ -73,10 +90,93 @@ describe('folders', () => {
       { id: 'x', name: 'X', members: ['a', 'b'] },
       { id: 'y', name: 'Y', members: ['c'] }
     ]
-    const moved = fileInFolder(folders, 'y', 'a')
-    expect(moved.find((f) => f.id === 'x')?.members).toEqual(['b'])
-    expect(moved.find((f) => f.id === 'y')?.members).toEqual(['c', 'a'])
-    expect(removeFromFolders(moved, 'c').find((f) => f.id === 'y')?.members).toEqual(['a'])
+    const moved = moveInRail(ordered, layoutOf(folders), 'a', { kind: 'into', folder: 'y' })
+    expect(moved.folders.find((f) => f.id === 'x')?.members).toEqual(['b'])
+    expect(moved.folders.find((f) => f.id === 'y')?.members).toEqual(['c', 'a'])
+  })
+
+  it('puts something dropped beside a server in a folder into that folder, beside it', () => {
+    const moved = moveInRail(ordered, layoutOf([{ id: 'f', name: 'F', members: ['a', 'b'] }]), 'd', { kind: 'beside', target: 'a', after: true })
+    expect(outline(railEntries(ordered, moved.folders))).toEqual(['f[a d b]', 'c'])
+  })
+
+  it('takes a server out of its folder and puts it last when dropped below the column', () => {
+    const moved = moveInRail(ordered, layoutOf([{ id: 'f', name: 'F', members: ['a', 'b'] }]), 'a', { kind: 'end' })
+    expect(outline(railEntries(orderedGroups(ordered, moved.order), moved.folders))).toEqual(['f[b]', 'c', 'd', 'a'])
+  })
+
+  it('nests one folder inside another, and never one inside itself', () => {
+    const folders: RailFolder[] = [
+      { id: 'x', name: 'X', members: ['a'] },
+      { id: 'y', name: 'Y', members: ['c'] }
+    ]
+    const nested = moveInRail(ordered, layoutOf(folders), folderRef('y'), { kind: 'into', folder: 'x' })
+    expect(outline(railEntries(ordered, nested.folders))).toEqual(['x[a y[c]]', 'b', 'd'])
+    // Back the other way would put x inside something that is inside x.
+    expect(moveInRail(ordered, nested, folderRef('x'), { kind: 'into', folder: 'y' })).toBe(nested)
+    expect(moveInRail(ordered, nested, folderRef('x'), { kind: 'beside', target: 'c', after: false })).toBe(nested)
+  })
+
+  it('leaves what a removed folder held where it was, nested folders included', () => {
+    const folders: RailFolder[] = [
+      { id: 'x', name: 'X', members: ['a', folderRef('y'), 'b'] },
+      { id: 'y', name: 'Y', members: ['c'] }
+    ]
+    const gone = dissolveFolder(ordered, layoutOf(folders), 'x')
+    expect(outline(railEntries(orderedGroups(ordered, gone.order), gone.folders))).toEqual(['a', 'y[c]', 'b', 'd'])
+    const inner = dissolveFolder(ordered, layoutOf(folders), 'y')
+    expect(outline(railEntries(ordered, inner.folders))).toEqual(['x[a c b]', 'd'])
+  })
+})
+
+describe('protocol badges as folders', () => {
+  const stoat = (id: string, kind = 'guild') => ({ ...group(id, kind), accountId: 'stoat' }) as RailGroup
+  const acct = stoat('account:stoat', 'account')
+  const groups = [group('a'), acct, stoat('s1'), stoat('s2')]
+
+  it('files a server the account joins under its badge, and not one the rail already placed', () => {
+    const filed = fileNewServers(groups, { order: ['s1'], folders: [] })!
+    expect(filed).toEqual([{ id: 'badge:account:stoat', name: 'account:stoat', members: ['s2'], head: 'account:stoat' }])
+    expect(fileNewServers(groups, { order: ['s1'], folders: filed })).toBeNull()
+    expect(outline(railEntries(groups, filed))).toEqual(['a', 'account:stoat:badge:account:stoat[s2]', 's1'])
+  })
+
+  it('remembers a server taken out of its badge, so it is not filed back', () => {
+    const folders = fileNewServers(groups, { order: [], folders: [] })!
+    const out = moveInRail(groups, { order: [], folders }, 's1', { kind: 'end' })
+    expect(outline(railEntries(orderedGroups(groups, out.order), out.folders))).toEqual(['a', 'account:stoat:badge:account:stoat[s2]', 's1'])
+    expect(fileNewServers(groups, out)).toBeNull()
+    // And back in.
+    const back = moveInRail(groups, out, 's1', { kind: 'into', folder: 'badge:account:stoat' })
+    expect(outline(railEntries(groups, back.folders))).toEqual(['a', 'account:stoat:badge:account:stoat[s2 s1]'])
+  })
+
+  it('nests inside a folder with everything under it', () => {
+    const folders = fileNewServers(groups, { order: [], folders: [] })!
+    const made = foldTogether(groups, { order: [], folders }, 'a', folderRef('badge:account:stoat'), [], 'n')
+    expect(outline(railEntries(orderedGroups(groups, made.order), made.folders))).toEqual([
+      'n[a account:stoat:badge:account:stoat[s1 s2]]'
+    ])
+  })
+
+  it('becomes the folder wherever its account tile had been filed before it held anything', () => {
+    const folders = fileNewServers(groups, { order: [], folders: [{ id: 'n', name: 'N', members: ['a', 'account:stoat'] }] })!
+    expect(outline(railEntries(groups, folders))).toEqual(['n[a account:stoat:badge:account:stoat[s1 s2]]'])
+  })
+
+  it('is shown while it holds something, though its account has nothing of its own', () => {
+    const folders = fileNewServers(groups, { order: [], folders: [] })!
+    const shown = groups.filter((g) => g.kind !== 'account')
+    expect(badgesHolding(groups, shown, folders).map((g) => g.id)).toEqual(['account:stoat'])
+    expect(badgesHolding(groups, [group('a')], folders)).toEqual([])
+  })
+
+  it('is emptied, not removed, when everything is taken out', () => {
+    const folders = fileNewServers(groups, { order: [], folders: [] })!
+    const emptied = dissolveFolder(groups, { order: [], folders }, 'badge:account:stoat')
+    expect(emptied.folders).toEqual([{ ...folders[0], members: [] }])
+    expect(emptied.order).toEqual(['a', 'account:stoat', 's1', 's2'])
+    expect(fileNewServers(groups, emptied)).toBeNull()
   })
 })
 

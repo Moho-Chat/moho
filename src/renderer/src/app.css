@@ -6067,7 +6067,8 @@ video.lightbox-media {
   cursor: grabbing;
 }
 
-.rail-tile.drop-target::before {
+.rail-tile.drop-before::before,
+.rail-tile.drop-after::before {
   content: '';
   position: absolute;
   top: -3px;
@@ -6076,6 +6077,11 @@ video.lightbox-media {
   height: 2px;
   border-radius: 2px;
   background: var(--primary);
+}
+
+.rail-tile.drop-after::before {
+  top: auto;
+  bottom: -3px;
 }
 
 /* Per-server icon overrides, inside an account's card. */
@@ -7482,6 +7488,12 @@ video.lightbox-media {
   border-radius: var(--corner-radius);
 }
 
+/* A folder open inside another: its panel sits inside that one's, a shade
+   lighter again, so how deep you are reads without counting borders. */
+.rail-folder-group.open .rail-folder-group.open {
+  background: var(--surface-container);
+}
+
 /* Squarer than a server tile, so a folder is not mistaken for one. */
 .rail-folder .rail-face {
   border-radius: var(--corner-radius);
@@ -7522,11 +7534,6 @@ video.lightbox-media {
 
 .folder-chip .rail-initials {
   font-size: 8px;
-}
-
-.rail-tile.drop-target .rail-face {
-  outline: 2px solid var(--primary);
-  outline-offset: 1px;
 }
 
 /* --- user footer ------------------------------------------------------ */
