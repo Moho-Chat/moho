@@ -30,6 +30,7 @@ import { Notifier } from './notifications'
 import { IdleWatcher } from './idle'
 import { NOTHING_WAITING, PAUSED_FOREVER, isPaused, pauseEnd, trayIconFile, trayMenu, trayTooltip, type TrayMode, type TrayState, type TrayStatus, type TrayWaiting } from './tray'
 import { browserLogin, LOGIN_FLOWS, mattermostFlow, rocketchatSsoLogin } from './browser-login'
+import { googleSignIn } from './google-signin'
 import { feedTwitchSignIn, twitchSignIn } from './twitch-signin'
 import { answerIntegrity, mintIntegrity } from './twitch-integrity'
 import { EDIT_ACTIONS, IPC, POPOUT_FLAG, UI_SHOTS_FLAG, type EditAction, type EditMenuRequest, type PopoutState } from '../shared/ipc'
@@ -1571,6 +1572,23 @@ function wireIpc(): void {
    * from the daemon is passed through, but the token never appears in one.
    */
   ipcMain.handle(IPC.browserLogin, async (_e, service: string, accountId?: string, options?: { useTor?: boolean; server?: string }) => {
+    // Google refuses to sign in from any window of moho's, so its sign-in happens in Firefox (google-signin.ts). The
+    // session goes from there straight to the daemon, as every other sign-in's does.
+    if (service === 'googlechat') {
+      const outcome = await googleSignIn((m) => log.info(`[google-signin] ${m}`))
+      if (!outcome.ok || !outcome.cookies) return { ok: false, error: outcome.error }
+      try {
+        await client.request('addGoogleChatAccount', {
+          cookies: outcome.cookies,
+          userAgent: outcome.userAgent ?? '',
+          ...(typeof options?.useTor === 'boolean' ? { useTor: options.useTor } : {}),
+          ...(accountId ? { accountId } : {})
+        })
+        return { ok: true }
+      } catch (e) {
+        return { ok: false, error: (e as Error).message }
+      }
+    }
     // A Mattermost server is wherever the person says, so its flow is made for that server.
     const server = service === 'mattermost' && typeof options?.server === 'string' ? options.server : ''
     const flow = service === 'mattermost' ? mattermostFlow(server) : LOGIN_FLOWS[service]

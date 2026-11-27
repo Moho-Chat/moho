@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 /**
- * Google Chat's way in, in the window: the service among the others on the add page, its form, and the sign-in window
- * it opens - which has to reach Google's own sign-in page (chat.google.com sends a signed-out visitor there) and present
- * itself as Firefox: Google's sign-in refuses a Chromium it takes for an embedded one. Nothing is typed into Google's
- * page; the window is closed again, which the form takes as a decision rather than an error.
+ * Google Chat's way in: the service among the others on the add page, its form, and the sign-in it starts - Firefox,
+ * with a profile of its own, on Google's Chat sign-in (Google refuses every Electron window). Nothing is typed into
+ * Google's page: Firefox is closed again, which is a cancel, makes no account, and leaves no profile behind.
  *
  *   npx electron-vite build && node scripts/check-googlechat-signin.mjs <output directory>
  */
@@ -59,35 +58,47 @@ try {
   await shot(page, 'googlechat-form.png')
 
   await ev(`(window.__signin = window.moho.browserLogin('googlechat', undefined, { useTor: false }).then((r) => { window.__outcome = JSON.stringify(r) }), true)`)
-  const target = await until(async () => {
-    const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json()
-    return list.find((t) => t.type === 'page' && /accounts\.google\.com/.test(t.url))
-  }, 45000)
-  check('the window reaches Google’s own sign-in page', !!target)
+  // Firefox, with a profile of its own, on Google's sign-in: found by its command line.
+  const firefox = await until(() => {
+    const out = execFileSync('ps', ['-eo', 'pid=,args='], { encoding: 'utf8' })
+    const line = out.split('\n').find((l) => /firefox/.test(l) && /moho-google-[^/ ]+\/profile/.test(l))
+    return line ? { pid: Number(line.trim().split(/\s+/)[0]), profile: /(\S*moho-google-[^/ ]+\/profile)/.exec(line)[1] } : null
+  }, 20000)
+  check('Firefox opens with a profile of its own', !!firefox)
   try {
     const clients = JSON.parse(execFileSync('hyprctl', ['clients', '-j'], { encoding: 'utf8' }))
-    for (const c of clients.filter((c) => /Sign in to Google/.test(c.title))) {
+    for (const c of clients.filter((c) => /firefox/i.test(c.class) && c.pid === firefox?.pid)) {
       execFileSync('hyprctl', ['dispatch', `hl.dsp.window.move({ window = "address:${c.address}", workspace = "2", silent = true })`])
     }
   } catch {
     /* not on Hyprland */
   }
-  if (target) {
-    const login = cdp(target.webSocketDebuggerUrl)
-    // Attached early, the page can still be the window's first blank one: Google's is waited for.
-    await until(() => login.evaluate(`location.hostname === 'accounts.google.com' && document.readyState === 'complete'`), 30000)
-    const ua = await login.evaluate('navigator.userAgent')
-    check('it presents itself as Firefox', /Firefox\//.test(ua) && !/Chrome|Electron|moho/i.test(ua), ua)
-    const ready = await until(() => login.evaluate(`!!document.querySelector('#identifierId, input[name=identifier], input[type=email]')`), 20000)
-    check('Google asks for an email address (not "this browser may not be secure")', !!ready)
-    await shot(login, 'googlechat-google-signin.png')
-    login.close()
-    await fetch(`http://127.0.0.1:${port}/json/close/${target.id}`)
+  if (firefox) {
+    // Google's sign-in page sets its first cookies as it loads, which says the page is there.
+    const loaded = await until(() => {
+      const db = path.join(firefox.profile, 'cookies.sqlite')
+      if (!fs.existsSync(db)) return false
+      const copy = path.join(out, 'probe-cookies.sqlite')
+      fs.copyFileSync(db, copy)
+      if (fs.existsSync(db + '-wal')) fs.copyFileSync(db + '-wal', copy + '-wal')
+      const hosts = execFileSync('sqlite3', [copy, "select distinct host from moz_cookies where host like '%google.com'"], { encoding: 'utf8' })
+      for (const f of [copy, copy + '-wal', copy + '-shm']) fs.rmSync(f, { force: true })
+      return hosts.includes('accounts.google.com')
+    }, 40000)
+    check('Google’s sign-in page loads in it', !!loaded)
+    // Closing Firefox: the way a person gives up.
+    try {
+      process.kill(firefox.pid, 'SIGTERM')
+    } catch {
+      /* gone */
+    }
   }
   const outcome = await until(() => ev('window.__outcome'), 15000)
   check('closing the window is a cancel, not an error', !!outcome && JSON.parse(outcome).error === 'cancelled', outcome)
   const accounts = await ev(`window.moho.rpc('listAccounts')`)
   check('no account was made', !accounts.some((a) => a.service === 'googlechat'))
+  await sleep(4000)
+  check('the profile is deleted afterwards', !!firefox && !fs.existsSync(firefox.profile))
 } catch (e) {
   console.log('probe stopped:', e.stack)
   results.push(false)

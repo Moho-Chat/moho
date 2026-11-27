@@ -1568,10 +1568,11 @@ function GoogleChatForm({ onDone }: { onDone: () => void }): JSX.Element {
         </button>
       </div>
       <p className="small muted">
-        Opens Google&apos;s own sign-in page in a browser window. Your password and second factor go into Google&apos;s
-        form and never pass through moho; what moho keeps is the session that window ends up with, and the window is
-        thrown away afterwards. Signing out of that session elsewhere (Google Account → Security → Your devices) signs
-        moho out too.
+        Google will not sign anybody in from inside an app like moho, so this opens Google&apos;s sign-in in Firefox,
+        with a profile of its own that nothing else uses. Your password and second factor go into Google&apos;s page
+        and never pass through moho. Once you are in, moho takes the session, closes that Firefox and deletes its
+        profile. Signing out of that session elsewhere (Google Account → Security → Your devices) signs moho out too.
+        Needs Firefox installed.
       </p>
     </div>
   )

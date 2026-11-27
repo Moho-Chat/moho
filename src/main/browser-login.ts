@@ -84,46 +84,6 @@ export interface LoginFlow {
    * a second parameter; a page that does not answer simply sends nothing.
    */
   alsoRead?: { param: string; script: string }
-  /**
-   * What the window says it is. `plain`: the Chromium it is, without the `Electron/` and `moho/` words Electron adds.
-   * `firefox`: Firefox, with Chromium's own client-hint headers left off so the requests do not contradict it.
-   *
-   * The one exception to this window never claiming to be anything it is not, and made for one reason: Google's
-   * sign-in refuses any Chromium it takes for an embedded one ("This browser or app may not be secure"), and it takes
-   * Electron for one however its user agent reads - seen 2026-11-27 with the plain one. It treats Firefox by
-   * Firefox's rules, which is how every Electron app that signs in to Google (Franz, Ferdium) gets through. The page
-   * is still Google's own, and the password still goes only into it.
-   */
-  userAgent?: 'plain' | 'firefox'
-}
-
-/** The Firefox the Google sign-in window presents itself as. Kept at a recent release; bump now and then. */
-const FIREFOX_VERSION = '152.0'
-
-/** A current Firefox's user agent on this platform. */
-export function firefoxUserAgent(platform: string = process.platform): string {
-  const os =
-    platform === 'win32'
-      ? 'Windows NT 10.0; Win64; x64'
-      : platform === 'darwin'
-        ? 'Macintosh; Intel Mac OS X 10.15'
-        : 'X11; Linux x86_64'
-  return `Mozilla/5.0 (${os}; rv:${FIREFOX_VERSION}) Gecko/20100101 Firefox/${FIREFOX_VERSION}`
-}
-
-/** The user agent a flow asks for, from Electron's own. */
-function flowUserAgent(flow: LoginFlow, electronUa: string): string | null {
-  if (flow.userAgent === 'firefox') return firefoxUserAgent()
-  if (flow.userAgent === 'plain') return plainUserAgent(electronUa)
-  return null
-}
-
-/** The user agent Chromium itself would send: Electron's, without the words naming Electron and the app. */
-export function plainUserAgent(ua: string): string {
-  return ua
-    .replace(/\s(Electron|moho)\/\S+/gi, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim()
 }
 
 /**
@@ -185,26 +145,6 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     // (made for chat and the official API) is not. It goes straight to the daemon, for the account named.
     capture: { kind: 'cookie', name: 'auth-token', url: 'https://www.twitch.tv', fallback: { name: 'twilight-user', key: 'authToken' } },
     finish: { method: 'setTwitchWebToken', param: 'token' }
-  },
-  googlechat: {
-    label: 'Google',
-    // Google's sign-in for Chat, as chat.google.com/u/0/ itself sends a signed-out visitor there (the bare
-    // chat.google.com goes to a product page instead). `osid=1` has the session's OSID cookie made too.
-    url: 'https://accounts.google.com/ServiceLogin?service=dynamite&osid=1&continue=https%3A%2F%2Fchat.google.com%2Fu%2F0%2F&hl=en',
-    // Nothing is read off a request: the session is the cookies Google sets.
-    watch: [],
-    // Every cookie the web app sends to chat.google.com (Google's own, set on .google.com, and the app's COMPASS and
-    // OSID) - but only once the page is the web app with somebody signed in, not a sign-in step along the way.
-    capture: {
-      kind: 'cookies',
-      url: 'https://chat.google.com/u/0/',
-      signedIn:
-        "(() => { try { const w = window.WIZ_global_data; return location.hostname === 'chat.google.com' && !(w && w.qwAQke === 'AccountsSignInUi') } catch (e) { return false } })()"
-    },
-    finish: { method: 'addGoogleChatAccount', param: 'cookies' },
-    // The daemon's requests carry the window's own user agent, so Google sees the session used by one browser.
-    alsoRead: { param: 'userAgent', script: 'navigator.userAgent' },
-    userAgent: 'firefox'
   },
   kick: {
     label: 'Kick',
@@ -301,19 +241,6 @@ export async function browserLogin(
   const ses = session.fromPartition(partition)
   // Through Tor or the proxy when everything is tunnelled, like the window.
   await routeSession(ses)
-  const ua = flowUserAgent(flow, ses.getUserAgent())
-  if (ua) ses.setUserAgent(ua)
-  // Firefox sends none of Chromium's client hints; a window saying it is Firefox does not either. Not where the flow
-  // reads headers itself, which takes this session's one header hook.
-  if (flow.userAgent === 'firefox' && flow.capture.kind !== 'header') {
-    ses.webRequest.onBeforeSendHeaders((details, callback) => {
-      const headers: Record<string, string> = {}
-      for (const [name, value] of Object.entries(details.requestHeaders)) {
-        if (!/^sec-ch-ua/i.test(name)) headers[name] = value
-      }
-      callback({ requestHeaders: headers })
-    })
-  }
 
   const win = new BrowserWindow({
     width: 520,
@@ -333,8 +260,6 @@ export async function browserLogin(
     }
   })
   openWindow = win
-  // The session's user agent alone does not reach a window's pages; the window is told too.
-  if (ua) win.webContents.setUserAgent(ua)
 
   // This window has no address bar, so the title is the only thing that says
   // where you are - which matters, because typing a password into a page you
