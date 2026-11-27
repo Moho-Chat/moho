@@ -2,7 +2,7 @@
 /**
  * Google Chat's way in, in the window: the service among the others on the add page, its form, and the sign-in window
  * it opens - which has to reach Google's own sign-in page (chat.google.com sends a signed-out visitor there) and present
- * itself without Electron's words in its user agent, or Google refuses the sign-in. Nothing is typed into Google's
+ * itself as Firefox: Google's sign-in refuses a Chromium it takes for an embedded one. Nothing is typed into Google's
  * page; the window is closed again, which the form takes as a decision rather than an error.
  *
  *   npx electron-vite build && node scripts/check-googlechat-signin.mjs <output directory>
@@ -77,7 +77,7 @@ try {
     // Attached early, the page can still be the window's first blank one: Google's is waited for.
     await until(() => login.evaluate(`location.hostname === 'accounts.google.com' && document.readyState === 'complete'`), 30000)
     const ua = await login.evaluate('navigator.userAgent')
-    check('it presents itself as plain Chromium', /Chrome\//.test(ua) && !/Electron|moho/i.test(ua), ua)
+    check('it presents itself as Firefox', /Firefox\//.test(ua) && !/Chrome|Electron|moho/i.test(ua), ua)
     const ready = await until(() => login.evaluate(`!!document.querySelector('#identifierId, input[name=identifier], input[type=email]')`), 20000)
     check('Google asks for an email address (not "this browser may not be secure")', !!ready)
     await shot(login, 'googlechat-google-signin.png')
