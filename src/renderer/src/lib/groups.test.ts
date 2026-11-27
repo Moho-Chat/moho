@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { BufferGroup } from '../../../shared/wire'
 import type { BufferEntry } from '../state/store'
 import {
   badgesShown,
@@ -334,7 +335,7 @@ describe('disconnectedAccountIds', () => {
     ])
     expect([...disconnected]).toEqual(['discord:1'])
 
-    const allGroups: RailGroup[] = [
+    const allGroups: BufferGroup[] = [
       { id: 'account:discord:1', accountId: 'discord:1', service: 'discord', kind: 'account', name: 'Discord', position: 0 },
       { id: 'discord:1|guild:10', accountId: 'discord:1', service: 'discord', kind: 'guild', name: 'Guild', position: 1 },
       { id: 'account:irc:me@libera', accountId: 'irc:me@libera', service: 'irc', kind: 'account', name: 'Libera', position: 2 }
