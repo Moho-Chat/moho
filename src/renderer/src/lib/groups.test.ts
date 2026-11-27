@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { BufferEntry } from '../state/store'
 import {
   badgesShown,
+  canDropOn,
   compareInBand,
   countedFor,
   dissolveFolder,
@@ -11,10 +12,12 @@ import {
   moveInRail,
   orderedGroups,
   railEntries,
+  resolveGapDrop,
   waitingCount,
   type RailEntry,
   type RailFolder,
-  type RailGroup
+  type RailGroup,
+  type RailSlot
 } from './groups'
 
 const group = (id: string, kind = 'guild', position = 0, name = id): RailGroup =>
@@ -50,6 +53,61 @@ describe('the server rail', () => {
     const moved = moveInRail(ordered, { order: [], folders }, folderRef('f'), { kind: 'beside', target: 'a', after: false })
     expect(moved.order).toEqual(['b', 'c', 'a'])
     expect(railEntries(orderedGroups(groups, moved.order), moved.folders).map((e) => e.id)).toEqual(['dm', 'pin', 'f', 'a'])
+  })
+
+  it('resolves the gap between two icons to that exact slot rather than the end of the rail', () => {
+    // Three 42px tiles separated by 4px gaps: [100..142], [146..188], [192..234]
+    const slots: RailSlot[] = [
+      { ref: 'a', top: 100, bottom: 142 },
+      { ref: 'b', top: 146, bottom: 188 },
+      { ref: 'c', top: 192, bottom: 234 }
+    ]
+    // Cursor right in the 4px gap between a and b: targets before b, not tail.
+    const betweenAB = resolveGapDrop(slots, 144, 'c', { allowTail: true })
+    expect(betweenAB).toEqual({ kind: 'tile', ref: 'b', zone: 'before' })
+    const ordered = orderedGroups(groups, [])
+    const moved = moveInRail(ordered, { order: [], folders: [] }, 'c', {
+      kind: 'beside',
+      target: betweenAB?.kind === 'tile' ? betweenAB.ref : '',
+      after: false
+    })
+    expect(moved.order).toEqual(['a', 'c', 'b'])
+
+    // Cursor just above the first movable icon targets before it; higher up (over fixed entries) is null.
+    expect(resolveGapDrop(slots, 96, 'c', { allowTail: true })).toEqual({ kind: 'tile', ref: 'a', zone: 'before' })
+    expect(resolveGapDrop(slots, 60, 'c', { allowTail: true })).toBeNull()
+
+    // Only strictly below the last icon resolves to tail.
+    expect(resolveGapDrop(slots, 250, 'a', { allowTail: true })).toEqual({ kind: 'tail' })
+  })
+
+  it('resolves gaps inside an open folder to the matching slot inside that folder', () => {
+    const children: RailSlot[] = [
+      { ref: 'x', top: 146, bottom: 188 },
+      { ref: 'y', top: 192, bottom: 234 }
+    ]
+    const opts = { folderRef: folderRef('f'), headerTop: 100, headerBottom: 142 }
+    // Gap between folder header and first child -> before first child.
+    expect(resolveGapDrop(children, 144, 'd', opts)).toEqual({ kind: 'tile', ref: 'x', zone: 'before' })
+    // Gap between x and y -> before y.
+    expect(resolveGapDrop(children, 190, 'd', opts)).toEqual({ kind: 'tile', ref: 'y', zone: 'before' })
+    // Bottom padding below last child -> after y (stays inside folder).
+    expect(resolveGapDrop(children, 236, 'd', opts)).toEqual({ kind: 'tile', ref: 'y', zone: 'after' })
+    // Top padding above folder header -> before folder (outside folder).
+    expect(resolveGapDrop(children, 99, 'd', opts)).toEqual({ kind: 'tile', ref: folderRef('f'), zone: 'before' })
+  })
+
+  it('refuses drop indicators on itself or inside a dragged folder', () => {
+    const folders: RailFolder[] = [
+      { id: 'outer', name: 'Outer', members: [folderRef('inner'), 'a'] },
+      { id: 'inner', name: 'Inner', members: ['b'] }
+    ]
+    expect(canDropOn(folders, 'a', { kind: 'tile', ref: 'a', zone: 'before' })).toBe(false)
+    expect(canDropOn(folders, folderRef('outer'), { kind: 'tile', ref: 'a', zone: 'before' })).toBe(false)
+    expect(canDropOn(folders, folderRef('outer'), { kind: 'tile', ref: 'b', zone: 'after' })).toBe(false)
+    expect(canDropOn(folders, folderRef('outer'), { kind: 'tile', ref: folderRef('inner'), zone: 'merge' })).toBe(false)
+    expect(canDropOn(folders, 'a', { kind: 'tile', ref: 'b', zone: 'before' })).toBe(true)
+    expect(canDropOn(folders, 'a', { kind: 'tail' })).toBe(true)
   })
 })
 

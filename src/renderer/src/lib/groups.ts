@@ -478,6 +478,105 @@ export interface RailLayout {
   folders: RailFolder[]
 }
 
+/** Where on a tile something is being dropped. */
+export type DropZone = 'before' | 'merge' | 'after'
+
+/** What the rail's drag indicator is pointing at, and what a drop will commit. */
+export type RailDropTarget =
+  | { kind: 'tile'; ref: string; zone: DropZone }
+  | { kind: 'tail' }
+  | null
+
+/** Vertical bounds of one draggable entry in a rail container. */
+export interface RailSlot {
+  ref: string
+  top: number
+  bottom: number
+  openFolder?: boolean
+}
+
+/**
+ * Whether dropping `from` onto `target` is valid (never onto itself or a
+ * folder into one of its own descendants).
+ */
+export function canDropOn(folders: RailFolder[], from: string, target: RailDropTarget): boolean {
+  if (!from || !target) return false
+  if (target.kind === 'tail') return true
+  if (target.ref === from) return false
+  const moving = folderIdOf(from)
+  if (moving !== null && ancestorsOf(folders, target.ref).includes(moving)) return false
+  return true
+}
+
+/**
+ * Resolves a drag-over position in the gap between tiles (or below the column)
+ * to the exact drop target matching the blue insertion line.
+ *
+ * Without this, hovering the 4px gap where the blue line is drawn fell through
+ * to the scroll container's "put it last" handler (or got rejected inside an
+ * open folder), sending the icon to the bottom while the blue line sat between
+ * two icons.
+ */
+export function resolveGapDrop(
+  items: RailSlot[],
+  clientY: number,
+  dragging: string,
+  options: {
+    allowTail?: boolean
+    folderRef?: string
+    headerTop?: number
+    headerBottom?: number
+  } = {}
+): RailDropTarget {
+  const { allowTail = false, folderRef: openFolderRef, headerTop, headerBottom } = options
+
+  if (openFolderRef !== undefined && headerTop !== undefined && headerBottom !== undefined) {
+    if (clientY < headerTop) {
+      return openFolderRef === dragging ? null : { kind: 'tile', ref: openFolderRef, zone: 'before' }
+    }
+    if (items.length === 0) {
+      return clientY >= headerBottom && openFolderRef !== dragging
+        ? { kind: 'tile', ref: openFolderRef, zone: 'merge' }
+        : null
+    }
+    if (clientY >= headerBottom && clientY <= items[0].top) {
+      return items[0].ref === dragging ? null : { kind: 'tile', ref: items[0].ref, zone: 'before' }
+    }
+    for (let i = 0; i < items.length - 1; i++) {
+      if (clientY >= items[i].bottom && clientY <= items[i + 1].top) {
+        if (items[i + 1].ref !== dragging) return { kind: 'tile', ref: items[i + 1].ref, zone: 'before' }
+        if (!items[i].openFolder && items[i].ref !== dragging) return { kind: 'tile', ref: items[i].ref, zone: 'after' }
+        return null
+      }
+    }
+    const last = items[items.length - 1]
+    if (clientY > last.bottom) {
+      if (!last.openFolder && last.ref !== dragging) return { kind: 'tile', ref: last.ref, zone: 'after' }
+      if (last.openFolder && openFolderRef !== dragging) return { kind: 'tile', ref: openFolderRef, zone: 'merge' }
+    }
+    return null
+  }
+
+  if (items.length === 0) return null
+  if (clientY > items[items.length - 1].bottom) {
+    return allowTail ? { kind: 'tail' } : null
+  }
+  if (clientY < items[0].top) {
+    if (items[0].top - clientY <= 8 && items[0].ref !== dragging) {
+      return { kind: 'tile', ref: items[0].ref, zone: 'before' }
+    }
+    return null
+  }
+  for (let i = 0; i < items.length - 1; i++) {
+    if (clientY >= items[i].bottom && clientY <= items[i + 1].top) {
+      if (items[i + 1].ref !== dragging) return { kind: 'tile', ref: items[i + 1].ref, zone: 'before' }
+      if (!items[i].openFolder && items[i].ref !== dragging) return { kind: 'tile', ref: items[i].ref, zone: 'after' }
+      return null
+    }
+  }
+  return null
+}
+
 /** Where something dragged was let go. */
 export type RailDrop =
   /** Above or below an entry, at whatever depth that entry is. */

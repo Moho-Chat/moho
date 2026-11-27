@@ -31,7 +31,13 @@ import {
   ancestorsOf,
   parentOf,
   folderRef,
+  folderIdOf,
+  canDropOn,
+  resolveGapDrop,
   FOLDER_COLOURS,
+  type DropZone,
+  type RailDropTarget,
+  type RailSlot,
   type RailFolder,
   type RailEntry,
   type RailFolderEntry,
@@ -170,9 +176,6 @@ function GroupFace({ group, customIcon }: { group: RailGroup; customIcon?: strin
   )
 }
 
-/** Where on a tile something is being dropped. */
-type DropZone = 'before' | 'merge' | 'after'
-
 /**
  * Whether a drop on this tile means "fold these together" or "put it here".
  *
@@ -185,6 +188,59 @@ function dropZone(e: React.DragEvent): DropZone {
   const r = e.currentTarget.getBoundingClientRect()
   const y = (e.clientY - r.top) / r.height
   return y <= 0.33 ? 'before' : y >= 0.67 ? 'after' : 'merge'
+}
+
+/** Collects the vertical bounds of direct movable entries inside a rail container. */
+function collectSlots(container: Element, skipFirst = false): RailSlot[] {
+  const slots: RailSlot[] = []
+  const kids = Array.from(container.children)
+  for (let i = skipFirst ? 1 : 0; i < kids.length; i++) {
+    const el = kids[i]
+    const tile = el.matches('[data-rail-ref]') ? el : el.querySelector(':scope > [data-rail-ref]')
+    const ref = tile?.getAttribute('data-rail-ref')
+    if (!ref) continue
+    const r = el.getBoundingClientRect()
+    slots.push({
+      ref,
+      top: r.top,
+      bottom: r.bottom,
+      openFolder: tile?.getAttribute('data-rail-open') === 'true'
+    })
+  }
+  return slots
+}
+
+/**
+ * Resolves a drag-over event that landed on the gap between tiles (either in
+ * `.rail-scroll` or inside `.rail-folder-group.open`) or in the open space
+ * below the column.
+ */
+function resolveRailContainerDrop(
+  scrollEl: HTMLElement,
+  target: EventTarget | null,
+  clientY: number,
+  dragging: string
+): RailDropTarget {
+  const openFolderEl = target instanceof Element ? target.closest('.rail-folder-group.open') : null
+  if (openFolderEl && scrollEl.contains(openFolderEl)) {
+    const header = openFolderEl.querySelector(':scope > [data-rail-ref]')
+    const ref = header?.getAttribute('data-rail-ref')
+    if (!ref || !header) return null
+    const hr = header.getBoundingClientRect()
+    return resolveGapDrop(collectSlots(openFolderEl, true), clientY, dragging, {
+      folderRef: ref,
+      headerTop: hr.top,
+      headerBottom: hr.bottom
+    })
+  }
+  return resolveGapDrop(collectSlots(scrollEl), clientY, dragging, { allowTail: true })
+}
+
+function sameDrop(a: RailDropTarget, b: RailDropTarget): boolean {
+  if (a === b) return true
+  if (!a || !b || a.kind !== b.kind) return false
+  if (a.kind === 'tail' && b.kind === 'tail') return true
+  return a.kind === 'tile' && b.kind === 'tile' && a.ref === b.ref && a.zone === b.zone
 }
 
 function RailTile(props: TileProps): JSX.Element {
@@ -225,6 +281,7 @@ function RailTile(props: TileProps): JSX.Element {
       onBlur={hideRailTip}
       aria-label={group.name}
       aria-current={active}
+      data-rail-ref={draggable ? group.id : undefined}
       draggable={draggable}
       onClick={props.onSelect}
       onContextMenu={open}
@@ -235,12 +292,16 @@ function RailTile(props: TileProps): JSX.Element {
         props.onDragStart()
       }}
       onDragOver={(e) => {
+        if (!draggable) return
         // Without preventDefault the browser refuses the drop outright.
         e.preventDefault()
+        e.stopPropagation()
         props.onDragOver(dropZone(e))
       }}
       onDrop={(e) => {
+        if (!draggable) return
         e.preventDefault()
+        e.stopPropagation()
         props.onDrop(dropZone(e))
       }}
       onDragEnd={props.onDragEnd}
@@ -453,10 +514,20 @@ export function ServerRail(): JSX.Element | null {
   // it purely so the tiles restyle while dragging.
   const draggingRef = useRef('')
   const [dragging, setDragging] = useState('')
-  // What is being held over, and where on it a drop would land.
-  const [over, setOver] = useState<{ ref: string; zone: DropZone } | null>(null)
+  // Single authoritative drop target (both ref and state) so whatever the blue
+  // marker shows is always the exact placement committed on drop.
+  const activeDropRef = useRef<RailDropTarget>(null)
+  const [activeDrop, setActiveDrop] = useState<RailDropTarget>(null)
+  const setDrop = (next: RailDropTarget): void => {
+    const valid = canDropOn(effectiveFolders, draggingRef.current, next) ? next : null
+    activeDropRef.current = valid
+    setActiveDrop((prev) => (sameDrop(prev, valid) ? prev : valid))
+  }
   const dropAt = (ref: string): DropZone | null =>
-    over?.ref === ref && dragging !== '' && dragging !== ref ? over.zone : null
+    activeDrop?.kind === 'tile' && activeDrop.ref === ref && dragging !== '' && dragging !== ref
+      ? activeDrop.zone
+      : null
+  const tailTarget = activeDrop?.kind === 'tail'
   /** The rail entry a leave has been asked about, pending confirmation. */
   const leaving = useChat((s) => s.leaveRequest)
   const setLeaving = (g: { id: string; name: string; kind: string } | null): void => store.requestLeave(g)
@@ -465,18 +536,16 @@ export function ServerRail(): JSX.Element | null {
   /** The Steam chat group whose settings are open, if any. */
   const [configuring, setConfiguring] = useState<RailGroup | null>(null)
   const [stoatSettings, setStoatSettings] = useState<RailGroup | null>(null)
-  /** Hovering the space below the column, which means "put it last". */
-  const [tailTarget, setTailTarget] = useState(false)
 
   const beginDrag = (id: string): void => {
     draggingRef.current = id
     setDragging(id)
   }
   const endDrag = (): void => {
-    setTailTarget(false)
     draggingRef.current = ''
+    activeDropRef.current = null
     setDragging('')
-    setOver(null)
+    setActiveDrop(null)
   }
 
   // Unread rolls up from the buffers under each entry, so a guild whose
@@ -539,45 +608,43 @@ export function ServerRail(): JSX.Element | null {
   }
 
   /**
-   * Dropping something onto a server.
-   *
-   * Onto the middle of a tile makes a folder of the two, which is the gesture
-   * people know from Discord - or, onto a protocol badge, files it under the
-   * badge. Near its top or bottom edge it means "put it here", beside that
-   * server and inside whatever folder holds it, so reordering does not
-   * disappear the moment folders exist.
+   * Commits whatever drop target the blue indicator is showing (or a fallback
+   * target when a drop arrives without a preceding dragover).
    */
-  const onDropOnTile = (target: RailGroup, zone: DropZone): void => {
+  const commitDrop = (fallback?: RailDropTarget): void => {
     const from = draggingRef.current
-    if (from && from !== target.id && !isFixedEntry(target)) {
-      if (zone === 'merge' && target.kind === 'account') {
-        const withBadge = withBadgeFolder(folders, target)
-        const badge = withBadge.find((f) => f.head === target.id)!
-        apply(moveInRail(ordered, { order: railOrder, folders: withBadge }, from, { kind: 'into', folder: badge.id }, synced))
-      } else if (zone === 'merge') {
-        apply(foldTogether(ordered, layout, target.id, from, synced))
+    const target = activeDropRef.current ?? fallback ?? null
+    if (from && target && canDropOn(effectiveFolders, from, target)) {
+      if (target.kind === 'tail') {
+        apply(moveInRail(ordered, layout, from, { kind: 'end' }, synced))
       } else {
-        apply(moveInRail(ordered, layout, from, { kind: 'beside', target: target.id, after: zone === 'after' }, synced))
+        const { ref, zone } = target
+        const folderId = folderIdOf(ref)
+        if (folderId !== null) {
+          apply(
+            moveInRail(
+              ordered,
+              layout,
+              from,
+              zone === 'merge' ? { kind: 'into', folder: folderId } : { kind: 'beside', target: ref, after: zone === 'after' },
+              synced
+            )
+          )
+        } else {
+          const group = ordered.find((g) => g.id === ref)
+          if (group && !isFixedEntry(group)) {
+            if (zone === 'merge' && group.kind === 'account') {
+              const withBadge = withBadgeFolder(folders, group)
+              const badge = withBadge.find((f) => f.head === group.id)!
+              apply(moveInRail(ordered, { order: railOrder, folders: withBadge }, from, { kind: 'into', folder: badge.id }, synced))
+            } else if (zone === 'merge') {
+              apply(foldTogether(ordered, layout, group.id, from, synced))
+            } else {
+              apply(moveInRail(ordered, layout, from, { kind: 'beside', target: group.id, after: zone === 'after' }, synced))
+            }
+          }
+        }
       }
-    }
-    endDrag()
-  }
-
-  // Dropping onto the middle of a folder files it there, a server or a
-  // folder alike - folders nest. Onto an edge places it beside the folder.
-  const onDropOnFolder = (folderId: string, zone: DropZone): void => {
-    const from = draggingRef.current
-    const self = folderRef(folderId)
-    if (from && from !== self) {
-      apply(
-        moveInRail(
-          ordered,
-          layout,
-          from,
-          zone === 'merge' ? { kind: 'into', folder: folderId } : { kind: 'beside', target: self, after: zone === 'after' },
-          synced
-        )
-      )
     }
     endDrag()
   }
@@ -650,9 +717,9 @@ export function ServerRail(): JSX.Element | null {
         onDragStart={() => beginDrag(g.id)}
         onDragOver={(zone) => {
           if (isFixedEntry(g)) return
-          setOver({ ref: g.id, zone })
+          setDrop({ kind: 'tile', ref: g.id, zone })
         }}
-        onDrop={(zone) => onDropOnTile(g, zone)}
+        onDrop={(zone) => commitDrop({ kind: 'tile', ref: g.id, zone })}
         onDragEnd={endDrag}
       />
     )
@@ -715,8 +782,8 @@ export function ServerRail(): JSX.Element | null {
           }}
           // Open, the foot of the folder's tile is the top of what it holds:
           // a drop there goes inside, not below the whole folder.
-          onDragOver={(zone) => setOver({ ref: self, zone: open && zone === 'after' ? 'merge' : zone })}
-          onDrop={(zone) => onDropOnFolder(entry.id, open && zone === 'after' ? 'merge' : zone)}
+          onDragOver={(zone) => setDrop({ kind: 'tile', ref: self, zone: open && zone === 'after' ? 'merge' : zone })}
+          onDrop={(zone) => commitDrop({ kind: 'tile', ref: self, zone: open && zone === 'after' ? 'merge' : zone })}
           onDragEnd={endDrag}
         />
         {open && entry.children.map(renderEntry)}
@@ -739,20 +806,25 @@ export function ServerRail(): JSX.Element | null {
       <div
         className={classes('rail-scroll', tailTarget && 'tail-target')}
         onDragOver={(e) => {
-          if (e.target !== e.currentTarget) return
-          e.preventDefault()
-          if (draggingRef.current) setTailTarget(true)
+          if (!draggingRef.current) return
+          const next = resolveRailContainerDrop(e.currentTarget, e.target, e.clientY, draggingRef.current)
+          if (next && canDropOn(effectiveFolders, draggingRef.current, next)) {
+            e.preventDefault()
+            setDrop(next)
+          } else {
+            setDrop(null)
+          }
         }}
-        onDragLeave={(e) => e.target === e.currentTarget && setTailTarget(false)}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrop(null)
+        }}
         onDrop={(e) => {
-          setTailTarget(false)
-          if (e.target !== e.currentTarget) return
-          // Out of whatever folder it was in, and last: dropping into open
-          // space is how something leaves one, and it cannot be both last in
-          // the column and still filed away.
-          const from = draggingRef.current
-          if (from) apply(moveInRail(ordered, layout, from, { kind: 'end' }, synced))
-          endDrag()
+          if (activeDropRef.current) {
+            e.preventDefault()
+            commitDrop()
+          } else {
+            endDrag()
+          }
         }}
       >
       {leading.map(renderEntry)}
@@ -970,14 +1042,18 @@ function FolderTile(props: {
       aria-label={name}
       aria-expanded={open}
       aria-current={active}
+      data-rail-ref={folderRef(folder.id)}
+      data-rail-open={open ? 'true' : undefined}
       onClick={props.onToggle}
       onContextMenu={props.onContextMenu}
       onDragOver={(e) => {
         e.preventDefault()
+        e.stopPropagation()
         props.onDragOver(dropZone(e))
       }}
       onDrop={(e) => {
         e.preventDefault()
+        e.stopPropagation()
         props.onDrop(dropZone(e))
       }}
       onDragEnd={props.onDragEnd}
