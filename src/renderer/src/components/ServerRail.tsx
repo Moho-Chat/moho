@@ -16,6 +16,7 @@ import { SteamGroupSettings } from './SteamGroupSettings'
 import { StoatServerSettings } from './StoatServerSettings'
 import { steamGroupOfRail } from '../lib/steamchat'
 import {
+  disconnectedAccountIds,
   isFixedEntry,
   invitationsGroup,
   orderedGroups,
@@ -455,10 +456,17 @@ export function ServerRail(): JSX.Element | null {
   // the selector's result by identity, so returning a new object each render
   // reports a change every time and loops until React gives up.
   const groups = useChat((s) => s.groups)
+  const accounts = useChat((s) => s.accounts)
   const invitations = useInvitations()
   const activeGroupId = useChat((s) => s.activeGroupId)
   const activeBufferId = useChat((s) => s.activeBufferId)
   const buffers = useChat((s) => s.buffers)
+  const disconnected = useMemo(() => disconnectedAccountIds(accounts), [accounts])
+  const activeGroups = useMemo(() => groups.filter((g) => !disconnected.has(g.accountId)), [groups, disconnected])
+  const activeBuffers = useMemo(
+    () => (buffers as BufferEntry[]).filter((b) => !disconnected.has(b.accountId)),
+    [buffers, disconnected]
+  )
   const [railOrder, setRailOrder] = usePref<string[]>('ui.railOrder', [])
   const [pinned] = usePref<string[]>('pinnedBuffers', [])
   const [muted] = usePref<string[]>('mutedBuffers', [])
@@ -471,10 +479,12 @@ export function ServerRail(): JSX.Element | null {
   // over these: they only get what nothing local has claimed.
   const synced = useMemo(
     () =>
-      Object.values(fluxerFolders).flatMap((list) =>
-        list.map((f): RailFolder => ({ id: f.id, name: f.name, colour: f.colour, members: f.members }))
-      ),
-    [fluxerFolders]
+      Object.entries(fluxerFolders)
+        .filter(([accountId]) => !disconnected.has(accountId))
+        .flatMap(([, list]) =>
+          list.map((f): RailFolder => ({ id: f.id, name: f.name, colour: f.colour, members: f.members }))
+        ),
+    [fluxerFolders, disconnected]
   )
   const effectiveFolders = normalizedFolders(withSynced(folders, synced))
   // Which folder is showing its contents, if any - the innermost, when folders
@@ -503,9 +513,9 @@ export function ServerRail(): JSX.Element | null {
   const prefsReady = usePrefsReady()
   useEffect(() => {
     if (!prefsReady) return
-    const filed = fileNewServers(groups, { order: railOrder, folders }, synced)
+    const filed = fileNewServers(activeGroups, { order: railOrder, folders }, synced)
     if (filed) setFolders(filed)
-  }, [prefsReady, groups, railOrder, folders, synced, setFolders])
+  }, [prefsReady, activeGroups, railOrder, folders, synced, setFolders])
 
   // The authoritative dragged id lives in a ref, not in state: dragstart and
   // drop are separate events, and reading it from state means depending on a
@@ -564,7 +574,7 @@ export function ServerRail(): JSX.Element | null {
     t.mentions += waiting
     totals.set(key, t)
   }
-  const all = buffers as BufferEntry[]
+  const all = activeBuffers
   for (const b of all) {
     // A hidden buffer has no row to reach.
     if (hidden.includes(b.id)) continue
@@ -577,16 +587,16 @@ export function ServerRail(): JSX.Element | null {
 
   // What the rail can select, and the account entries it shows besides only
   // as badges - Discord's, which has no page of its own.
-  const selectable = visibleGroups(groups, all)
+  const selectable = visibleGroups(activeGroups, all)
   const selectableIds = new Set(selectable.map((g) => g.id))
-  const shown = [...selectable, ...badgesShown(groups, selectable, effectiveFolders)]
+  const shown = [...selectable, ...badgesShown(activeGroups, selectable, effectiveFolders)]
   const extras: RailGroup[] = []
   // Only worth a tile once there is something on it.
   if (all.some(isDirectMessage)) extras.push(dmGroup())
   // No tile for mentions. It is not a place you keep - it is reached from the
   // inbox in the header, which is where the unread count already is, and a
   // permanent tile for it only competed with the servers this column is for.
-  if (pinned.length > 0) extras.push(pinnedGroup())
+  if (all.some((b) => !hidden.includes(b.id) && pinned.includes(b.id))) extras.push(pinnedGroup())
   // Invitations from every service share one tile, which is there while
   // anything waits on an answer and gone once nothing does.
   if (invitations.length > 0) extras.push(invitationsGroup(invitations.length))

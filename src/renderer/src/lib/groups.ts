@@ -120,6 +120,11 @@ export function pinnedGroup(): RailGroup {
   }
 }
 
+/** Account ids the user has explicitly disconnected. */
+export function disconnectedAccountIds(accounts: { id: string; disconnected?: boolean }[]): Set<string> {
+  return new Set(accounts.filter((a) => a.disconnected).map((a) => a.id))
+}
+
 /**
  * The rail entries worth drawing.
  *

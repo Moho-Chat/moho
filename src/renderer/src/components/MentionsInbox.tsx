@@ -4,7 +4,7 @@ import { Icon, IconButton } from './Icon'
 import { HeaderPopover } from './HeaderPopover'
 import { Avatar } from './Avatar'
 import { useChat, usePref, useStore } from '../state/hooks'
-import { isMutedBuffer, MENTIONS_GROUP_ID } from '../lib/groups'
+import { disconnectedAccountIds, isMutedBuffer, MENTIONS_GROUP_ID } from '../lib/groups'
 import { bufferDisplayName, classes, formatFullTime, formatRelativeTime, serviceLabel } from '../lib/util'
 import { byPlace, isUnreadMention, withRead } from '../lib/mentioninbox'
 import { useEscapeLayer } from '../lib/layers'
@@ -59,21 +59,21 @@ export function MentionsInbox(): JSX.Element {
   const [jumping, setJumping] = useState(false)
   const box = useRef<HTMLDivElement>(null)
 
-  const unread = useMemo(
-    () =>
-      mentions.filter((m) => {
-        // Emptied from the inbox, ticked off, or the conversation itself has
-        // been read since - opening the channel is the other, more natural
-        // way to answer a mention, and it should not still be waiting
-        // afterwards. The page counts the same ones: see lib/mentions.ts.
-        if (!isUnreadMention(m, { lastRead: lastReadTs, emptiedTs: dismissedTs, read })) return false
-        // A muted conversation was told not to ask for attention. Badging a
-        // button on its behalf is the one place that would be ignored.
-        const buffer = buffers.find((b) => b.id === m.bufferId)
-        return !buffer || !isMutedBuffer(buffer, muted, mutedGroups)
-      }),
-    [mentions, dismissedTs, lastReadTs, buffers, muted, mutedGroups, read]
-  )
+  const unread = useMemo(() => {
+    const disconnected = disconnectedAccountIds(accounts)
+    return mentions.filter((m) => {
+      // Emptied from the inbox, ticked off, or the conversation itself has
+      // been read since - opening the channel is the other, more natural
+      // way to answer a mention, and it should not still be waiting
+      // afterwards. The page counts the same ones: see lib/mentions.ts.
+      if (!isUnreadMention(m, { lastRead: lastReadTs, emptiedTs: dismissedTs, read })) return false
+      // A muted conversation was told not to ask for attention. Badging a
+      // button on its behalf is the one place that would be ignored.
+      const buffer = buffers.find((b) => b.id === m.bufferId)
+      if (buffer && disconnected.has(buffer.accountId)) return false
+      return !buffer || !isMutedBuffer(buffer, muted, mutedGroups)
+    })
+  }, [mentions, dismissedTs, lastReadTs, buffers, accounts, muted, mutedGroups, read])
   /** Where each is from: its server by name, or whose direct messages. */
   const placeName = (bufferId: string): string => {
     const buffer = buffers.find((b) => b.id === bufferId)

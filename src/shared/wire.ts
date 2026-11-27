@@ -18,6 +18,8 @@ export interface Account {
    */
   autoIdle?: boolean
   state: string
+  /** Whether the user explicitly disconnected this account, persisted across restarts. */
+  disconnected?: boolean
   autojoin: string
   hasNickservPassword: boolean
   saslEnabled: boolean

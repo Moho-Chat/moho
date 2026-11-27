@@ -5,6 +5,7 @@ import {
   canDropOn,
   compareInBand,
   countedFor,
+  disconnectedAccountIds,
   dissolveFolder,
   fileNewServers,
   folderRef,
@@ -13,6 +14,7 @@ import {
   orderedGroups,
   railEntries,
   resolveGapDrop,
+  visibleGroups,
   waitingCount,
   type RailEntry,
   type RailFolder,
@@ -320,5 +322,36 @@ describe('waitingCount', () => {
   })
   it('is each unread message in a direct message, which are all for you', () => {
     expect(waitingCount(buffer({ kind: 'dm', unread: 4 }))).toBe(4)
+  })
+})
+
+describe('disconnectedAccountIds', () => {
+  it('collects only explicitly disconnected accounts and hides their rail groups and badges', () => {
+    const disconnected = disconnectedAccountIds([
+      { id: 'discord:1', disconnected: true },
+      { id: 'irc:me@libera', disconnected: false },
+      { id: 'matrix:@me:example.org' }
+    ])
+    expect([...disconnected]).toEqual(['discord:1'])
+
+    const allGroups: RailGroup[] = [
+      { id: 'account:discord:1', accountId: 'discord:1', service: 'discord', kind: 'account', name: 'Discord', position: 0 },
+      { id: 'discord:1|guild:10', accountId: 'discord:1', service: 'discord', kind: 'guild', name: 'Guild', position: 1 },
+      { id: 'account:irc:me@libera', accountId: 'irc:me@libera', service: 'irc', kind: 'account', name: 'Libera', position: 2 }
+    ]
+    const allBuffers = [
+      { id: 'discord:1|#gen', accountId: 'discord:1', groupId: 'discord:1|guild:10', kind: 'channel' },
+      { id: 'irc:me@libera|#chat', accountId: 'irc:me@libera', groupId: 'account:irc:me@libera', kind: 'channel' }
+    ] as BufferEntry[]
+
+    const activeGroups = allGroups.filter((g) => !disconnected.has(g.accountId))
+    const activeBuffers = allBuffers.filter((b) => !disconnected.has(b.accountId))
+    const folders: RailFolder[] = [
+      { id: 'badge:account:discord:1', name: 'Discord', head: 'account:discord:1', members: ['discord:1|guild:10'] }
+    ]
+    const selectable = visibleGroups(activeGroups, activeBuffers)
+    const shown = [...selectable, ...badgesShown(activeGroups, selectable, folders)]
+    expect(shown.map((g) => g.id)).toEqual(['account:irc:me@libera'])
+    expect(railEntries(orderedGroups(shown, []), folders).map((e) => e.id)).toEqual(['account:irc:me@libera'])
   })
 })

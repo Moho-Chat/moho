@@ -7,7 +7,7 @@ import { ForumPane } from './components/ForumPane'
 import { MessageList } from './components/MessageList'
 import { MentionsInbox } from './components/MentionsInbox'
 import { MentionsPage } from './components/MentionsPage'
-import { INVITATIONS_GROUP_ID, MENTIONS_GROUP_ID } from './lib/groups'
+import { disconnectedAccountIds, INVITATIONS_GROUP_ID, MENTIONS_GROUP_ID } from './lib/groups'
 import { trayCount } from './lib/traycount'
 import { Composer } from './components/Composer'
 import { MembershipGate } from './components/MembershipGate'
@@ -113,12 +113,14 @@ export default function App(): JSX.Element {
   const [trayMutedGroups] = usePref<string[]>('mutedGroups', [])
   const lastTray = useRef('')
   useEffect(() => {
-    const count = trayCount(allBuffers, trayMuted, trayHidden, trayMutedGroups)
+    const disconnected = disconnectedAccountIds(accounts)
+    const activeBuffers = allBuffers.filter((b) => !disconnected.has(b.accountId))
+    const count = trayCount(activeBuffers, trayMuted, trayHidden, trayMutedGroups)
     const said = JSON.stringify(count)
     if (said === lastTray.current) return
     lastTray.current = said
     window.moho.setTrayUnread(count)
-  }, [allBuffers, trayMuted, trayHidden, trayMutedGroups])
+  }, [allBuffers, accounts, trayMuted, trayHidden, trayMutedGroups])
   // The mutes this window used to keep for itself go to the daemon, once the
   // conversations they name are known. Run again only if the list changes: what
   // could not be moved yet is asked about next launch, not in a loop.

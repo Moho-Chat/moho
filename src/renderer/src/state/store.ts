@@ -1669,6 +1669,12 @@ export class ChatStore {
     // The open conversation is read again, and subscribed to again, where it is.
     // Not followed to its server: a refresh is not somebody choosing it, and
     // the rail may have been moved to another since.
+    if (!this.state.pinnedBufferId && this.state.activeBufferId) {
+      const active = this.state.buffers.find((b) => b.id === this.state.activeBufferId)
+      if (active && this.state.accounts.some((a) => a.id === active.accountId && a.disconnected)) {
+        this.set({ activeBufferId: '' })
+      }
+    }
     if (this.state.activeBufferId) await this.selectBuffer(this.state.activeBufferId, false)
   }
 
@@ -1689,7 +1695,12 @@ export class ChatStore {
 
   async refreshAccounts(): Promise<void> {
     try {
-      this.set({ accounts: await window.moho.rpc<Account[]>('listAccounts') })
+      const accounts = await window.moho.rpc<Account[]>('listAccounts')
+      const disconnected = new Set(accounts.filter((a) => a.disconnected).map((a) => a.id))
+      const activeBuffer = this.state.buffers.find((b) => b.id === this.state.activeBufferId)
+      const clearActive =
+        !this.state.pinnedBufferId && !!activeBuffer && disconnected.has(activeBuffer.accountId)
+      this.set({ accounts, ...(clearActive ? { activeBufferId: '' } : {}) })
       // RingRTC is loaded only once there is a Signal account to call from.
       for (const a of this.state.accounts.filter((x) => x.service === 'signal')) {
         void window.moho
@@ -5749,6 +5760,7 @@ export class ChatStore {
   private handleConnectionState(data: {
     accountId: string
     state: string
+    disconnected?: boolean
     error?: string
     detail?: string
     retryAt?: number
@@ -5770,8 +5782,22 @@ export class ChatStore {
     // added elsewhere (nobilis reconnecting saved accounts at startup, another
     // client) that this session's list never had to begin with.
     if (accounts.some((a) => a.id === data.accountId)) {
+      const activeBuffer = this.state.buffers.find((b) => b.id === this.state.activeBufferId)
+      const clearActive =
+        data.disconnected === true &&
+        !this.state.pinnedBufferId &&
+        activeBuffer?.accountId === data.accountId
       this.set({
-        accounts: accounts.map((a) => (a.id === data.accountId ? { ...a, state: data.state } : a))
+        accounts: accounts.map((a) =>
+          a.id === data.accountId
+            ? {
+                ...a,
+                state: data.state,
+                ...(data.disconnected !== undefined ? { disconnected: data.disconnected } : {})
+              }
+            : a
+        ),
+        ...(clearActive ? { activeBufferId: '' } : {})
       })
     } else {
       void this.refreshAccounts()

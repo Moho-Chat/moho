@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Avatar } from './Avatar'
 import { Icon } from './Icon'
 import { useChat, useIdSetPref, usePref, useStore } from '../state/hooks'
-import { isMutedBuffer, waitingCount } from '../lib/groups'
+import { disconnectedAccountIds, isMutedBuffer, waitingCount } from '../lib/groups'
 import { rankBuffers, whereText } from '../lib/switcher'
 import { bufferKindGlyph, classes } from '../lib/util'
 
@@ -38,12 +38,17 @@ export function QuickSwitcher(): JSX.Element | null {
   }, [])
 
   const accountName = (id: string): string => accounts.find((a) => a.id === id)?.displayName ?? ''
-  const hits = useMemo(
-    () => (open ? rankBuffers(buffers, query, (b) => whereText(b, accountName)) : []),
+  const hits = useMemo(() => {
+    if (!open) return []
+    const disconnected = disconnectedAccountIds(accounts)
+    return rankBuffers(
+      buffers.filter((b) => !disconnected.has(b.accountId)),
+      query,
+      (b) => whereText(b, accountName)
+    )
     // accountName closes over accounts, which is what changes it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [open, buffers, query, accounts]
-  )
+  }, [open, buffers, query, accounts])
 
   useEffect(() => {
     if (open) input.current?.focus()

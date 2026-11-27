@@ -36,7 +36,11 @@ export function useInvitations(): Invitation[] {
   const verification = useChat((s) => s.matrixVerification)
   const accounts = useChat((s) => s.accounts)
   return useMemo(
-    () => listInvitations({ rooms, friends, discordFriends, verification }, accounts),
+    () =>
+      listInvitations(
+        { rooms, friends, discordFriends, verification },
+        accounts.filter((a) => !a.disconnected)
+      ),
     [rooms, friends, discordFriends, verification, accounts]
   )
 }
