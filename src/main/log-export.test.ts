@@ -171,6 +171,10 @@ describe('Anonymizer', () => {
     ).toBe('discord[account#5]: STREAM_UPDATE {"viewer_ids":["user#3","user#4"],"stream_key":"guild:guild#16:channel#2:user#2"}')
 
     expect(
+      a.line('discord[account#5]: stream op 11 {"user_ids":["499008681548000001","1267853903597142…')
+    ).toBe('discord[account#5]: stream op 11 {"user_ids":["user#3","[truncated]…')
+
+    expect(
       a.line('discord[account#5]: STREAM_CREATE {"rtc_channel_id":"1574560562497593413","rtc_server_id":"1574560562497593414"}')
     ).toBe('discord[account#5]: STREAM_CREATE {"rtc_channel_id":"channel#3","rtc_server_id":"server#2"}')
 

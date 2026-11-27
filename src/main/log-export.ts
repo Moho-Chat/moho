@@ -458,11 +458,13 @@ export class Anonymizer {
     )
 
     // JSON snowflake ID arrays in GoLive / streamconn payloads (viewer_ids, user_ids),
-    // including lines truncated before the closing `]`.
+    // including lines truncated mid-element before the closing `"` or `]`.
     s = s.replace(
       /"(viewer_ids|user_ids)"\s*:\s*\[([^\]]*)(\]?)/g,
       (_m, field: string, body: string, close: string) => {
-        const scrubbed = body.replace(/"(\d{15,22})"/g, (_im, id: string) => `"${this.tag('user', id)}"`)
+        const scrubbed = body
+          .replace(/"(\d{15,22})"/g, (_im, id: string) => `"${this.tag('user', id)}"`)
+          .replace(/"\d+(…|\.\.\.|$)/g, (_im, tail: string) => `"[truncated]${tail}`)
         return `"${field}":[${scrubbed}${close}`
       }
     )
@@ -476,7 +478,7 @@ export class Anonymizer {
       }
     )
 
-    // JSON snowflake IDs in unhandled gateway / GoLive payloads
+    // JSON snowflake IDs in unhandled gateway / GoLive payloads (including truncated tails)
     s = s.replace(
       /"(guild_id|channel_id|rtc_channel_id|rtc_server_id|user_id|author_id|id)"\s*:\s*"(\d{15,22})"/g,
       (_m, field: string, id: string) => {
@@ -490,6 +492,10 @@ export class Anonymizer {
                 : 'channel'
         return `"${field}":"${this.tag(kind, id)}"`
       }
+    )
+    s = s.replace(
+      /"(guild_id|channel_id|rtc_channel_id|rtc_server_id|user_id|author_id|id)"\s*:\s*"\d+(…|\.\.\.|$)/g,
+      (_m, field: string, tail: string) => `"${field}":"[truncated]${tail}`
     )
 
     // Sneedchat user UUIDs, file UUIDs & numeric attachment IDs
