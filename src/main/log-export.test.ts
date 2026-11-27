@@ -151,6 +151,66 @@ describe('Anonymizer', () => {
     ).toBe('[restore] telegram-media/tg_user#2_channel#3_file#3_thumb.jpg asked for')
   })
 
+  it('scrubs runtime renames, Discord GoLive/voice snowflakes, wss URLs, truncated onions, file/attachment IDs and XMPP resources', () => {
+    const a = new Anonymizer()
+
+    expect(
+      a.line('nobilis::runtime: fluxer:account#20 "Claude.City./repos-and-forks" is now "guild#1/channel#89", 0 messages moved')
+    ).toBe('nobilis::runtime: fluxer:account#20 "guild#1/channel#1" is now "guild#1/channel#89", 0 messages moved')
+
+    expect(
+      a.line('nobilis::runtime: steam:account#18 "Grath" is now "user#86", 0 messages moved')
+    ).toBe('nobilis::runtime: steam:account#18 "user#1" is now "user#86", 0 messages moved')
+
+    expect(
+      a.line('discord[account#5]: STREAM_SERVER_UPDATE {"endpoint":"c-iad20-8687d324.discord.media:443","guild_id":null,"stream_key":"guild:guild#16:1574512928730783895:1105651912457605170","token":"abc"}')
+    ).toBe('discord[account#5]: STREAM_SERVER_UPDATE {"endpoint":"server#1:443","guild_id":null,"stream_key":"guild:guild#16:channel#2:user#2","token":"[removed]"}')
+
+    expect(
+      a.line('discord[account#5]: STREAM_UPDATE {"viewer_ids":["499008681548000001","499008681548000002"],"stream_key":"guild:guild#16:1574512928730783895:1105651912457605170"}')
+    ).toBe('discord[account#5]: STREAM_UPDATE {"viewer_ids":["user#3","user#4"],"stream_key":"guild:guild#16:channel#2:user#2"}')
+
+    expect(
+      a.line('discord[account#5]: STREAM_CREATE {"rtc_channel_id":"1574560562497593413","rtc_server_id":"1574560562497593414"}')
+    ).toBe('discord[account#5]: STREAM_CREATE {"rtc_channel_id":"channel#3","rtc_server_id":"server#2"}')
+
+    expect(
+      a.line('discord voice: stream 17304 is user 1015961801306935427')
+    ).toBe('discord voice: stream 17304 is user user#5')
+
+    expect(
+      a.line('watching guild:guild#16:1574512928730783895:1105651912457605170, owned by 1105651912457605170 for channel 1574560562497593413')
+    ).toBe('watching guild:guild#16:channel#2:user#2, owned by user#2 for channel channel#3')
+
+    expect(
+      a.line('identifying to c-iad20-8687d324.discord.media:443 as server 1574560562497593414, via rtc channel 1574560562497593413')
+    ).toBe('identifying to server#1:443 as server server#2, via rtc channel channel#3')
+
+    expect(
+      a.line('steam[user#1]: cmp1-iad1.steamserver.net:443: Steam is not answering just now')
+    ).toBe('steam[user#1]: server#3:443: Steam is not answering just now')
+
+    expect(
+      a.line('sneedchat: file 01a214a8-9b94-7738-bfc8-88e6a815a72b answered HTTP 404')
+    ).toBe('sneedchat: file file#1 answered HTTP 404')
+
+    expect(
+      a.line('sneedchat: attachment 9884345 (https://abcdefghijklmnop234567.onion/attachments/1795-png.9884345/) answered HTTP 403')
+    ).toBe('sneedchat: attachment file#2 (https://server#4.onion/attachments/file#3/) answered HTTP 403')
+
+    expect(
+      a.line('steam[user#1]: cmp2-iad1.steamserver.net:443: connecting to wss://cmp2-iad1.steamserver.net:443/cmsocket/')
+    ).toBe('steam[user#1]: server#5:443: connecting to wss://server#5:443/cmsocket/')
+
+    expect(
+      a.line('Failed to obtain hidden service circuit to […]cyd.onion')
+    ).toBe('Failed to obtain hidden service circuit to [scrubbed].onion')
+
+    expect(
+      a.line('xmpp[user#2@server#5]: signed in as user#2@server#5/moho.777en9sj')
+    ).toBe('xmpp[user#2@server#5]: signed in as user#2@server#5/moho.[resource]')
+  })
+
   it('scrubs pre-seeded known names anywhere in free-form lines without mangling stopwords', () => {
     const a = new Anonymizer({
       users: ['Salastil', 'info'],
@@ -248,13 +308,32 @@ describe('buildLogExport', () => {
     expect(res.text).toContain('lines collapsed:')
     // Consecutive warn collapsed with count
     expect(res.text).toContain('warn [nobilis] nobilis::backend::kick::socket: kick[user#1]: limit exceeded (106) (×5, 04:00:00Z..04:00:04Z)')
-    // Info burst compacted to edges + summary
-    expect(res.text).toContain('[export] collapsed 16× similar lines:')
+    // Info burst compacted to edges + summary (20 lines -> keep first 1 + last 2, collapse 17)
+    expect(res.text).toContain('[export] collapsed 17× similar lines:')
     // Newest entry (GPU crash) is right under the header
     const firstBodyLine = res.text.split('=======================\n')[1].split('\n')[0]
     expect(firstBodyLine).toBe(
       '2026-11-27T04:02:00.000Z error [process] GPU process gone - crashed (exit code 133)'
     )
+  })
+
+  it('compacts GoLive/DAVE chatter and interleaved repeated warnings/errors while preserving severity', () => {
+    const raw: string[] = []
+    // 12 DAVE op 29 lines with varying byte sizes
+    for (let i = 0; i < 12; i++) {
+      raw.push(
+        `2026-11-27T04:00:${String(i).padStart(2, '0')}.000Z info [nobilis] nobilis::backend::discord::streamconn: discord[account#1]: DAVE in: op 29 (${200 + i} bytes), ready=true`
+      )
+    }
+    // 9 interleaved renderer CSP errors across 3 font URLs
+    for (let i = 0; i < 9; i++) {
+      raw.push(
+        `2026-11-27T04:01:${String(i).padStart(2, '0')}.000Z error [renderer] Loading the font 'https://cdn.example.com/font-${i % 3}.woff2?dpl=3b1b6aa5' violates the following Content Security Policy directive: "font-src 'self'".`
+      )
+    }
+    const res = buildLogExport(raw, SAMPLE_HEADER)
+    expect(res.text).toContain('info [export] collapsed 9× similar lines: [nobilis] nobilis::backend::discord::streamconn: discord[<account>]: DAVE in: op 29 (<n> bytes), ready=true')
+    expect(res.text).toContain('error [export] collapsed 5× repeated errors: [renderer] Loading the font \'https://server#1/<asset>\' violates the following Content Security Policy directive:')
   })
 
   it('drops oldest lines first while always keeping the header and newest lines under maxBytes', () => {

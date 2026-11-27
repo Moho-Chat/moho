@@ -303,6 +303,28 @@ export class Anonymizer {
       }
     )
 
+    // Runtime buffer / friend rename lines:
+    //   fluxer:account#20 "Claude.City./repos-and-forks" is now "guild#1/channel#89", 0 messages moved
+    //   steam:account#18 "Grath" is now "user#86", 0 messages moved
+    //   account#2: moving "Guild Name/Old" to "Guild Name/New": ...
+    const scrubQuotedBuffer = (proto: string | undefined, raw: string): string => {
+      const slash = raw.indexOf('/')
+      if (slash > 0 && slash < raw.length - 1) {
+        const g = raw.slice(0, slash)
+        const c = raw.slice(slash + 1)
+        return `${this.tag('guild', g)}/${this.tag('channel', c)}`
+      }
+      const p = (proto ?? '').toLowerCase()
+      if (p === 'steam' || p === 'signal' || p === 'telegram') return this.tag('user', raw)
+      if (raw.startsWith('#')) return this.tag('channel', raw)
+      return this.tag('room', raw)
+    }
+    s = s.replace(
+      /(\b(?:(discord|irc|matrix|sneedchat|xmpp|telegram|signal|steam|stoat|fluxer|kick|twitch):)?account#\d+:?\s+(?:moving\s+)?)"([^"\n]+)"(\s+(?:is now|to)\s+)"([^"\n]+)"/gi,
+      (_m, pre: string, proto: string | undefined, from: string, mid: string, to: string) =>
+        `${pre}"${scrubQuotedBuffer(proto, from)}"${mid}"${scrubQuotedBuffer(proto, to)}"`
+    )
+
     // Runtime quoted buffer paths: `"Guild Name/Channel Name"` after an account id
     s = s.replace(
       /(account#\d+:\s*)"([^"/\n]+)\/([^"\n]+)"/g,
@@ -385,6 +407,47 @@ export class Anonymizer {
       }
     )
 
+    // Discord GoLive / stream_key tuples:
+    //   guild:12345678901234567:1574512928730783895:1105651912457605170
+    //   guild:guild#16:1574512928730783895:1105651912457605170
+    //   call:1574512928730783895:1105651912457605170
+    s = s.replace(
+      /\bguild:(guild#\d+|\d{15,22}):(\d{15,22}):(\d{15,22})\b/g,
+      (_m, g: string, c: string, u: string) =>
+        `guild:${this.tag('guild', g)}:${this.tag('channel', c)}:${this.tag('user', u)}`
+    )
+    s = s.replace(
+      /\bcall:(\d{15,22}):(\d{15,22})\b/g,
+      (_m, c: string, u: string) => `call:${this.tag('channel', c)}:${this.tag('user', u)}`
+    )
+
+    // Discord voice/stream snowflake & relay references:
+    //   discord voice: stream 17304 is user 1015961801306935427
+    //   owned by 1105651912457605170
+    //   for channel 1574560562497593413
+    //   identifying to c-iad20-8687d324.discord.media:443 as server 1574560562497593414
+    //   watching guild:guild#16:channel#2:user#24 on c-iad20-8687d324.discord.media:443 via rtc channel 1574560562497593413
+    s = s.replace(
+      /(\bstream\s+\d+\s+is user\s+)(\d{15,22})\b/gi,
+      (_m, pre: string, uid: string) => `${pre}${this.tag('user', uid)}`
+    )
+    s = s.replace(
+      /(\bowned by\s+)(\d{15,22})\b/gi,
+      (_m, pre: string, uid: string) => `${pre}${this.tag('user', uid)}`
+    )
+    s = s.replace(
+      /(\b(?:for|via rtc)\s+channel\s+)(\d{15,22})\b/gi,
+      (_m, pre: string, cid: string) => `${pre}${this.tag('channel', cid)}`
+    )
+    s = s.replace(
+      /(\bas server\s+)(\d{15,22})\b/gi,
+      (_m, pre: string, sid: string) => `${pre}${this.tag('server', sid)}`
+    )
+    s = s.replace(
+      /(\b(?:identifying to|on)\s+)([A-Za-z0-9.-]+\.discord\.media)(:\d+)?\b/gi,
+      (_m, pre: string, host: string, port?: string) => `${pre}${this.tag('server', host)}${port ?? ''}`
+    )
+
     // Discord golive/voice ids: guild:12345678901234567, channel:12345678901234567
     s = s.replace(
       /\b(guild|channel|room|user):([0-9]{6,22})\b/gi,
@@ -394,21 +457,42 @@ export class Anonymizer {
       }
     )
 
-    // JSON snowflake IDs in unhandled gateway payloads (e.g. VOICE_CHANNEL_START_TIME_UPDATE)
+    // JSON snowflake ID arrays in GoLive / streamconn payloads (viewer_ids, user_ids),
+    // including lines truncated before the closing `]`.
     s = s.replace(
-      /"(guild_id|channel_id|user_id|author_id|id)"\s*:\s*"(\d{15,22})"/g,
+      /"(viewer_ids|user_ids)"\s*:\s*\[([^\]]*)(\]?)/g,
+      (_m, field: string, body: string, close: string) => {
+        const scrubbed = body.replace(/"(\d{15,22})"/g, (_im, id: string) => `"${this.tag('user', id)}"`)
+        return `"${field}":[${scrubbed}${close}`
+      }
+    )
+
+    // JSON voice/stream relay endpoints: "endpoint":"c-iad20-8687d324.discord.media:443"
+    s = s.replace(
+      /"endpoint"\s*:\s*"([A-Za-z0-9.-]+\.[A-Za-z]{2,}(?::\d+)?)"/g,
+      (_m, ep: string) => {
+        const [host, port] = ep.split(':')
+        return `"endpoint":"${this.tag('server', host)}${port ? `:${port}` : ''}"`
+      }
+    )
+
+    // JSON snowflake IDs in unhandled gateway / GoLive payloads
+    s = s.replace(
+      /"(guild_id|channel_id|rtc_channel_id|rtc_server_id|user_id|author_id|id)"\s*:\s*"(\d{15,22})"/g,
       (_m, field: string, id: string) => {
         const kind: AnonymizerTagKind =
           field === 'guild_id'
             ? 'guild'
-            : field === 'user_id' || field === 'author_id'
-              ? 'user'
-              : 'channel'
+            : field === 'rtc_server_id'
+              ? 'server'
+              : field === 'user_id' || field === 'author_id'
+                ? 'user'
+                : 'channel'
         return `"${field}":"${this.tag(kind, id)}"`
       }
     )
 
-    // Sneedchat user UUIDs & file UUIDs
+    // Sneedchat user UUIDs, file UUIDs & numeric attachment IDs
     s = s.replace(
       /(\bavatar fetch for user\s+)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi,
       (_m, pre: string, uuid: string) => `${pre}${this.tag('user', uuid)}`
@@ -418,8 +502,12 @@ export class Anonymizer {
       (_m, pre: string, uuid: string) => `${pre}${this.tag('user', uuid)}`
     )
     s = s.replace(
-      /(\bfetching file\s+)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi,
+      /(\b(?:fetching\s+)?file\s+)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi,
       (_m, pre: string, uuid: string) => `${pre}${this.tag('file', uuid)}`
+    )
+    s = s.replace(
+      /(\battachment\s+)(\d{5,22})\b/gi,
+      (_m, pre: string, id: string) => `${pre}${this.tag('file', id)}`
     )
 
     // Telegram media cache filenames: telegram-media/tg_<uid>_n<chat>_<msg>_thumb.jpg
@@ -462,9 +550,9 @@ export class Anonymizer {
       (_m, pre: string, _nick: string, text: string) => `${pre}[message, ${text.length} chars]`
     )
 
-    // HTTP(S) URLs: anonymize non-documentation hosts, file IDs, and sensitive query params (`?t=`, `since=`, etc.)
+    // HTTP(S) / WS(S) URLs: anonymize non-documentation hosts, file IDs, and sensitive query params
     s = s.replace(
-      /(https?:\/\/)([^/\s)"':]+)(:\d+)?([^\s)"']*)/gi,
+      /((?:https?|wss?):\/\/)([^/\s)"':]+)(:\d+)?([^\s)"']*)/gi,
       (_m, scheme: string, host: string, port: string | undefined, rest: string) => {
         const lowerHost = host.toLowerCase()
         if (SAFE_DOC_HOSTS.has(lowerHost) || lowerHost === '127.0.0.1' || lowerHost === 'localhost') {
@@ -488,12 +576,21 @@ export class Anonymizer {
           (_am, pre: string, aid: string) => `${pre}${this.tag('file', aid)}`
         )
         scrubbedRest = scrubbedRest.replace(
-          /([?&](?:t|token|access_token|refresh_token|auth|sig|signature|key|secret|code|ticket|since|session|session_id|cookie|password)=)([^&#\s)"']+)/gi,
+          /([?&](?:t|token|access_token|refresh_token|auth|sig|signature|key|secret|code|ticket|since|session|session_id|cookie|password|dpl)=)([^&#\s)"']+)/gi,
           '$1[removed]'
         )
         return `${scheme}${scrubbedHost}${port ?? ''}${scrubbedRest}`
       }
     )
+
+    // Steam relay prefix: `steam[user#1]: cmp2-iad1.steamserver.net:443: ...` or `not connected (cmp2-...:443:`
+    s = s.replace(
+      /(\bsteam\[[^\]]+\]:\s+(?:not connected \()?)([a-z0-9-]+(?:\.[a-z0-9-]+)+\.[a-z]{2,})(:\d+)?(?=:)/gi,
+      (_m, pre: string, host: string, port?: string) => `${pre}${this.tag('server', host)}${port ?? ''}`
+    )
+
+    // XMPP client resource suffixes: `/moho.777en9sj` -> `/moho.[resource]`
+    s = s.replace(/(\/moho\.)([A-Za-z0-9_-]{4,})\b/g, '$1[resource]')
 
     // IRC / XMPP / Tor connection hosts:
     //   `Connecting via TLS to irc.libera.chat.`
@@ -556,6 +653,9 @@ export class Anonymizer {
     // Known token prefixes (Matrix syt_, Discord mfa., GitHub ghp_/gho_, JWTs)
     s = s.replace(/\b(?:syt_[A-Za-z0-9_=-]{6,}|mfa\.[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9_]{20,})\b/g, '[removed]')
     s = s.replace(/\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, '[removed]')
+
+    // Truncated onion tails printed by Tor/Arti: `[…]cyd.onion` -> `[scrubbed].onion`
+    s = s.replace(/(?:\[…\]|\[\.\.\.\])[a-z2-7]{1,16}\.onion\b/gi, '[scrubbed].onion')
 
     // Onion addresses (including subdomains like uploads.<56chars>.onion)
     s = s.replace(
@@ -668,11 +768,13 @@ const PROTECTED_INFO_RE =
 function infoTemplateKey(body: string): string | null {
   if (PROTECTED_INFO_RE.test(body)) return null
   let key = body
-  // Collapse per-minute discord gateway stats into one template
-  key = key.replace(
-    /(the last minute, by kind:).*$/,
-    '$1 ...'
-  )
+  // Collapse high-volume Discord gateway / GoLive / streamconn chatter
+  key = key.replace(/(the last minute, by kind:).*$/, '$1 ...')
+  key = key.replace(/(STREAM_UPDATE)\s+\{.*\}$/, '$1 {...}')
+  key = key.replace(/(VOICE_CHANNEL_START_TIME_UPDATE \(not handled here\))\s+\{.*\}$/, '$1 {...}')
+  key = key.replace(/(DAVE in: op \d+)\s+\(\d+ bytes\)/, '$1 (<n> bytes)')
+  key = key.replace(/(\bdatagram )\d+( on guild:(?:guild#\d+|\d+):(?:channel#\d+|\d+):(?:user#\d+|\d+): ).*$/, '$1<n>$2...')
+  key = key.replace(/(discord voice: stream )\d+( is user )/, '$1<ssrc>$2')
   // Normalize placeholders, media hashes, and durations
   key = key.replace(/\b(user|server|guild|channel|room|account|ip|file)#\d+\b/g, '<$1>')
   key = key.replace(/\b[0-9a-f]{12,}\b/gi, '<hash>')
@@ -681,18 +783,32 @@ function infoTemplateKey(body: string): string | null {
   return key
 }
 
-const BURST_WINDOW_MS = 15 * 60 * 1000
-const BURST_THRESHOLD = 6
-const BURST_KEEP_EDGE = 2
+function warnErrorTemplateKey(body: string): string {
+  // Group interleaved renderer CSP asset errors on the same host & directive
+  if (body.startsWith('[renderer] Loading the ')) {
+    return body.replace(/'https?:\/\/(server#\d+)[^']*'/g, "'https://$1/<asset>'")
+  }
+  // Normalize consecutive repeat suffixes from Pass 1 so interleaved clusters merge cleanly
+  return body.replace(/\s+\(×\d+(?:, [^)]+)?\)$/, '')
+}
+
+const BURST_WINDOW_MS = 60 * 60 * 1000
+const INFO_BURST_THRESHOLD = 5
+const WARN_BURST_THRESHOLD = 4
+const BURST_KEEP_FIRST = 1
+const BURST_KEEP_LAST = 2
 
 /**
  * Collapses noisy repeats while preserving all diagnostic signal:
  * 1. Exact consecutive duplicates (any level, ignoring timestamp) collapse to
  *    one line with `(×N)`.
- * 2. High-volume repetitive `info` templates (> 6 occurrences in a 15-minute
+ * 2. High-volume repetitive `info` templates (> 5 occurrences in a 60-minute
+ *    session window) keep the first 1 and last 2 verbatim and summarize the
+ *    middle with one `[export] collapsed N× ...` line.
+ * 3. Interleaved repeated `warn`/`error` entries (> 4 occurrences in a 60-minute
  *    session window) keep the first 2 and last 2 verbatim and summarize the
- *    middle with one `[export] collapsed N× ...` line. `warn`, `error`,
- *    lifecycle events, and multi-line stack traces are never burst-compacted.
+ *    middle at the same severity (`warn`/`error`) so grep and error counts stay
+ *    intact. Lifecycle events and multi-line stack traces are never compacted.
  */
 function compactEntries(entries: LogEntry[]): { entries: LogEntry[]; linesCollapsed: number } {
   let linesCollapsed = 0
@@ -733,10 +849,13 @@ function compactEntries(entries: LogEntry[]): { entries: LogEntry[]; linesCollap
     i = j
   }
 
-  // Pass 2: high-volume `info` template burst compaction within 15-minute session windows
+  // Pass 2: hourly session-windowed compaction for repetitive `info` bursts
+  // and interleaved repeated `warn`/`error` loops.
   let session = 0
-  const bucketIndices = new Map<string, number[]>()
-  const entryBucket = new Array<string | null>(deduped.length).fill(null)
+  const buckets = new Map<
+    string,
+    { level: 'info' | 'warn' | 'error'; tpl: string; idxs: number[] }
+  >()
 
   for (let idx = 0; idx < deduped.length; idx++) {
     const e = deduped[idx]
@@ -744,37 +863,42 @@ function compactEntries(entries: LogEntry[]): { entries: LogEntry[]; linesCollap
       session++
       continue
     }
-    if (e.lines.length > 1 || e.level !== 'info' || e.tsMs === null) continue
-    const tpl = infoTemplateKey(e.body)
+    if (e.lines.length > 1 || e.tsMs === null) continue
+    if (e.level !== 'info' && e.level !== 'warn' && e.level !== 'error') continue
+
+    const tpl = e.level === 'info' ? infoTemplateKey(e.body) : warnErrorTemplateKey(e.body)
     if (!tpl) continue
     const win = Math.floor(e.tsMs / BURST_WINDOW_MS)
-    const bKey = `${session}|${win}|${tpl}`
-    entryBucket[idx] = bKey
-    let list = bucketIndices.get(bKey)
-    if (!list) {
-      list = []
-      bucketIndices.set(bKey, list)
+    const bKey = `${session}|${win}|${e.level}|${tpl}`
+    let bucket = buckets.get(bKey)
+    if (!bucket) {
+      bucket = { level: e.level, tpl, idxs: [] }
+      buckets.set(bKey, bucket)
     }
-    list.push(idx)
+    bucket.idxs.push(idx)
   }
 
   const dropSet = new Set<number>()
   const summaryAt = new Map<number, LogEntry>()
 
-  for (const [bKey, idxs] of bucketIndices) {
-    if (idxs.length <= BURST_THRESHOLD) continue
-    const middle = idxs.slice(BURST_KEEP_EDGE, idxs.length - BURST_KEEP_EDGE)
+  for (const bucket of buckets.values()) {
+    const isInfo = bucket.level === 'info'
+    const threshold = isInfo ? INFO_BURST_THRESHOLD : WARN_BURST_THRESHOLD
+    const keepFirst = isInfo ? BURST_KEEP_FIRST : 2
+    const keepLast = BURST_KEEP_LAST
+    if (bucket.idxs.length <= threshold) continue
+    const middle = bucket.idxs.slice(keepFirst, bucket.idxs.length - keepLast)
     if (middle.length < 2) continue
     for (const mIdx of middle) dropSet.add(mIdx)
     const firstMid = deduped[middle[0]]
     const lastMid = deduped[middle[middle.length - 1]]
-    const tpl = bKey.split('|').slice(2).join('|')
-    const shortTpl = tpl.length > 120 ? `${tpl.slice(0, 117)}...` : tpl
+    const shortTpl = bucket.tpl.length > 120 ? `${bucket.tpl.slice(0, 117)}...` : bucket.tpl
     const span =
       firstMid.timestamp && lastMid.timestamp
         ? ` (${shortClock(firstMid.timestamp)}..${shortClock(lastMid.timestamp)})`
         : ''
-    const summaryLine = `${lastMid.timestamp} info [export] collapsed ${middle.length.toLocaleString('en-US')}× similar lines: ${shortTpl}${span}`
+    const kindLabel = isInfo ? 'similar lines' : `repeated ${bucket.level}s`
+    const summaryLine = `${lastMid.timestamp} ${bucket.level} [export] collapsed ${middle.length.toLocaleString('en-US')}× ${kindLabel}: ${shortTpl}${span}`
     summaryAt.set(middle[middle.length - 1], parseEntry([summaryLine]))
     linesCollapsed += middle.length - 1
   }
