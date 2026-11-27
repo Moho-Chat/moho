@@ -19,6 +19,10 @@ Each section has two parts:
 
 ## [Unreleased]
 
+### Major features
+
+- Mattermost: any server, signed in by password (with a second factor), a personal access token or the server's own sign-in page for single sign-on; teams and their channels under the person's own categories, direct and group messages, threads, GitHub Markdown with tables, files, reactions and custom emoji, search, pins, saved posts, drafts on the account, slash commands, presence and custom statuses, mutes kept on the account, channel and team administration, and calls through the Calls plugin (issue #25, on the `protocol/mattermost` branch)
+
 ## [1.5.10]
 
 ### Fixes, patches and changes
