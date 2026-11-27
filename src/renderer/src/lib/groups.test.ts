@@ -176,6 +176,14 @@ describe('protocol badges as folders', () => {
     expect(badgesShown([group('a'), acct], [group('a')], [])).toEqual([])
   })
 
+  it("shows the protocol's mark, not the account's picture", () => {
+    const pictured = [group('a'), { ...acct, iconUrl: '/avatar.png' } as RailGroup, stoat('s1')]
+    const folders = fileNewServers(pictured, { order: [], folders: [] })!
+    const [badge] = railEntries(pictured, folders).filter((e) => e.kind === 'folder')
+    expect(badge.kind === 'folder' && badge.head?.id).toBe('account:stoat')
+    expect(badge.kind === 'folder' && badge.head?.iconUrl).toBeUndefined()
+  })
+
   it('is made for an account whose servers were all placed before badges existed', () => {
     const folders = fileNewServers(groups, { order: ['s1', 's2'], folders: [] })!
     expect(folders).toEqual([{ id: 'badge:account:stoat', name: 'account:stoat', members: [], head: 'account:stoat' }])

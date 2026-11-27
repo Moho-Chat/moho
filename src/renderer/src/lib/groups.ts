@@ -427,7 +427,13 @@ export function railEntries(ordered: RailGroup[], given: RailFolder[]): RailEntr
     const members = children.flatMap((c) =>
       c.kind === 'group' ? [c.group] : [...(c.head ? [c.head] : []), ...c.members]
     )
-    return { kind: 'folder', id: f.id, folder: f, head: f.head ? present.get(f.head) : undefined, children, members }
+    const found = f.head ? present.get(f.head) : undefined
+    // A badge is the protocol's mark, not the account's picture: the daemon
+    // gives an account's entry its avatar, and Discord's then read as one more
+    // server rather than as Discord. Wherever a badge is drawn - its own tile,
+    // or a chip in the face of a folder holding it - it says which service.
+    const head = found && { ...found, iconUrl: undefined }
+    return { kind: 'folder', id: f.id, folder: f, head, children, members }
   }
 
   // The outermost thing a ref is drawn inside of.

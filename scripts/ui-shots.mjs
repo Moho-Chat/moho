@@ -1325,7 +1325,7 @@ const SCENES = [
     // drop guilds into.
     name: 'rail-badge-discord',
     setup: async (p) => {
-      const DISCORD_HEAD = `window.__mohoShots.patch({ groups: [...window.__mohoShots.state().groups.filter((g) => g.id !== 'account:discord:shots'), { id: 'account:discord:shots', accountId: 'discord:shots', service: 'discord', kind: 'account', name: 'Salastil', position: 4 }] }), true`
+      const DISCORD_HEAD = `window.__mohoShots.patch({ groups: [...window.__mohoShots.state().groups.filter((g) => g.id !== 'account:discord:shots'), { id: 'account:discord:shots', accountId: 'discord:shots', service: 'discord', kind: 'account', name: 'Salastil', iconUrl: '/avatar-the-daemon-gives-it.png', position: 4 }] }), true`
       await p.evaluate(`window.moho.prefs.set('ui.railOrder', ['discord:shots|guild:1', 'discord:shots|guild:2'])`)
       await railWith([], '')(p)
       for (let i = 0; i < 2; i++) {

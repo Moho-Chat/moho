@@ -1023,11 +1023,12 @@ function FolderTile(props: {
           <Icon name="notifications_off" size={11} />
         </span>
       )}
-      {/* Once the face is a grid of other people's icons - or a badge, which
-          looks the same holding servers as not - nothing says it is a folder
-          any more, so it takes the same corner badge a guild uses to name its
-          service. An empty folder is already unmistakably one. */}
-      {holding && !(!open && mentions > 0) && (
+      {/* Once the face is a grid of other people's icons, nothing says it is a
+          folder any more, so it takes the same corner badge a guild uses to
+          name its service. A protocol badge always does, empty or not: its face
+          is the same mark an account's tile has, and this is what says it is a
+          folder. An empty folder of the user's own is already unmistakably one. */}
+      {(holding || head) && !(!open && mentions > 0) && (
         <span className="rail-service">
           <Icon name={open ? 'folder_open' : 'folder'} size={11} />
         </span>
