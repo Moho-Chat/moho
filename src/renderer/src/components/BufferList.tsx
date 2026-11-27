@@ -1155,10 +1155,12 @@ function BufferRow({
   const shownName = bufferDisplayName(buffer.name)
   const rowName = hashGlyph && shownName.length > 1 ? shownName.replace(/^#/, '') : shownName
 
+  // A Mattermost server calls only where the Calls plugin runs.
+  const mattermostCalls = useChat((s) => !!s.mattermostServers[buffer.accountId]?.calls)
   // Calling from the row it belongs to, as well as from the header of the
   // conversation once it is open - the list is where you look for somebody
   // you want to reach, so it is where reaching them should be offered.
-  const canCall = (account?.service === 'discord' || account?.service === 'steam' || account?.service === 'stoat' || account?.service === 'fluxer') && buffer.kind === 'dm'
+  const canCall = (account?.service === 'discord' || account?.service === 'steam' || account?.service === 'stoat' || account?.service === 'fluxer' || (account?.service === 'mattermost' && mattermostCalls)) && buffer.kind === 'dm'
 
   // The same entries the header's nameplate opens - see lib/buffermenu.ts for
   // why they live there rather than here.

@@ -1,3 +1,4 @@
+import { MattermostCall } from '../lib/mattermostcall'
 import type {
   SignalCallState,
   SignalGroupCallState,
@@ -1287,7 +1288,7 @@ export class ChatStore {
   /** Who is talking in a call this window is holding. */
   private levels = new Levels()
   /** The Stoat call this window is in, which is held on a media server like Element's. */
-  private stoatCall: { sfu: SfuCall; bufferId: string; people: SfuParticipant[]; local: MediaStream | null } | null = null
+  private stoatCall: { sfu: SfuCall | MattermostCall; bufferId: string; people: SfuParticipant[]; local: MediaStream | null } | null = null
   /**
    * The Discord screen share, while one is running.
    *
@@ -2582,7 +2583,8 @@ export class ChatStore {
       return
     }
     try {
-      await window.moho.rpc(this.onMediaServer(bufferId) ? 'declineStoatCall' : 'declineCall', { bufferId })
+      if (bufferId.startsWith('mattermost:')) await window.moho.rpc('mattermost', { action: 'callDecline', bufferId })
+      else await window.moho.rpc(this.onMediaServer(bufferId) ? 'declineStoatCall' : 'declineCall', { bufferId })
     } catch (e) {
       this.toast('error', `Couldn't decline: ${(e as Error).message}`)
     }
@@ -4084,6 +4086,10 @@ export class ChatStore {
    */
   async joinStoatCall(bufferId: string, video: boolean): Promise<void> {
     const account = this.accountFor(bufferId)
+    if (account?.service === 'mattermost') {
+      await this.joinMattermostCall(bufferId)
+      return
+    }
     if (!account || (account.service !== 'stoat' && account.service !== 'fluxer')) return
     if (this.state.activeCall || this.stoatCall) {
       this.toast('info', 'Leave the call you are in first')
@@ -4138,10 +4144,62 @@ export class ChatStore {
     }
   }
 
+  /**
+   * Joins (or starts) a Mattermost call: the Calls plugin's media server, reached by this window's own connection with
+   * the daemon carrying the signalling (lib/mattermostcall.ts). The call bar, tiles, mute and hang-up are the same as for
+   * Stoat's and Fluxer's calls.
+   */
+  async joinMattermostCall(bufferId: string): Promise<void> {
+    const account = this.accountFor(bufferId)
+    if (!account) return
+    if (this.state.activeCall || this.stoatCall) {
+      this.toast('info', 'Leave the call you are in first')
+      return
+    }
+    this.set({
+      callMinimized: false,
+      activeCall: { accountId: account.id, bufferId, phase: 'connecting', video: false, muted: this.voiceSilenced(), sharingScreen: false, cameraOn: false, onServer: true }
+    })
+    let wasConnected = false
+    const call = new MattermostCall(
+      bufferId,
+      {
+        onParticipants: (people) => {
+          if (this.stoatCall) this.stoatCall.people = people
+          this.set({})
+        },
+        onConnected: (connected) => {
+          if (!this.stoatCall) return
+          if (connected) wasConnected = true
+          if (!connected && wasConnected && this.state.activeCall?.bufferId === bufferId) {
+            void this.stoatCall.sfu.leave().catch(() => {})
+            this.stoatCall = null
+            this.levels.dispose()
+            this.set({ activeCall: null })
+            return
+          }
+          if (this.state.activeCall) this.set({ activeCall: { ...this.state.activeCall, phase: connected ? 'connected' : 'connecting' } })
+        },
+        onError: (message) => this.toast('error', message)
+      },
+      () => Object.fromEntries((this.state.stoatVoice[bufferId] ?? []).map((m) => [(m as StoatVoiceMember & { sessionId?: string }).sessionId ?? '', m.userId]))
+    )
+    this.stoatCall = { sfu: call, bufferId, people: [], local: null }
+    try {
+      await call.join(this.voiceSilenced())
+      if (this.stoatCall?.sfu === call) this.stoatCall.local = call.local
+    } catch (e) {
+      void call.leave().catch(() => {})
+      this.stoatCall = null
+      this.set({ activeCall: null })
+      this.toast('error', `Couldn't join the call: ${(e as Error).message}`)
+    }
+  }
+
   /** Whether a conversation's calls are held on a media server the window joins (Stoat's and Fluxer's). */
   private onMediaServer(bufferId: string): boolean {
     const account = this.state.buffers.find((b) => b.id === bufferId)?.accountId ?? ''
-    return account.startsWith('stoat:') || account.startsWith('fluxer:')
+    return account.startsWith('stoat:') || account.startsWith('fluxer:') || account.startsWith('mattermost:')
   }
 
   /** Tells Fluxer the camera and screen as they are, so the others' apps show them (the daemon adds the voice buttons). */
