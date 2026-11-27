@@ -11,6 +11,7 @@ import { TelegramVoiceChat } from './TelegramVoiceChat'
 import { HeaderPopover } from './HeaderPopover'
 import { SearchPane } from './SearchPane'
 import { MattermostTools } from './MattermostTools'
+import { MattermostSettings } from './MattermostSettings'
 import { useChat, useStore } from '../state/hooks'
 import { classes, formatFullTime } from '../lib/util'
 import { shortCount } from '../lib/streamplayer'
@@ -1110,6 +1111,7 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           {(isDiscord || buffer.accountId.startsWith('fluxer:')) && buffer.kind === 'channel' && !buffer.forum && <DiscordThreads buffer={buffer} />}
           {(isMatrix || isDiscord || buffer.accountId.startsWith('telegram:') || isStoat || isMattermost) && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
           {isMattermost && <MattermostTools buffer={buffer} />}
+          {isMattermost && <MattermostSettings buffer={buffer} />}
 
           {/* Beside the pins, because it is the same kind of fact about a room:
               something the room keeps, rather than something said in it. */}

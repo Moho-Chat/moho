@@ -79,6 +79,20 @@ try {
   await shot('mattermost-saved.png')
   await ev(`document.querySelector('[title^="Threads, saved posts"]')?.click()`)
 
+  // A channel of mohoa's own, and its settings.
+  const made = await rpc('mattermost', { action: 'createChannel', accountId: account.id, teamId: alpha.id, name: `Release ${Date.now() % 10000}`, private: false, purpose: 'Getting 1.6 out' })
+  await rpc('mattermost', { action: 'manage', bufferId: made.bufferId, do: 'addMember', userId: 'mohob' })
+  await rpc('mattermost', { action: 'manage', bufferId: made.bufferId, do: 'addMember', userId: 'mohoc' })
+  await ev(`window.__mohoShots.store.selectBuffer(${JSON.stringify(made.bufferId)})`)
+  await sleep(800)
+  await ev(`document.querySelector('[title="Channel settings"]')?.click()`)
+  await until(() => ev('!!document.querySelector(".room-settings .card")'), 10000)
+  await shot('mattermost-settings.png')
+  await ev(`[...document.querySelectorAll('.room-settings .search-scope button')].find((b) => b.textContent === 'Members')?.click()`)
+  await shot('mattermost-members.png')
+  await ev(`document.querySelector('[title="Channel settings"]')?.click()`)
+  await ev(`window.__mohoShots.store.selectBuffer(${JSON.stringify(town.id)})`)
+
   // The thread beside it.
   await ev(`window.__mohoShots.store.openThreadPanel(${JSON.stringify(town.id)}, ${JSON.stringify(root.id)})`)
   await until(() => ev('!!document.querySelector(".thread-pane")'))
