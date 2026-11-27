@@ -46,6 +46,7 @@ try {
   await as('mohoc', 'POST', '/posts', { channel_id: square.id, root_id: root.id, message: 'I can take the announcement.' })
   await as('mohob', 'POST', '/posts', { channel_id: square.id, root_id: root.id, message: 'Thanks! ~~Friday~~ Thursday then.' })
   await as('mohob', 'POST', '/posts', { channel_id: square.id, message: 'Build finished', props: { attachments: [{ color: '#2eb886', title: 'CI #412 passed', title_link: 'https://ci.example.org/412', text: 'All 2071 tests passed on `protocol/mattermost`.', fields: [{ title: 'Branch', value: 'protocol/mattermost', short: true }, { title: 'Took', value: '4m 12s', short: true }] }] } })
+  await as('mohoa', 'PUT', `/users/${me.id}/preferences`, [{ user_id: me.id, category: 'flagged_post', name: root.id, value: 'true' }])
   const dm = await as('mohob', 'POST', '/channels/direct', [bee.id, me.id])
   await as('mohob', 'POST', '/posts', { channel_id: dm.id, message: 'Are you coming to the call later? `npm run deploy` is done :+1:' })
 
@@ -69,6 +70,14 @@ try {
   await ev(`window.__mohoShots.store.selectBuffer(${JSON.stringify(town.id)})`)
   await rpc('requestMemberList', { bufferId: town.id })
   await shot('mattermost-channel.png')
+
+  // What the account keeps beside its channels: the threads it follows, its saved posts.
+  await ev(`document.querySelector('[title^="Threads, saved posts"]')?.click()`)
+  await until(() => ev('!!document.querySelector(".history-row")'), 10000)
+  await shot('mattermost-threads.png')
+  await ev(`[...document.querySelectorAll('.search-scope button')].find((b) => b.textContent === 'Saved')?.click()`)
+  await shot('mattermost-saved.png')
+  await ev(`document.querySelector('[title^="Threads, saved posts"]')?.click()`)
 
   // The thread beside it.
   await ev(`window.__mohoShots.store.openThreadPanel(${JSON.stringify(town.id)}, ${JSON.stringify(root.id)})`)

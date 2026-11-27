@@ -382,6 +382,7 @@ function MessageRowBody({
   const media = useMediaUrl()
   const strictRoute = useStrictRoute()
   const store = useStore()
+  const mattermostSaved = useChat((s) => (s.mattermostSaved[bufferId.split('|')[0]] ?? []).includes(message.id))
   const { menu, open, close } = useContextMenu()
   // Which picture or video the right click was on, if it was on one: the menu then offers to hide it.
   const mediaClicked = useRef<string | null>(null)
@@ -720,6 +721,33 @@ function MessageRowBody({
     // Anywhere else it would be a copy posted as you, which is not a forward.
     ...((service === 'discord' || service === 'matrix' || service === 'telegram') && !isSystem && message.id
       ? ([{ label: 'Forward…', icon: 'forward', onClick: () => setForwarding(true) }] as MenuEntry[])
+      : []),
+    // A post kept for later on the account (Mattermost's Saved), and acknowledging one whose sender asked for it.
+    ...(service === 'mattermost' && !isSystem && message.id
+      ? ([
+          {
+            label: mattermostSaved ? 'Unsave' : 'Save for later',
+            icon: mattermostSaved ? 'bookmark_remove' : 'bookmark_add',
+            onClick: () =>
+              void window.moho
+                .rpc('mattermost', { action: 'setSaved', bufferId, messageId: message.id, saved: !mattermostSaved })
+                .then(() => store.toast('info', mattermostSaved ? 'Unsaved' : 'Saved for later'))
+                .catch((e: Error) => store.toast('error', e.message))
+          },
+          ...(/acknowledgement requested/i.test(message.body.split('\n')[0] ?? '') && !message.isOwn
+            ? [
+                {
+                  label: 'Acknowledge',
+                  icon: 'task_alt',
+                  onClick: () =>
+                    void window.moho
+                      .rpc('mattermost', { action: 'acknowledge', bufferId, messageId: message.id, ack: true })
+                      .then(() => store.toast('info', 'Acknowledged'))
+                      .catch((e: Error) => store.toast('error', e.message))
+                }
+              ]
+            : [])
+        ] as MenuEntry[])
       : []),
     // Every answer on Mattermost is a thread: the post's own, opened beside the channel to read and answer there.
     ...(service === 'mattermost' && !isSystem && !inThread && message.id

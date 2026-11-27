@@ -15625,3 +15625,16 @@ select.text-field {
   gap: var(--spacing-s);
   margin-top: var(--spacing-s);
 }
+
+/* Mattermost's lists beside its channels (MattermostTools): a row's words clip rather than widen the popover. */
+.mattermost-tools .pinned-row {
+  min-width: 0;
+}
+.mattermost-tools .history-row {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.mattermost-tools .field-row .text-field {
+  min-width: 0;
+}

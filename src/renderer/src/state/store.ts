@@ -661,6 +661,8 @@ export interface ChatState {
   threadCounts: Record<string, Record<string, number>>
   /** What each Mattermost account's server offers and how it reads threads, by account id (the daemon's `mattermostServer`). */
   mattermostServers: Record<string, MattermostServer>
+  /** The posts each Mattermost account has saved, by account id. */
+  mattermostSaved: Record<string, string[]>
   /**
    * The pinned messages themselves, once somebody has asked for them. The ids
    * above say that something is pinned; these say what, for the banner over
@@ -936,6 +938,7 @@ const INITIAL: ChatState = {
   pinnedMessages: {},
   threadCounts: {},
   mattermostServers: {},
+  mattermostSaved: {},
   pinnedRows: {},
   forumPages: {},
   discordFriends: {},
@@ -1699,6 +1702,10 @@ export class ChatStore {
         void window.moho
           .rpc<MattermostServer>('mattermost', { action: 'server', accountId: a.id })
           .then((server) => this.set({ mattermostServers: { ...this.state.mattermostServers, [a.id]: server } }))
+          .catch(() => {})
+        void window.moho
+          .rpc<{ ids: string[] }>('mattermost', { action: 'saved', accountId: a.id })
+          .then((saved) => this.set({ mattermostSaved: { ...this.state.mattermostSaved, [a.id]: saved.ids } }))
           .catch(() => {})
       }
       if (this.state.accounts.some((a) => a.service === 'fluxer')) {
@@ -3507,6 +3514,13 @@ export class ChatStore {
       (m) => m.id === rootId || (m.replyTo?.thread && m.replyTo.id === rootId) || m.replyTo?.threadRoot === rootId
     )
     this.set({ openThread: { bufferId, rootId, messages: known, loading: true } })
+    // A Mattermost thread opened is a thread read, on the account's other apps too.
+    if (bufferId.startsWith('mattermost:')) {
+      const group = this.state.buffers.find((b) => b.id === bufferId)?.groupId ?? ''
+      const accountId = bufferId.split('|')[0]
+      const teamId = group.includes('|team:') ? group.split('|team:')[1] : (this.state.mattermostServers[accountId]?.teams?.[0]?.id ?? '')
+      if (teamId) void window.moho.rpc('mattermost', { action: 'readThread', accountId, teamId, threadId: rootId }).catch(() => {})
+    }
     try {
       const result = (await window.moho.rpc('fetchThread', { bufferId, rootId })) as {
         messages?: ChatMessage[]
@@ -4798,6 +4812,12 @@ export class ChatStore {
       case 'messageModerated':
         this.mapMessage(data.bufferId, data.id, (m) => ({ ...m, moderated: data.moderated ?? {} }))
         break
+
+      case 'mattermostSaved': {
+        const d = data as unknown as { accountId: string; ids: string[] }
+        this.set({ mattermostSaved: { ...this.state.mattermostSaved, [d.accountId]: d.ids } })
+        break
+      }
 
       case 'mattermostServer': {
         const d = data as unknown as MattermostServer & { accountId: string }
