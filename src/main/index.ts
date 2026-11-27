@@ -29,7 +29,7 @@ import { Prefs } from './prefs'
 import { Notifier } from './notifications'
 import { IdleWatcher } from './idle'
 import { NOTHING_WAITING, PAUSED_FOREVER, isPaused, pauseEnd, trayIconFile, trayMenu, trayTooltip, type TrayMode, type TrayState, type TrayStatus, type TrayWaiting } from './tray'
-import { browserLogin, LOGIN_FLOWS } from './browser-login'
+import { browserLogin, LOGIN_FLOWS, rocketchatSsoLogin } from './browser-login'
 import { feedTwitchSignIn, twitchSignIn } from './twitch-signin'
 import { answerIntegrity, mintIntegrity } from './twitch-integrity'
 import { EDIT_ACTIONS, IPC, POPOUT_FLAG, UI_SHOTS_FLAG, type EditAction, type EditMenuRequest, type PopoutState } from '../shared/ipc'
@@ -1596,6 +1596,27 @@ function wireIpc(): void {
     twitchSignIn((method, params) => client.request(method, params), {
       useTor: typeof options?.useTor === 'boolean' ? options.useTor : undefined
     })
+  )
+
+  // Rocket.Chat OAuth / SAML / OIDC / LDAP SSO browser sign-in capturing Meteor.loginToken.
+  ipcMain.handle(
+    IPC.rocketchatSsoLogin,
+    async (_e, serverUrl: string, options?: { useTor?: boolean }) => {
+      const outcome = await rocketchatSsoLogin(serverUrl)
+      if (!outcome.ok || !outcome.token) return { ok: false, error: outcome.error }
+      try {
+        await client.request('addRocketChatAccountToken', {
+          serverUrl,
+          authToken: outcome.token,
+          userId: outcome.userId ?? '',
+          madeHere: true,
+          ...(typeof options?.useTor === 'boolean' ? { useTor: options.useTor } : {})
+        })
+        return { ok: true }
+      } catch (e) {
+        return { ok: false, error: (e as Error).message }
+      }
+    }
   )
 
   ipcMain.handle(IPC.smiliesDir, () => smiliesPath())

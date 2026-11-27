@@ -19,6 +19,10 @@ Each section has two parts:
 
 ## [Unreleased]
 
+### Major features
+
+- **Rocket.Chat**: full protocol support for self-hosted and cloud Rocket.Chat workspaces — REST API v1 + persistent Meteor DDP WebSocket; sign-in by username/email + password with TOTP/email 2FA, Personal Access Token (`X-Auth-Token` + `X-User-Id`), or isolated SSO browser login (`Meteor.loginToken`); 1:1 & multi-user DMs, Public Channels, Private Groups, Teams, Discussions, and optional Omnichannel/Livechat; threads (`tmid`/`tshow`), quoted permalinks, edits, deletes, reactions, custom server emoji, multipart file & voice-note uploads, pins, stars, read receipts, and server-side search; presence & custom status, typing indicators, profiles, favorites, notification preferences, and user ignores; pure-Rust Rocket.Chat E2EE (2048-bit RSA-OAEP, PBKDF2-SHA256 private key backup/unlock, AES-CBC & AES-GCM `rc.v1.aes-sha2` messages, E2EE file encryption, key distribution & reset); video-conference capabilities & native WebRTC signaling; room settings, roles, invite links, message reporting & moderation queue; slash commands, Matrix Federation badges, OTR notices, Rocket.Chat Settings page, and SOCKS5/Tor routing.
+
 ## [1.5.10]
 
 ### Fixes, patches and changes

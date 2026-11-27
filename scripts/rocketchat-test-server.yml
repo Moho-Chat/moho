@@ -1,0 +1,35 @@
+# Local Rocket.Chat + MongoDB replica set for automated integration testing.
+# Usage: docker compose -f scripts/rocketchat-test-server.yml up -d
+services:
+  mongodb:
+    image: docker.io/bitnami/mongodb:7.0
+    restart: unless-stopped
+    environment:
+      MONGODB_REPLICA_SET_MODE: primary
+      MONGODB_REPLICA_SET_NAME: rs0
+      MONGODB_PORT_NUMBER: 27017
+      MONGODB_INITIAL_PRIMARY_HOST: mongodb
+      MONGODB_INITIAL_PRIMARY_PORT_NUMBER: 27017
+      MONGODB_ADVERTISED_HOSTNAME: mongodb
+      MONGODB_ENABLE_JOURNAL: "true"
+      ALLOW_EMPTY_PASSWORD: "yes"
+
+  rocketchat:
+    image: registry.rocket.chat/rocketchat/rocket.chat:7.2.0
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      ROOT_URL: http://localhost:3000
+      PORT: 3000
+      MONGO_URL: mongodb://mongodb:27017/rocketchat?replicaSet=rs0
+      MONGO_OPLOG_URL: mongodb://mongodb:27017/local?replicaSet=rs0
+      OVERWRITE_SETTING_Show_Setup_Wizard: completed
+      ADMIN_USERNAME: admin
+      ADMIN_PASS: admin123456
+      ADMIN_EMAIL: admin@localhost.test
+      OVERWRITE_SETTING_E2E_Enable: "true"
+      OVERWRITE_SETTING_Message_Read_Receipt_Enabled: "true"
+      OVERWRITE_SETTING_Message_Read_Receipt_Store_Users: "true"

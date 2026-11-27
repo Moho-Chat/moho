@@ -4,6 +4,7 @@ import { Icon, ServiceMark } from './Icon'
 import { AccountFace, AccountList, MasterDetail, StatePill, Tabs, accountState, accountWhere, takeAccountsAsk } from './AccountList'
 import { SavedMark, useSavedFlash } from './settings/controls'
 import { MatrixAccountTools } from './MatrixAccountTools'
+import { RocketChatAccountTools } from './RocketChatAccountTools'
 import { StoatAccountTools } from './StoatAccountTools'
 import { TelegramAccountTools } from './TelegramAccountTools'
 import { SignalAccountTools } from './SignalAccountTools'
@@ -32,7 +33,7 @@ import type { Account } from '../../../shared/wire'
  * that gains a backend appears here as soon as it gains a form, and one the
  * daemon stops offering disappears without this file being touched.
  */
-const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram', 'stoat', 'fluxer', 'xmpp', 'signal'] as const
+const FORMS = ['irc', 'discord', 'sneedchat', 'matrix', 'kick', 'steam', 'twitch', 'telegram', 'stoat', 'fluxer', 'xmpp', 'signal', 'rocketchat'] as const
 type AddableService = (typeof FORMS)[number]
 
 /** What `listProtocols` answers with. */
@@ -55,7 +56,8 @@ const SERVICE_BLURB: Record<AddableService, string> = {
   stoat: 'Any instance, by email or token',
   fluxer: 'Any instance: username or email and password, or a session token',
   xmpp: 'An address on any server',
-  signal: 'Linked to the Signal on your phone'
+  signal: 'Linked to the Signal on your phone',
+  rocketchat: 'Any self-hosted server: password + 2FA, personal access token, or SSO'
 }
 
 /**
@@ -322,6 +324,7 @@ function AddAccount({
         {service === 'fluxer' && <FluxerForm onDone={onDone} />}
         {service === 'signal' && <SignalForm onDone={onDone} />}
         {service === 'xmpp' && <XmppForm onDone={onDone} />}
+        {service === 'rocketchat' && <RocketChatForm onDone={onDone} />}
       </div>
       {onCancel && (
         <div className="page-foot">
@@ -474,7 +477,8 @@ const SERVICE_TAB: Partial<Record<Account['service'], string>> = {
   signal: 'Linked devices, your username, stories and call links',
   xmpp: 'The server, your profile, and what it publishes for you',
   twitch: 'Video, moderation and whispers',
-  kick: 'The channels you follow'
+  kick: 'The channels you follow',
+  rocketchat: 'Server, E2EE keys, presence and Omnichannel'
 }
 
 /**
@@ -753,6 +757,7 @@ function AccountPage({ account, serviceName }: { account: Account; serviceName: 
               {(account.service === 'stoat' || account.service === 'fluxer') && <StoatAccountTools account={account} />}
               {account.service === 'twitch' && <TwitchAccountTools account={account} />}
               {account.service === 'kick' && <KickFollowSync account={account} />}
+              {account.service === 'rocketchat' && <RocketChatAccountTools account={account} />}
             </div>
           </section>
         )}
@@ -3648,6 +3653,245 @@ function MatrixForm(): JSX.Element {
         New sessions start unverified. Once logged in, verify this device from another signed-in
         session so encrypted history decrypts.
       </p>
+    </div>
+  )
+}
+
+function RocketChatForm({ onDone }: { onDone: () => void }): JSX.Element {
+  const store = useStore()
+  const [serverUrl, setServerUrl] = useState('')
+  const [mode, setMode] = useState<'password' | 'pat' | 'sso'>('password')
+  const [user, setUser] = useState('')
+  const [password, setPassword] = useState('')
+  const [totpCode, setTotpCode] = useState('')
+  const [needsTotp, setNeedsTotp] = useState(false)
+  const [patUserId, setPatUserId] = useState('')
+  const [patToken, setPatToken] = useState('')
+  const [e2eePassphrase, setE2eePassphrase] = useState('')
+  const [useTor, setUseTor] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [discovered, setDiscovered] = useState<{
+    site_name?: string
+    version?: { raw?: string }
+    e2ee_enabled?: boolean
+    sso_providers?: { id: string; name: string; kind: string }[]
+  } | null>(null)
+
+  const discover = async (): Promise<void> => {
+    if (!serverUrl.trim()) return
+    setBusy(true)
+    try {
+      const res = await window.moho.rpc<typeof discovered>('rocketchatDiscover', {
+        serverUrl: serverUrl.trim(),
+        useTor
+      })
+      setDiscovered(res)
+    } catch (e) {
+      store.toast('error', String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const submitPassword = async (): Promise<void> => {
+    if (!serverUrl.trim() || !user.trim() || !password) return
+    setBusy(true)
+    try {
+      const res = await window.moho.rpc<{ ok?: boolean; totpRequired?: boolean; method?: string }>(
+        'addRocketChatAccount',
+        {
+          serverUrl: serverUrl.trim(),
+          user: user.trim(),
+          password,
+          code: totpCode.trim() || undefined,
+          e2eePassphrase: e2eePassphrase.trim() || undefined,
+          useTor
+        }
+      )
+      if (res.totpRequired) {
+        setNeedsTotp(true)
+        store.toast('info', `Enter your ${res.method || '2FA'} verification code to complete sign-in.`)
+      } else {
+        store.toast('info', 'Rocket.Chat account added.')
+        onDone()
+      }
+    } catch (e) {
+      store.toast('error', String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const submitPat = async (): Promise<void> => {
+    if (!serverUrl.trim() || !patUserId.trim() || !patToken.trim()) return
+    setBusy(true)
+    try {
+      await window.moho.rpc('addRocketChatAccountToken', {
+        serverUrl: serverUrl.trim(),
+        userId: patUserId.trim(),
+        authToken: patToken.trim(),
+        e2eePassphrase: e2eePassphrase.trim() || undefined,
+        useTor
+      })
+      store.toast('info', 'Rocket.Chat account added.')
+      onDone()
+    } catch (e) {
+      store.toast('error', String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const launchSso = async (): Promise<void> => {
+    if (!serverUrl.trim()) return
+    setBusy(true)
+    try {
+      const res = await window.moho.rocketchatSsoLogin(serverUrl.trim(), { useTor })
+      if (!res.ok) {
+        store.toast('error', res.error || 'Rocket.Chat SSO sign-in failed')
+      } else {
+        store.toast('info', 'Rocket.Chat SSO account added.')
+        onDone()
+      }
+    } catch (e) {
+      store.toast('error', String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="form-stack">
+      <p className="small muted">
+        Connect to any self-hosted or cloud Rocket.Chat workspace. Credentials and optional E2EE passphrases are stored
+        locally in 0600 storage and never logged.
+      </p>
+      <TorSwitch service="rocketchat" on={useTor} onChange={setUseTor} />
+      <label className="field-label">
+        <span className="small muted">Server URL</span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            type="text"
+            placeholder="https://open.rocket.chat"
+            value={serverUrl}
+            onChange={(e) => setServerUrl(e.target.value)}
+            disabled={busy}
+          />
+          <button type="button" className="button subtle" onClick={() => void discover()} disabled={busy || !serverUrl.trim()}>
+            Check server
+          </button>
+        </div>
+      </label>
+      {discovered && (
+        <p className="small muted">
+          Connected to <strong>{discovered.site_name || 'Rocket.Chat'}</strong>
+          {discovered.version?.raw ? ` v${discovered.version.raw}` : ''}
+          {discovered.e2ee_enabled ? ' · E2EE enabled' : ''}
+          {discovered.sso_providers?.length
+            ? ` · SSO: ${discovered.sso_providers.map((p) => p.name).join(', ')}`
+            : ''}
+        </p>
+      )}
+      <div className="segmented-row" style={{ display: 'flex', gap: 6 }}>
+        <button type="button" className={classes('button', mode === 'password' ? 'primary' : 'subtle')} onClick={() => setMode('password')}>
+          Password + 2FA
+        </button>
+        <button type="button" className={classes('button', mode === 'pat' ? 'primary' : 'subtle')} onClick={() => setMode('pat')}>
+          Personal Access Token
+        </button>
+        <button type="button" className={classes('button', mode === 'sso' ? 'primary' : 'subtle')} onClick={() => setMode('sso')}>
+          SSO / OAuth / SAML
+        </button>
+      </div>
+
+      {mode === 'password' && (
+        <>
+          <label className="field-label">
+            <span className="small muted">Username or email</span>
+            <input type="text" value={user} onChange={(e) => setUser(e.target.value)} disabled={busy} />
+          </label>
+          <label className="field-label">
+            <span className="small muted">Password</span>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
+          </label>
+          {needsTotp && (
+            <label className="field-label">
+              <span className="small muted">2FA / TOTP / Email code</span>
+              <input type="text" value={totpCode} onChange={(e) => setTotpCode(e.target.value)} disabled={busy} />
+            </label>
+          )}
+          <label className="field-label">
+            <span className="small muted">E2EE passphrase (optional, for encrypted rooms)</span>
+            <input
+              type="password"
+              value={e2eePassphrase}
+              onChange={(e) => setE2eePassphrase(e.target.value)}
+              disabled={busy}
+            />
+          </label>
+          <div className="form-actions">
+            <button
+              type="button"
+              className="button primary"
+              onClick={() => void submitPassword()}
+              disabled={busy || !serverUrl.trim() || !user.trim() || !password}
+            >
+              Sign in
+            </button>
+          </div>
+        </>
+      )}
+
+      {mode === 'pat' && (
+        <>
+          <label className="field-label">
+            <span className="small muted">User ID (X-User-Id)</span>
+            <input type="text" value={patUserId} onChange={(e) => setPatUserId(e.target.value)} disabled={busy} />
+          </label>
+          <label className="field-label">
+            <span className="small muted">Auth Token (X-Auth-Token)</span>
+            <input type="password" value={patToken} onChange={(e) => setPatToken(e.target.value)} disabled={busy} />
+          </label>
+          <label className="field-label">
+            <span className="small muted">E2EE passphrase (optional)</span>
+            <input
+              type="password"
+              value={e2eePassphrase}
+              onChange={(e) => setE2eePassphrase(e.target.value)}
+              disabled={busy}
+            />
+          </label>
+          <div className="form-actions">
+            <button
+              type="button"
+              className="button primary"
+              onClick={() => void submitPat()}
+              disabled={busy || !serverUrl.trim() || !patUserId.trim() || !patToken.trim()}
+            >
+              Connect with token
+            </button>
+          </div>
+        </>
+      )}
+
+      {mode === 'sso' && (
+        <>
+          <p className="small muted">
+            Opens an isolated, memory-only browser window to your Rocket.Chat server&apos;s OAuth, SAML, OIDC, or LDAP
+            login page and captures the session token automatically.
+          </p>
+          <div className="form-actions">
+            <button
+              type="button"
+              className="button primary"
+              onClick={() => void launchSso()}
+              disabled={busy || !serverUrl.trim()}
+            >
+              Open SSO sign-in window
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

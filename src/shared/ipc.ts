@@ -54,6 +54,7 @@ export const IPC = {
   screenPicked: 'moho:screenPicked',
   markBufferRead: 'moho:markBufferRead',
   browserLogin: 'moho:browserLogin',
+  rocketchatSsoLogin: 'moho:rocketchatSsoLogin',
   twitchSignIn: 'moho:twitchSignIn',
   popoutOpen: 'moho:popout:open',
   popoutClose: 'moho:popout:close',
