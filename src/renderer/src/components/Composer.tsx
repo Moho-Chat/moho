@@ -240,6 +240,34 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   const account = buffer && accounts.find((a) => a.id === buffer.accountId)
   const service = account?.service
   const tunnelAll = useChat((s) => s.tunnelAll)
+
+  // Mattermost keeps unsent words on the account, for its other apps: what is typed here is kept there a moment after
+  // typing stops (and taken off when it is sent or cleared), and words left in another app fill an empty box here.
+  const threadRootId = useChat((s) => (thread ? s.openThread?.rootId : undefined))
+  const draftSent = useRef('')
+  useEffect(() => {
+    if (service !== 'mattermost' || !buffer) return
+    const words = text.trim()
+    if (words === draftSent.current) return
+    const timer = setTimeout(() => {
+      draftSent.current = words
+      void window.moho.rpc('mattermost', { action: 'saveDraft', bufferId: buffer.id, rootId: threadRootId ?? '', text: words }).catch(() => {})
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [text, service, buffer?.id, threadRootId])
+  useEffect(() => {
+    if (service !== 'mattermost' || !buffer) return
+    return window.moho.onEvent((e) => {
+      if (e.event !== 'serviceDraft') return
+      const d = e.data as { bufferId?: string; rootId?: string; text?: string }
+      if (d.bufferId !== buffer.id || (d.rootId || '') !== (threadRootId ?? '') || !d.text) return
+      const el = inputRef.current
+      if (!el || (el.textContent ?? '').trim() !== '') return
+      el.textContent = d.text
+      draftSent.current = d.text.trim()
+      setText(d.text)
+    })
+  }, [service, buffer?.id, threadRootId])
   const route = useChat((s) => s.route)
   const routed = tunnelAll || !!account?.useTor
   const media = useMediaUrl(account?.id)

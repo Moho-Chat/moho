@@ -105,7 +105,7 @@ export function MattermostTools({ buffer }: { buffer: BufferEntry }): JSX.Elemen
     return name.includes('/') ? name.slice(name.lastIndexOf('/') + 1) : name
   }
 
-  const tabs: Tab[] = ['threads', 'saved', 'bookmarks', ...(server?.scheduled ? (['scheduled'] as Tab[]) : []), 'drafts']
+  const tabs: Tab[] = ['threads', 'saved', ...(server?.licensed ? (['bookmarks'] as Tab[]) : []), ...(server?.scheduled ? (['scheduled'] as Tab[]) : []), 'drafts']
 
   return (
     <>

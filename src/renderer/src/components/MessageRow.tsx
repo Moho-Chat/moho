@@ -382,6 +382,19 @@ function MessageRowBody({
   const media = useMediaUrl()
   const strictRoute = useStrictRoute()
   const store = useStore()
+  // A quote's "go to the message" (Mattermost's permalinks): the conversation opened at that message.
+  const jumpTo = (link: string): void => {
+    const q = new URLSearchParams(link.slice(link.indexOf('?') + 1))
+    const target = q.get('buffer') ?? ''
+    const id = q.get('message') ?? ''
+    if (!target || !id) return
+    void store.selectBuffer(target).then(() =>
+      store.jumpToMessage(target, id).then((there) => {
+        if (there) store.setJumpTarget(id)
+        else store.toast('info', 'That message could not be reached')
+      })
+    )
+  }
   const mattermostSaved = useChat((s) => (s.mattermostSaved[bufferId.split('|')[0]] ?? []).includes(message.id))
   const { menu, open, close } = useContextMenu()
   // Which picture or video the right click was on, if it was on one: the menu then offers to hide it.
@@ -1540,7 +1553,7 @@ function MessageRowBody({
                   type="button"
                   className={classes('rich-embed-cta', embed.color === 0xda373c && 'danger')}
                   disabled={!embed.cta.url}
-                  onClick={() => embed.cta?.url && void window.moho.openExternal(embed.cta.url)}
+                  onClick={() => embed.cta?.url && (embed.cta.url.startsWith('moho:jump') ? jumpTo(embed.cta.url) : void window.moho.openExternal(embed.cta.url))}
                 >
                   {embed.cta.label}
                 </button>

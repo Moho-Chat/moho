@@ -1037,6 +1037,8 @@ export interface MattermostServer {
   customStatuses?: boolean
   priority?: boolean
   scheduled?: boolean
+  /** Whether the server has a licence: bookmarks, scheduled posts, priority and group calls need one. */
+  licensed?: boolean
   teams?: { id: string; name: string }[]
 }
 
