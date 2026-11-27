@@ -15,6 +15,9 @@ interface OwnProfile {
   avatarUrl?: string | null
   customStatus?: { emoji: string; text: string } | null
   customStatuses?: boolean
+  server?: string
+  desktop?: string
+  push?: string
 }
 
 interface Session {
@@ -111,7 +114,8 @@ export function MattermostAccountTools({ account }: { account: Account }): JSX.E
             Your profile on {server?.siteName || 'the server'} (@{profile.username})
           </div>
           <div className="small muted">
-            Changing these changes them for everyone on the server.{server?.version ? ` Mattermost ${server.version}.` : ''}
+            Changing these changes them for everyone on the server.{server?.version ? ` Mattermost ${server.version}` : ''}
+            {profile.server ? ` at ${profile.server}.` : '.'}
           </div>
         </div>
       </div>
@@ -190,6 +194,32 @@ export function MattermostAccountTools({ account }: { account: Account }): JSX.E
           </div>
         </>
       )}
+
+      <div className="setting-row">
+        <div className="setting-text">
+          <div>Notifications by default</div>
+          <div className="small muted">What the account is told of on every app, unless a channel says otherwise (a channel&apos;s own is set from its menu).</div>
+        </div>
+        {(['desktop', 'push'] as const).map((key) => (
+          <label key={key} className="field">
+            <span className="small muted">{key === 'desktop' ? 'Computers' : 'Phones'}</span>
+            <select
+              className="text-field"
+              value={profile[key] ?? 'mention'}
+              disabled={busy}
+              onChange={(e) =>
+                void call('setProfile', { [key]: e.target.value })
+                  .then(() => done('Notifications changed'))
+                  .catch(failed)
+              }
+            >
+              <option value="all">Everything</option>
+              <option value="mention">Mentions and direct messages</option>
+              <option value="none">Nothing</option>
+            </select>
+          </label>
+        ))}
+      </div>
 
       {server && server.collapsedThreads !== 'disabled' && server.collapsedThreads !== 'always_on' && (
         <div className="setting-row">
