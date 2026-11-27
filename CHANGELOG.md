@@ -19,6 +19,13 @@ Each section has two parts:
 
 ## [Unreleased]
 
+## [1.5.10]
+
+### Fixes, patches and changes
+
+- Settings → Debug: export anonymized moho and nobilis logs to Downloads or upload them to paste.gg (anonymous, unlisted, 7-day expiry) with a "Privacy concerns?" preview popover, live Active/Expired status check, Copy, Delete now, and Forget ([moho `a3f532f`](https://github.com/Moho-Chat/moho/commit/a3f532f), [moho `62ee897`](https://github.com/Moho-Chat/moho/commit/62ee897), [moho `693bba7`](https://github.com/Moho-Chat/moho/commit/693bba7), [moho `9ce64db`](https://github.com/Moho-Chat/moho/commit/9ce64db))
+- XMPP: go without stream management on a server that falls behind and offers no resumption ([nobilis `543575d`](https://github.com/Moho-Chat/nobilis/commit/543575d), [moho `4d21bc9`](https://github.com/Moho-Chat/moho/commit/4d21bc9))
+
 ## [1.5.9]
 
 ### Fixes, patches and changes
