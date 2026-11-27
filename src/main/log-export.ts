@@ -14,51 +14,216 @@ export interface LogExportHeader {
   osVersion: string
   osArch: string
   exportedAt: string
+  electronVersion?: string
+  chromeVersion?: string
+  displayServer?: string
+  packaging?: string
+  sandboxed?: boolean
+  tunnel?: string
+  backends?: string
 }
 
 export interface LogExportResult {
   text: string
   sizeBytes: number
   linesOmitted: number
+  linesCollapsed: number
   totalLines: number
+}
+
+export type AnonymizerTagKind =
+  | 'user'
+  | 'server'
+  | 'guild'
+  | 'channel'
+  | 'room'
+  | 'account'
+  | 'ip'
+  | 'file'
+
+export interface KnownAnonymizerNames {
+  users?: Iterable<string>
+  servers?: Iterable<string>
+  guilds?: Iterable<string>
+  channels?: Iterable<string>
+  rooms?: Iterable<string>
+  accounts?: Iterable<string>
+}
+
+const SAFE_DOC_HOSTS = new Set([
+  'docs.rs',
+  'github.com',
+  'developer.mozilla.org',
+  'datatracker.ietf.org'
+])
+
+/**
+ * Common log/protocol words that must never be replaced by free-form `known`
+ * matching even if a user happens to have a guild, channel or account named
+ * after one of them.
+ */
+const KNOWN_STOPWORDS = new Set([
+  'moho',
+  'nobilis',
+  'info',
+  'warn',
+  'error',
+  'debug',
+  'trace',
+  'discord',
+  'irc',
+  'matrix',
+  'sneedchat',
+  'xmpp',
+  'telegram',
+  'signal',
+  'steam',
+  'stoat',
+  'fluxer',
+  'kick',
+  'twitch',
+  'jabber',
+  'slack',
+  'general',
+  'random',
+  'lobby',
+  'system',
+  'server',
+  'channel',
+  'room',
+  'user',
+  'account',
+  'guild',
+  'direct',
+  'online',
+  'offline',
+  'ready',
+  'connected',
+  'closed',
+  'failed',
+  'timeout',
+  'http',
+  'https',
+  'localhost',
+  'tor',
+  'proxy',
+  'chat',
+  'media',
+  'video',
+  'audio',
+  'image',
+  'file',
+  'files',
+  'avatar',
+  'avatars',
+  'main',
+  'window',
+  'call',
+  'restore',
+  'export',
+  'none',
+  'null',
+  'true',
+  'false',
+  'unknown',
+  'socket',
+  'gateway',
+  'sync',
+  'login',
+  'connect',
+  'events',
+  'message',
+  'messages',
+  'nowhere'
+])
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Parses a raw `tracing_subscriber` line emitted by `nobilis` so we can hoist
+ * its real severity level and drop the duplicated timestamp.
+ */
+export function parseNobilisTracingLine(
+  raw: string
+): { timestamp: string; level: 'info' | 'warn' | 'error'; rawLevel: string; rest: string } | null {
+  const m = raw.match(
+    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+(TRACE|DEBUG|INFO|WARN|ERROR)\s+(.*)$/
+  )
+  if (!m) return null
+  const [, timestamp, rawLevel, rest] = m
+  const level: 'info' | 'warn' | 'error' =
+    rawLevel === 'ERROR' ? 'error' : rawLevel === 'WARN' ? 'warn' : 'info'
+  return { timestamp, level, rawLevel, rest }
+}
+
+/**
+ * Strips the redundant outer timestamp and `info` level from legacy `moho.log`
+ * lines where `nobilis-process` piped `tracing_subscriber` output verbatim:
+ *   `<ts1> info [nobilis] <ts2>  WARN target: msg`
+ * becomes:
+ *   `<ts2> warn [nobilis] target: msg`
+ */
+export function normalizeLogLine(line: string): string {
+  const outer = line.match(
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s+(?:info|warn|error)\s+\[nobilis\]\s+(.*)$/
+  )
+  if (!outer) return line
+  const inner = parseNobilisTracingLine(outer[1])
+  if (!inner) return line
+  return `${inner.timestamp} ${inner.rawLevel.toLowerCase()} [nobilis] ${inner.rest}`
 }
 
 /**
  * Consistent numbered placeholder table for a single export.
  *
- * The same username, server, guild, room, channel, account or IP gets the same
- * placeholder everywhere in one export (so a bug report can still follow a
+ * The same username, server, guild, room, channel, account, file or IP gets the
+ * same placeholder everywhere in one export (so a bug report can still follow a
  * single reconnect or rate-limit sequence across lines), and resets fresh on
  * the next export.
  */
 export class Anonymizer {
   private maps = new Map<string, Map<string, string>>()
+  private knownPatterns: Array<{ kind: AnonymizerTagKind; raw: string; re: RegExp }> = []
 
   /**
    * Optional known names (from the daemon's current account/buffer list) to
    * pre-seed so they are caught even inside free-form log lines.
    */
-  constructor(known?: {
-    users?: Iterable<string>
-    servers?: Iterable<string>
-    guilds?: Iterable<string>
-    channels?: Iterable<string>
-    rooms?: Iterable<string>
-    accounts?: Iterable<string>
-  }) {
-    if (known?.accounts) for (const v of known.accounts) if (v) this.tag('account', v)
-    if (known?.users) for (const v of known.users) if (v) this.tag('user', v)
-    if (known?.servers) for (const v of known.servers) if (v) this.tag('server', v)
-    if (known?.guilds) for (const v of known.guilds) if (v) this.tag('guild', v)
-    if (known?.channels) for (const v of known.channels) if (v) this.tag('channel', v)
-    if (known?.rooms) for (const v of known.rooms) if (v) this.tag('room', v)
+  constructor(known?: KnownAnonymizerNames) {
+    const seen = new Set<string>()
+    const addKnown = (kind: AnonymizerTagKind, values?: Iterable<string>, minLen = 3): void => {
+      if (!values) return
+      for (const raw of values) {
+        const trimmed = raw.trim()
+        if (!trimmed) continue
+        this.tag(kind, trimmed)
+        const lower = trimmed.toLowerCase()
+        if (trimmed.length < minLen || KNOWN_STOPWORDS.has(lower)) continue
+        if (/^(user|server|guild|channel|room|account|ip|file)#\d+$/.test(lower)) continue
+        const dedupeKey = `${kind}:${lower}`
+        if (seen.has(dedupeKey)) continue
+        seen.add(dedupeKey)
+        const re = new RegExp(`(?<![A-Za-z0-9_:#])${escapeRegex(trimmed)}(?![A-Za-z0-9_:])`, 'gi')
+        this.knownPatterns.push({ kind, raw: trimmed, re })
+      }
+    }
+    addKnown('account', known?.accounts, 4)
+    addKnown('user', known?.users, 3)
+    addKnown('server', known?.servers, 4)
+    addKnown('guild', known?.guilds, 4)
+    addKnown('channel', known?.channels, 4)
+    addKnown('room', known?.rooms, 4)
+    // Longest names first so a full hostname or display name matches before a substring.
+    this.knownPatterns.sort((a, b) => b.raw.length - a.raw.length)
   }
 
-  tag(kind: 'user' | 'server' | 'guild' | 'channel' | 'room' | 'account' | 'ip', raw: string): string {
+  tag(kind: AnonymizerTagKind, raw: string): string {
     const trimmed = raw.trim()
     if (!trimmed) return raw
     // Already replaced in an earlier pass.
-    if (/^(user|server|guild|channel|room|account|ip)#\d+$/.test(trimmed)) return trimmed
+    if (/^(user|server|guild|channel|room|account|ip|file)#\d+$/.test(trimmed)) return trimmed
     const key = trimmed.toLowerCase()
     let table = this.maps.get(kind)
     if (!table) {
@@ -79,7 +244,8 @@ export class Anonymizer {
    * Two stages:
    * 1. Backend-aware rules that know the exact shapes each backend logs
    *    (account brackets, guild/channel paths, IRC/Matrix/XMPP/Discord/Sneedchat
-   *    lines, message payloads).
+   *    lines, URLs, snowflakes, UUIDs, message payloads) plus pre-seeded known
+   *    names from the live daemon.
    * 2. A general backstop pass for secrets (passwords, tokens, cookies, auth
    *    headers, JWTs), emails/JIDs, home directory usernames, onion hosts,
    *    channel names and IP addresses.
@@ -118,7 +284,7 @@ export class Anonymizer {
           return `${proto}[${u}@${srv}]`
         }
         const kind = lower === 'discord' || lower === 'stoat' || lower === 'fluxer' ? 'account' : 'user'
-        return `${proto}[${this.tag(kind, inner)}]`
+        return `${proto}[${this.tag(kind, kind === 'user' ? stripped : inner)}]`
       }
     )
 
@@ -144,7 +310,50 @@ export class Anonymizer {
         `${pre}"${this.tag('guild', guild)}/${this.tag('channel', chan)}"`
     )
 
-    // Discord gateway/history lines: "a message in <guild>/<#channel>"
+    // Identity confirmations:
+    //   telegram[user#7]: connected as 5173409493 (alice)
+    //   fluxer[account#6]: connected as 1572629570329247745
+    //   discord[account#2]: ready as Alice (from the last run)
+    s = s.replace(
+      /\b(ready as|connected as)\s+(\d{5,22})\s+\(([^)]+)\)/gi,
+      (_m, verb: string, id: string, nick: string) =>
+        `${verb} ${this.tag('user', id)} (${this.tag('user', nick)})`
+    )
+    s = s.replace(
+      /\b(ready as|connected as)\s+(\d{5,22})\b/gi,
+      (_m, verb: string, id: string) => `${verb} ${this.tag('user', id)}`
+    )
+    s = s.replace(
+      /\b(ready as|connected as)\s+([^\s(,:;]+)/gi,
+      (m, verb: string, nick: string) => {
+        if (/^(user|account)#\d+$/i.test(nick)) return m
+        return `${verb} ${this.tag('user', nick)}`
+      }
+    )
+
+    // IRC disconnect notice: `Closing Link: Alice[203.0.113.1] (Quit: moho)`
+    s = s.replace(
+      /(\bClosing Link:\s*)([^\s[]+)(\[)/gi,
+      (m, pre: string, nick: string, br: string) => {
+        if (/^(user|ip)#\d+$/i.test(nick) || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(nick)) return m
+        return `${pre}${this.tag('user', nick)}${br}`
+      }
+    )
+
+    // Discord / Fluxer raw screen-share / camera snowflakes:
+    //   discord[account#2]: 1546869660610330739 is sharing a screen in 1571919741659123712
+    //   discord[account#2]: 643251366894239762 is sharing a screen and on camera in 1571919741659123712
+    s = s.replace(
+      /(\b(?:discord|fluxer|stoat)\[[^\]]+\]:\s*)(\d{15,22})(\s+is (?:sharing a screen(?:\s+and on camera)?|on camera)\s+in\s+)(\d{15,22}|nowhere)\b/gi,
+      (_m, pre: string, uid: string, mid: string, loc: string) =>
+        `${pre}${this.tag('user', uid)}${mid}${loc === 'nowhere' ? 'nowhere' : this.tag('channel', loc)}`
+    )
+
+    // Discord gateway/history lines: "a message in <guild>/<#channel>" or "a message in <snowflake>"
+    s = s.replace(
+      /(\ba message in\s+)(\d{15,22})\b/gi,
+      (_m, pre: string, cid: string) => `${pre}${this.tag('channel', cid)}`
+    )
     s = s.replace(
       /(\ba message in\s+)([^/\n]+)\/(#?[^\s,;)]+)/gi,
       (_m, pre: string, guild: string, chan: string) =>
@@ -164,7 +373,7 @@ export class Anonymizer {
     s = s.replace(
       /\/(guilds|channels|users|rooms)\/([0-9]{10,22}|[A-Za-z0-9_-]{12,})/g,
       (_m, kind: string, id: string) => {
-        const tagKind =
+        const tagKind: AnonymizerTagKind =
           kind === 'guilds'
             ? 'guild'
             : kind === 'channels'
@@ -180,9 +389,44 @@ export class Anonymizer {
     s = s.replace(
       /\b(guild|channel|room|user):([0-9]{6,22})\b/gi,
       (_m, kind: string, id: string) => {
-        const k = kind.toLowerCase() as 'guild' | 'channel' | 'room' | 'user'
+        const k = kind.toLowerCase() as AnonymizerTagKind
         return `${k}:${this.tag(k, id)}`
       }
+    )
+
+    // JSON snowflake IDs in unhandled gateway payloads (e.g. VOICE_CHANNEL_START_TIME_UPDATE)
+    s = s.replace(
+      /"(guild_id|channel_id|user_id|author_id|id)"\s*:\s*"(\d{15,22})"/g,
+      (_m, field: string, id: string) => {
+        const kind: AnonymizerTagKind =
+          field === 'guild_id'
+            ? 'guild'
+            : field === 'user_id' || field === 'author_id'
+              ? 'user'
+              : 'channel'
+        return `"${field}":"${this.tag(kind, id)}"`
+      }
+    )
+
+    // Sneedchat user UUIDs & file UUIDs
+    s = s.replace(
+      /(\bavatar fetch for user\s+)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi,
+      (_m, pre: string, uuid: string) => `${pre}${this.tag('user', uuid)}`
+    )
+    s = s.replace(
+      /(sneedchat-avatars\/)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi,
+      (_m, pre: string, uuid: string) => `${pre}${this.tag('user', uuid)}`
+    )
+    s = s.replace(
+      /(\bfetching file\s+)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi,
+      (_m, pre: string, uuid: string) => `${pre}${this.tag('file', uuid)}`
+    )
+
+    // Telegram media cache filenames: telegram-media/tg_<uid>_n<chat>_<msg>_thumb.jpg
+    s = s.replace(
+      /(telegram-media\/)tg_(\d+)_(n?\d+)_(\d+)/gi,
+      (_m, pre: string, uid: string, cid: string, mid: string) =>
+        `${pre}tg_${this.tag('user', uid)}_${this.tag('channel', cid)}_${this.tag('file', mid)}`
     )
 
     // Telegram / grammers Channel(1234567890)
@@ -218,19 +462,61 @@ export class Anonymizer {
       (_m, pre: string, _nick: string, text: string) => `${pre}[message, ${text.length} chars]`
     )
 
-    // IRC connection host: `Connecting via TLS to irc.libera.chat.`
+    // HTTP(S) URLs: anonymize non-documentation hosts, file IDs, and sensitive query params (`?t=`, `since=`, etc.)
     s = s.replace(
-      /(\bConnecting(?:\s+via\s+\S+)?\s+to\s+)([A-Za-z0-9.-]+\.[A-Za-z]{2,})(\.?)/gi,
-      (_m, pre: string, host: string, dot: string) =>
-        host.toLowerCase().endsWith('.onion')
-          ? `${pre}${this.tag('server', host)}.onion${dot}`
-          : `${pre}${this.tag('server', host)}${dot}`
+      /(https?:\/\/)([^/\s)"':]+)(:\d+)?([^\s)"']*)/gi,
+      (_m, scheme: string, host: string, port: string | undefined, rest: string) => {
+        const lowerHost = host.toLowerCase()
+        if (SAFE_DOC_HOSTS.has(lowerHost) || lowerHost === '127.0.0.1' || lowerHost === 'localhost') {
+          return `${scheme}${host}${port ?? ''}${rest}`
+        }
+        let scrubbedHost: string
+        if (/^server#\d+(?:\.onion)?$/i.test(host)) {
+          scrubbedHost = host
+        } else if (lowerHost.endsWith('.onion')) {
+          scrubbedHost = `${this.tag('server', lowerHost)}.onion`
+        } else {
+          scrubbedHost = this.tag('server', host)
+        }
+        let scrubbedRest = rest
+        scrubbedRest = scrubbedRest.replace(
+          /(\/chat\/files\/)([^/?#\s]+)/gi,
+          (_fm, pre: string, fid: string) => `${pre}${this.tag('file', fid)}`
+        )
+        scrubbedRest = scrubbedRest.replace(
+          /(\/attachments\/)([^/?#\s]+)/gi,
+          (_am, pre: string, aid: string) => `${pre}${this.tag('file', aid)}`
+        )
+        scrubbedRest = scrubbedRest.replace(
+          /([?&](?:t|token|access_token|refresh_token|auth|sig|signature|key|secret|code|ticket|since|session|session_id|cookie|password)=)([^&#\s)"']+)/gi,
+          '$1[removed]'
+        )
+        return `${scheme}${scrubbedHost}${port ?? ''}${scrubbedRest}`
+      }
     )
 
-    // XMPP DNS line: `DNS says host.tld:5223`
+    // IRC / XMPP / Tor connection hosts:
+    //   `Connecting via TLS to irc.libera.chat.`
+    //   `reached xmpp.example.org:5222 (STARTTLS)`
+    //   `Tor could not reach uploads.example.org:443`
+    //   `timed out connecting to irc.example.org:6697`
     s = s.replace(
-      /(\bDNS says\s+)([A-Za-z0-9.-]+\.[A-Za-z]{2,})(:\d+)?/gi,
-      (_m, pre: string, host: string, port?: string) => `${pre}${this.tag('server', host)}${port ?? ''}`
+      /(\b(?:Connecting(?:\s+via\s+\S+)?\s+to|could not reach|reached)\s+)([A-Za-z0-9.-]+\.[A-Za-z]{2,})(:\d+)?(\.?)/gi,
+      (_m, pre: string, host: string, port: string | undefined, dot: string) =>
+        host.toLowerCase().endsWith('.onion')
+          ? `${pre}${this.tag('server', host)}.onion${port ?? ''}${dot}`
+          : `${pre}${this.tag('server', host)}${port ?? ''}${dot}`
+    )
+
+    // XMPP DNS line (may list multiple SRV targets): `DNS says a.tld:5223 (TLS), b.tld:5222`
+    s = s.replace(/\bDNS says\s+[^\n]+/gi, (clause) =>
+      clause.replace(
+        /\b([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})(:\d+)?\b/g,
+        (m, host: string, port?: string) => {
+          if (/^server#\d+$/i.test(host)) return m
+          return `${this.tag('server', host)}${port ?? ''}`
+        }
+      )
     )
 
     // Matrix identifiers: @user:server.tld, !roomid:server.tld, #alias:server.tld
@@ -243,6 +529,12 @@ export class Anonymizer {
         return `${pre}${this.tag('channel', `${local}:${host}`)}@${srv}`
       }
     )
+
+    // Pre-seeded known account/user/server/guild/channel/room names caught anywhere free-form.
+    for (const kp of this.knownPatterns) {
+      kp.re.lastIndex = 0
+      s = s.replace(kp.re, () => this.tag(kp.kind, kp.raw))
+    }
 
     // --- Stage 2: General backstop pass ---
 
@@ -265,10 +557,10 @@ export class Anonymizer {
     s = s.replace(/\b(?:syt_[A-Za-z0-9_=-]{6,}|mfa\.[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9_]{20,})\b/g, '[removed]')
     s = s.replace(/\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, '[removed]')
 
-    // Onion addresses
+    // Onion addresses (including subdomains like uploads.<56chars>.onion)
     s = s.replace(
-      /\b([a-z2-7]{16,56})\.onion\b/gi,
-      (_m, addr: string) => `${this.tag('server', `${addr}.onion`)}.onion`
+      /\b((?:[a-z0-9-]+\.)*[a-z2-7]{16,56})\.onion\b/gi,
+      (_m, addr: string) => `${this.tag('server', `${addr.toLowerCase()}.onion`)}.onion`
     )
 
     // Emails & JIDs: local@domain.tld (skip already anonymized user#N@server#M)
@@ -313,26 +605,235 @@ export class Anonymizer {
   }
 }
 
-export function formatHeader(header: LogExportHeader, linesOmitted: number): string {
+const ISO_TS_PREFIX = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s+(.*)$/
+const LEVEL_PREFIX = /^(info|warn|error|debug|trace)\s+(.*)$/
+
+interface LogEntry {
+  lines: string[]
+  timestamp: string | null
+  tsMs: number | null
+  level: string | null
+  body: string
+}
+
+function parseEntry(lines: string[]): LogEntry {
+  const first = lines[0] ?? ''
+  const tsMatch = first.match(ISO_TS_PREFIX)
+  if (!tsMatch) {
+    return { lines, timestamp: null, tsMs: null, level: null, body: first }
+  }
+  const timestamp = tsMatch[1]
+  const parsedMs = Date.parse(timestamp)
+  const tsMs = Number.isFinite(parsedMs) ? parsedMs : null
+  const lvlMatch = tsMatch[2].match(LEVEL_PREFIX)
+  if (!lvlMatch) {
+    return { lines, timestamp, tsMs, level: null, body: tsMatch[2] }
+  }
+  return { lines, timestamp, tsMs, level: lvlMatch[1], body: lvlMatch[2] }
+}
+
+/**
+ * Groups continuation lines (such as multi-line JS/Rust stack traces without a
+ * leading ISO timestamp) onto their preceding timestamped entry so reversing
+ * newest-to-oldest never scrambles a stack trace.
+ */
+function groupLogEntries(lines: string[]): LogEntry[] {
+  const groups: string[][] = []
+  let prevHasTs = false
+  for (const line of lines) {
+    const hasTs = ISO_TS_PREFIX.test(line)
+    if (!hasTs && prevHasTs && groups.length > 0) {
+      groups[groups.length - 1].push(line)
+    } else {
+      groups.push([line])
+      prevHasTs = hasTs
+    }
+  }
+  return groups.map(parseEntry)
+}
+
+function shortClock(ts: string): string {
+  const t = ts.indexOf('T')
+  if (t < 0) return ts
+  return ts.slice(t + 1, t + 9) + 'Z'
+}
+
+/**
+ * Lifecycle and diagnostic lines that should never be burst-compacted even if
+ * they happen to appear repeatedly.
+ */
+const PROTECTED_INFO_RE =
+  /^(?:moho starting|moho quitting|tunnel:|\[call\]|\[screenshare\]|\[signal-calls\]|\[nobilis\] (?:exited|adopting|rpc link|nobilis::runtime:|nobilis::rpc:|nobilis::net::webhelper:))|\b(?:connected|disconnected|signed in|resumed|ready as|listening on)\b/i
+
+function infoTemplateKey(body: string): string | null {
+  if (PROTECTED_INFO_RE.test(body)) return null
+  let key = body
+  // Collapse per-minute discord gateway stats into one template
+  key = key.replace(
+    /(the last minute, by kind:).*$/,
+    '$1 ...'
+  )
+  // Normalize placeholders, media hashes, and durations
+  key = key.replace(/\b(user|server|guild|channel|room|account|ip|file)#\d+\b/g, '<$1>')
+  key = key.replace(/\b[0-9a-f]{12,}\b/gi, '<hash>')
+  key = key.replace(/\b\d+ms\b/g, '<ms>')
+  key = key.replace(/\b\d+ row\(s\)|\b\d+ page\(s\)/g, '<n> item(s)')
+  return key
+}
+
+const BURST_WINDOW_MS = 15 * 60 * 1000
+const BURST_THRESHOLD = 6
+const BURST_KEEP_EDGE = 2
+
+/**
+ * Collapses noisy repeats while preserving all diagnostic signal:
+ * 1. Exact consecutive duplicates (any level, ignoring timestamp) collapse to
+ *    one line with `(×N)`.
+ * 2. High-volume repetitive `info` templates (> 6 occurrences in a 15-minute
+ *    session window) keep the first 2 and last 2 verbatim and summarize the
+ *    middle with one `[export] collapsed N× ...` line. `warn`, `error`,
+ *    lifecycle events, and multi-line stack traces are never burst-compacted.
+ */
+function compactEntries(entries: LogEntry[]): { entries: LogEntry[]; linesCollapsed: number } {
+  let linesCollapsed = 0
+
+  // Pass 1: exact consecutive duplicate collapse (single-line entries only)
+  const deduped: LogEntry[] = []
+  let i = 0
+  while (i < entries.length) {
+    const cur = entries[i]
+    if (cur.lines.length > 1 || !cur.timestamp) {
+      deduped.push(cur)
+      i++
+      continue
+    }
+    let j = i + 1
+    while (
+      j < entries.length &&
+      entries[j].lines.length === 1 &&
+      entries[j].timestamp !== null &&
+      entries[j].level === cur.level &&
+      entries[j].body === cur.body
+    ) {
+      j++
+    }
+    const count = j - i
+    if (count === 1) {
+      deduped.push(cur)
+    } else {
+      const last = entries[j - 1]
+      const span =
+        cur.tsMs !== null && last.tsMs !== null && last.tsMs - cur.tsMs >= 1000
+          ? `, ${shortClock(cur.timestamp)}..${shortClock(last.timestamp!)}`
+          : ''
+      const collapsedLine = `${last.lines[0]} (×${count}${span})`
+      deduped.push({ ...last, lines: [collapsedLine] })
+      linesCollapsed += count - 1
+    }
+    i = j
+  }
+
+  // Pass 2: high-volume `info` template burst compaction within 15-minute session windows
+  let session = 0
+  const bucketIndices = new Map<string, number[]>()
+  const entryBucket = new Array<string | null>(deduped.length).fill(null)
+
+  for (let idx = 0; idx < deduped.length; idx++) {
+    const e = deduped[idx]
+    if (e.body.startsWith('moho starting')) {
+      session++
+      continue
+    }
+    if (e.lines.length > 1 || e.level !== 'info' || e.tsMs === null) continue
+    const tpl = infoTemplateKey(e.body)
+    if (!tpl) continue
+    const win = Math.floor(e.tsMs / BURST_WINDOW_MS)
+    const bKey = `${session}|${win}|${tpl}`
+    entryBucket[idx] = bKey
+    let list = bucketIndices.get(bKey)
+    if (!list) {
+      list = []
+      bucketIndices.set(bKey, list)
+    }
+    list.push(idx)
+  }
+
+  const dropSet = new Set<number>()
+  const summaryAt = new Map<number, LogEntry>()
+
+  for (const [bKey, idxs] of bucketIndices) {
+    if (idxs.length <= BURST_THRESHOLD) continue
+    const middle = idxs.slice(BURST_KEEP_EDGE, idxs.length - BURST_KEEP_EDGE)
+    if (middle.length < 2) continue
+    for (const mIdx of middle) dropSet.add(mIdx)
+    const firstMid = deduped[middle[0]]
+    const lastMid = deduped[middle[middle.length - 1]]
+    const tpl = bKey.split('|').slice(2).join('|')
+    const shortTpl = tpl.length > 120 ? `${tpl.slice(0, 117)}...` : tpl
+    const span =
+      firstMid.timestamp && lastMid.timestamp
+        ? ` (${shortClock(firstMid.timestamp)}..${shortClock(lastMid.timestamp)})`
+        : ''
+    const summaryLine = `${lastMid.timestamp} info [export] collapsed ${middle.length.toLocaleString('en-US')}× similar lines: ${shortTpl}${span}`
+    summaryAt.set(middle[middle.length - 1], parseEntry([summaryLine]))
+    linesCollapsed += middle.length - 1
+  }
+
+  const out: LogEntry[] = []
+  for (let idx = 0; idx < deduped.length; idx++) {
+    const summary = summaryAt.get(idx)
+    if (summary) out.push(summary)
+    if (!dropSet.has(idx)) out.push(deduped[idx])
+  }
+
+  return { entries: out, linesCollapsed }
+}
+
+export function formatHeader(
+  header: LogExportHeader,
+  linesOmitted: number,
+  linesCollapsed = 0
+): string {
   const omittedNote =
     linesOmitted > 0
       ? `${linesOmitted.toLocaleString('en-US')} (oldest lines dropped to fit size limit)`
       : '0 (whole log)'
-  return [
+  const lines = [
     '=== moho log export ===',
     `moho: ${header.mohoVersion} (${header.mohoBuild})`,
-    `nobilis: ${header.nobilisVersion} (${header.nobilisBuild})`,
-    `os: ${header.osType} ${header.osVersion} (${header.osArch})`,
-    `exported: ${header.exportedAt}`,
-    `lines omitted: ${omittedNote}`,
-    '=======================',
-    ''
-  ].join('\n')
+    `nobilis: ${header.nobilisVersion} (${header.nobilisBuild})`
+  ]
+  if (header.electronVersion || header.chromeVersion) {
+    const parts = [
+      header.electronVersion ? `Electron ${header.electronVersion}` : null,
+      header.chromeVersion ? `Chromium ${header.chromeVersion}` : null
+    ].filter(Boolean)
+    lines.push(`runtime: ${parts.join(' / ')}`)
+  }
+  lines.push(`os: ${header.osType} ${header.osVersion} (${header.osArch})`)
+  const envParts = [
+    header.displayServer ? `display=${header.displayServer}` : null,
+    header.packaging ? `packaging=${header.packaging}` : null,
+    header.sandboxed !== undefined ? `sandbox=${header.sandboxed ? 'on' : 'off'}` : null
+  ].filter(Boolean)
+  if (envParts.length > 0) lines.push(`env: ${envParts.join(', ')}`)
+  if (header.tunnel) lines.push(`tunnel: ${header.tunnel}`)
+  if (header.backends) lines.push(`backends: ${header.backends}`)
+  lines.push(`exported: ${header.exportedAt}`)
+  lines.push('order: newest first')
+  if (linesCollapsed > 0) {
+    lines.push(`lines collapsed: ${linesCollapsed.toLocaleString('en-US')} (repeated noise)`)
+  }
+  lines.push(`lines omitted: ${omittedNote}`)
+  lines.push('=======================')
+  lines.push('')
+  return lines.join('\n')
 }
 
 /**
- * Anonymizes raw log lines, prepends the always-kept header, and trims oldest
- * lines first when `maxBytes` is set.
+ * Normalizes, anonymizes, deduplicates/compacts noisy repeats, trims oldest
+ * entries first when `maxBytes` is set, and outputs entries newest-to-oldest
+ * beneath the always-kept header.
  */
 export function buildLogExport(
   rawLines: string[],
@@ -340,62 +841,77 @@ export function buildLogExport(
   options?: { maxBytes?: number; anonymizer?: Anonymizer }
 ): LogExportResult {
   const anonymizer = options?.anonymizer ?? new Anonymizer()
-  const anonLines = rawLines.map((l) => anonymizer.line(l))
-  const totalLines = anonLines.length
+  const totalLines = rawLines.length
+  const anonLines = rawLines.map((l) => anonymizer.line(normalizeLogLine(l)))
+  const rawEntries = groupLogEntries(anonLines)
+  const { entries, linesCollapsed } = compactEntries(rawEntries)
   const maxBytes = options?.maxBytes
 
+  const entryTexts = entries.map((e) => e.lines.join('\n'))
+  const entryLineCounts = entries.map((e) => e.lines.length)
+
   if (!maxBytes) {
-    const text = formatHeader(header, 0) + anonLines.join('\n') + (anonLines.length ? '\n' : '')
+    const ordered = [...entryTexts].reverse()
+    const body = ordered.length ? ordered.join('\n') + '\n' : ''
+    const text = formatHeader(header, 0, linesCollapsed) + body
     return {
       text,
       sizeBytes: Buffer.byteLength(text, 'utf8'),
       linesOmitted: 0,
+      linesCollapsed,
       totalLines
     }
   }
 
-  // First check if the whole log already fits.
-  const fullHeader = formatHeader(header, 0)
+  // First check if the whole compacted log already fits.
+  const fullHeader = formatHeader(header, 0, linesCollapsed)
   const fullHeaderBytes = Buffer.byteLength(fullHeader, 'utf8')
-  const lineBytes = anonLines.map((l) => Buffer.byteLength(l, 'utf8') + 1) // +1 for '\n'
+  const entryBytes = entryTexts.map((t) => Buffer.byteLength(t, 'utf8') + 1) // +1 for '\n'
   let bodyBytes = 0
-  for (const b of lineBytes) bodyBytes += b
+  for (const b of entryBytes) bodyBytes += b
 
   if (fullHeaderBytes + bodyBytes <= maxBytes) {
-    const text = fullHeader + anonLines.join('\n') + (anonLines.length ? '\n' : '')
+    const ordered = [...entryTexts].reverse()
+    const body = ordered.length ? ordered.join('\n') + '\n' : ''
+    const text = fullHeader + body
     return {
       text,
       sizeBytes: Buffer.byteLength(text, 'utf8'),
       linesOmitted: 0,
+      linesCollapsed,
       totalLines
     }
   }
 
-  // Drop oldest lines from index 0 upward until header(omitted) + remaining fits.
-  // Re-check header size as `omitted` grows (digit count / commas can add a few bytes).
-  let omitted = 0
-  while (omitted < anonLines.length) {
-    bodyBytes -= lineBytes[omitted]
-    omitted++
-    const h = formatHeader(header, omitted)
+  // Drop oldest entries from index 0 upward until header(omitted) + remaining fits.
+  let omittedEntries = 0
+  let omittedLines = 0
+  while (omittedEntries < entryTexts.length) {
+    bodyBytes -= entryBytes[omittedEntries]
+    omittedLines += entryLineCounts[omittedEntries]
+    omittedEntries++
+    const h = formatHeader(header, omittedLines, linesCollapsed)
     if (Buffer.byteLength(h, 'utf8') + bodyBytes <= maxBytes) {
-      const kept = anonLines.slice(omitted)
-      const text = h + kept.join('\n') + (kept.length ? '\n' : '')
+      const kept = entryTexts.slice(omittedEntries).reverse()
+      const body = kept.length ? kept.join('\n') + '\n' : ''
+      const text = h + body
       return {
         text,
         sizeBytes: Buffer.byteLength(text, 'utf8'),
-        linesOmitted: omitted,
+        linesOmitted: omittedLines,
+        linesCollapsed,
         totalLines
       }
     }
   }
 
-  // Even 0 lines exceeded maxBytes (only possible with a tiny test cap): keep header only.
-  const h = formatHeader(header, anonLines.length)
+  // Even 0 entries exceeded maxBytes (only possible with a tiny test cap): keep header only.
+  const h = formatHeader(header, omittedLines, linesCollapsed)
   return {
     text: h,
     sizeBytes: Buffer.byteLength(h, 'utf8'),
-    linesOmitted: anonLines.length,
+    linesOmitted: omittedLines,
+    linesCollapsed,
     totalLines
   }
 }

@@ -4,6 +4,7 @@ import net from 'node:net'
 import path from 'node:path'
 import { app } from 'electron'
 import { log } from './log'
+import { parseNobilisTracingLine } from './log-export'
 
 /** What the built daemon is called here. */
 const DAEMON_BINARY = process.platform === 'win32' ? 'nobilis.exe' : 'nobilis'
@@ -94,11 +95,22 @@ export class NobilisProcess {
     const child = spawn(this.binaryPath, [], { stdio: ['ignore', 'pipe', 'pipe'] })
     this.child = child
 
-    lineStream(child.stdout, (line) => log.info('[nobilis]', line))
-    lineStream(child.stderr, (line) => log.info('[nobilis]', line))
+    const forwardDaemonLine = (line: string, fallback: 'info' | 'warn'): void => {
+      const parsed = parseNobilisTracingLine(line)
+      if (parsed) {
+        log[parsed.level]('[nobilis]', parsed.rest)
+      } else {
+        log[fallback]('[nobilis]', line)
+      }
+    }
 
-    child.on('exit', (code) => {
-      log.info('[nobilis] exited, code:', code)
+    lineStream(child.stdout, (line) => forwardDaemonLine(line, 'info'))
+    lineStream(child.stderr, (line) => forwardDaemonLine(line, 'warn'))
+
+    child.on('exit', (code, signal) => {
+      const detail = signal ? `signal: ${signal}` : `code: ${code}`
+      if (code && code !== 0) log.warn('[nobilis] exited,', detail)
+      else log.info('[nobilis] exited,', detail)
       this.child = null
       if (this.restartPending) {
         this.restartPending = false

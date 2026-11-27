@@ -39,9 +39,17 @@ import { DEEP_LINK_SCHEMES, isDeepLink } from '../shared/deeplink'
 import { allowPickedFile, allowRoot, attachmentName, installMediaHandler, isCachedFile, registerMediaScheme } from './media-protocol'
 import { installScreenShare } from './screenshare'
 import { defaultDownloadDir, readMedia, saveMedia, uniquePath } from './downloads'
-import { buildLogExport, currentOsInfo, exportFilename, PASTE_GG_MAX_BYTES, readLogLines } from './log-export'
+import {
+  Anonymizer,
+  buildLogExport,
+  currentOsInfo,
+  exportFilename,
+  PASTE_GG_MAX_BYTES,
+  readLogLines,
+  type KnownAnonymizerNames
+} from './log-export'
 import { checkPasteGg, deleteFromPasteGg, LogUploadStore, toPublicUpload, uploadToPasteGg, type PasteGgFetch } from './paste-gg'
-import type { Buffer as ChatBuffer } from '../shared/wire'
+import type { Account, Buffer as ChatBuffer } from '../shared/wire'
 import { log } from './log'
 
 declare const __APP_VERSION__: string
@@ -1368,15 +1376,106 @@ function wireIpc(): void {
   const collectLogs = async (maxBytes?: number) => {
     let nobilisVersion = client.linkUp ? 'not reported' : 'not connected'
     let nobilisBuild = client.linkUp ? 'unknown' : 'not connected'
+    let tunnel = 'unknown'
+    let backends: string | undefined
+    const knownUsers = new Set<string>()
+    const knownServers = new Set<string>()
+    const knownGuilds = new Set<string>()
+    const knownChannels = new Set<string>()
+    const knownRooms = new Set<string>()
+    const knownAccounts = new Set<string>()
+
     if (client.linkUp) {
-      try {
-        const v = (await client.request('version', {})) as { version?: string; commit?: string } | null
-        if (v?.version) nobilisVersion = v.version
-        if (v?.commit) nobilisBuild = v.commit
-      } catch {
-        // An older daemon may not answer `version`; keep the fallback.
+      const [verRes, acctRes, bufRes, tunRes] = await Promise.allSettled([
+        client.request('version', {}) as Promise<{ version?: string; commit?: string } | null>,
+        client.request('listAccounts', {}) as Promise<Account[] | null>,
+        client.request('listBuffers', {}) as Promise<ChatBuffer[] | null>,
+        client.request('netTunnel', {}) as Promise<{ tunnelAll?: boolean; socks?: string | null } | null>
+      ])
+
+      if (verRes.status === 'fulfilled' && verRes.value) {
+        if (verRes.value.version) nobilisVersion = verRes.value.version
+        if (verRes.value.commit) nobilisBuild = verRes.value.commit
+      }
+
+      if (tunRes.status === 'fulfilled' && tunRes.value) {
+        tunnel = tunRes.value.tunnelAll
+          ? tunRes.value.socks
+            ? 'tunnel-all (socks)'
+            : 'tunnel-all (offline)'
+          : 'direct'
+      }
+
+      if (acctRes.status === 'fulfilled' && Array.isArray(acctRes.value)) {
+        const counts = new Map<string, { connected: number; total: number }>()
+        for (const a of acctRes.value) {
+          const entry = counts.get(a.service) ?? { connected: 0, total: 0 }
+          entry.total++
+          if (a.state === 'connected') entry.connected++
+          counts.set(a.service, entry)
+
+          if (a.id) {
+            knownAccounts.add(a.id)
+            const colon = a.id.indexOf(':')
+            const tail = colon >= 0 ? a.id.slice(colon + 1) : a.id
+            const at = tail.indexOf('@')
+            if (at > 0 && at < tail.length - 1) {
+              knownUsers.add(tail.slice(0, at))
+              knownServers.add(tail.slice(at + 1).split('/')[0])
+            } else if (tail) {
+              knownUsers.add(tail)
+            }
+          }
+          if (a.displayName) knownUsers.add(a.displayName)
+          if (a.currentNick) knownUsers.add(a.currentNick)
+          if (a.saslUsername) knownUsers.add(a.saslUsername)
+          if (a.sneedchatRooms) {
+            for (const r of a.sneedchatRooms) {
+              if (r.name) knownRooms.add(r.name)
+            }
+          }
+        }
+        if (counts.size > 0) {
+          backends = [...counts.entries()]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([svc, c]) => `${svc}(${c.connected}/${c.total})`)
+            .join(', ')
+        }
+      }
+
+      if (bufRes.status === 'fulfilled' && Array.isArray(bufRes.value)) {
+        for (const b of bufRes.value) {
+          if (!b.name) continue
+          const slash = b.name.indexOf('/')
+          if (slash > 0 && slash < b.name.length - 1) {
+            knownGuilds.add(b.name.slice(0, slash))
+            knownChannels.add(b.name.slice(slash + 1))
+          } else if (b.kind === 'dm') {
+            knownUsers.add(b.name)
+          } else if (b.name.startsWith('#')) {
+            knownChannels.add(b.name)
+          } else {
+            knownRooms.add(b.name)
+          }
+        }
       }
     }
+
+    const displayServer =
+      process.platform === 'linux'
+        ? process.env.XDG_SESSION_TYPE ||
+          (process.env.WAYLAND_DISPLAY ? 'wayland' : process.env.DISPLAY ? 'x11' : 'headless')
+        : process.platform
+    const packaging = !app.isPackaged ? 'development' : process.env.APPIMAGE ? 'AppImage' : 'packaged'
+    const known: KnownAnonymizerNames = {
+      accounts: knownAccounts,
+      users: knownUsers,
+      servers: knownServers,
+      guilds: knownGuilds,
+      channels: knownChannels,
+      rooms: knownRooms
+    }
+
     const rawLines = await readLogLines(log.dir())
     return buildLogExport(
       rawLines,
@@ -1385,10 +1484,17 @@ function wireIpc(): void {
         mohoBuild: typeof __BUILD_COMMIT__ === 'string' ? __BUILD_COMMIT__ : 'unknown',
         nobilisVersion,
         nobilisBuild,
+        electronVersion: process.versions.electron,
+        chromeVersion: process.versions.chrome,
         ...currentOsInfo(),
+        displayServer,
+        packaging,
+        sandboxed: sandboxed(),
+        tunnel,
+        backends,
         exportedAt: new Date().toISOString()
       },
-      { maxBytes }
+      { maxBytes, anonymizer: new Anonymizer(known) }
     )
   }
 
@@ -1515,17 +1621,46 @@ app.whenReady().then(() => {
   log.toDirectory(path.join(cacheRoot(), 'moho'))
   log.info('moho starting, logging to', log.file() ?? '(nowhere)')
 
-  // What a call did, from the window that held it. The renderer writes one
-  // `[call] {...}` line per event to its console - see lib/calllog.ts - and
-  // this is the only place they are kept: a console dies with its window, and
-  // the record of why a call had no picture is wanted after the call is over.
-  // Only that prefix, so nothing else a page prints ends up in the file.
+  // Record main-process crashes and unhandled rejections synchronously before
+  // Node/Electron exits or continues, without altering Node's fatal crash path.
+  process.on('uncaughtExceptionMonitor', (err, origin) => {
+    log.error('[main] uncaughtException:', origin, err)
+  })
+  process.on('unhandledRejection', (reason) => {
+    log.error('[main] unhandledRejection:', reason)
+  })
+
+  // What a call, restore, or renderer error did, from the window that held it.
+  // Structured moho prefixes (`[call] `, `[restore] `, `[moho] `) are always
+  // recorded, plus any console error coming from moho's own app pages (never
+  // third-party sign-in popups) so UI crashes survive a reload or restart.
   app.on('web-contents-created', (_e, contents) => {
     // Every page, including ones opened later, under the same WebRTC rule.
     applyPolicy(contents)
     contents.on('console-message', (event) => {
-      const message = (event as unknown as { message?: string }).message
-      if (typeof message === 'string' && (message.startsWith('[call] ') || message.startsWith('[restore] '))) log.info(message)
+      const { message, level, sourceId, lineNumber } = event
+      if (typeof message !== 'string') return
+      const isTagged =
+        message.startsWith('[call] ') ||
+        message.startsWith('[restore] ') ||
+        message.startsWith('[moho] ')
+      if (isTagged) {
+        if (level === 'error') log.error(message)
+        else if (level === 'warning') log.warn(message)
+        else log.info(message)
+        return
+      }
+      if (level === 'error') {
+        const pageUrl = contents.getURL()
+        const ownPage =
+          pageUrl.startsWith('file://') ||
+          pageUrl.startsWith('http://localhost:') ||
+          pageUrl.startsWith('http://127.0.0.1:')
+        if (ownPage) {
+          const src = sourceId ? ` (${sourceId.split('/').pop()}:${lineNumber})` : ''
+          log.error(`[renderer] ${message}${src}`)
+        }
+      }
     })
   })
 
@@ -1786,6 +1921,7 @@ app.on('before-quit', (event) => {
   if (quitting) return
   event.preventDefault()
   quitting = true
+  log.info('moho quitting')
   globalShortcut.unregisterAll()
   prefs?.flushNow()
   void stopDaemon()
