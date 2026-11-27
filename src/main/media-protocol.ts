@@ -129,6 +129,8 @@ const DAEMON_MEDIA_DIRS = [
   'stoat-avatars',
   'fluxer-media',
   'fluxer-avatars',
+  'mattermost-media',
+  'mattermost-avatars',
   'signal-media',
   'signal-avatars',
   'xmpp-media',

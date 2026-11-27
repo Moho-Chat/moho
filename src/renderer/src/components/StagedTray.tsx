@@ -42,7 +42,7 @@ export function StagedTray({
 
   const sizes = staged.map((a) => a.size).filter((s): s is number => typeof s === 'number')
   const total = sizes.reduce((sum, s) => sum + s, 0)
-  const hides = service === 'discord' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'fluxer'
+  const hides = service === 'discord' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost'
 
   const move = (id: number, before: number): void => {
     if (id === before) return

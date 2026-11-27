@@ -32,7 +32,7 @@ import { addToast, type ToastAction, type ToastItem } from '../lib/toasts'
 import { ALL_STATUSES, statusesFor, supportsStatus } from '../lib/status'
 import type { SteamGroup, GroupCall } from '../lib/steamgroups'
 import type { TelegramFolder } from '../lib/telegramfolders'
-import { buildSmilieIndex, fluxerSameText, sneedSameText, steamSameText, stoatSameText, type SmilieEntry, type SmilieIndex } from '../lib/format'
+import { buildSmilieIndex, fluxerSameText, mattermostSameText, sneedSameText, steamSameText, stoatSameText, type SmilieEntry, type SmilieIndex } from '../lib/format'
 import { bufferDisplayName, ignoreIsBlock, isChatKind, isImageFile, resolveMediaUrl } from '../lib/util'
 import { heldOnAccount, type NotifyLevel } from '../lib/notifylevels'
 import { runExport } from '../lib/exporter'
@@ -659,6 +659,8 @@ export interface ChatState {
   pinnedMessages: Record<string, string[]>
   /** How many replies or comments a message has, where the service says so (Telegram): by conversation, then message. */
   threadCounts: Record<string, Record<string, number>>
+  /** What each Mattermost account's server offers and how it reads threads, by account id (the daemon's `mattermostServer`). */
+  mattermostServers: Record<string, MattermostServer>
   /**
    * The pinned messages themselves, once somebody has asked for them. The ids
    * above say that something is pinned; these say what, for the banner over
@@ -933,6 +935,7 @@ const INITIAL: ChatState = {
   viewOnce: null,
   pinnedMessages: {},
   threadCounts: {},
+  mattermostServers: {},
   pinnedRows: {},
   forumPages: {},
   discordFriends: {},
@@ -1019,12 +1022,27 @@ const INITIAL: ChatState = {
  * typed - so an unrelated message that happens to share a suffix cannot
  * swallow somebody's pending send.
  */
+/** What a Mattermost server offers, and how the account reads threads there. */
+export interface MattermostServer {
+  version?: string
+  siteName?: string
+  /** Replies kept out of the channel and read in their threads (Collapsed Reply Threads). */
+  collapsedOn?: boolean
+  collapsedThreads?: string
+  calls?: boolean
+  customStatuses?: boolean
+  priority?: boolean
+  scheduled?: boolean
+  teams?: { id: string; name: string }[]
+}
+
 function echoMatches(echo: ChatMessage, real: Message): boolean {
   if (echo.pendingBody === real.body) return true
   if (real.bufferId.startsWith('steam:') && echo.pendingBody !== undefined && steamSameText(echo.pendingBody, real.body)) return true
   if (real.bufferId.startsWith('sneedchat:') && echo.pendingBody !== undefined && sneedSameText(echo.pendingBody, real.body)) return true
   if (real.bufferId.startsWith('stoat:') && echo.pendingBody !== undefined && stoatSameText(echo.pendingBody, real.body)) return true
   if (real.bufferId.startsWith('fluxer:') && echo.pendingBody !== undefined && fluxerSameText(echo.pendingBody, real.body)) return true
+  if (real.bufferId.startsWith('mattermost:') && echo.pendingBody !== undefined && mattermostSameText(echo.pendingBody, real.body)) return true
   // A file is posted as markup the daemon builds - a BBCode image tag on
   // Sneedchat, a bare link on IRC - so what comes back is never what was
   // typed, and usually nothing was typed at all. Matching on the whole body
@@ -1676,6 +1694,12 @@ export class ChatStore {
       if (!this.signalCallsProbed && this.state.accounts.some((a) => a.service === 'signal')) {
         this.signalCallsProbed = true
         void this.probeSignalCalls()
+      }
+      for (const a of this.state.accounts.filter((x) => x.service === 'mattermost' && x.state === 'connected')) {
+        void window.moho
+          .rpc<MattermostServer>('mattermost', { action: 'server', accountId: a.id })
+          .then((server) => this.set({ mattermostServers: { ...this.state.mattermostServers, [a.id]: server } }))
+          .catch(() => {})
       }
       if (this.state.accounts.some((a) => a.service === 'fluxer')) {
         void window.moho
@@ -4774,6 +4798,12 @@ export class ChatStore {
       case 'messageModerated':
         this.mapMessage(data.bufferId, data.id, (m) => ({ ...m, moderated: data.moderated ?? {} }))
         break
+
+      case 'mattermostServer': {
+        const d = data as unknown as MattermostServer & { accountId: string }
+        this.set({ mattermostServers: { ...this.state.mattermostServers, [d.accountId]: d } })
+        break
+      }
 
       case 'threadCount': {
         const d = data as unknown as { bufferId: string; id: string; count: number }

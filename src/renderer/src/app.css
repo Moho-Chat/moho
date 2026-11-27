@@ -4791,6 +4791,27 @@ img.smilie {
 /* One quote, one code block and one inline code, whichever way the markup
    reached the line: these used to be two looks each, the second lighter, in a
    different font and with no background behind inline code. */
+/* A table in a message (Mattermost's Markdown, Matrix HTML): ruled, compact, and scrolled sideways rather than
+   widening the conversation when it is wide. */
+.message-body table.message-table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 4px 0;
+  font-size: 0.95em;
+}
+.message-body table.message-table th,
+.message-body table.message-table td {
+  border: 1px solid var(--outline-strong);
+  padding: 3px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.message-body table.message-table th {
+  background: var(--surface-container-lowest);
+  font-weight: 600;
+}
 .message-body blockquote {
   margin: var(--spacing-xxs) 0;
   padding: 2px 0 2px var(--spacing-s);

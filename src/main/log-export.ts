@@ -80,6 +80,7 @@ const KNOWN_STOPWORDS = new Set([
   'steam',
   'stoat',
   'fluxer',
+  'mattermost',
   'kick',
   'twitch',
   'jabber',

@@ -274,7 +274,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
   // here rather than left as the one service where the button is dead.
   // Steam takes a picture or a short video, and says which and how big.
   const supportsAttachments =
-    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'xmpp' || service === 'signal'
+    service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'irc' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost' || service === 'xmpp' || service === 'signal'
 
   // Starting a reply puts the cursor in the box: the next thing anybody does
   // is write the answer.
@@ -615,11 +615,12 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
           staged.map((att) => att.path),
           staged.filter((att) => att.spoiler).map((att) => att.path)
         )
-      } else if (service === 'stoat' || service === 'fluxer') {
-        // Stoat and Fluxer carry several files in one message (Stoat up to five, Fluxer ten; the daemon says if the account is allowed fewer), and
-        // names a spoiler by the file's name, so each file's mark has to go with it.
-        for (let i = 0; i < staged.length; i += 5) {
-          const batch = staged.slice(i, i + 5)
+      } else if (service === 'stoat' || service === 'fluxer' || service === 'mattermost') {
+        // Stoat, Fluxer and Mattermost carry several files in one message (Stoat up to five, Fluxer and Mattermost ten; the daemon says if the account
+        // is allowed fewer), and Stoat and Fluxer name a spoiler by the file's name, so each file's mark has to go with it.
+        const per = service === 'stoat' ? 5 : 10
+        for (let i = 0; i < staged.length; i += per) {
+          const batch = staged.slice(i, i + per)
           void post(
             i === 0 ? body : '',
             batch.map((att) => att.path),
@@ -1315,7 +1316,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
                 !e.altKey &&
                 !e.metaKey &&
                 !text &&
-                (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'xmpp' || service === 'signal')
+                (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost' || service === 'xmpp' || service === 'signal')
               ) {
                 const last = store.lastEditableOwn(buffer.id)
                 if (last) {

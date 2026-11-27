@@ -8,6 +8,7 @@ import telegramSvg from '../assets/telegram-mark.svg'
 import signalSvg from '../assets/signal-mark.svg'
 import stoatSvg from '../assets/stoat-mark.svg'
 import fluxerSvg from '../assets/fluxer-mark.svg'
+import mattermostSvg from '../assets/mattermost-mark.svg'
 import xmppSvg from '../assets/xmpp-mark.svg'
 
 /**
@@ -67,7 +68,7 @@ export interface ServiceIcon {
  * the same menus, as "Whisper".
  */
 export function hasDirectMessages(service: string | undefined): boolean {
-  return service === 'irc' || service === 'discord' || service === 'matrix' || service === 'twitch' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'xmpp' || service === 'signal'
+  return service === 'irc' || service === 'discord' || service === 'matrix' || service === 'twitch' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost' || service === 'xmpp' || service === 'signal'
 }
 
 export function serviceIcon(service: string): ServiceIcon {
@@ -86,6 +87,8 @@ export function serviceIcon(service: string): ServiceIcon {
       return { mark: stoatSvg }
     case 'fluxer':
       return { mark: fluxerSvg }
+    case 'mattermost':
+      return { mark: mattermostSvg }
     case 'signal':
       return { mark: signalSvg }
     case 'irc':
@@ -130,6 +133,8 @@ export function serviceLabel(service: string): string {
       return 'Stoat'
     case 'fluxer':
       return 'Fluxer'
+    case 'mattermost':
+      return 'Mattermost'
     case 'signal':
       return 'Signal'
     case 'slack':

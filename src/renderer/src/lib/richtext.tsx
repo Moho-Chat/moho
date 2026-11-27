@@ -42,6 +42,14 @@ const ALLOWED_TAGS = new Set([
   'OL',
   'LI',
   'DEL',
+  // Tables, which Mattermost's (GitHub's) Markdown has and Matrix senders can send: containers too, kept without any
+  // attribute (an alignment is not worth an attribute through).
+  'TABLE',
+  'THEAD',
+  'TBODY',
+  'TR',
+  'TH',
+  'TD',
   'H1',
   'H2',
   'H3',
@@ -364,6 +372,28 @@ function walk(node: Node, handlers: Handlers, depth: number): ReactNode[] {
         break
       case 'LI':
         out.push(<li key={key}>{kids()}</li>)
+        break
+      case 'TABLE':
+        out.push(
+          <table key={key} className="message-table">
+            {kids()}
+          </table>
+        )
+        break
+      case 'THEAD':
+        out.push(<thead key={key}>{kids()}</thead>)
+        break
+      case 'TBODY':
+        out.push(<tbody key={key}>{kids()}</tbody>)
+        break
+      case 'TR':
+        out.push(<tr key={key}>{kids()}</tr>)
+        break
+      case 'TH':
+        out.push(<th key={key}>{kids()}</th>)
+        break
+      case 'TD':
+        out.push(<td key={key}>{kids()}</td>)
         break
       // A heading inside a chat line is emphasis, not document structure -
       // rendering one at heading size would tower over the conversation

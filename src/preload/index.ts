@@ -39,7 +39,7 @@ const api = {
   browserLogin(
     service: string,
     accountId?: string,
-    options?: { useTor?: boolean }
+    options?: { useTor?: boolean; server?: string }
   ): Promise<{ ok: boolean; error?: string }> {
     return ipcRenderer.invoke(IPC.browserLogin, service, accountId, options)
   },

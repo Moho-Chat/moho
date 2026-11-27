@@ -480,7 +480,7 @@ function MessageRowBody({
   // Discord, Sneedchat and Matrix support editing and deleting your own
   // messages; IRC has no such concept.
   const canEditDelete =
-    !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'xmpp' || service === 'signal')
+    !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost' || service === 'xmpp' || service === 'signal')
   const beginEdit = (): void => {
     setDraft(message.body)
     setEditing(true)
@@ -489,7 +489,7 @@ function MessageRowBody({
   // server gave an id - a reaction names its message by that id.
   // Sneedchat where the room lets this account react (a guest or a muted member may not).
   const canReact =
-    service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'xmpp' || service === 'signal' ||
+    service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost' || service === 'xmpp' || service === 'signal' ||
     (service === 'sneedchat' && sneedchatMayReact) ||
     (service === 'irc' && ircReactions && !isLocalIrcId(message.id))
   // Steam's stickers, asked for when the reaction picker opens: it reacts with them too.
@@ -617,7 +617,7 @@ function MessageRowBody({
           isSneedchat,
           smilies: smilieIndex,
           channels,
-          markdownEscapes: service === 'discord' || service === 'fluxer',
+          markdownEscapes: service === 'discord' || service === 'fluxer' || service === 'mattermost',
           xmppStyling: service === 'xmpp',
           // Only IRC's own traffic is drawn with IRC's codes. Elsewhere they
           // are stripped, which is what the formatter does when not told.
@@ -721,6 +721,16 @@ function MessageRowBody({
     ...((service === 'discord' || service === 'matrix' || service === 'telegram') && !isSystem && message.id
       ? ([{ label: 'Forward…', icon: 'forward', onClick: () => setForwarding(true) }] as MenuEntry[])
       : []),
+    // Every answer on Mattermost is a thread: the post's own, opened beside the channel to read and answer there.
+    ...(service === 'mattermost' && !isSystem && !inThread && message.id
+      ? ([
+          {
+            label: 'Reply in thread',
+            icon: 'forum',
+            onClick: () => void store.openThreadPanel(bufferId, message.replyTo?.thread ? message.replyTo.id : message.id)
+          }
+        ] as MenuEntry[])
+      : []),
     ...(canStartFluxerThread && !isSystem && !inThread && message.id
       ? ([{ label: 'Start a thread…', icon: 'forum', onClick: () => setStartingThread(true) }] as MenuEntry[])
       : []),
@@ -751,7 +761,7 @@ function MessageRowBody({
     // rather than gated on a power level read here: the server decides, and
     // it refuses in words worth showing - hiding the action from somebody who
     // could have used it is the worse mistake.
-    ...((service === 'matrix' || service === 'discord' || service === 'telegram' || service === 'stoat' || service === 'fluxer') && !isSystem
+    ...((service === 'matrix' || service === 'discord' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost') && !isSystem
       ? ([
           {
             label: pinned ? 'Unpin from this conversation' : 'Pin to this conversation',
