@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
-import { IPC, POPOUT_FLAG, UI_SHOTS_FLAG, type EditAction, type EditMenuRequest, type PopoutState, type ScreenSource } from '../shared/ipc'
+import { IPC, POPOUT_FLAG, UI_SHOTS_FLAG, type EditAction, type EditMenuRequest, type LogUploadInfo, type PopoutState, type ScreenSource } from '../shared/ipc'
 import type { NobilisEvent } from '../shared/wire'
 
 /**
@@ -236,6 +236,20 @@ const api = {
   restartDaemon: (): Promise<void> => ipcRenderer.invoke(IPC.restartDaemon),
   daemonStatus: (): Promise<{ binaryPath: string; available: boolean; linkUp: boolean }> =>
     ipcRenderer.invoke(IPC.daemonStatus),
+  /** Anonymized log export, Downloads save, and paste.gg upload management (#343). */
+  logs: {
+    preview: (): Promise<{ text: string; sizeBytes: number; linesOmitted: number }> =>
+      ipcRenderer.invoke(IPC.logsPreview),
+    save: (): Promise<{ path?: string; sizeBytes?: number; error?: string }> =>
+      ipcRenderer.invoke(IPC.logsSave),
+    upload: (): Promise<{ upload?: LogUploadInfo; uploads?: LogUploadInfo[]; error?: string }> =>
+      ipcRenderer.invoke(IPC.logsUpload),
+    list: (): Promise<LogUploadInfo[]> => ipcRenderer.invoke(IPC.logsList),
+    check: (): Promise<LogUploadInfo[]> => ipcRenderer.invoke(IPC.logsCheck),
+    remove: (id: string): Promise<{ uploads: LogUploadInfo[]; error?: string }> =>
+      ipcRenderer.invoke(IPC.logsDelete, id),
+    forget: (id: string): Promise<LogUploadInfo[]> => ipcRenderer.invoke(IPC.logsForget, id)
+  },
   smiliesDir: (): Promise<string> => ipcRenderer.invoke(IPC.smiliesDir),
   /** The pictures the window fetched itself from a CDN, in bytes. */
   webCacheSize: (): Promise<number> => ipcRenderer.invoke(IPC.webCacheSize),

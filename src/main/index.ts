@@ -38,9 +38,22 @@ import { readCapped, pictureNamedIn } from './imagepage'
 import { DEEP_LINK_SCHEMES, isDeepLink } from '../shared/deeplink'
 import { allowPickedFile, allowRoot, attachmentName, installMediaHandler, isCachedFile, registerMediaScheme } from './media-protocol'
 import { installScreenShare } from './screenshare'
-import { defaultDownloadDir, readMedia, saveMedia } from './downloads'
-import type { Buffer as ChatBuffer } from '../shared/wire'
+import { defaultDownloadDir, readMedia, saveMedia, uniquePath } from './downloads'
+import {
+  Anonymizer,
+  buildLogExport,
+  currentOsInfo,
+  exportFilename,
+  PASTE_GG_MAX_BYTES,
+  readLogLines,
+  type KnownAnonymizerNames
+} from './log-export'
+import { checkPasteGg, deleteFromPasteGg, LogUploadStore, toPublicUpload, uploadToPasteGg, type PasteGgFetch } from './paste-gg'
+import type { Account, Buffer as ChatBuffer } from '../shared/wire'
 import { log } from './log'
+
+declare const __APP_VERSION__: string
+declare const __BUILD_COMMIT__: string
 import { SignalCalls } from './signal-calls'
 import { applyPolicy, applyTunnel } from './tunnel'
 import { installRoutedHandler, resetRoute } from './routed'
@@ -1353,6 +1366,202 @@ function wireIpc(): void {
     available: nobilis.available(),
     linkUp: client.linkUp
   }))
+
+  // Anonymized log export (Downloads & paste.gg) - issue #343.
+  const logUploads = new LogUploadStore(path.join(app.getPath('userData'), 'log-uploads.json'))
+  const pasteFetch: PasteGgFetch = async (url, init) => {
+    const res = await net.fetch(url, init)
+    return { ok: res.ok, status: res.status, text: () => res.text() }
+  }
+  const collectLogs = async (maxBytes?: number) => {
+    let nobilisVersion = client.linkUp ? 'not reported' : 'not connected'
+    let nobilisBuild = client.linkUp ? 'unknown' : 'not connected'
+    let tunnel = 'unknown'
+    let backends: string | undefined
+    const knownUsers = new Set<string>()
+    const knownServers = new Set<string>()
+    const knownGuilds = new Set<string>()
+    const knownChannels = new Set<string>()
+    const knownRooms = new Set<string>()
+    const knownAccounts = new Set<string>()
+
+    if (client.linkUp) {
+      const [verRes, acctRes, bufRes, tunRes] = await Promise.allSettled([
+        client.request('version', {}) as Promise<{ version?: string; commit?: string } | null>,
+        client.request('listAccounts', {}) as Promise<Account[] | null>,
+        client.request('listBuffers', {}) as Promise<ChatBuffer[] | null>,
+        client.request('netTunnel', {}) as Promise<{ tunnelAll?: boolean; socks?: string | null } | null>
+      ])
+
+      if (verRes.status === 'fulfilled' && verRes.value) {
+        if (verRes.value.version) nobilisVersion = verRes.value.version
+        if (verRes.value.commit) nobilisBuild = verRes.value.commit
+      }
+
+      if (tunRes.status === 'fulfilled' && tunRes.value) {
+        tunnel = tunRes.value.tunnelAll
+          ? tunRes.value.socks
+            ? 'tunnel-all (socks)'
+            : 'tunnel-all (offline)'
+          : 'direct'
+      }
+
+      if (acctRes.status === 'fulfilled' && Array.isArray(acctRes.value)) {
+        const counts = new Map<string, { connected: number; total: number }>()
+        for (const a of acctRes.value) {
+          const entry = counts.get(a.service) ?? { connected: 0, total: 0 }
+          entry.total++
+          if (a.state === 'connected') entry.connected++
+          counts.set(a.service, entry)
+
+          if (a.id) {
+            knownAccounts.add(a.id)
+            const colon = a.id.indexOf(':')
+            const tail = colon >= 0 ? a.id.slice(colon + 1) : a.id
+            const at = tail.indexOf('@')
+            if (at > 0 && at < tail.length - 1) {
+              knownUsers.add(tail.slice(0, at))
+              knownServers.add(tail.slice(at + 1).split('/')[0])
+            } else if (tail) {
+              knownUsers.add(tail)
+            }
+          }
+          if (a.displayName) knownUsers.add(a.displayName)
+          if (a.currentNick) knownUsers.add(a.currentNick)
+          if (a.saslUsername) knownUsers.add(a.saslUsername)
+          if (a.sneedchatRooms) {
+            for (const r of a.sneedchatRooms) {
+              if (r.name) knownRooms.add(r.name)
+            }
+          }
+        }
+        if (counts.size > 0) {
+          backends = [...counts.entries()]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([svc, c]) => `${svc}(${c.connected}/${c.total})`)
+            .join(', ')
+        }
+      }
+
+      if (bufRes.status === 'fulfilled' && Array.isArray(bufRes.value)) {
+        for (const b of bufRes.value) {
+          if (!b.name) continue
+          const slash = b.name.indexOf('/')
+          if (slash > 0 && slash < b.name.length - 1) {
+            knownGuilds.add(b.name.slice(0, slash))
+            knownChannels.add(b.name.slice(slash + 1))
+          } else if (b.kind === 'dm') {
+            knownUsers.add(b.name)
+          } else if (b.name.startsWith('#')) {
+            knownChannels.add(b.name)
+          } else {
+            knownRooms.add(b.name)
+          }
+        }
+      }
+    }
+
+    const displayServer =
+      process.platform === 'linux'
+        ? process.env.XDG_SESSION_TYPE ||
+          (process.env.WAYLAND_DISPLAY ? 'wayland' : process.env.DISPLAY ? 'x11' : 'headless')
+        : process.platform
+    const packaging = !app.isPackaged ? 'development' : process.env.APPIMAGE ? 'AppImage' : 'packaged'
+    const known: KnownAnonymizerNames = {
+      accounts: knownAccounts,
+      users: knownUsers,
+      servers: knownServers,
+      guilds: knownGuilds,
+      channels: knownChannels,
+      rooms: knownRooms
+    }
+
+    const rawLines = await readLogLines(log.dir())
+    return buildLogExport(
+      rawLines,
+      {
+        mohoVersion: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : app.getVersion(),
+        mohoBuild: typeof __BUILD_COMMIT__ === 'string' ? __BUILD_COMMIT__ : 'unknown',
+        nobilisVersion,
+        nobilisBuild,
+        electronVersion: process.versions.electron,
+        chromeVersion: process.versions.chrome,
+        ...currentOsInfo(),
+        displayServer,
+        packaging,
+        sandboxed: sandboxed(),
+        tunnel,
+        backends,
+        exportedAt: new Date().toISOString()
+      },
+      { maxBytes, anonymizer: new Anonymizer(known) }
+    )
+  }
+
+  ipcMain.handle(IPC.logsPreview, async () => {
+    const res = await collectLogs()
+    return { text: res.text, sizeBytes: res.sizeBytes, linesOmitted: res.linesOmitted }
+  })
+
+  ipcMain.handle(IPC.logsSave, async () => {
+    try {
+      const res = await collectLogs()
+      const dir = String(prefs.get('downloads.directory', '') || defaultDownloadDir(app.getPath('downloads')))
+      await fsp.mkdir(dir, { recursive: true })
+      const target = uniquePath(path.join(dir, exportFilename()))
+      await fsp.writeFile(target, res.text, 'utf8')
+      return { path: target, sizeBytes: res.sizeBytes }
+    } catch (e) {
+      return { error: (e as Error).message }
+    }
+  })
+
+  ipcMain.handle(IPC.logsUpload, async () => {
+    try {
+      const res = await collectLogs(PASTE_GG_MAX_BYTES)
+      const uploaded = await uploadToPasteGg(res.text, pasteFetch)
+      const record = {
+        id: uploaded.id,
+        url: uploaded.url,
+        deletionKey: uploaded.deletionKey,
+        createdAt: uploaded.createdAt,
+        expiresAt: uploaded.expiresAt,
+        sizeBytes: res.sizeBytes,
+        linesOmitted: res.linesOmitted,
+        status: 'active' as const
+      }
+      const uploads = logUploads.add(record)
+      return { upload: toPublicUpload(record), uploads }
+    } catch (e) {
+      return { error: (e as Error).message }
+    }
+  })
+
+  ipcMain.handle(IPC.logsList, () => logUploads.publicList())
+
+  ipcMain.handle(IPC.logsCheck, async () => {
+    const active = logUploads.all().filter((u) => u.status === 'active')
+    await Promise.all(
+      active.map(async (u) => {
+        const state = await checkPasteGg(u.id, pasteFetch)
+        if (state === 'expired') {
+          logUploads.markExpired(u.id, 'expired')
+        }
+      })
+    )
+    return logUploads.publicList()
+  })
+
+  ipcMain.handle(IPC.logsDelete, async (_e, id: string) => {
+    const rec = logUploads.get(String(id))
+    if (!rec) return { uploads: logUploads.publicList(), error: 'upload not found' }
+    const outcome = await deleteFromPasteGg(rec.id, rec.deletionKey, pasteFetch)
+    if (!outcome.ok) return { uploads: logUploads.publicList(), error: outcome.error }
+    logUploads.markExpired(rec.id, 'deleted')
+    return { uploads: logUploads.publicList() }
+  })
+
+  ipcMain.handle(IPC.logsForget, (_e, id: string) => logUploads.forget(String(id)))
   /**
    * Sign in through the service's own login page.
    *
@@ -1412,17 +1621,46 @@ app.whenReady().then(() => {
   log.toDirectory(path.join(cacheRoot(), 'moho'))
   log.info('moho starting, logging to', log.file() ?? '(nowhere)')
 
-  // What a call did, from the window that held it. The renderer writes one
-  // `[call] {...}` line per event to its console - see lib/calllog.ts - and
-  // this is the only place they are kept: a console dies with its window, and
-  // the record of why a call had no picture is wanted after the call is over.
-  // Only that prefix, so nothing else a page prints ends up in the file.
+  // Record main-process crashes and unhandled rejections synchronously before
+  // Node/Electron exits or continues, without altering Node's fatal crash path.
+  process.on('uncaughtExceptionMonitor', (err, origin) => {
+    log.error('[main] uncaughtException:', origin, err)
+  })
+  process.on('unhandledRejection', (reason) => {
+    log.error('[main] unhandledRejection:', reason)
+  })
+
+  // What a call, restore, or renderer error did, from the window that held it.
+  // Structured moho prefixes (`[call] `, `[restore] `, `[moho] `) are always
+  // recorded, plus any console error coming from moho's own app pages (never
+  // third-party sign-in popups) so UI crashes survive a reload or restart.
   app.on('web-contents-created', (_e, contents) => {
     // Every page, including ones opened later, under the same WebRTC rule.
     applyPolicy(contents)
     contents.on('console-message', (event) => {
-      const message = (event as unknown as { message?: string }).message
-      if (typeof message === 'string' && (message.startsWith('[call] ') || message.startsWith('[restore] '))) log.info(message)
+      const { message, level, sourceId, lineNumber } = event
+      if (typeof message !== 'string') return
+      const isTagged =
+        message.startsWith('[call] ') ||
+        message.startsWith('[restore] ') ||
+        message.startsWith('[moho] ')
+      if (isTagged) {
+        if (level === 'error') log.error(message)
+        else if (level === 'warning') log.warn(message)
+        else log.info(message)
+        return
+      }
+      if (level === 'error') {
+        const pageUrl = contents.getURL()
+        const ownPage =
+          pageUrl.startsWith('file://') ||
+          pageUrl.startsWith('http://localhost:') ||
+          pageUrl.startsWith('http://127.0.0.1:')
+        if (ownPage) {
+          const src = sourceId ? ` (${sourceId.split('/').pop()}:${lineNumber})` : ''
+          log.error(`[renderer] ${message}${src}`)
+        }
+      }
     })
   })
 
@@ -1683,6 +1921,7 @@ app.on('before-quit', (event) => {
   if (quitting) return
   event.preventDefault()
   quitting = true
+  log.info('moho quitting')
   globalShortcut.unregisterAll()
   prefs?.flushNow()
   void stopDaemon()

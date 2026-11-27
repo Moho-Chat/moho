@@ -21,9 +21,11 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { error: E
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    // The component stack is what makes this actionable; the message alone
-    // rarely says which part of the tree failed.
-    console.error('[moho] render failed:', error, info.componentStack)
+    // Format as a single string so Electron's console-message listener records
+    // both the error stack and the React component stack in moho.log.
+    const detail = error.stack || `${error.name}: ${error.message}`
+    const tree = info.componentStack ? `\nComponent stack:${info.componentStack}` : ''
+    console.error(`[moho] render failed: ${detail}${tree}`)
   }
 
   render(): ReactNode {

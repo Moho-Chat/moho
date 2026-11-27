@@ -174,5 +174,7 @@ export const log = {
   isBroken: (): boolean => broken,
   toDirectory,
   /** Where the log is being written, for anything that wants to say so. */
-  file: (): string | null => (directory && !fileBroken ? path.join(directory, FILE) : null)
+  file: (): string | null => (directory && !fileBroken ? path.join(directory, FILE) : null),
+  /** Directory holding `moho.log` and `moho.log.1`, for log export. */
+  dir: (): string | null => directory
 }

@@ -14,6 +14,21 @@ import './app.css'
  */
 const popoutBufferId = window.moho.popout.bufferId
 
+// Forward uncaught renderer errors and unhandled promise rejections into the
+// console with the `[moho]` prefix so main writes them into `moho.log`.
+window.addEventListener('error', (event) => {
+  const err = event.error instanceof Error ? event.error : null
+  const loc = event.filename ? ` (${event.filename}:${event.lineno}:${event.colno})` : ''
+  const detail = err?.stack || `${event.message || 'Unknown error'}${loc}`
+  console.error(`[moho] uncaught error: ${detail}`)
+})
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason
+  const detail =
+    reason instanceof Error ? reason.stack || `${reason.name}: ${reason.message}` : String(reason)
+  console.error(`[moho] unhandled rejection: ${detail}`)
+})
+
 // The screenshot harness's way in (scripts/ui-shots.mjs). Present only in a
 // window main started with MOHO_UI_SHOTS=1, never in a normal launch.
 if (window.moho.uiShots) {

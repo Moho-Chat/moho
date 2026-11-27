@@ -51,6 +51,7 @@ function explain(error: string): string {
 }
 
 interface Pending {
+  method: string
   resolve: (value: any) => void
   reject: (reason: Error) => void
 }
@@ -139,6 +140,8 @@ export class NobilisClient extends EventEmitter {
   private setLink(up: boolean): void {
     if (this.linkUp === up) return
     this.linkUp = up
+    if (up) log.info('[nobilis] rpc link up')
+    else log.warn('[nobilis] rpc link down')
     this.emit('link', up)
   }
 
@@ -168,15 +171,18 @@ export class NobilisClient extends EventEmitter {
     const pending = this.pending.get(msg.id)
     if (!pending) return
     this.pending.delete(msg.id)
-    if (msg.error) pending.reject(new Error(explain(String(msg.error))))
-    else pending.resolve(msg.result ?? null)
+    if (msg.error) {
+      const errText = explain(String(msg.error))
+      log.warn(`[rpc] ${pending.method} failed:`, errText)
+      pending.reject(new Error(errText))
+    } else pending.resolve(msg.result ?? null)
   }
 
   request(method: string, params: Record<string, unknown> = {}): Promise<any> {
     const id = this.nextId++
     const line = JSON.stringify({ id, method, params }) + '\n'
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject })
+      this.pending.set(id, { method, resolve, reject })
       if (this.linkUp && this.socket) this.socket.write(line)
       else this.queue.push(line)
     })
