@@ -71,6 +71,14 @@ try {
   await rpc('requestMemberList', { bufferId: town.id })
   await shot('mattermost-channel.png')
 
+  // Naming somebody: the people of the channel and of the team, by username, and the channel-wide words.
+  await ev(`document.querySelector('[contenteditable="true"]')?.focus()`)
+  await page.call('Input.insertText', { text: '@mo' })
+  await sleep(1200)
+  await shot('mattermost-mention.png')
+  await ev(`(() => { const el = document.querySelector('[contenteditable="true"]'); if (el) { el.textContent = ''; el.dispatchEvent(new Event('input', { bubbles: true })) } })()`)
+  await page.call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+
   // What the account keeps beside its channels: the threads it follows, its saved posts.
   await ev(`document.querySelector('[title^="Threads, saved posts"]')?.click()`)
   await until(() => ev('!!document.querySelector(".history-row")'), 10000)

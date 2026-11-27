@@ -376,17 +376,46 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
     }
   }, [thread])
 
+  // Mattermost's own completion: the server is asked who matches what is typed after "@", so somebody not in the loaded
+  // list of people can be named too.
+  const [serverPeople, setServerPeople] = useState<MentionTarget[]>([])
+  const typedMention = mention?.query ?? null
+  useEffect(() => {
+    if (service !== 'mattermost' || !buffer || typedMention === null || typedMention.length < 1) {
+      setServerPeople([])
+      return
+    }
+    let live = true
+    const timer = setTimeout(() => {
+      void window.moho
+        .rpc<{ username: string; id: string; name: string; avatarUrl?: string }[]>('mattermost', { action: 'autocomplete', bufferId: buffer.id, teamId: (buffer.groupId ?? '').split('|team:')[1] ?? '', query: typedMention })
+        .then((list) => live && setServerPeople(list.map((u) => ({ name: u.username, ...(u.name ? { detail: u.name } : {}), kind: 'member' as const, userId: u.id, avatarUrl: u.avatarUrl }))))
+        .catch(() => live && setServerPeople([]))
+    }, 200)
+    return () => {
+      live = false
+      clearTimeout(timer)
+    }
+  }, [service, buffer?.id, typedMention])
+
   /**
    * Everything that can be tagged here: the people in the conversation, the
    * roles the service lets anybody ping, and its whole-room keywords.
    */
   const mentionTargets = useMemo((): MentionTarget[] => {
-    const members: MentionTarget[] = (roster ?? []).map((m) => ({
-      name: m.nick,
-      kind: 'member' as const,
-      userId: m.userId,
-      avatarUrl: m.avatarUrl
-    }))
+    // Mattermost reads a mention by username, whatever name it shows: the name goes beside it.
+    const members: MentionTarget[] = (roster ?? []).map((m) => {
+      const username = (m as { username?: string }).username
+      return {
+        name: service === 'mattermost' && username ? username : m.nick,
+        ...(service === 'mattermost' && username && username !== m.nick ? { detail: m.nick } : {}),
+        kind: 'member' as const,
+        userId: m.userId,
+        avatarUrl: m.avatarUrl
+      }
+    })
+    // And the people of the team the list here has not got, as the server finds them for what was typed.
+    for (const p of serverPeople) if (!members.some((m) => m.userId === p.userId)) members.push(p)
     const roleTargets: MentionTarget[] = roles.map((r) => ({
       name: r.name,
       detail: 'Role',
@@ -399,7 +428,7 @@ export function Composer({ thread = false }: { thread?: boolean } = {}): JSX.Ele
       kind: 'keyword' as const
     }))
     return [...members, ...roleTargets, ...keywords]
-  }, [roster, roles, service])
+  }, [roster, roles, service, serverPeople])
 
   const suggestions = useMemo(
     () => (mention ? rankMentions(mentionTargets, mention.query) : []),
