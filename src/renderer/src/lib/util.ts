@@ -103,12 +103,9 @@ export function serviceIcon(service: string): ServiceIcon {
     case 'jabber':
       return { glyph: 'forum' }
     case 'sneedchat':
-      return { mark: sneedchatMark, colour: true }
-    // Coloured, like Sneedchat's: the mark is a green K on its own dark
-    // ground, and drawing it as a monochrome mask would throw away the one
-    // thing that makes it recognisable at rail size.
+      return { mark: sneedchatMark }
     case 'kick':
-      return { mark: kickSvg, colour: true }
+      return { mark: kickSvg }
     default:
       return { glyph: 'chat' }
   }
