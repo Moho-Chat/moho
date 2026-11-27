@@ -44,6 +44,13 @@ const api = {
     return ipcRenderer.invoke(IPC.browserLogin, service, accountId, options)
   },
 
+  rocketchatSsoLogin(
+    serverUrl: string,
+    options?: { useTor?: boolean }
+  ): Promise<{ ok: boolean; error?: string }> {
+    return ipcRenderer.invoke(IPC.rocketchatSsoLogin, serverUrl, options)
+  },
+
   /** Signs in to Twitch for chat and video at once, in one window. Resolves when it is done or given up. */
   twitchSignIn(options: { useTor?: boolean }): Promise<{ ok: boolean; error?: string }> {
     return ipcRenderer.invoke(IPC.twitchSignIn, options)

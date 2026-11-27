@@ -16,7 +16,7 @@ Keeping the protocol work in a separate long-lived daemon means connections, Tor
 Matrix sync survive the UI being closed, restarted, or reloaded during development.
 
 ```
-nobilis/src/backend/    one module per protocol (irc, discord, sneedchat, matrix, kick)
+nobilis/src/backend/    one module per protocol (irc, discord, sneedchat, matrix, kick, steam, twitch, telegram, stoat, fluxer, signal, xmpp, rocketchat)
 nobilis/src/rpc/        the Unix-socket JSON-RPC server
 nobilis/src/store.rs    SQLite-backed scrollback persistence
 nobilis/src/runtime.rs  protocol-agnostic connection/buffer/message state

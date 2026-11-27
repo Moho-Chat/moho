@@ -10,6 +10,7 @@ import stoatSvg from '../assets/stoat-mark.svg'
 import fluxerSvg from '../assets/fluxer-mark.svg'
 import mattermostSvg from '../assets/mattermost-mark.svg'
 import xmppSvg from '../assets/xmpp-mark.svg'
+import rocketchatSvg from '../assets/rocketchat-mark.svg'
 
 /**
  * Discord channel buffers are named "GuildName/#channel" internally - that's
@@ -68,7 +69,7 @@ export interface ServiceIcon {
  * the same menus, as "Whisper".
  */
 export function hasDirectMessages(service: string | undefined): boolean {
-  return service === 'irc' || service === 'discord' || service === 'matrix' || service === 'twitch' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost' || service === 'xmpp' || service === 'signal'
+  return service === 'irc' || service === 'discord' || service === 'matrix' || service === 'twitch' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost' || service === 'rocketchat' || service === 'xmpp' || service === 'signal'
 }
 
 export function serviceIcon(service: string): ServiceIcon {
@@ -91,6 +92,8 @@ export function serviceIcon(service: string): ServiceIcon {
       return { mark: mattermostSvg }
     case 'signal':
       return { mark: signalSvg }
+    case 'rocketchat':
+      return { mark: rocketchatSvg }
     case 'irc':
       return { glyph: 'tag' }
     case 'slack':
@@ -137,6 +140,8 @@ export function serviceLabel(service: string): string {
       return 'Mattermost'
     case 'signal':
       return 'Signal'
+    case 'rocketchat':
+      return 'Rocket.Chat'
     case 'slack':
       return 'Slack'
     case 'jabber':
