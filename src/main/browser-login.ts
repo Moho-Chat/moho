@@ -162,8 +162,9 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
   },
   googlechat: {
     label: 'Google',
-    // chat.google.com sends a signed-out visitor to Google's sign-in page and brings them back once signed in.
-    url: 'https://chat.google.com/',
+    // Google's sign-in for Chat, as chat.google.com/u/0/ itself sends a signed-out visitor there (the bare
+    // chat.google.com goes to a product page instead). `osid=1` has the session's OSID cookie made too.
+    url: 'https://accounts.google.com/ServiceLogin?service=dynamite&osid=1&continue=https%3A%2F%2Fchat.google.com%2Fu%2F0%2F&hl=en',
     // Nothing is read off a request: the session is the cookies Google sets.
     watch: [],
     // Every cookie the web app sends to chat.google.com (Google's own, set on .google.com, and the app's COMPASS and
@@ -294,6 +295,8 @@ export async function browserLogin(
     }
   })
   openWindow = win
+  // The session's user agent alone does not reach a window's pages; the window is told too.
+  if (flow.plainUserAgent) win.webContents.setUserAgent(plainUserAgent(win.webContents.getUserAgent()))
 
   // This window has no address bar, so the title is the only thing that says
   // where you are - which matters, because typing a password into a page you
