@@ -19,6 +19,14 @@ Each section has two parts:
 
 ## [Unreleased]
 
+## [1.5.9]
+
+### Fixes, patches and changes
+
+- Sneedchat: signing in no longer loops on the gate page until it gives up; the site's new clearance replaces the lapsed saved one instead of sitting beside it ([moho `0f3c06d`](https://github.com/Moho-Chat/moho/commit/0f3c06d))
+- Sneedchat: if the background browser helper stops, the next sign-in starts a new one instead of waiting forever at "signing in..." ([nobilis `d26bbe0`](https://github.com/Moho-Chat/nobilis/commit/d26bbe0))
+- Sneedchat over Tor: avatars on the upload host are fetched from the onion, and a picture that failed is not asked for again for ten minutes ([moho `cee9db7`](https://github.com/Moho-Chat/moho/commit/cee9db7), [nobilis `69d0c01`](https://github.com/Moho-Chat/nobilis/commit/69d0c01))
+
 ## [1.5.8]
 
 ### Major features
