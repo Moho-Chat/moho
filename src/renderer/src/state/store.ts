@@ -1809,6 +1809,15 @@ export class ChatStore {
         // Not connected yet: the daemon's own push fills it in.
       }
     }
+    // Google Chat pending Space invitations.
+    for (const account of this.state.accounts.filter((a) => a.service === 'googlechat' && a.state === 'connected')) {
+      try {
+        const r = await window.moho.rpc<{ invites: MatrixInvite[] }>('googlechat', { action: 'listInvites', accountId: account.id })
+        this.set({ matrixInvites: { ...this.state.matrixInvites, [account.id]: r.invites ?? [] } })
+      } catch {
+        // Not connected yet.
+      }
+    }
     // XMPP's are the people who asked to see the account's presence and have not been answered.
     for (const account of this.state.accounts.filter((a) => a.service === 'xmpp' && a.state === 'connected')) {
       try {
@@ -1941,6 +1950,8 @@ export class ChatStore {
         await window.moho.rpc('answerTelegramSecretChat', { accountId, chatId: id, accept })
       } else if (invitation.service === 'signal') {
         await window.moho.rpc('signalAnswerRequest', { accountId, id, answer: accept ? 'accept' : 'delete' })
+      } else if (invitation.service === 'googlechat') {
+        await window.moho.rpc('googlechat', { action: accept ? 'acceptInvite' : 'declineInvite', accountId, spaceId: id })
       } else if (invitation.service === 'steam') {
         const r = await window.moho.rpc<{ groupId?: string }>('steamChatGroupAction', { accountId, groupId: id, action: accept ? 'acceptInvite' : 'dismissInvite' })
         if (accept && r.groupId) steamGroupJoined = r.groupId

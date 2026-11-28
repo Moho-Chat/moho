@@ -339,6 +339,30 @@ called `subscribe` for that buffer.
   posting stories and writing to the storage service, sending stickers, history transfer at link time, looking up a
   number (CDSI). The code is `nobilis/src/backend/signal/`.
 
+- **Google Chat** (on the `protocol/googlechat` branch, Alpha) - Google's private web-client protocol ("Dynamite") for
+  both consumer `@gmail.com` and Google Workspace accounts (`googlechat:<gaia id>`). Google offers third-party clients
+  no OAuth for Chat, so sign-in opens Google's own Chat sign-in page in the person's default browser (Firefox family or
+  Chromium family, Linux and Windows) with a throwaway profile — handling 2-Step Verification, passkeys, and Workspace
+  SSO natively — captures the session cookies and browser user agent, deletes the profile immediately, and saves cookie
+  rotations in `0600` storage. RPCs are binary protobuf (`prost`) POSTed to `/u/0/api/*` with an XSRF token refreshed
+  from `/u/0/mole/world`; live events arrive over Google's BrowserChannel long poll (`/u/0/webchannel/events`, UTF-16
+  chunk framing + pblite JSON arrays decoded via the committed `googlechat.proto` descriptor). Supports 1:1/group DMs
+  and Spaces, history & thread replies (`list_topics` + `list_messages`), inbound/outbound Markdown & `@mention`
+  UTF-16 annotations, quote-replies (`SendReplyTarget`), edits, deletes, emoji reactions, typing indicators, read
+  receipts & read-state sync, per-conversation mutes (`update_group_notification_settings`), authenticated attachment
+  downloads (`get_attachment_url` with manual per-hop cookie gating into `googlechat-media`), resumable `/uploads`
+  file/voice uploads, Google Drive / Meet / App Card read-only embeds, member lists with Space Manager roles and
+  `get_user_presence` status, profile cards, own DND/custom status/presence sharing, blocking, hiding DMs, creating
+  DMs/Spaces, Space renaming/descriptions, member invite/kick, and pending Space invitations. History off (24-hour
+  messages): each message's `retention_settings.expiry_timestamp` is noted in the store's `message_expiry` table and a
+  sweep removes it from scrollback when Google deletes it (`retention.rs`). Space settings (emoji, name, description,
+  guidelines, history) are one dialog (`space_settings.rs`); access level and permission settings are Workspace-only
+  and not built. A signed-out session
+  stops reconnecting and prompts to sign in again. Native WebRTC for Google Chat Huddles / Google Meet is not
+  available to third-party clients (Google's Meet Media API / SFU auth is proprietary), so incoming Meet cards render
+  with one-click browser join and Accounts → Google Chat offers a browser Meet launcher. The code is
+  `nobilis/src/backend/googlechat/`; plan and checklist are in Gitea issue #30.
+
 ### Notifications are cards
 
 Anything a service *says* rather than somebody *saying* - a join or part, a topic or mode change, a kick,

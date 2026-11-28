@@ -1148,6 +1148,125 @@ function wireIpc(): void {
     void win.loadURL(`data:text/html;charset=utf-8;base64,${Buffer.from(html, 'utf8').toString('base64')}`)
   })
 
+  // Opens a Google Meet call internally inside a Moho BrowserWindow, pre-populated with the Google Chat account's
+  // session cookies so the user joins as their signed-in account with camera/mic/screen-share permissions ready.
+  const meetWindows = new Map<string, BrowserWindow>()
+  ipcMain.handle(IPC.openMeetCall, async (_e, rawUrl: unknown, accountId?: unknown) => {
+    if (typeof rawUrl !== 'string') return
+    let parsed: URL
+    try {
+      parsed = new URL(rawUrl)
+    } catch {
+      return
+    }
+    if (parsed.protocol !== 'https:' || parsed.hostname !== 'meet.google.com') return
+
+    const key = parsed.pathname.replace(/\/+$/, '') || '/new'
+    const existing = key !== '/new' ? meetWindows.get(key) : undefined
+    if (existing && !existing.isDestroyed()) {
+      if (existing.isMinimized()) existing.restore()
+      existing.focus()
+      return
+    }
+
+    const acct = typeof accountId === 'string' && accountId.startsWith('googlechat:') ? accountId : undefined
+    const partition = acct ? `persist:googlemeet-${acct.replace(/[^a-zA-Z0-9_-]/g, '_')}` : 'persist:googlemeet'
+    const ses = session.fromPartition(partition)
+
+    let userAgent =
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'
+    if (acct) {
+      try {
+        const res = (await client.request('googlechat', { action: 'sessionCookies', accountId: acct })) as {
+          cookies?: Record<string, string>
+          userAgent?: string
+        }
+        if (res?.userAgent && !res.userAgent.includes('Electron')) {
+          userAgent = res.userAgent
+        }
+        if (res?.cookies) {
+          for (const [name, value] of Object.entries(res.cookies)) {
+            if (!name || !value) continue
+            const secure = name.startsWith('__Secure-') || name.startsWith('__Host-')
+            const hostOnly = name.startsWith('__Host-')
+            try {
+              await ses.cookies.set({
+                url: 'https://meet.google.com/',
+                name,
+                value,
+                domain: hostOnly ? undefined : '.google.com',
+                path: '/',
+                secure: secure || true,
+                sameSite: 'no_restriction'
+              })
+            } catch {
+              // Skip any cookie Chromium rejects for domain/prefix mismatch.
+            }
+          }
+        }
+      } catch {
+        // Proceed even if daemon cookie lookup fails; Meet still loads in-app.
+      }
+    }
+
+    const allowedPerms = new Set([
+      'media',
+      'mediaKeySystem',
+      'display-capture',
+      'notifications',
+      'clipboard-sanitized-write',
+      'fullscreen',
+      'speaker-selection'
+    ])
+    ses.setPermissionRequestHandler((_wc, permission, callback, details) => {
+      const origin = details.requestingUrl || ''
+      const isMeet = origin.startsWith('https://meet.google.com') || origin.startsWith('https://chat.google.com')
+      callback(isMeet && allowedPerms.has(permission))
+    })
+    ses.setPermissionCheckHandler((_wc, permission, origin) => {
+      const isMeet = origin.startsWith('https://meet.google.com') || origin.startsWith('https://chat.google.com')
+      return isMeet && allowedPerms.has(permission)
+    })
+
+    const win = new BrowserWindow({
+      width: 1120,
+      height: 760,
+      minWidth: 640,
+      minHeight: 480,
+      autoHideMenuBar: true,
+      backgroundColor: '#202124',
+      icon: resourcePath('icons', 'moho.png'),
+      title: 'Google Meet',
+      webPreferences: {
+        session: ses,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true
+      }
+    })
+    if (key !== '/new') {
+      meetWindows.set(key, win)
+      win.on('closed', () => {
+        if (meetWindows.get(key) === win) meetWindows.delete(key)
+      })
+    }
+    win.webContents.setUserAgent(userAgent)
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      try {
+        const u = new URL(url)
+        if (u.protocol === 'https:' && (u.hostname === 'meet.google.com' || u.hostname.endsWith('.google.com'))) {
+          void win.loadURL(url)
+          return { action: 'deny' }
+        }
+      } catch {
+        // ignore invalid URLs
+      }
+      if (/^(https?|mailto):/i.test(url)) shell.openExternal(url)
+      return { action: 'deny' }
+    })
+    void win.loadURL(parsed.toString(), { userAgent })
+  })
+
   // Where to write something the app is about to produce - a key export, so
   // far. Separate from pickFile because the two dialogs ask opposite
   // questions, and a save dialog that cannot name a default file is a save

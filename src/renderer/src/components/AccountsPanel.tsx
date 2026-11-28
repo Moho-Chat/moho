@@ -6,6 +6,7 @@ import { AccountFace, AccountList, MasterDetail, StatePill, Tabs, accountState, 
 import { SavedMark, useSavedFlash } from './settings/controls'
 import { MatrixAccountTools } from './MatrixAccountTools'
 import { RocketChatAccountTools } from './RocketChatAccountTools'
+import { GoogleChatAccountTools } from './GoogleChatAccountTools'
 import { StoatAccountTools } from './StoatAccountTools'
 import { TelegramAccountTools } from './TelegramAccountTools'
 import { SignalAccountTools } from './SignalAccountTools'
@@ -485,7 +486,8 @@ const SERVICE_TAB: Partial<Record<Account['service'], string>> = {
   xmpp: 'The server, your profile, and what it publishes for you',
   twitch: 'Video, moderation and whispers',
   kick: 'The channels you follow',
-  rocketchat: 'Server, E2EE keys, presence and Omnichannel'
+  rocketchat: 'Server, E2EE keys, presence and Omnichannel',
+  googlechat: 'Status, DND, direct messages, Spaces and invitations'
 }
 
 /**
@@ -766,6 +768,7 @@ function AccountPage({ account, serviceName }: { account: Account; serviceName: 
               {account.service === 'kick' && <KickFollowSync account={account} />}
               {account.service === 'mattermost' && <MattermostAccountTools account={account} />}
               {account.service === 'rocketchat' && <RocketChatAccountTools account={account} />}
+              {account.service === 'googlechat' && <GoogleChatAccountTools account={account} />}
             </div>
           </section>
         )}

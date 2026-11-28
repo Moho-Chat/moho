@@ -17,6 +17,12 @@ Each section has two parts:
   that made it, including dependency updates
   (`node scripts/changelog-deps.mjs <previous tag>` lists those).
 
+## [Unreleased]
+
+### Major features
+
+- **Google Chat** (Alpha): consumer `@gmail.com` and Google Workspace accounts over Google Chat's Dynamite protobuf API and BrowserChannel realtime stream; default-browser sign-in (Firefox and Chromium families on Linux and Windows, supporting 2SV, passkeys, and Workspace SSO) with cookie rotation persistence; 1:1/group DMs and Spaces, history and thread replies, Markdown and `@mention` formatting both ways, quote-replies, edits, deletes, reactions, typing indicators, read receipts and read-state sync, account-synced mutes, authenticated media downloads and resumable file/voice uploads, Drive/Meet/App Card embeds, member lists with roles and presence, profiles, custom status and DND, blocking, Space management with a settings dialog (emoji, name, description, guidelines, history), history-off conversations whose 24-hour messages leave moho's scrollback when Google deletes them, and pending Space invitations (issue #30).
+
 ## [1.6.0]
 
 ### Major features

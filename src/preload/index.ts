@@ -174,6 +174,9 @@ const api = {
   /** A finished document (a Telegram Instant View) in a window of its own. */
   openArticle: (title: string, html: string): Promise<void> => ipcRenderer.invoke(IPC.openArticle, title, html),
 
+  /** Opens a Google Meet call internally in a Moho window using the Google Chat account's session cookies. */
+  openMeetCall: (url: string, accountId?: string): Promise<void> => ipcRenderer.invoke(IPC.openMeetCall, url, accountId),
+
   /**
    * Which picture a page is showing, read from its own OpenGraph tag.
    *

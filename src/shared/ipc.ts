@@ -14,6 +14,7 @@ export const IPC = {
   windowIsMaximized: 'moho:window:isMaximized',
   openExternal: 'moho:openExternal',
   openArticle: 'moho:openArticle',
+  openMeetCall: 'moho:openMeetCall',
   /** A finished transfer's file, opened or shown in its folder; or the folder downloads go to. Named by the transfer, never by a path. */
   transferFile: 'moho:transferFile',
   resolveImagePage: 'moho:resolveImagePage',

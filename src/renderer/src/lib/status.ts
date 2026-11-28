@@ -26,7 +26,7 @@ export function supportsStatus(service: string, status: Choosable): boolean {
     case 'focus':
       return service === 'stoat'
     case 'invisible':
-      return service === 'discord' || service === 'matrix' || service === 'steam' || service === 'stoat' || service === 'fluxer' || service === 'mattermost' || service === 'telegram'
+      return service === 'discord' || service === 'matrix' || service === 'steam' || service === 'stoat' || service === 'fluxer' || service === 'mattermost' || service === 'telegram' || service === 'googlechat'
   }
 }
 

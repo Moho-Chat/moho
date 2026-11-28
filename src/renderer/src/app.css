@@ -3954,6 +3954,29 @@ img.smilie {
   flex: none;
 }
 
+.meet-card {
+  max-width: 440px;
+}
+
+.meet-card-badge {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--corner-radius);
+  background: #00897b;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.meet-card-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
 .rich-embed-title {
   display: block;
   font-weight: var(--weight-semibold);
@@ -10566,6 +10589,19 @@ video.lightbox-media {
   min-width: 0;
   overflow-wrap: anywhere;
   font-weight: var(--weight-semibold);
+}
+
+.notice-banner-info {
+  border-bottom-color: var(--outline-light);
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+}
+
+.notice-banner-info .icon {
+  color: var(--primary);
+}
+
+.notice-banner-info .notice-banner-text {
+  font-weight: var(--weight-regular);
 }
 
 .notice-banner-dismiss {

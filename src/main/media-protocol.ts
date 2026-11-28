@@ -131,6 +131,7 @@ const DAEMON_MEDIA_DIRS = [
   'fluxer-avatars',
   'mattermost-media',
   'mattermost-avatars',
+  'googlechat-media',
   'signal-media',
   'signal-avatars',
   'xmpp-media',

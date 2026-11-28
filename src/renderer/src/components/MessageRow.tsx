@@ -494,7 +494,7 @@ function MessageRowBody({
   // Discord, Sneedchat and Matrix support editing and deleting your own
   // messages; IRC has no such concept.
   const canEditDelete =
-    !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost' || service === 'xmpp' || service === 'signal')
+    !!message.isOwn && (service === 'discord' || service === 'sneedchat' || service === 'matrix' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost' || service === 'googlechat' || service === 'xmpp' || service === 'signal')
   const beginEdit = (): void => {
     setDraft(message.body)
     setEditing(true)
@@ -503,7 +503,7 @@ function MessageRowBody({
   // server gave an id - a reaction names its message by that id.
   // Sneedchat where the room lets this account react (a guest or a muted member may not).
   const canReact =
-    service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost' || service === 'xmpp' || service === 'signal' ||
+    service === 'discord' || service === 'matrix' || service === 'steam' || service === 'telegram' || service === 'stoat' || service === 'fluxer' || service === 'mattermost' || service === 'googlechat' || service === 'xmpp' || service === 'signal' ||
     (service === 'sneedchat' && sneedchatMayReact) ||
     (service === 'irc' && ircReactions && !isLocalIrcId(message.id))
   // Steam's stickers, asked for when the reaction picker opens: it reacts with them too.
@@ -727,6 +727,22 @@ function MessageRowBody({
       : []),
     ...(message.body && !isSystem
       ? ([{ label: 'Copy text', icon: 'content_copy', onClick: () => void window.moho.copyText(message.body) }] as MenuEntry[])
+      : []),
+    ...(service === 'googlechat' && !isSystem && message.id
+      ? ([
+          {
+            label: 'Copy message link',
+            icon: 'link',
+            onClick: () => {
+              const buf = store.getSnapshot().buffers.find((b) => b.id === bufferId)
+              const inner = buf?.remoteId?.replace(/^(dm|space):/, '')
+              if (inner) {
+                void window.moho.copyText(`https://chat.google.com/u/0/app/chat/${inner}/${message.id}`)
+                store.toast('info', 'Message link copied')
+              }
+            }
+          }
+        ] as MenuEntry[])
       : []),
     // Sending somebody else's message on. Only where the service has a real
     // forward: Discord's and Telegram's carry the original itself, and
@@ -1481,6 +1497,48 @@ function MessageRowBody({
           {(message.embeds || []).map((embed, i) =>
             embed.kind === 'gif' || isKickEvent(embed) ? null : embed.kind === 'invite' ? (
               <InviteCard key={`e${i}`} embed={embed} accountId={store.accountFor(bufferId)?.id ?? ''} />
+            ) : embed.kind === 'meet' || embed.provider === 'Google Meet' ? (
+              <div key={`e${i}`} className="invite-card meet-card selectable">
+                <div className="meet-card-badge" aria-hidden="true">
+                  <Icon name="videocam" size={22} />
+                </div>
+                <div className="invite-card-text">
+                  <div className="invite-card-name ellipsis">{embed.title || 'Google Meet'}</div>
+                  <div className="small muted ellipsis">
+                    {embed.url ? embed.url.replace(/^https?:\/\//, '') : embed.description}
+                  </div>
+                </div>
+                <div className="meet-card-actions">
+                  {(embed.cta?.url ?? embed.url) && (
+                    <button
+                      type="button"
+                      className="icon-button"
+                      title="Copy meeting link"
+                      onClick={() => {
+                        const link = embed.cta?.url ?? embed.url
+                        if (link) {
+                          void window.moho.copyText(link)
+                          store.toast('info', 'Meeting link copied')
+                        }
+                      }}
+                    >
+                      <Icon name="content_copy" size={16} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="button primary invite-card-join"
+                    disabled={!(embed.cta?.url ?? embed.url)}
+                    onClick={() => {
+                      const link = embed.cta?.url ?? embed.url
+                      const acctId = store.getSnapshot().buffers.find((b) => b.id === bufferId)?.accountId
+                      if (link) void window.moho.openMeetCall(link, acctId)
+                    }}
+                  >
+                    {embed.cta?.label || 'Join'}
+                  </button>
+                </div>
+              </div>
             ) : service === 'telegram' ? (
               <LinkCard key={`e${i}`} embed={embed} bufferId={bufferId} messageId={message.id} />
             ) : (

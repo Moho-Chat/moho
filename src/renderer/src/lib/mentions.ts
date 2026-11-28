@@ -40,6 +40,8 @@ export function mentionKeywords(service: string | undefined): MentionKeyword[] {
         { word: 'all', detail: 'Notify everyone in this channel' },
         { word: 'here', detail: 'Notify everyone who is online' }
       ]
+    case 'googlechat':
+      return [{ word: 'all', detail: 'Notify everyone in this space' }]
     // Kick has no whole-chat mention, and IRC has no mentions at all - a nick
     // highlights because it appears in the line, not because of the "@".
     default:

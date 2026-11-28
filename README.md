@@ -41,6 +41,7 @@ stream's chat going past at forty lines a minute you're able to be part of the c
 | **Mattermost** | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | - | ✅ |
 | **XMPP** | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | ✅ | ✅ |
 | **Rocket.Chat** | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | ✅ | ✅ |
+| **Google Chat** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | - | ✅ |
 
 ✅ supported in moho  ·  ❌ the service has it and moho does not yet  ·  `-` the service has nothing of the kind
 
