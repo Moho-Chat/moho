@@ -12,6 +12,7 @@ import { HeaderPopover } from './HeaderPopover'
 import { SearchPane } from './SearchPane'
 import { MattermostTools } from './MattermostTools'
 import { MattermostSettings } from './MattermostSettings'
+import { GoogleChatSpaceSettings } from './GoogleChatSpaceSettings'
 import { useChat, useStore } from '../state/hooks'
 import { classes, formatFullTime } from '../lib/util'
 import { shortCount } from '../lib/streamplayer'
@@ -1112,6 +1113,12 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
           {(isMatrix || isDiscord || buffer.accountId.startsWith('telegram:') || isStoat || isMattermost) && buffer.kind !== 'server' && <PinnedMessages buffer={buffer} />}
           {isMattermost && <MattermostTools buffer={buffer} />}
           {isMattermost && <MattermostSettings buffer={buffer} />}
+          {buffer.accountId.startsWith('googlechat:') && (buffer.kind === 'channel' || buffer.kind === 'dm') && (
+            <>
+              <GoogleChatHuddleButton buffer={buffer} />
+              <GoogleChatSpaceSettings buffer={buffer} />
+            </>
+          )}
 
           {/* Beside the pins, because it is the same kind of fact about a room:
               something the room keeps, rather than something said in it. */}
@@ -1341,5 +1348,28 @@ export function ConversationTools({ buffer }: { buffer: BufferEntry }): JSX.Elem
         />
       )}
     </div>
+  )
+}
+
+/** Header button to start or join a Google Chat Huddle (Meet-backed audio-first call) in a DM or Space. */
+function GoogleChatHuddleButton({ buffer }: { buffer: { id: string } }): JSX.Element {
+  const store = useStore()
+  const huddle = useChat((s) => s.googleChatHuddles[buffer.id])
+  const [busy, setBusy] = useState(false)
+  const active = Boolean(huddle?.active)
+  return (
+    <button
+      type="button"
+      className={classes('icon-button', active && 'huddle-btn-active')}
+      title={active ? `Join Huddle (${huddle?.participants.length ?? 1} active)` : 'Start a Huddle'}
+      disabled={busy}
+      onClick={() => {
+        setBusy(true)
+        const p = active ? store.joinGoogleChatHuddle(buffer.id) : store.startGoogleChatHuddle(buffer.id)
+        void p.finally(() => setBusy(false))
+      }}
+    >
+      <Icon name="headphones" size={18} />
+    </button>
   )
 }

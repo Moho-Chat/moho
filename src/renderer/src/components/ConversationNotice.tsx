@@ -15,6 +15,16 @@ export function ConversationNotice({ bufferId }: { bufferId: string }): JSX.Elem
   const notice = useChat((s) => s.buffers.find((b) => b.id === bufferId)?.notice)
   const store = useStore()
   if (!notice) return null
+  // A state of the conversation rather than a warning about it - Google Chat's history being off - is said quietly
+  // and stays while it is true: there is nothing to dismiss.
+  if (notice.kind === 'historyOff') {
+    return (
+      <div className="notice-banner notice-banner-info" role="status">
+        <Icon name="history_toggle_off" size={18} />
+        <span className="notice-banner-text">{notice.text}</span>
+      </div>
+    )
+  }
   return (
     <div className="notice-banner" role="alert">
       <Icon name="warning" size={18} />

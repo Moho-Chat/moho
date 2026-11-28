@@ -3,7 +3,7 @@
 
 export interface Account {
   id: string
-  service: 'irc' | 'discord' | 'sneedchat' | 'matrix' | 'kick' | 'steam' | 'twitch' | 'telegram' | 'stoat' | 'fluxer' | 'mattermost' | 'rocketchat' | 'xmpp' | 'signal' | 'jabber' | 'slack'
+  service: 'irc' | 'discord' | 'sneedchat' | 'matrix' | 'kick' | 'steam' | 'twitch' | 'telegram' | 'stoat' | 'fluxer' | 'mattermost' | 'rocketchat' | 'googlechat' | 'xmpp' | 'signal' | 'jabber' | 'slack'
   displayName: string
   /**
    * How the user is presenting: "online" | "idle". Distinct from
@@ -1052,6 +1052,24 @@ export interface RoomPermissions {
 export interface NobilisEvent {
   event: string
   data: any
+}
+
+export interface GoogleChatHuddleParticipant {
+  userId: string
+  name: string
+  avatarUrl?: string | null
+}
+
+export interface GoogleChatHuddle {
+  bufferId: string
+  messageId: string
+  meetingUrl: string
+  meetingCode: string
+  starterId: string
+  starterName: string
+  participants: GoogleChatHuddleParticipant[]
+  startedAt: number
+  active: boolean
 }
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'

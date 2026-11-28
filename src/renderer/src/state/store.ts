@@ -11,6 +11,7 @@ import type {
   IncomingCall,
   DccTransfer,
   DiscordFriend,
+  GoogleChatHuddle,
   MatrixInvite,
   FluxerInviteOffer,
   FriendRequest,
@@ -778,6 +779,8 @@ export interface ChatState {
   discordWatching: Record<string, { accountId: string; streamKey: string; userId: string; nick: string }>
   /** Who is in each Stoat conversation's call, by buffer, as the daemon last said. */
   stoatVoice: Record<string, StoatVoiceMember[]>
+  /** Active Google Chat Huddles / Meet calls detected per buffer. */
+  googleChatHuddles: Record<string, GoogleChatHuddle>
   activeCall: {
     accountId: string
     bufferId: string
@@ -966,6 +969,7 @@ const INITIAL: ChatState = {
   eventsPane: null,
   eventCreate: null,
   stoatVoice: {},
+  googleChatHuddles: {},
   activeCall: null,
   discordSharing: null,
   discordShareStream: null,
@@ -1809,6 +1813,21 @@ export class ChatStore {
         // Not connected yet: the daemon's own push fills it in.
       }
     }
+    // Google Chat pending Space invitations & active Huddles.
+    for (const account of this.state.accounts.filter((a) => a.service === 'googlechat' && a.state === 'connected')) {
+      try {
+        const r = await window.moho.rpc<{ invites: MatrixInvite[] }>('googlechat', { action: 'listInvites', accountId: account.id })
+        this.set({ matrixInvites: { ...this.state.matrixInvites, [account.id]: r.invites ?? [] } })
+        const h = await window.moho.rpc<{ huddles: GoogleChatHuddle[] }>('googlechat', { action: 'listHuddles', accountId: account.id })
+        if (h.huddles?.length) {
+          const nextHuddles = { ...this.state.googleChatHuddles }
+          for (const item of h.huddles) nextHuddles[item.bufferId] = item
+          this.set({ googleChatHuddles: nextHuddles })
+        }
+      } catch {
+        // Not connected yet.
+      }
+    }
     // XMPP's are the people who asked to see the account's presence and have not been answered.
     for (const account of this.state.accounts.filter((a) => a.service === 'xmpp' && a.state === 'connected')) {
       try {
@@ -1941,6 +1960,8 @@ export class ChatStore {
         await window.moho.rpc('answerTelegramSecretChat', { accountId, chatId: id, accept })
       } else if (invitation.service === 'signal') {
         await window.moho.rpc('signalAnswerRequest', { accountId, id, answer: accept ? 'accept' : 'delete' })
+      } else if (invitation.service === 'googlechat') {
+        await window.moho.rpc('googlechat', { action: accept ? 'acceptInvite' : 'declineInvite', accountId, spaceId: id })
       } else if (invitation.service === 'steam') {
         const r = await window.moho.rpc<{ groupId?: string }>('steamChatGroupAction', { accountId, groupId: id, action: accept ? 'acceptInvite' : 'dismissInvite' })
         if (accept && r.groupId) steamGroupJoined = r.groupId
@@ -4209,6 +4230,73 @@ export class ChatStore {
     }
   }
 
+  /** Starts a Google Chat Huddle / Meet call in a DM or Space and opens it internally inside Moho. */
+  async startGoogleChatHuddle(bufferId: string): Promise<void> {
+    const buffer = this.state.buffers.find((b) => b.id === bufferId)
+    if (!buffer || !buffer.accountId.startsWith('googlechat:')) return
+    const account = this.state.accounts.find((a) => a.id === buffer.accountId)
+    if (account?.useTor) {
+      this.toast('error', 'Huddles are disabled while this account is routed through Tor.')
+      return
+    }
+    try {
+      const r = await window.moho.rpc<{ ok: boolean; huddle?: GoogleChatHuddle }>('googlechat', {
+        action: 'startHuddle',
+        accountId: buffer.accountId,
+        bufferId
+      })
+      if (r.huddle) {
+        this.set({ googleChatHuddles: { ...this.state.googleChatHuddles, [bufferId]: r.huddle } })
+        if (r.huddle.meetingUrl) {
+          void window.moho.openMeetCall(r.huddle.meetingUrl, buffer.accountId)
+        }
+      }
+    } catch (e) {
+      this.toast('error', `Couldn't start Huddle: ${(e as Error).message}`)
+    }
+  }
+
+  /** Joins an active Google Chat Huddle in a DM or Space inside Moho's internal Meet window. */
+  async joinGoogleChatHuddle(bufferId: string): Promise<void> {
+    const buffer = this.state.buffers.find((b) => b.id === bufferId)
+    if (!buffer || !buffer.accountId.startsWith('googlechat:')) return
+    const account = this.state.accounts.find((a) => a.id === buffer.accountId)
+    if (account?.useTor) {
+      this.toast('error', 'Huddles are disabled while this account is routed through Tor.')
+      return
+    }
+    try {
+      const r = await window.moho.rpc<{ ok: boolean; url?: string; huddle?: GoogleChatHuddle }>('googlechat', {
+        action: 'joinHuddle',
+        accountId: buffer.accountId,
+        bufferId
+      })
+      if (r.huddle) {
+        this.set({ googleChatHuddles: { ...this.state.googleChatHuddles, [bufferId]: r.huddle } })
+      }
+      const url = r.url || r.huddle?.meetingUrl || this.state.googleChatHuddles[bufferId]?.meetingUrl
+      if (url) {
+        void window.moho.openMeetCall(url, buffer.accountId)
+      }
+    } catch (e) {
+      this.toast('error', `Couldn't join Huddle: ${(e as Error).message}`)
+    }
+  }
+
+  /** Dismisses an active Google Chat Huddle banner for this conversation. */
+  async dismissGoogleChatHuddle(bufferId: string): Promise<void> {
+    const buffer = this.state.buffers.find((b) => b.id === bufferId)
+    if (!buffer || !buffer.accountId.startsWith('googlechat:')) return
+    const next = { ...this.state.googleChatHuddles }
+    delete next[bufferId]
+    this.set({ googleChatHuddles: next })
+    try {
+      await window.moho.rpc('googlechat', { action: 'dismissHuddle', accountId: buffer.accountId, bufferId })
+    } catch {
+      // Local banner is already dismissed.
+    }
+  }
+
   /** Whether a conversation's calls are held on a media server the window joins (Stoat's and Fluxer's). */
   private onMediaServer(bufferId: string): boolean {
     const account = this.state.buffers.find((b) => b.id === bufferId)?.accountId ?? ''
@@ -5542,6 +5630,17 @@ export class ChatStore {
         if (members.length > 0) next[data.bufferId as string] = members
         else delete next[data.bufferId as string]
         this.set({ stoatVoice: next })
+        break
+      }
+
+      // Active Google Chat Huddle / Meet call state per conversation.
+      case 'googlechatHuddle': {
+        const bufId = data.bufferId as string
+        const huddle = (data.huddle ?? null) as GoogleChatHuddle | null
+        const next = { ...this.state.googleChatHuddles }
+        if (huddle && huddle.active) next[bufId] = huddle
+        else delete next[bufId]
+        this.set({ googleChatHuddles: next })
         break
       }
 

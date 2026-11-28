@@ -3954,6 +3954,29 @@ img.smilie {
   flex: none;
 }
 
+.meet-card {
+  max-width: 440px;
+}
+
+.meet-card-badge {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--corner-radius);
+  background: #00897b;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.meet-card-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
 .rich-embed-title {
   display: block;
   font-weight: var(--weight-semibold);
@@ -4542,6 +4565,59 @@ img.smilie {
 .room-call-bar .small {
   flex: 1;
   min-width: 0;
+}
+
+.room-call-bar.huddle-bar {
+  border-color: rgba(0, 137, 123, 0.45);
+  background: linear-gradient(90deg, rgba(0, 137, 123, 0.14), var(--surface-container) 55%);
+}
+
+.huddle-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: #00897b;
+  color: #fff;
+  box-shadow: 0 0 0 3px rgba(0, 137, 123, 0.25);
+}
+
+.huddle-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 1px;
+}
+
+.huddle-who {
+  font-weight: 600;
+}
+
+.huddle-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.huddle-btn-active {
+  color: #26a69a !important;
+  position: relative;
+}
+
+.huddle-btn-active::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #26a69a;
 }
 
 .emoji-empty {
@@ -10568,6 +10644,19 @@ video.lightbox-media {
   font-weight: var(--weight-semibold);
 }
 
+.notice-banner-info {
+  border-bottom-color: var(--outline-light);
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+}
+
+.notice-banner-info .icon {
+  color: var(--primary);
+}
+
+.notice-banner-info .notice-banner-text {
+  font-weight: var(--weight-regular);
+}
+
 .notice-banner-dismiss {
   flex: none;
   padding: var(--spacing-xs) var(--spacing-m);
@@ -15645,4 +15734,37 @@ select.text-field {
 }
 .mattermost-tools .field-row .text-field {
   min-width: 0;
+}
+
+/* Google Chat's account tab (GoogleChatAccountTools): each tool its title and line, then its controls, full width. */
+.googlechat-tool {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding: var(--spacing-m) 0;
+  border-bottom: 1px solid var(--outline-light);
+}
+
+.googlechat-tool:last-of-type {
+  border-bottom: none;
+}
+
+.googlechat-tool .field-row .text-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.googlechat-tool .field-row .text-field.googlechat-emoji {
+  flex: 0 0 3.5em;
+  text-align: center;
+}
+
+.googlechat-tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.googlechat-tool > .button {
+  align-self: flex-start;
 }
