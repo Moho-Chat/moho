@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
-import { chatCookies, firefoxUserAgent, readCookies } from './google-signin'
+import { browserFromCommand, chatCookies, engineOf, firefoxUserAgent, parseExec, readCookies, readDesktopEntry, windowsProgram } from './google-signin'
 
 // Loaded at run time: the bundler would take the `node:` off, and `sqlite` alone is not a module.
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite')
@@ -48,5 +48,36 @@ describe('the Google sign-in in Firefox', () => {
       db.close()
       fs.rmSync(base, { recursive: true, force: true })
     }
+  })
+
+  it('reads the default browser’s desktop entry the way a launcher does', () => {
+    const entry = readDesktopEntry(
+      '[Desktop Entry]\nName=Firefox\nExec=/usr/lib/firefox/firefox %u\n\n[Desktop Action new-private-window]\nName=New Private Window\nExec=/usr/lib/firefox/firefox --private-window %u\n'
+    )
+    expect(entry).toEqual({ name: 'Firefox', exec: '/usr/lib/firefox/firefox %u' })
+    expect(parseExec(entry.exec ?? '')).toEqual(['/usr/lib/firefox/firefox'])
+    expect(parseExec('"/opt/my browser/chrome" --flag "%U"')).toEqual(['/opt/my browser/chrome', '--flag'])
+  })
+
+  it('knows the engine of the usual browsers, and nothing of the rest', () => {
+    for (const n of ['firefox', 'librewolf', 'org.mozilla.firefox', 'firefox.exe', 'io.gitlab.librewolf-community']) expect(engineOf(n)).toBe('gecko')
+    for (const n of ['google-chrome-stable', 'chromium', 'brave', 'msedge.exe', 'microsoft-edge-stable', 'com.brave.Browser', 'vivaldi-stable', 'chrome.exe'])
+      expect(engineOf(n)).toBe('chromium')
+    for (const n of ['epiphany', 'falkon', 'konqueror', 'org.gnome.Epiphany']) expect(engineOf(n)).toBeNull()
+  })
+
+  it('gives a Flatpak or Snap a profile where its sandbox can reach it', () => {
+    const flat = browserFromCommand(parseExec('/usr/bin/flatpak run --branch=stable --arch=x86_64 --command=brave com.brave.Browser @@u %u @@'), 'Brave', true, '/home/u')
+    expect(flat).toMatchObject({ engine: 'chromium', profileBase: '/home/u/.var/app/com.brave.Browser' })
+    expect(flat?.command).toEqual(['/usr/bin/flatpak', 'run', '--branch=stable', '--arch=x86_64', '--command=brave', 'com.brave.Browser'])
+    const snap = browserFromCommand(['/snap/bin/firefox'], 'Firefox', true, '/home/u')
+    expect(snap).toMatchObject({ engine: 'gecko', profileBase: '/home/u/snap/firefox/common' })
+    expect(browserFromCommand(['/usr/bin/epiphany'], 'Web', true)).toBeNull()
+  })
+
+  it('finds the program in a Windows open command', () => {
+    expect(windowsProgram('"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --single-argument %1')).toBe('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe')
+    expect(windowsProgram('"C:\\Program Files\\Mozilla Firefox\\firefox.exe" -osint -url "%1"')).toBe('C:\\Program Files\\Mozilla Firefox\\firefox.exe')
+    expect(windowsProgram('C:\\Apps\\browser.exe %1')).toBe('C:\\Apps\\browser.exe')
   })
 })

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * Google Chat's way in: the service among the others on the add page, its form, and the sign-in it starts - Firefox,
- * with a profile of its own, on Google's Chat sign-in (Google refuses every Electron window). Nothing is typed into
- * Google's page: Firefox is closed again, which is a cancel, makes no account, and leaves no profile behind.
+ * Google Chat's way in: the service among the others on the add page, its form, and the sign-in it starts - the
+ * default browser, with a profile of its own, on Google's Chat sign-in (Google refuses every Electron window). Nothing
+ * is typed into Google's page: the browser is closed again, which is a cancel, makes no account, and leaves no profile
+ * behind.
  *
  *   npx electron-vite build && node scripts/check-googlechat-signin.mjs <output directory>
  */
@@ -61,30 +62,27 @@ try {
   // Firefox, with a profile of its own, on Google's sign-in: found by its command line.
   const firefox = await until(() => {
     const out = execFileSync('ps', ['-eo', 'pid=,args='], { encoding: 'utf8' })
-    const line = out.split('\n').find((l) => /firefox/.test(l) && /moho-google-[^/ ]+\/profile/.test(l))
-    return line ? { pid: Number(line.trim().split(/\s+/)[0]), profile: /(\S*moho-google-[^/ ]+\/profile)/.exec(line)[1] } : null
+    // The browser's own process, not one of a Chromium's helpers (--type=...). Whichever browser moho chose: the
+    // harness's scratch home has no default of its own, so the system's is used.
+    const line = out.split('\n').find((l) => /moho-google-[^/ ]+\/profile/.test(l) && !/--type=|--headless/.test(l))
+    return line ? { pid: Number(line.trim().split(/\s+/)[0]), profile: /(\/\S*moho-google-[^/ ]+\/profile)/.exec(line)[1], args: line } : null
   }, 20000)
-  check('Firefox opens with a profile of its own', !!firefox)
+  check('the browser opens with a profile of its own', !!firefox, '')
+  if (firefox) console.log('   browser:', firefox.args.split(' ')[1].split('/').pop())
   try {
     const clients = JSON.parse(execFileSync('hyprctl', ['clients', '-j'], { encoding: 'utf8' }))
-    for (const c of clients.filter((c) => /firefox/i.test(c.class) && c.pid === firefox?.pid)) {
+    for (const c of clients.filter((c) => c.pid === firefox?.pid)) {
       execFileSync('hyprctl', ['dispatch', `hl.dsp.window.move({ window = "address:${c.address}", workspace = "2", silent = true })`])
     }
   } catch {
     /* not on Hyprland */
   }
   if (firefox) {
-    // Google's sign-in page sets its first cookies as it loads, which says the page is there.
+    // The window's title says Google's sign-in page is there ("Sign in - Google Accounts - <browser>").
     const loaded = await until(() => {
-      const db = path.join(firefox.profile, 'cookies.sqlite')
-      if (!fs.existsSync(db)) return false
-      const copy = path.join(out, 'probe-cookies.sqlite')
-      fs.copyFileSync(db, copy)
-      if (fs.existsSync(db + '-wal')) fs.copyFileSync(db + '-wal', copy + '-wal')
-      const hosts = execFileSync('sqlite3', [copy, "select distinct host from moz_cookies where host like '%google.com'"], { encoding: 'utf8' })
-      for (const f of [copy, copy + '-wal', copy + '-shm']) fs.rmSync(f, { force: true })
-      return hosts.includes('accounts.google.com')
-    }, 40000)
+      const clients = JSON.parse(execFileSync('hyprctl', ['clients', '-j'], { encoding: 'utf8' }))
+      return clients.some((c) => c.pid === firefox.pid && /Google Accounts|Sign in/i.test(c.title))
+    }, 45000)
     check('Google’s sign-in page loads in it', !!loaded)
     // Closing Firefox: the way a person gives up.
     try {
@@ -93,11 +91,11 @@ try {
       /* gone */
     }
   }
-  const outcome = await until(() => ev('window.__outcome'), 15000)
+  const outcome = await until(() => ev('window.__outcome'), 30000)
   check('closing the window is a cancel, not an error', !!outcome && JSON.parse(outcome).error === 'cancelled', outcome)
   const accounts = await ev(`window.moho.rpc('listAccounts')`)
   check('no account was made', !accounts.some((a) => a.service === 'googlechat'))
-  await sleep(4000)
+  await sleep(6000)
   check('the profile is deleted afterwards', !!firefox && !fs.existsSync(firefox.profile))
 } catch (e) {
   console.log('probe stopped:', e.stack)
