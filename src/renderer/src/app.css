@@ -15682,3 +15682,36 @@ select.text-field {
 .mattermost-tools .field-row .text-field {
   min-width: 0;
 }
+
+/* Google Chat's account tab (GoogleChatAccountTools): each tool its title and line, then its controls, full width. */
+.googlechat-tool {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding: var(--spacing-m) 0;
+  border-bottom: 1px solid var(--outline-light);
+}
+
+.googlechat-tool:last-of-type {
+  border-bottom: none;
+}
+
+.googlechat-tool .field-row .text-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.googlechat-tool .field-row .text-field.googlechat-emoji {
+  flex: 0 0 3.5em;
+  text-align: center;
+}
+
+.googlechat-tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.googlechat-tool > .button {
+  align-self: flex-start;
+}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type React from 'react'
 import type { Account, MatrixInvite } from '../../../shared/wire'
 import { useStore } from '../state/hooks'
 
@@ -6,6 +7,19 @@ import { useStore } from '../state/hooks'
  * Google Chat's own account tools: custom status & DND, starting a DM by email or user ID,
  * creating a Space, and answering pending Space invitations.
  */
+/** One tool: what it is, a line on what it does, and its controls under them, full width. */
+function Tool({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }): JSX.Element {
+  return (
+    <div className="googlechat-tool">
+      <div className="setting-text">
+        <div>{title}</div>
+        <div className="small muted">{hint}</div>
+      </div>
+      {children}
+    </div>
+  )
+}
+
 export function GoogleChatAccountTools({ account }: { account: Account }): JSX.Element {
   const store = useStore()
   const [statusEmoji, setStatusEmoji] = useState('')
@@ -54,31 +68,28 @@ export function GoogleChatAccountTools({ account }: { account: Account }): JSX.E
 
   return (
     <div className="account-tools">
-      {!connected && <p className="hint">Connect this Google Chat account to change status, start a DM, or create a Space.</p>}
+      {!connected && <p className="small muted">Connect this Google Chat account to change status, start a DM, or create a Space.</p>}
 
-      <div className="setting-row">
-        <div className="setting-info">
-          <div className="setting-label">Custom status</div>
-          <div className="setting-hint">Shown next to your name in Google Chat. Leave blank to clear.</div>
-        </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <Tool title="Custom status" hint="Shown next to your name in Google Chat. Leave blank to clear.">
+        <div className="field-row">
           <input
             type="text"
             value={statusEmoji}
             onChange={(e) => setStatusEmoji(e.target.value)}
             placeholder="😀"
-            style={{ width: 48, textAlign: 'center' }}
+            className="text-field googlechat-emoji"
             disabled={!connected || busy !== null}
           />
           <input
             type="text"
+            className="text-field"
             value={statusText}
             onChange={(e) => setStatusText(e.target.value)}
             placeholder="In a meeting"
             disabled={!connected || busy !== null}
           />
           <button
-            className="btn-secondary"
+            type="button" className="button subtle"
             disabled={!connected || busy !== null}
             onClick={() =>
               void run('status', async () => {
@@ -90,15 +101,11 @@ export function GoogleChatAccountTools({ account }: { account: Account }): JSX.E
             Save
           </button>
         </div>
-      </div>
+      </Tool>
 
-      <div className="setting-row">
-        <div className="setting-info">
-          <div className="setting-label">Do Not Disturb</div>
-          <div className="setting-hint">Mutes Google Chat notifications across your devices.</div>
-        </div>
+      <Tool title="Do Not Disturb" hint="Mutes Google Chat notifications across your devices.">
         <button
-          className="btn-secondary"
+          type="button" className="button subtle"
           disabled={!connected || busy !== null}
           onClick={() =>
             void run('dnd', async () => {
@@ -111,23 +118,20 @@ export function GoogleChatAccountTools({ account }: { account: Account }): JSX.E
         >
           {dnd ? 'Turn off DND' : 'Turn on DND'}
         </button>
-      </div>
+      </Tool>
 
-      <div className="setting-row">
-        <div className="setting-info">
-          <div className="setting-label">Start a direct message</div>
-          <div className="setting-hint">Enter a Google email address or numeric Google Chat user ID.</div>
-        </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <Tool title="Start a direct message" hint="Enter a Google email address or numeric Google Chat user ID.">
+        <div className="field-row">
           <input
             type="text"
+            className="text-field"
             value={dmTarget}
             onChange={(e) => setDmTarget(e.target.value)}
             placeholder="name@example.com"
             disabled={!connected || busy !== null}
           />
           <button
-            className="btn-secondary"
+            type="button" className="button subtle"
             disabled={!connected || !dmTarget.trim() || busy !== null}
             onClick={() =>
               void run('dm', async () => {
@@ -141,16 +145,13 @@ export function GoogleChatAccountTools({ account }: { account: Account }): JSX.E
             Open DM
           </button>
         </div>
-      </div>
+      </Tool>
 
-      <div className="setting-row">
-        <div className="setting-info">
-          <div className="setting-label">Create a Space</div>
-          <div className="setting-hint">Create a new Google Chat Space with an optional description.</div>
-        </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <Tool title="Create a Space" hint="Create a new Google Chat Space with an optional description.">
+        <div className="field-row">
           <input
             type="text"
+            className="text-field"
             value={spaceName}
             onChange={(e) => setSpaceName(e.target.value)}
             placeholder="Space name"
@@ -158,13 +159,14 @@ export function GoogleChatAccountTools({ account }: { account: Account }): JSX.E
           />
           <input
             type="text"
+            className="text-field"
             value={spaceDesc}
             onChange={(e) => setSpaceDesc(e.target.value)}
             placeholder="Description (optional)"
             disabled={!connected || busy !== null}
           />
           <button
-            className="btn-secondary"
+            type="button" className="button subtle"
             disabled={!connected || !spaceName.trim() || busy !== null}
             onClick={() =>
               void run('space', async () => {
@@ -182,20 +184,16 @@ export function GoogleChatAccountTools({ account }: { account: Account }): JSX.E
             Create
           </button>
         </div>
-      </div>
+      </Tool>
 
       {invites.length > 0 && (
-        <div className="setting-row">
-          <div className="setting-info">
-            <div className="setting-label">Pending Space invitations</div>
-            <div className="setting-hint">Invitations received during this session.</div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <Tool title="Pending Space invitations" hint="Invitations received during this session.">
+          <div className="googlechat-tool-list">
             {invites.map((inv) => (
-              <div key={inv.roomId} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span>{inv.name}</span>
+              <div key={inv.roomId} className="device-row">
+                <span className="setting-text">{inv.name}</span>
                 <button
-                  className="btn-secondary"
+                  type="button" className="button subtle"
                   disabled={busy !== null}
                   onClick={() =>
                     void run('accept', async () => {
@@ -207,7 +205,7 @@ export function GoogleChatAccountTools({ account }: { account: Account }): JSX.E
                   Accept
                 </button>
                 <button
-                  className="btn-secondary"
+                  type="button" className="button subtle"
                   disabled={busy !== null}
                   onClick={() =>
                     void run('decline', async () => {
@@ -221,25 +219,22 @@ export function GoogleChatAccountTools({ account }: { account: Account }): JSX.E
               </div>
             ))}
           </div>
-        </div>
+        </Tool>
       )}
 
-      <div className="setting-row">
-        <div className="setting-info">
-          <div className="setting-label">Browse Spaces</div>
-          <div className="setting-hint">Search discoverable or joined Google Chat Spaces.</div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <Tool title="Browse Spaces" hint="Search discoverable or joined Google Chat Spaces.">
+        <div className="googlechat-tool-list">
+          <div className="field-row">
             <input
               type="text"
+            className="text-field"
               value={spaceQuery}
               onChange={(e) => setSpaceQuery(e.target.value)}
               placeholder="Filter Spaces (optional)"
               disabled={!connected || busy !== null}
             />
             <button
-              className="btn-secondary"
+              type="button" className="button subtle"
               disabled={!connected || busy !== null}
               onClick={() =>
                 void run('browse', async () => {
@@ -255,17 +250,17 @@ export function GoogleChatAccountTools({ account }: { account: Account }): JSX.E
             </button>
           </div>
           {spaces.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
+            <div className="googlechat-tool-list">
               {spaces.map((s) => (
-                <div key={s.spaceId} style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end' }}>
-                  <span>
-                    {s.name} ({s.memberCount})
+                <div key={s.spaceId} className="device-row">
+                  <span className="setting-text">
+                    {s.name} <span className="small muted">· {s.memberCount} member{s.memberCount === 1 ? '' : 's'}</span>
                   </span>
                   {s.joined ? (
-                    <span className="hint">Joined</span>
+                    <span className="small muted">Joined</span>
                   ) : (
                     <button
-                      className="btn-secondary"
+                      type="button" className="button subtle"
                       disabled={busy !== null}
                       onClick={() =>
                         void run('join', async () => {
@@ -283,19 +278,15 @@ export function GoogleChatAccountTools({ account }: { account: Account }): JSX.E
             </div>
           )}
         </div>
-      </div>
+      </Tool>
 
-      <div className="setting-row">
-        <div className="setting-info">
-          <div className="setting-label">Google Meet</div>
-          <div className="setting-hint">Start a new Google Meet call inside a Moho window signed in with this account.</div>
-        </div>
-        <button className="btn-secondary" onClick={() => void window.moho.openMeetCall('https://meet.google.com/new', account.id)}>
+      <Tool title="Google Meet" hint="Start a new Google Meet call inside a Moho window signed in with this account.">
+        <button type="button" className="button subtle" onClick={() => void window.moho.openMeetCall('https://meet.google.com/new', account.id)}>
           New Meet call
         </button>
-      </div>
+      </Tool>
 
-      {note && <p className="hint">{note}</p>}
+      {note && <p className="small muted">{note}</p>}
     </div>
   )
 }
