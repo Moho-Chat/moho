@@ -75,7 +75,7 @@ const SERVICE_STAGE: Partial<Record<AddableService, { words: string; tone: 'red'
   sneedchat: { words: '(Beta)', tone: 'green' },
   fluxer: { words: '(Beta)', tone: 'green' },
   mattermost: { words: '(Beta)', tone: 'green' },
-  googlechat: { words: '(Alpha)', tone: 'red' }
+  googlechat: { words: '(Beta)', tone: 'green' }
 }
 
 function ServiceStage({ service }: { service: AddableService }): JSX.Element | null {
