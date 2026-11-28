@@ -423,6 +423,71 @@ export function StoatCallBar({ bufferId }: { bufferId: string }): JSX.Element | 
 }
 
 /**
+ * An active Google Chat Huddle (Meet-backed audio-first call) in a DM or Space.
+ * Displays active participants and opens the call internally inside a Moho window.
+ */
+export function GoogleChatHuddleBar({ bufferId }: { bufferId: string }): JSX.Element | null {
+  const store = useStore()
+  const buffer = useChat((s) => s.buffers).find((b) => b.id === bufferId)
+  const huddle = useChat((s) => s.googleChatHuddles[bufferId])
+  const routed = useChat((s) => s.accounts.find((a) => a.id === buffer?.accountId)?.useTor ?? false)
+  if (!buffer?.accountId.startsWith('googlechat:') || !huddle || !huddle.active) return null
+
+  const names = huddle.participants.map((p) => p.name).filter(Boolean)
+  const who =
+    names.length === 0
+      ? 'Huddle in progress'
+      : names.length === 1
+        ? `${names[0]} is in a Huddle`
+        : `${names.length} people in Huddle: ${names.join(', ')}`
+  const code = huddle.meetingCode || huddle.meetingUrl.replace(/^https?:\/\//, '')
+
+  return (
+    <div className="room-call-bar huddle-bar">
+      <span className="huddle-badge" aria-hidden="true">
+        <Icon name="headphones" size={16} />
+      </span>
+      <div className="huddle-info">
+        <span className="small ellipsis huddle-who">{who}</span>
+        {code && <span className="small muted ellipsis">{code}</span>}
+      </div>
+      {routed ? (
+        <span className="small muted">Huddles go around Tor and would reveal your real IP address</span>
+      ) : (
+        <div className="huddle-actions">
+          <button
+            type="button"
+            className="icon-button"
+            title="Copy Huddle link"
+            onClick={() => {
+              void window.moho.copyText(huddle.meetingUrl)
+              store.toast('info', 'Huddle link copied')
+            }}
+          >
+            <Icon name="content_copy" size={15} />
+          </button>
+          <button
+            type="button"
+            className="button primary"
+            onClick={() => void store.joinGoogleChatHuddle(bufferId)}
+          >
+            Join Huddle
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            title="Dismiss Huddle banner"
+            onClick={() => void store.dismissGoogleChatHuddle(bufferId)}
+          >
+            <Icon name="close" size={15} />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
  * Which screen or window to show the room.
  *
  * A grid of what is actually open, with a still of each, because the names

@@ -1054,4 +1054,22 @@ export interface NobilisEvent {
   data: any
 }
 
+export interface GoogleChatHuddleParticipant {
+  userId: string
+  name: string
+  avatarUrl?: string | null
+}
+
+export interface GoogleChatHuddle {
+  bufferId: string
+  messageId: string
+  meetingUrl: string
+  meetingCode: string
+  starterId: string
+  starterName: string
+  participants: GoogleChatHuddleParticipant[]
+  startedAt: number
+  active: boolean
+}
+
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'

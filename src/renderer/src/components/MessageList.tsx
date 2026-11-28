@@ -6,7 +6,7 @@ import { LiveCards } from './LiveCards'
 import { PinnedBar } from './PinnedBar'
 import { SneedchatStream } from './SneedchatStream'
 import { CallView } from './CallView'
-import { CallStage, RoomCallBar, StoatCallBar } from './CallStage'
+import { CallStage, GoogleChatHuddleBar, RoomCallBar, StoatCallBar } from './CallStage'
 import { StreamStage } from './StreamStage'
 import { ServiceBanner } from './ServiceBanner'
 import { ConversationNotice } from './ConversationNotice'
@@ -820,6 +820,7 @@ export function MessageList(): JSX.Element {
           because a group call has no invitation - only people in it. */}
       <RoomCallBar bufferId={bufferId} />
       <StoatCallBar bufferId={bufferId} />
+      <GoogleChatHuddleBar bufferId={bufferId} />
       {/* And a Kick stream in the same place, for the same reason: the picture
           and the chat about it are one conversation. Never both at once - the
           store refuses to start a stream during a call. */}

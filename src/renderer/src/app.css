@@ -4567,6 +4567,59 @@ img.smilie {
   min-width: 0;
 }
 
+.room-call-bar.huddle-bar {
+  border-color: rgba(0, 137, 123, 0.45);
+  background: linear-gradient(90deg, rgba(0, 137, 123, 0.14), var(--surface-container) 55%);
+}
+
+.huddle-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: #00897b;
+  color: #fff;
+  box-shadow: 0 0 0 3px rgba(0, 137, 123, 0.25);
+}
+
+.huddle-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 1px;
+}
+
+.huddle-who {
+  font-weight: 600;
+}
+
+.huddle-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.huddle-btn-active {
+  color: #26a69a !important;
+  position: relative;
+}
+
+.huddle-btn-active::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #26a69a;
+}
+
 .emoji-empty {
   padding: var(--spacing-m);
   text-align: center;
